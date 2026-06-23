@@ -65,6 +65,39 @@ pub(crate) fn completion_error_from_body(
 macro_rules! impl_provider_response_helpers {
     ($error:ty) => {
         impl $error {
+            /// Builds an error from a captured HTTP status and raw response body,
+            /// routing it so the `provider_response_*` helpers stay useful.
+            ///
+            /// This is the single funnel every HTTP-error path should use instead of
+            /// flattening a status and body into a `ProviderError(String)`:
+            /// - A success (2xx) status carries a provider-authored error envelope, so
+            ///   it is preserved as [`Self::ProviderResponse`] together with the status.
+            /// - A non-success status is preserved as
+            ///   [`Self::HttpError`]`(`[`http_client::Error::InvalidStatusCodeWithMessage`](crate::http_client::Error::InvalidStatusCodeWithMessage)`)`.
+            ///
+            /// Either way the raw `body` is kept verbatim and the status stays
+            /// recoverable through [`Self::provider_response_status`].
+            // Generated uniformly for every capability error as the regression
+            // anchor; not all of them have a wired HTTP path yet (mirrors the
+            // `ProviderResponse` variant being kept for symmetry / future paths).
+            #[allow(dead_code)]
+            pub(crate) fn from_http_response(
+                status: http::StatusCode,
+                body: impl Into<String>,
+            ) -> Self {
+                if status.is_success() {
+                    Self::ProviderResponse($crate::provider_response::ProviderResponseError {
+                        status: Some(status),
+                        body: body.into(),
+                    })
+                } else {
+                    Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
+                        status,
+                        body.into(),
+                    ))
+                }
+            }
+
             /// Returns the raw provider response body when available.
             ///
             /// This is available for:

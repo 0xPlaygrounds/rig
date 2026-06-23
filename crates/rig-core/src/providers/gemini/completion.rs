@@ -170,15 +170,16 @@ where
 
                 response.try_into()
             } else {
-                let text = String::from_utf8_lossy(
-                    &response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?,
-                )
-                .into();
+                let status = response.status();
+                let body = response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?;
 
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ))
             }
         }
         .instrument(span)
@@ -2173,6 +2174,42 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body =
+            r#"{"error":{"code":503,"message":"service unavailable","status":"UNAVAILABLE"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = crate::providers::gemini::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(GEMINI_3_FLASH_PREVIEW);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        let json = error
+            .provider_response_json()
+            .expect("raw body should be valid JSON")
+            .expect("parsed JSON should be present");
+        assert_eq!(json["error"]["status"], "UNAVAILABLE");
+    }
 
     #[test]
     fn test_usage_metadata_deserializes_without_total_token_count() {

@@ -2478,41 +2478,44 @@ where
                 .await
                 .map_err(CompletionError::HttpError)?;
 
-            if response.status().is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(
-                    response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?
-                        .to_vec()
-                        .as_slice(),
-                )? {
-                    ApiResponse::Message(completion) => {
-                        let span = tracing::Span::current();
-                        span.record_response_metadata(&completion);
-                        span.record_token_usage(&completion.usage);
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(
-                                target: "rig::completions",
-                                "Anthropic completion response: {}",
-                                serde_json::to_string_pretty(&completion)?
-                            );
-                        }
-                        completion.try_into()
+            // Read the raw body exactly once so we can both deserialize it and, on
+            // failure, preserve it verbatim for `provider_response_*` inspection.
+            let status = response.status();
+            let body = response
+                .into_body()
+                .await
+                .map_err(CompletionError::HttpError)?;
+
+            if !status.is_success() {
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ));
+            }
+
+            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&body)? {
+                ApiResponse::Message(completion) => {
+                    let span = tracing::Span::current();
+                    span.record_response_metadata(&completion);
+                    span.record_token_usage(&completion.usage);
+                    if enabled!(Level::TRACE) {
+                        tracing::trace!(
+                            target: "rig::completions",
+                            "Anthropic completion response: {}",
+                            serde_json::to_string_pretty(&completion)?
+                        );
                     }
-                    ApiResponse::Error(ApiErrorResponse { message }) => {
-                        Err(CompletionError::ResponseError(message))
-                    }
+                    completion.try_into()
                 }
-            } else {
-                let text: String = String::from_utf8_lossy(
-                    &response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?,
-                )
-                .into();
-                Err(CompletionError::ProviderError(text))
+                // Anthropic occasionally returns its `{"type":"error",...}` envelope
+                // with a 2xx status; preserve the raw body alongside that status.
+                ApiResponse::Error(ApiErrorResponse { message }) => {
+                    tracing::warn!(message = %message, "provider returned an error response");
+                    Err(CompletionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&body),
+                    ))
+                }
             }
         }
         .instrument(span)
@@ -2547,6 +2550,109 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = crate::providers::anthropic::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        let json = error
+            .provider_response_json()
+            .expect("raw body should be valid JSON")
+            .expect("parsed JSON should be present");
+        assert_eq!(json["error"]["type"], "rate_limit_error");
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_provider_error_envelope_on_2xx() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        // Anthropic can return its error envelope with a 2xx status; the raw body
+        // and status should be preserved as a `ProviderResponse`.
+        let body = r#"{"type":"error","message":"overloaded"}"#;
+        let http_client = RecordingHttpClient::with_error_response(http::StatusCode::OK, body);
+        let client = crate::providers::anthropic::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn streaming_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::HttpErrorStreamingClient;
+        use futures::StreamExt;
+
+        let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"overloaded"}}"#;
+        let http_client = HttpErrorStreamingClient::new(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = crate::providers::anthropic::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should start");
+        let error = loop {
+            match stream.next().await {
+                Some(Ok(_)) => continue,
+                Some(Err(error)) => break error,
+                None => panic!("stream ended without surfacing the transport error"),
+            }
+        };
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {

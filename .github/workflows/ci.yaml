@@ -50,6 +50,30 @@ jobs:
             exit 1
           fi
 
+      # Guard migrated providers against re-flattening an HTTP failure into a
+      # capability error's `ProviderError(String)`. The `provider_response_*`
+      # inspection helpers (#1859) can only recover a status + body from the
+      # `ProviderResponse` / `HttpError(InvalidStatusCodeWithMessage)` variants,
+      # so an HTTP status must never be `format!`'d into a `ProviderError`. Route
+      # the raw status + body through `<Capability>Error::from_http_response(status, body)`
+      # instead (see crates/rig-core/src/provider_response.rs).
+      #
+      # `perl -0777` slurps each whole file so the check is MULTI-LINE aware (the
+      # canonical flatten spans several lines: `ProviderError(format!(\n "..",\n
+      # status, body))`). It is scoped to providers already migrated through the
+      # funnel; add a directory here as each remaining provider migrates (#1931).
+      # New, not-yet-migrated providers rely on the structural funnel + review.
+      - name: Check migrated providers don't flatten HTTP errors into ProviderError
+        run: |
+          hits=$(perl -0777 -ne '
+            print "$ARGV\n" if /(Completion|Embedding|ImageGeneration|AudioGeneration|Transcription|Verify|Rerank)Error::ProviderError\(\s*format!\([^;]*?\bstatus\b/s;
+          ' $(find crates/rig-core/src/providers/anthropic \
+                   crates/rig-core/src/providers/gemini -name '*.rs'))
+          if [ -n "$hits" ]; then
+            echo "::error::A migrated provider flattened an HTTP status into ProviderError(format!(...)): ${hits}. Route the raw status + body through <Capability>Error::from_http_response(status, body) so the provider_response_* helpers can recover them (see crates/rig-core/src/provider_response.rs)."
+            exit 1
+          fi
+
   # Special check to make sure rig-core is compatible with the wasm target
   check-wasm:
     name: stable / check rig-core wasm target

@@ -402,7 +402,10 @@ where
                         }
                     },
                     Err(e) => {
-                        yield Err(CompletionError::ProviderError(format!("SSE Error: {e}")));
+                        // Keep non-success HTTP status recoverable through the
+                        // `provider_response_*` helpers instead of flattening it
+                        // into a display string.
+                        yield Err(CompletionError::from_stream_transport(e));
                         break;
                     }
                 }

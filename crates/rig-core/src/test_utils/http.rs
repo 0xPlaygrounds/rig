@@ -262,6 +262,18 @@ impl HttpErrorStreamingClient {
     }
 }
 
+// `http::StatusCode` has no `Default`, so derive cannot apply. A `Default` impl
+// is required to use this client as a provider `Client`'s HTTP backend (the
+// completion model bounds require `H: Default`), e.g. for streaming error tests.
+impl Default for HttpErrorStreamingClient {
+    fn default() -> Self {
+        Self {
+            status: http::StatusCode::INTERNAL_SERVER_ERROR,
+            body: String::new(),
+        }
+    }
+}
+
 impl HttpClientExt for HttpErrorStreamingClient {
     fn send<T, U>(
         &self,

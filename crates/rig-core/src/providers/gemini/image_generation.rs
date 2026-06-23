@@ -74,21 +74,21 @@ where
 
         let response = self.client.send(request).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = http_client::text(response).await?;
-
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text,
-            )));
-        }
-
+        let status = response.status();
         let text = http_client::text(response).await?;
+
+        if !status.is_success() {
+            return Err(ImageGenerationError::from_http_response(status, text));
+        }
 
         match serde_json::from_str::<ApiResponse<GenerateContentResponse>>(&text)? {
             ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+            // Gemini returns its error envelope with a 2xx status; preserve the
+            // raw body alongside that status instead of flattening the message.
+            ApiResponse::Err(err) => {
+                tracing::warn!(message = %err.message, "provider returned an error response");
+                Err(ImageGenerationError::from_http_response(status, text))
+            }
         }
     }
 }
@@ -358,5 +358,66 @@ mod tests {
         .expect_err("text-only responses should fail");
 
         assert!(err.to_string().contains("did not include image data"));
+    }
+
+    #[tokio::test]
+    async fn image_generation_non_success_response_preserves_status_and_body() {
+        use crate::image_generation::ImageGenerationModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body =
+            r#"{"error":{"code":400,"message":"invalid request","status":"INVALID_ARGUMENT"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = ImageGenerationModel::new(client, GEMINI_2_5_FLASH_IMAGE);
+
+        let error = model
+            .image_generation(image_generation_request("draw a cat"))
+            .await
+            .expect_err("image generation should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn image_generation_preserves_provider_error_envelope_on_2xx() {
+        use crate::image_generation::ImageGenerationModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        // Gemini returns its error envelope with a 2xx status; the raw body and
+        // status should be preserved as a `ProviderResponse`.
+        let body = r#"{"message":"image generation blocked by safety filters"}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = ImageGenerationModel::new(client, GEMINI_2_5_FLASH_IMAGE);
+
+        let error = model
+            .image_generation(image_generation_request("draw a cat"))
+            .await
+            .expect_err("image generation should fail with provider error envelope");
+
+        match &error {
+            ImageGenerationError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }
