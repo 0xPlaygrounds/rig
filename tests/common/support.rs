@@ -83,6 +83,8 @@ pub(crate) const IMAGE_FIXTURE_PATH: &str = concat!(
 );
 pub(crate) const PDF_FIXTURE_PATH: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/pages.pdf");
+pub(crate) const VIDEO_FIXTURE_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sample_video.mp4");
 
 pub(crate) const EMBEDDING_INPUTS: [&str; 3] = [
     "Rust values memory safety and predictable performance.",

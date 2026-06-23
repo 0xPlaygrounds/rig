@@ -6,9 +6,12 @@ use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType, Message, UserContent,
+    VideoMediaType,
 };
 
-use crate::support::{IMAGE_FIXTURE_PATH, PDF_FIXTURE_PATH, assert_nonempty_response};
+use crate::support::{
+    IMAGE_FIXTURE_PATH, PDF_FIXTURE_PATH, VIDEO_FIXTURE_PATH, assert_nonempty_response,
+};
 
 use super::super::support::with_openrouter_cassette;
 
@@ -31,6 +34,12 @@ fn pdf_document() -> Document {
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     }
+}
+
+/// Builds base64 video content via the `UserContent::video` helper.
+fn video_content() -> UserContent {
+    let bytes = std::fs::read(VIDEO_FIXTURE_PATH).expect("fixture video should be readable");
+    UserContent::video(BASE64_STANDARD.encode(bytes), Some(VideoMediaType::MP4))
 }
 
 #[tokio::test]
@@ -101,6 +110,30 @@ async fn mixed_multimodal_prompt() {
             })
             .await
             .expect("mixed content prompt should succeed");
+
+        assert_nonempty_response(&response);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn video_analysis_prompt() {
+    with_openrouter_cassette("multimodal/video_analysis_prompt", |client| async move {
+        let agent = client
+            .agent(VISION_MODEL)
+            .preamble("You are a helpful assistant that describes videos.")
+            .build();
+
+        let response = agent
+            .prompt(Message::User {
+                content: OneOrMany::many(vec![
+                    UserContent::text("What do you see in this short video? Describe it briefly."),
+                    video_content(),
+                ])
+                .expect("content should be non-empty"),
+            })
+            .await
+            .expect("video prompt should succeed");
 
         assert_nonempty_response(&response);
     })
