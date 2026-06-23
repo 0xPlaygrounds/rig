@@ -378,4 +378,68 @@ mod tests {
             "document input should appear exactly once: {input:?}"
         );
     }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"service unavailable","code":"503"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = crate::providers::xai::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::GROK_4);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_provider_error_envelope_on_2xx() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        // xAI can return its error envelope with a 2xx status; the raw body and
+        // status should be preserved as a `ProviderResponse`.
+        let body = r#"{"error":"rate limited","code":"429"}"#;
+        let http_client = RecordingHttpClient::with_error_response(http::StatusCode::OK, body);
+        let client = crate::providers::xai::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::GROK_4);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
 }

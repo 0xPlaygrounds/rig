@@ -105,3 +105,39 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::transcription::TranscriptionClient;
+    use crate::test_utils::RecordingHttpClient;
+    use crate::transcription::TranscriptionModel as _;
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        let body = r#"{"error":"Service Unavailable","estimated_time":30.0}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(WHISPER_LARGE_V3);
+
+        let error = model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+            .err()
+            .expect("transcription should fail with non-success status");
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+}

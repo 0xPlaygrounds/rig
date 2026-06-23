@@ -205,3 +205,36 @@ impl<T> EmbeddingModel<T> {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::EmbeddingsClient;
+    use crate::embeddings::EmbeddingModel as _;
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn embedding_http_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"invalid api key","code":401}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNAUTHORIZED, body);
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("openai/text-embedding-3-small");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+}

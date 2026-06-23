@@ -1304,6 +1304,65 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"model not found"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("llama3.2");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn embedding_http_non_success_preserves_status_and_body() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::{EmbeddingError, EmbeddingModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"model not found"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("all-minilm");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
     // Test deserialization and conversion for the /api/chat endpoint.
     #[tokio::test]
     async fn test_chat_completion() {

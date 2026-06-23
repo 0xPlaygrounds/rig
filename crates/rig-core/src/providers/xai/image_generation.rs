@@ -119,3 +119,40 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::client::image_generation::ImageGenerationClient;
+    use crate::image_generation::{ImageGenerationError, ImageGenerationModel as _};
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn image_generation_non_success_response_preserves_status_and_body() {
+        let body = r#"{"error":"invalid prompt","code":"400"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = crate::providers::xai::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(super::GROK_IMAGINE_IMAGE);
+
+        let error = model
+            .image_generation_request()
+            .prompt("draw a cat")
+            .width(256)
+            .height(256)
+            .send()
+            .await
+            .err()
+            .expect("image generation should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+}

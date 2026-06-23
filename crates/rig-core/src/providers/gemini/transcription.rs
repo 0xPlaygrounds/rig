@@ -177,3 +177,41 @@ impl TryFrom<GenerateContentResponse>
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::transcription::TranscriptionClient;
+    use crate::test_utils::RecordingHttpClient;
+    use crate::transcription::TranscriptionModel as _;
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"code":429,"message":"resource exhausted","status":"RESOURCE_EXHAUSTED"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model("gemini-2.5-flash");
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+}

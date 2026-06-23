@@ -105,3 +105,43 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio_generation::AudioGenerationModel as _;
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn audio_generation_http_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"invalid voice","code":422}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNPROCESSABLE_ENTITY, body);
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = AudioGenerationModel::new(client, GPT_4O_MINI_TTS);
+
+        let error = match model
+            .audio_generation(AudioGenerationRequest {
+                text: "hello".to_string(),
+                voice: "alloy".to_string(),
+                speed: 1.0,
+                additional_params: None,
+            })
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("audio generation should fail with non-success status"),
+        };
+
+        assert!(matches!(error, AudioGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNPROCESSABLE_ENTITY)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+}

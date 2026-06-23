@@ -268,4 +268,38 @@ mod test {
         assert_eq!(response.response.model, VOXTRAL_MINI);
         assert_eq!(response.response.language, Some("en".to_string()));
     }
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let body = r#"{"message":"bad audio","type":"invalid_request_error"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = crate::providers::mistral::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(VOXTRAL_MINI);
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
 }

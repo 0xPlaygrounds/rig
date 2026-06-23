@@ -190,3 +190,64 @@ impl<T> EmbeddingModel<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::embeddings::EmbeddingModel as _;
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn embedding_http_non_success_preserves_status_and_body() {
+        let body = r#"{"message":"too many requests"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("embed-english-v3.0", "search_document");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn embedding_preserves_provider_error_envelope_on_2xx() {
+        // Cohere returns its error envelope with a 2xx status; the raw body and
+        // status should be preserved as a `ProviderResponse`.
+        let body = r#"{"message":"invalid request"}"#;
+        let http_client = RecordingHttpClient::with_error_response(http::StatusCode::OK, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("embed-english-v3.0", "search_document");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with provider error envelope");
+
+        match &error {
+            EmbeddingError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+}

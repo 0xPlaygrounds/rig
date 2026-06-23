@@ -744,4 +744,146 @@ mod tests {
             .build()
             .expect("Client::builder() failed");
     }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"service unavailable"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::LLAMA_3_1_8B);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_provider_error_envelope_on_2xx() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        // Hyperbolic can return its error envelope with a 2xx status; the raw body
+        // and status should be preserved as a `ProviderResponse`.
+        let body = r#"{"message":"model is overloaded"}"#;
+        let http_client = RecordingHttpClient::with_error_response(http::StatusCode::OK, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::LLAMA_3_1_8B);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "image")]
+    #[tokio::test]
+    async fn image_generation_non_success_response_preserves_status_and_body() {
+        use crate::client::image_generation::ImageGenerationClient;
+        use crate::image_generation::{
+            ImageGenerationError, ImageGenerationModel as _, ImageGenerationRequest,
+        };
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"invalid image request"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(super::SDXL1_0_BASE);
+
+        let error = model
+            .image_generation(ImageGenerationRequest {
+                prompt: "draw a cat".to_string(),
+                width: 256,
+                height: 256,
+                additional_params: None,
+            })
+            .await
+            .err()
+            .expect("image generation should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[cfg(feature = "audio")]
+    #[tokio::test]
+    async fn audio_generation_non_success_response_preserves_status_and_body() {
+        use crate::audio_generation::{
+            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
+        };
+        use crate::client::audio_generation::AudioGenerationClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"invalid voice"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNPROCESSABLE_ENTITY, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.audio_generation_model("English");
+
+        let error = match model
+            .audio_generation(AudioGenerationRequest {
+                text: "hello".to_string(),
+                voice: "alloy".to_string(),
+                speed: 1.0,
+                additional_params: None,
+            })
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("audio generation should fail with non-success status"),
+        };
+
+        assert!(matches!(error, AudioGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNPROCESSABLE_ENTITY)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
 }

@@ -693,6 +693,36 @@ mod tests {
     use crate::message::UserContent;
     use serde_json::json;
 
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"service unavailable"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("deepseek-r1");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
     #[test]
     fn test_deserialize_message() {
         // Test string content format

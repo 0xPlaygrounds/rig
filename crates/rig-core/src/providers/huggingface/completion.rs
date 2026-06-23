@@ -1336,4 +1336,39 @@ mod tests {
         let result = HuggingfaceCompletionRequest::try_from(("meta/test-model", request));
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
     }
+
+    #[tokio::test]
+    async fn completion_preserves_provider_error_envelope_on_2xx() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        // Huggingface can return its error envelope with a 2xx status; the raw
+        // body and status should be preserved as a `ProviderResponse`.
+        let body =
+            r#"{"error":"Model google/gemma-2-2b-it is currently loading","estimated_time":20.0}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(GEMMA_2);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
 }
