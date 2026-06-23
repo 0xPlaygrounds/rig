@@ -1,12 +1,11 @@
-//! Demonstrates fan-out structured extraction with `try_parallel!`.
+//! Demonstrates fan-out structured extraction with `futures::try_join!`.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see one batch of text split into names, topics, and sentiment in parallel.
 
 use anyhow::Result;
+use futures::stream::{StreamExt, TryStreamExt};
 use rig::client::ProviderClient;
-use rig::pipeline::{self, TryOp, agent_ops};
 use rig::providers::openai;
-use rig::try_parallel;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -53,23 +52,32 @@ async fn main() -> Result<()> {
         .retries(2)
         .build();
 
-    let chain = pipeline::new()
-        .chain(try_parallel!(
-            agent_ops::extract(names_extractor),
-            agent_ops::extract(topics_extractor),
-            agent_ops::extract(sentiment_extractor),
-        ))
-        .map_ok(|(names, topics, sentiment)| {
-            format!(
-                "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
-                names.names.join(", "),
-                topics.topics.join(", "),
-                sentiment.sentiment,
-                sentiment.confidence,
-            )
-        });
-
-    let responses = chain.try_batch_call(4, sample_inputs()).await?;
+    // Fan each input out to the three extractors concurrently (`try_join!`),
+    // running up to four inputs at a time (`buffered`) — the same shape the
+    // old `try_parallel!` + `try_batch_call(4, ..)` pipeline provided.
+    let responses: Vec<String> = futures::stream::iter(sample_inputs())
+        .map(|text| {
+            let names_extractor = &names_extractor;
+            let topics_extractor = &topics_extractor;
+            let sentiment_extractor = &sentiment_extractor;
+            async move {
+                let (names, topics, sentiment) = futures::try_join!(
+                    names_extractor.extract(text),
+                    topics_extractor.extract(text),
+                    sentiment_extractor.extract(text),
+                )?;
+                anyhow::Ok(format!(
+                    "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
+                    names.names.join(", "),
+                    topics.topics.join(", "),
+                    sentiment.sentiment,
+                    sentiment.confidence,
+                ))
+            }
+        })
+        .buffered(4)
+        .try_collect()
+        .await?;
 
     for (idx, response) in responses.iter().enumerate() {
         println!("batch item {}:\n{response}\n", idx + 1);

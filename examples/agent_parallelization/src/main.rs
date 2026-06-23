@@ -1,14 +1,7 @@
 use rig::prelude::*;
 
-use rig::pipeline::agent_ops::extract;
-
 use rig::providers::openai;
 use rig::providers::openai::client::Client;
-
-use rig::{
-    parallel,
-    pipeline::{self, Op, passthrough},
-};
 
 use schemars::JsonSchema;
 
@@ -49,39 +42,36 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let chain = pipeline::new()
-        .chain(parallel!(
-            passthrough(),
-            extract(manipulation_agent),
-            extract(depression_agent),
-            extract(intelligent_agent)
-        ))
-        .map(|(statement, manip_score, dep_score, int_score)| {
-            match (manip_score, dep_score, int_score) {
-                (Ok(manip_score), Ok(dep_score), Ok(int_score)) => format!(
-                    "
+    // Score the statement on three dimensions concurrently. `join!` (unlike
+    // `try_join!`) awaits all three and keeps each `Result`, so one failed
+    // extraction doesn't discard the others — the same behaviour the old
+    // `parallel!` op provided.
+    let statement = "I hate swimming. The water always gets in my eyes.";
+    let (manip_score, dep_score, int_score) = futures::join!(
+        manipulation_agent.extract(statement),
+        depression_agent.extract(statement),
+        intelligent_agent.extract(statement),
+    );
+
+    let response = match (manip_score, dep_score, int_score) {
+        (Ok(manip_score), Ok(dep_score), Ok(int_score)) => format!(
+            "
                     Original statement: {statement}
                     Manipulation sentiment score: {}
                     Depression sentiment score: {}
                     Intelligence sentiment score: {}
                     ",
-                    manip_score.score, dep_score.score, int_score.score
-                ),
-                (manip_score, dep_score, int_score) => format!(
-                    "
+            manip_score.score, dep_score.score, int_score.score
+        ),
+        (manip_score, dep_score, int_score) => format!(
+            "
                     Original statement: {statement}
                     Manipulation sentiment score: {manip_score:?}
                     Depression sentiment score: {dep_score:?}
                     Intelligence sentiment score: {int_score:?}
                     "
-                ),
-            }
-        });
-
-    // Prompt the agent and print the response
-    let response = chain
-        .call("I hate swimming. The water always gets in my eyes.")
-        .await;
+        ),
+    };
 
     println!("Pipeline run: {response:?}");
 

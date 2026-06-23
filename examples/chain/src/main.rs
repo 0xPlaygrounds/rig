@@ -1,14 +1,14 @@
-//! Demonstrates a retrieval-augmented pipeline with `parallel!` and `lookup`.
+//! Demonstrates retrieval-augmented prompting: look up context from a vector
+//! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
-//! Run it to see the pipeline retrieve context and fold it into the final prompt.
 
+use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
+use rig::vector_store::VectorStoreIndex;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    embeddings::EmbeddingsBuilder,
-    parallel,
-    pipeline::{self, Op, agent_ops::lookup, passthrough},
-    providers::openai::Client,
+    embeddings::EmbeddingsBuilder, providers::openai::Client,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 
@@ -60,21 +60,23 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = vector_store.index(embedding_model);
     let agent = build_dictionary_agent(&client);
 
-    let chain = pipeline::new()
-        .chain(parallel!(
-            passthrough::<&str>(),
-            lookup::<_, _, String>(index, 1), // Required to specify document type
-        ))
-        .map(|(prompt, maybe_docs)| match maybe_docs {
-            Ok(docs) => lookup_context(docs, prompt),
-            Err(err) => {
-                println!("Lookup failed: {err}. Prompting without retrieved context.");
-                prompt.to_string()
-            }
-        })
-        .prompt(agent);
+    // Retrieve the most relevant definition, fold it into the prompt, then
+    // prompt the agent. (The old pipeline ran the lookup "in parallel" with a
+    // passthrough of the query; since the passthrough is instant, a plain
+    // sequential lookup is equivalent and clearer.)
+    let req = VectorSearchRequest::builder()
+        .query(QUERY)
+        .samples(1)
+        .build();
+    let prompt = match index.top_n::<String>(req).await {
+        Ok(docs) => lookup_context(docs, QUERY),
+        Err(err) => {
+            println!("Lookup failed: {err}. Prompting without retrieved context.");
+            QUERY.to_string()
+        }
+    };
 
-    let response = chain.call(QUERY).await?;
+    let response = agent.prompt(prompt).await?;
     println!("{response}");
 
     Ok(())
