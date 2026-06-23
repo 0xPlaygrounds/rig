@@ -523,15 +523,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use crate::loaders::epub::RawTextProcessor;
+    use crate::loaders::test_fixtures::{fixture_glob, fixture_path};
 
     use super::EpubFileLoader;
 
     #[test]
     fn test_epub_loader_with_errors() {
-        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub").unwrap();
+        let glob = fixture_glob("*.epub");
+        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob(&glob).unwrap();
         let actual = loader
             .load_with_path()
             .ignore_errors()
@@ -551,7 +551,8 @@ mod tests {
 
     #[test]
     fn test_epub_loader_with_ignoring_errors() {
-        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub").unwrap();
+        let glob = fixture_glob("*.epub");
+        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob(&glob).unwrap();
         let actual = loader
             .load_with_path()
             .ignore_errors()
@@ -568,7 +569,8 @@ mod tests {
 
     #[test]
     fn test_single_file() {
-        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub").unwrap();
+        let glob = fixture_glob("*.epub");
+        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob(&glob).unwrap();
 
         let actual = loader
             .read()
@@ -581,7 +583,8 @@ mod tests {
 
     #[test]
     fn test_single_file_with_path() {
-        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub").unwrap();
+        let glob = fixture_glob("*.epub");
+        let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob(&glob).unwrap();
 
         let actual = loader
             .read_with_path()
@@ -592,6 +595,6 @@ mod tests {
         assert_eq!(actual.len(), 1);
 
         let (path, _) = &actual[0];
-        assert_eq!(path, &PathBuf::from("tests/data/dummy.epub"));
+        assert_eq!(path, &fixture_path("dummy.epub"));
     }
 }
