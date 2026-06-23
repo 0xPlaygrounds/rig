@@ -5,12 +5,13 @@ use rig::OneOrMany;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::message::{
-    Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType, Message, UserContent,
-    VideoMediaType,
+    AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
+    Message, UserContent, VideoMediaType,
 };
 
 use crate::support::{
-    IMAGE_FIXTURE_PATH, PDF_FIXTURE_PATH, VIDEO_FIXTURE_PATH, assert_nonempty_response,
+    AUDIO_FIXTURE_PATH, IMAGE_FIXTURE_PATH, PDF_FIXTURE_PATH, VIDEO_FIXTURE_PATH,
+    assert_nonempty_response,
 };
 
 use super::super::support::with_openrouter_cassette;
@@ -40,6 +41,12 @@ fn pdf_document() -> Document {
 fn video_content() -> UserContent {
     let bytes = std::fs::read(VIDEO_FIXTURE_PATH).expect("fixture video should be readable");
     UserContent::video(BASE64_STANDARD.encode(bytes), Some(VideoMediaType::MP4))
+}
+
+/// Builds base64 audio content via the `UserContent::audio` helper.
+fn audio_content() -> UserContent {
+    let bytes = std::fs::read(AUDIO_FIXTURE_PATH).expect("fixture audio should be readable");
+    UserContent::audio(BASE64_STANDARD.encode(bytes), Some(AudioMediaType::MP3))
 }
 
 #[tokio::test]
@@ -134,6 +141,30 @@ async fn video_analysis_prompt() {
             })
             .await
             .expect("video prompt should succeed");
+
+        assert_nonempty_response(&response);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn audio_analysis_prompt() {
+    with_openrouter_cassette("multimodal/audio_analysis_prompt", |client| async move {
+        let agent = client
+            .agent(VISION_MODEL)
+            .preamble("You are a helpful assistant that transcribes and describes audio.")
+            .build();
+
+        let response = agent
+            .prompt(Message::User {
+                content: OneOrMany::many(vec![
+                    UserContent::text("What is said in this audio clip? Transcribe it briefly."),
+                    audio_content(),
+                ])
+                .expect("content should be non-empty"),
+            })
+            .await
+            .expect("audio prompt should succeed");
 
         assert_nonempty_response(&response);
     })
