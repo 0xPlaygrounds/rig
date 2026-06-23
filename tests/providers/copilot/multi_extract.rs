@@ -1,9 +1,8 @@
 //! Preserves the live multi-extract example as Copilot regression coverage.
 
 use anyhow::Result;
+use futures::stream::{StreamExt, TryStreamExt};
 use rig::client::CompletionClient;
-use rig::pipeline::{self, TryOp, agent_ops};
-use rig::try_parallel;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -47,31 +46,33 @@ async fn batch_multi_extract_chain() -> Result<()> {
                 .retries(2)
                 .build();
 
-            let chain = pipeline::new()
-                .chain(try_parallel!(
-                    agent_ops::extract(names_extractor),
-                    agent_ops::extract(topics_extractor),
-                    agent_ops::extract(sentiment_extractor),
-                ))
-                .map_ok(|(names, topics, sentiment)| {
-                    format!(
-                        "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
-                        names.names.join(", "),
-                        topics.topics.join(", "),
-                        sentiment.sentiment,
-                        sentiment.confidence,
-                    )
-                });
-
-            let responses = chain
-                .try_batch_call(
-                    4,
-                    vec![
-                        "Screw you Putin!",
-                        "I love my dog, but I hate my cat.",
-                        "I'm going to the store to buy some milk.",
-                    ],
-                )
+            let inputs = vec![
+                "Screw you Putin!",
+                "I love my dog, but I hate my cat.",
+                "I'm going to the store to buy some milk.",
+            ];
+            let responses: Vec<String> = futures::stream::iter(inputs)
+                .map(|text| {
+                    let names_extractor = &names_extractor;
+                    let topics_extractor = &topics_extractor;
+                    let sentiment_extractor = &sentiment_extractor;
+                    async move {
+                        let (names, topics, sentiment) = futures::try_join!(
+                            names_extractor.extract(text),
+                            topics_extractor.extract(text),
+                            sentiment_extractor.extract(text),
+                        )?;
+                        anyhow::Ok(format!(
+                            "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
+                            names.names.join(", "),
+                            topics.topics.join(", "),
+                            sentiment.sentiment,
+                            sentiment.confidence,
+                        ))
+                    }
+                })
+                .buffered(4)
+                .try_collect()
                 .await?;
 
             anyhow::ensure!(responses.len() == 3);

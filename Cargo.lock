@@ -91,6 +91,7 @@ name = "agent_parallelization"
 version = "0.39.0"
 dependencies = [
  "anyhow",
+ "futures",
  "rig",
  "schemars 1.2.1",
  "serde",
@@ -7197,6 +7198,7 @@ name = "multi_extract"
 version = "0.39.0"
 dependencies = [
  "anyhow",
+ "futures",
  "rig",
  "schemars 1.2.1",
  "serde",
