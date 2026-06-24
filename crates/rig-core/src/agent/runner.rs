@@ -428,7 +428,29 @@ where
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
+    ///
+    /// This is a thin fold over [`into_stepper`](Self::into_stepper): it loops
+    /// [`AgentStepper::step`] until the run reaches [`StepReport::Done`], so the
+    /// blocking driver has exactly one core. Use the stepper directly to
+    /// hand-drive the same hook-firing loop one step at a time.
     pub async fn run(self) -> Result<PromptResponse, PromptError> {
+        let mut stepper = self.into_stepper().await?;
+        loop {
+            if let StepReport::Done(response) = stepper.step().await? {
+                return Ok(response);
+            }
+        }
+    }
+
+    /// Build a hook-firing [`AgentStepper`] over this runner.
+    ///
+    /// Loads conversation memory (when configured and no explicit history was
+    /// given) and prepares the run; thereafter each [`AgentStepper::step`] call
+    /// advances the run by one [`AgentRunStep`] — performing that step's model
+    /// IO or tool execution and firing its hooks — and yields control back to
+    /// the caller. [`run`](Self::run) is the all-at-once fold; the stepper is the
+    /// same core exposed step-by-step.
+    pub async fn into_stepper(self) -> Result<AgentStepper<M>, PromptError> {
         let agent_span = if tracing::Span::current().is_disabled() {
             info_span!(
                 "invoke_agent",
@@ -468,244 +490,332 @@ where
             },
         };
 
-        let mut run = self.build_run(history_override);
-        let current_span_id: AtomicU64 = AtomicU64::new(0);
+        let run = self.build_run(history_override);
 
-        loop {
-            match run.next_step()? {
-                AgentRunStep::CallModel {
-                    prompt,
-                    history,
-                    turn,
-                } => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Current conversation depth: {}/{}", turn, self.max_turns);
-                    }
+        Ok(AgentStepper {
+            runner: self,
+            run,
+            memory_handle,
+            current_span_id: AtomicU64::new(0),
+            agent_span,
+            agent_name_for_span,
+        })
+    }
+}
 
-                    if let Some(reason) = observe_flow(
-                        self.hooks
-                            .on_event(StepEvent::CompletionCall {
-                                prompt: &prompt,
-                                history: &history,
-                                turn,
-                            })
-                            .await,
-                    ) {
-                        return Err(run.cancel_error(reason));
-                    }
+/// What an [`AgentStepper::step`] just did.
+///
+/// Deliberately coarse: one report per [`AgentRunStep`] the stepper advanced
+/// through. Inspect the run state between steps via
+/// [`AgentStepper::run_state`].
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum StepReport {
+    /// A model turn was completed (including any invalid-tool-call recovery for
+    /// it). `turn` is its one-based index within the run.
+    ModelTurn {
+        /// One-based index of the model call within the run.
+        turn: usize,
+    },
+    /// The turn's pending tool calls were executed. `count` is how many.
+    ToolsExecuted {
+        /// Number of tool calls executed in this step.
+        count: usize,
+    },
+    /// The run finished; carries the aggregated [`PromptResponse`].
+    Done(PromptResponse),
+}
 
-                    let span = tracing::Span::current();
-                    let chat_span = info_span!(
-                        target: "rig::agent_chat",
-                        parent: &span,
-                        "chat",
-                        gen_ai.operation.name = "chat",
-                        gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                        gen_ai.system_instructions = self.preamble,
-                        gen_ai.provider.name = tracing::field::Empty,
-                        gen_ai.request.model = tracing::field::Empty,
-                        gen_ai.response.id = tracing::field::Empty,
-                        gen_ai.response.model = tracing::field::Empty,
-                        gen_ai.usage.output_tokens = tracing::field::Empty,
-                        gen_ai.usage.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                        gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                        gen_ai.input.messages = tracing::field::Empty,
-                        gen_ai.output.messages = tracing::field::Empty,
+/// A hook-firing, step-at-a-time driver over an [`AgentRun`].
+///
+/// Built with [`AgentRunner::into_stepper`]. Each [`step`](Self::step) advances
+/// the run by exactly one [`AgentRunStep`] — doing that step's model IO or tool
+/// execution and firing its hooks — and returns a [`StepReport`]. The blocking
+/// [`AgentRunner::run`] is itself a fold over this type, so a hand-driver gets
+/// the *same* hooks, memory, recovery and tracing as `run()`, only yielded one
+/// step at a time. Raw [`AgentRun`] stepping, by contrast, fires no hooks.
+pub struct AgentStepper<M>
+where
+    M: CompletionModel,
+{
+    runner: AgentRunner<M>,
+    run: AgentRun,
+    memory_handle: Option<(Arc<dyn ConversationMemory>, String)>,
+    current_span_id: AtomicU64,
+    agent_span: tracing::Span,
+    agent_name_for_span: Option<String>,
+}
+
+impl<M> AgentStepper<M>
+where
+    M: CompletionModel,
+{
+    /// The underlying sans-IO run state, for inspection between steps.
+    pub fn run_state(&self) -> &AgentRun {
+        &self.run
+    }
+
+    /// Advance the run by one [`AgentRunStep`], firing that step's hooks.
+    ///
+    /// Returns [`StepReport::Done`] once the run is complete; calling again
+    /// after that re-emits the same terminal response.
+    pub async fn step(&mut self) -> Result<StepReport, PromptError> {
+        match self.run.next_step()? {
+            AgentRunStep::CallModel {
+                prompt,
+                history,
+                turn,
+            } => {
+                let current_span_id = &self.current_span_id;
+                if self.runner.max_turns > 1 {
+                    tracing::info!(
+                        "Current conversation depth: {}/{}",
+                        turn,
+                        self.runner.max_turns
                     );
+                }
 
-                    let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                        let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                        chat_span.follows_from(id).to_owned()
-                    } else {
-                        chat_span
-                    };
+                if let Some(reason) = observe_flow(
+                    self.runner
+                        .hooks
+                        .on_event(StepEvent::CompletionCall {
+                            prompt: &prompt,
+                            history: &history,
+                            turn,
+                        })
+                        .await,
+                ) {
+                    return Err(self.run.cancel_error(reason));
+                }
 
-                    if let Some(id) = chat_span.id() {
-                        current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                    };
+                let span = tracing::Span::current();
+                let chat_span = info_span!(
+                    target: "rig::agent_chat",
+                    parent: &span,
+                    "chat",
+                    gen_ai.operation.name = "chat",
+                    gen_ai.agent.name = self.agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                    gen_ai.system_instructions = self.runner.preamble,
+                    gen_ai.provider.name = tracing::field::Empty,
+                    gen_ai.request.model = tracing::field::Empty,
+                    gen_ai.response.id = tracing::field::Empty,
+                    gen_ai.response.model = tracing::field::Empty,
+                    gen_ai.usage.output_tokens = tracing::field::Empty,
+                    gen_ai.usage.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+                    gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+                    gen_ai.input.messages = tracing::field::Empty,
+                    gen_ai.output.messages = tracing::field::Empty,
+                );
 
-                    // Pin Tool output mode once committed so later turns stay
-                    // consistent even if the per-turn tool set changes (#1928).
-                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let prepared_request = build_prepared_completion_request(
-                        &self.model,
-                        prompt.clone(),
-                        &history,
-                        self.preamble.as_deref(),
-                        &self.static_context,
-                        self.temperature,
-                        self.max_tokens,
-                        self.additional_params.as_ref(),
-                        self.tool_choice.as_ref(),
-                        &self.tool_server_handle,
-                        &self.dynamic_context,
-                        self.output_schema.as_ref(),
-                        &self.output_mode,
-                        committed_output_tool.as_deref(),
-                    )
+                let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                    let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
+                    chat_span.follows_from(id).to_owned()
+                } else {
+                    chat_span
+                };
+
+                if let Some(id) = chat_span.id() {
+                    current_span_id.store(id.into_u64(), Ordering::SeqCst);
+                };
+
+                // Pin Tool output mode once committed so later turns stay
+                // consistent even if the per-turn tool set changes (#1928).
+                let committed_output_tool = self.run.output_tool_name().map(str::to_owned);
+                let prepared_request = build_prepared_completion_request(
+                    &self.runner.model,
+                    prompt.clone(),
+                    &history,
+                    self.runner.preamble.as_deref(),
+                    &self.runner.static_context,
+                    self.runner.temperature,
+                    self.runner.max_tokens,
+                    self.runner.additional_params.as_ref(),
+                    self.runner.tool_choice.as_ref(),
+                    &self.runner.tool_server_handle,
+                    &self.runner.dynamic_context,
+                    self.runner.output_schema.as_ref(),
+                    &self.runner.output_mode,
+                    committed_output_tool.as_deref(),
+                )
+                .await?;
+
+                let resp = prepared_request
+                    .builder
+                    .send()
+                    .instrument(chat_span.clone())
                     .await?;
 
-                    let resp = prepared_request
-                        .builder
-                        .send()
-                        .instrument(chat_span.clone())
-                        .await?;
+                self.run
+                    .set_output_tool_name(prepared_request.output_tool_name.clone());
 
-                    run.set_output_tool_name(prepared_request.output_tool_name.clone());
+                let mut outcome = self.run.model_response(ModelTurn::new(
+                    resp.message_id.clone(),
+                    resp.choice.clone(),
+                    resp.usage,
+                    prepared_request.executable_tool_names,
+                    prepared_request.allowed_tool_names,
+                ))?;
 
-                    let mut outcome = run.model_response(ModelTurn::new(
-                        resp.message_id.clone(),
-                        resp.choice.clone(),
-                        resp.usage,
-                        prepared_request.executable_tool_names,
-                        prepared_request.allowed_tool_names,
-                    ))?;
-
-                    loop {
-                        match outcome {
-                            ModelTurnOutcome::NeedsResolution(context) => {
-                                let flow = self
-                                    .hooks
-                                    .on_event(StepEvent::InvalidToolCall(&context))
-                                    .await;
-                                match flow_into_invalid(flow) {
-                                    InvalidDecision::Terminate(reason) => {
-                                        return Err(run.cancel_error(reason));
-                                    }
-                                    InvalidDecision::Action(action) => {
-                                        outcome = run.resolve_invalid_tool_call(action)?;
-                                    }
+                loop {
+                    match outcome {
+                        ModelTurnOutcome::NeedsResolution(context) => {
+                            let flow = self
+                                .runner
+                                .hooks
+                                .on_event(StepEvent::InvalidToolCall(&context))
+                                .await;
+                            match flow_into_invalid(flow) {
+                                InvalidDecision::Terminate(reason) => {
+                                    return Err(self.run.cancel_error(reason));
+                                }
+                                InvalidDecision::Action(action) => {
+                                    outcome = self.run.resolve_invalid_tool_call(action)?;
                                 }
                             }
-                            ModelTurnOutcome::TurnRetried => break,
-                            ModelTurnOutcome::Continue {
-                                response_hook_suppressed,
-                            } => {
-                                if !response_hook_suppressed
-                                    && let Some(reason) = observe_flow(
-                                        self.hooks
-                                            .on_event(StepEvent::CompletionResponse {
-                                                prompt: &prompt,
-                                                response: &resp,
-                                            })
-                                            .await,
-                                    )
-                                {
-                                    return Err(run.cancel_error(reason));
-                                }
-                                break;
+                        }
+                        ModelTurnOutcome::TurnRetried => break,
+                        ModelTurnOutcome::Continue {
+                            response_hook_suppressed,
+                        } => {
+                            if !response_hook_suppressed
+                                && let Some(reason) = observe_flow(
+                                    self.runner
+                                        .hooks
+                                        .on_event(StepEvent::CompletionResponse {
+                                            prompt: &prompt,
+                                            response: &resp,
+                                        })
+                                        .await,
+                                )
+                            {
+                                return Err(self.run.cancel_error(reason));
                             }
+                            break;
                         }
                     }
                 }
-                AgentRunStep::CallTools { calls } => {
-                    let hooks = &self.hooks;
-                    let tool_server = &self.tool_server_handle;
-                    // Materialize the diagnostic history once; tools only read it
-                    // (verbatim, on a hook-terminate error path), so every tool
-                    // future shares a single borrow instead of deep-cloning the
-                    // whole conversation per call on the common success path.
-                    let full_history_for_errors = run.full_history();
-                    let error_history: &[Message] = &full_history_for_errors;
 
-                    let tool_content = stream::iter(calls)
-                        .map(|pending| {
-                            let tool_span = info_span!(
-                                "execute_tool",
-                                gen_ai.operation.name = "execute_tool",
-                                gen_ai.tool.type = "function",
-                                gen_ai.tool.name = tracing::field::Empty,
-                                gen_ai.tool.call.id = tracing::field::Empty,
-                                gen_ai.tool.call.arguments = tracing::field::Empty,
-                                gen_ai.tool.call.result = tracing::field::Empty
-                            );
+                Ok(StepReport::ModelTurn { turn })
+            }
+            AgentRunStep::CallTools { calls } => {
+                let count = calls.len();
+                let hooks = &self.runner.hooks;
+                let tool_server = &self.runner.tool_server_handle;
+                let current_span_id = &self.current_span_id;
+                // Materialize the diagnostic history once; tools only read it
+                // (verbatim, on a hook-terminate error path), so every tool
+                // future shares a single borrow instead of deep-cloning the
+                // whole conversation per call on the common success path.
+                let full_history_for_errors = self.run.full_history();
+                let error_history: &[Message] = &full_history_for_errors;
 
-                            let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                                tool_span.follows_from(id).to_owned()
-                            } else {
-                                tool_span
-                            };
-
-                            if let Some(id) = tool_span.id() {
-                                current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                            };
-
-                            async move {
-                                let PendingToolCall {
-                                    tool_call,
-                                    preresolved_result,
-                                    ..
-                                } = pending;
-                                // Tool calls suppressed by invalid tool-call
-                                // recovery come pre-resolved and must not execute.
-                                if let Some(result) = preresolved_result {
-                                    return Ok(result);
-                                }
-                                let internal_call_id = crate::id::generate();
-                                run_single_tool(
-                                    hooks,
-                                    tool_server,
-                                    &tool_call,
-                                    &internal_call_id,
-                                    error_history,
-                                )
-                                .await
-                            }
-                            .instrument(tool_span)
-                        })
-                        // `buffered` (not `buffer_unordered`) so results land in
-                        // tool-call emission order — matching the streaming
-                        // driver's sequential order, so both produce the same
-                        // message history even at concurrency > 1.
-                        .buffered(self.concurrency)
-                        .collect::<Vec<Result<UserContent, PromptError>>>()
-                        .await
-                        .into_iter()
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    run.tool_results(tool_content)?;
-                }
-                AgentRunStep::Done(response) => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Depth reached: {}/{}", run.turn(), self.max_turns);
-                    }
-
-                    let usage = response.usage;
-                    agent_span.record("gen_ai.completion", &response.output);
-                    agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    agent_span.record(
-                        "gen_ai.usage.cache_read.input_tokens",
-                        usage.cached_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.cache_creation.input_tokens",
-                        usage.cache_creation_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.tool_use_prompt_tokens",
-                        usage.tool_use_prompt_tokens,
-                    );
-                    agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
-
-                    if let Some((memory, id)) = memory_handle.as_ref()
-                        && let Err(err) = memory
-                            .append(id, response.messages.clone().unwrap_or_default())
-                            .await
-                    {
-                        tracing::warn!(
-                            error = %err,
-                            conversation_id = %id,
-                            "conversation memory append failed; returning model response anyway"
+                let tool_content = stream::iter(calls)
+                    .map(|pending| {
+                        let tool_span = info_span!(
+                            "execute_tool",
+                            gen_ai.operation.name = "execute_tool",
+                            gen_ai.tool.type = "function",
+                            gen_ai.tool.name = tracing::field::Empty,
+                            gen_ai.tool.call.id = tracing::field::Empty,
+                            gen_ai.tool.call.arguments = tracing::field::Empty,
+                            gen_ai.tool.call.result = tracing::field::Empty
                         );
-                    }
 
-                    return Ok(response);
+                        let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                            let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
+                            tool_span.follows_from(id).to_owned()
+                        } else {
+                            tool_span
+                        };
+
+                        if let Some(id) = tool_span.id() {
+                            current_span_id.store(id.into_u64(), Ordering::SeqCst);
+                        };
+
+                        async move {
+                            let PendingToolCall {
+                                tool_call,
+                                preresolved_result,
+                                ..
+                            } = pending;
+                            // Tool calls suppressed by invalid tool-call
+                            // recovery come pre-resolved and must not execute.
+                            if let Some(result) = preresolved_result {
+                                return Ok(result);
+                            }
+                            let internal_call_id = crate::id::generate();
+                            run_single_tool(
+                                hooks,
+                                tool_server,
+                                &tool_call,
+                                &internal_call_id,
+                                error_history,
+                            )
+                            .await
+                        }
+                        .instrument(tool_span)
+                    })
+                    // `buffered` (not `buffer_unordered`) so results land in
+                    // tool-call emission order — matching the streaming
+                    // driver's sequential order, so both produce the same
+                    // message history even at concurrency > 1.
+                    .buffered(self.runner.concurrency)
+                    .collect::<Vec<Result<UserContent, PromptError>>>()
+                    .await
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                self.run.tool_results(tool_content)?;
+
+                Ok(StepReport::ToolsExecuted { count })
+            }
+            AgentRunStep::Done(response) => {
+                if self.runner.max_turns > 1 {
+                    tracing::info!(
+                        "Depth reached: {}/{}",
+                        self.run.turn(),
+                        self.runner.max_turns
+                    );
                 }
+
+                let usage = response.usage;
+                self.agent_span
+                    .record("gen_ai.completion", &response.output);
+                self.agent_span
+                    .record("gen_ai.usage.input_tokens", usage.input_tokens);
+                self.agent_span
+                    .record("gen_ai.usage.output_tokens", usage.output_tokens);
+                self.agent_span.record(
+                    "gen_ai.usage.cache_read.input_tokens",
+                    usage.cached_input_tokens,
+                );
+                self.agent_span.record(
+                    "gen_ai.usage.cache_creation.input_tokens",
+                    usage.cache_creation_input_tokens,
+                );
+                self.agent_span.record(
+                    "gen_ai.usage.tool_use_prompt_tokens",
+                    usage.tool_use_prompt_tokens,
+                );
+                self.agent_span
+                    .record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
+
+                if let Some((memory, id)) = self.memory_handle.as_ref()
+                    && let Err(err) = memory
+                        .append(id, response.messages.clone().unwrap_or_default())
+                        .await
+                {
+                    tracing::warn!(
+                        error = %err,
+                        conversation_id = %id,
+                        "conversation memory append failed; returning model response anyway"
+                    );
+                }
+
+                Ok(StepReport::Done(response))
             }
         }
     }
@@ -811,6 +921,80 @@ mod tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ])
+    }
+
+    /// `into_stepper()` drives the *same* hook-firing loop as `run()`, one
+    /// [`AgentRunStep`] at a time: a tool-calling scenario reports
+    /// `ModelTurn → ToolsExecuted → ModelTurn → Done`, fires the same shared hook
+    /// events, and reaches the byte-identical final response and history as a
+    /// `run()` of the same scenario (which is itself a fold over the stepper).
+    #[tokio::test]
+    async fn into_stepper_drives_the_same_loop_as_run() {
+        use super::StepReport;
+
+        // Reference: the all-at-once fold.
+        let folded = AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("run() should succeed");
+
+        // Hand-driven: the same loop, yielded step by step.
+        let hook = RecordingHook::default();
+        let mut stepper = AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(hook.clone())
+            .into_stepper()
+            .await
+            .expect("into_stepper() should build");
+
+        let mut reports = Vec::new();
+        let final_response = loop {
+            let report = stepper.step().await.expect("step should advance");
+            match report {
+                StepReport::ModelTurn { turn } => reports.push(format!("model:{turn}")),
+                StepReport::ToolsExecuted { count } => reports.push(format!("tools:{count}")),
+                StepReport::Done(response) => break response,
+            }
+        };
+
+        // One model turn, one tool execution, a second model turn, then done.
+        assert_eq!(reports, vec!["model:1", "tools:1", "model:2"]);
+
+        // The stepper fires the same medium-independent hook events as run().
+        assert_eq!(
+            hook.shared_events(),
+            vec![
+                StepEventKind::CompletionCall,
+                StepEventKind::ToolCall,
+                StepEventKind::ToolResult,
+                StepEventKind::CompletionCall,
+            ]
+        );
+
+        // Same terminal response and history as the folded run().
+        assert_eq!(final_response.output, "the answer is 5");
+        assert_eq!(final_response.output, folded.output);
+        assert_eq!(
+            serde_json::to_value(final_response.messages.as_ref().expect("stepper messages"))
+                .expect("serialize stepper"),
+            serde_json::to_value(folded.messages.as_ref().expect("folded messages"))
+                .expect("serialize folded"),
+        );
+
+        // The terminal state is observable and idempotent: stepping again
+        // re-emits Done rather than erroring.
+        assert!(stepper.run_state().is_done());
+        assert!(matches!(
+            stepper.step().await.expect("re-step after done"),
+            StepReport::Done(_)
+        ));
     }
 
     /// run() and stream() of the same tool-calling scenario produce the same

@@ -128,4 +128,4 @@ pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
-pub use runner::AgentRunner;
+pub use runner::{AgentRunner, AgentStepper, StepReport};
