@@ -572,13 +572,20 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
     match serde_json::from_str::<T>(trimmed) {
         Ok(value) => Ok(value),
         Err(direct_err) => {
-            let Some(start) = trimmed.find(['{', '[']) else {
-                return Err(direct_err);
-            };
-            serde_json::Deserializer::from_str(&trimmed[start..])
-                .into_iter::<T>()
-                .next()
-                .unwrap_or(Err(direct_err))
+            // Best-effort: scan every JSON value opener and return the first
+            // balanced value that deserializes as `T`. Trying each candidate
+            // (not just the first `{`/`[`) means a leading array no longer
+            // shadows a later object the caller actually wanted, e.g. prose
+            // like "here are options: [..] final answer: {..}" (#1946).
+            for (start, _) in trimmed.match_indices(['{', '[']) {
+                if let Some(Ok(value)) = serde_json::Deserializer::from_str(&trimmed[start..])
+                    .into_iter::<T>()
+                    .next()
+                {
+                    return Ok(value);
+                }
+            }
+            Err(direct_err)
         }
     }
 }
@@ -711,6 +718,17 @@ mod tests {
         );
         // No JSON at all still errors.
         assert!(super::deserialize_structured_output::<TypedAnswer>("no json here").is_err());
+        // A leading array must not shadow the intended object: the old fallback
+        // picked the first `{` or `[` and gave up if it did not parse as `T`, so
+        // a leading list made the whole extraction fail. Now every opener is
+        // tried (#1946).
+        assert_eq!(
+            super::deserialize_structured_output::<TypedAnswer>(
+                "options: [1, 2, 3]; final: {\"value\":\"w\"}"
+            )
+            .unwrap(),
+            TypedAnswer { value: "w".into() }
+        );
     }
 
     #[derive(Clone)]

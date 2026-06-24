@@ -366,6 +366,183 @@ impl Flow {
     }
 }
 
+// ── Typed step controls ───────────────────────────────────────────────────
+//
+// Every observable point of a run honours only a subset of [`Flow`] (documented
+// on each [`StepEvent`] variant). Rather than re-deriving "can this event honour
+// that action?" ad hoc at each driver call site — and falling back to a
+// stringly-typed `Terminate` when it can't — the admissible subset is encoded as
+// a distinct `Control` type per step. A `Control` is `Into<Flow>` (the single
+// erased runtime value the hook surface speaks) and is produced by an
+// *exhaustive*, fallback-free [`Step::parse`] of a hook's `Flow`. The fail-closed
+// decision is therefore made in exactly one place — the type — and the per-event
+// resolvers in the driver become total folds with no unreachable arm.
+//
+// `on_event(StepEvent) -> Flow` stays the ergonomic hook surface; these types are
+// the internal, typed layer the runner drives through, and are exposed so an
+// advanced hook can construct an admissible action without round-tripping the
+// untyped `Flow`.
+
+/// Admissible control at an observe-only step — a completion call/response,
+/// tool result, or any streamed delta / stream-finish event. Such a step may
+/// only let the run continue or stop it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ObserveControl {
+    /// Proceed normally.
+    Continue,
+    /// Terminate the run, surfacing `reason`.
+    Terminate(String),
+}
+
+/// Admissible control at a tool-call step: proceed, skip the tool (returning
+/// `reason` to the model in place of executing it), or stop the run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolControl {
+    /// Execute the tool as normal.
+    Continue,
+    /// Skip execution and return `reason` to the model as the tool result.
+    Skip(String),
+    /// Terminate the run.
+    Terminate(String),
+}
+
+/// Admissible control at an invalid-tool-call step: the full recovery set.
+/// Every [`Flow`] is admissible here (`Continue` collapses to `Fail`, the
+/// documented fail-fast default), so this step's parse is total.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecoveryControl {
+    /// Preserve Rig's fail-fast default.
+    Fail,
+    /// Retry the model turn with corrective feedback.
+    Retry(String),
+    /// Rewrite the emitted tool name (revalidated against allowed tools).
+    Repair(String),
+    /// Record `reason` as a synthetic result for the invalid call.
+    Skip(String),
+    /// Terminate the run.
+    Terminate(String),
+}
+
+impl From<ObserveControl> for Flow {
+    fn from(control: ObserveControl) -> Self {
+        match control {
+            ObserveControl::Continue => Flow::Continue,
+            ObserveControl::Terminate(reason) => Flow::Terminate { reason },
+        }
+    }
+}
+
+impl From<ToolControl> for Flow {
+    fn from(control: ToolControl) -> Self {
+        match control {
+            ToolControl::Continue => Flow::Continue,
+            ToolControl::Skip(reason) => Flow::Skip { reason },
+            ToolControl::Terminate(reason) => Flow::Terminate { reason },
+        }
+    }
+}
+
+impl From<RecoveryControl> for Flow {
+    fn from(control: RecoveryControl) -> Self {
+        match control {
+            RecoveryControl::Fail => Flow::Fail,
+            RecoveryControl::Retry(feedback) => Flow::Retry { feedback },
+            RecoveryControl::Repair(tool_name) => Flow::Repair { tool_name },
+            RecoveryControl::Skip(reason) => Flow::Skip { reason },
+            RecoveryControl::Terminate(reason) => Flow::Terminate { reason },
+        }
+    }
+}
+
+impl From<RecoveryControl> for InvalidToolCallHookAction {
+    fn from(control: RecoveryControl) -> Self {
+        match control {
+            RecoveryControl::Fail => InvalidToolCallHookAction::Fail,
+            RecoveryControl::Retry(feedback) => InvalidToolCallHookAction::Retry { feedback },
+            RecoveryControl::Repair(tool_name) => InvalidToolCallHookAction::Repair { tool_name },
+            RecoveryControl::Skip(reason) => InvalidToolCallHookAction::Skip { reason },
+            // `Terminate` is not a recovery action; the driver intercepts it
+            // before this conversion (it stops the run rather than resolving the
+            // invalid call). Mapped to the fail-fast default for totality.
+            RecoveryControl::Terminate(_) => InvalidToolCallHookAction::Fail,
+        }
+    }
+}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::ObserveStep {}
+    impl Sealed for super::ToolCallStep {}
+    impl Sealed for super::InvalidToolCallStep {}
+}
+
+/// A node of the run's execution graph, identifying which [`Flow`] actions are
+/// admissible there. The set of steps is closed (`sealed`); each carries its
+/// typed [`Control`](Step::Control) and an exhaustive [`parse`](Step::parse) of a
+/// hook's `Flow` into it. `Err(flow)` marks an inadmissible action the driver
+/// fails closed on.
+pub trait Step: sealed::Sealed {
+    /// The typed control admissible at this step.
+    type Control: Into<Flow>;
+    /// Human-readable name of the step, for fail-closed diagnostics.
+    const LABEL: &'static str;
+    /// The `Flow` actions this step honours, for fail-closed diagnostics.
+    const HONORS: &'static str;
+    /// Total parse of a hook's [`Flow`] into this step's admissible control.
+    fn parse(flow: Flow) -> Result<Self::Control, Flow>;
+}
+
+/// The observe-only step (see [`ObserveControl`]).
+pub struct ObserveStep;
+/// The tool-call step (see [`ToolControl`]).
+pub struct ToolCallStep;
+/// The invalid-tool-call step (see [`RecoveryControl`]).
+pub struct InvalidToolCallStep;
+
+impl Step for ObserveStep {
+    type Control = ObserveControl;
+    const LABEL: &'static str = "an observe-only event";
+    const HONORS: &'static str = "Continue/Terminate";
+    fn parse(flow: Flow) -> Result<ObserveControl, Flow> {
+        match flow {
+            Flow::Continue => Ok(ObserveControl::Continue),
+            Flow::Terminate { reason } => Ok(ObserveControl::Terminate(reason)),
+            other => Err(other),
+        }
+    }
+}
+
+impl Step for ToolCallStep {
+    type Control = ToolControl;
+    const LABEL: &'static str = "a tool-call event";
+    const HONORS: &'static str = "Continue/Skip/Terminate";
+    fn parse(flow: Flow) -> Result<ToolControl, Flow> {
+        match flow {
+            Flow::Continue => Ok(ToolControl::Continue),
+            Flow::Skip { reason } => Ok(ToolControl::Skip(reason)),
+            Flow::Terminate { reason } => Ok(ToolControl::Terminate(reason)),
+            other => Err(other),
+        }
+    }
+}
+
+impl Step for InvalidToolCallStep {
+    type Control = RecoveryControl;
+    const LABEL: &'static str = "an invalid-tool-call event";
+    const HONORS: &'static str = "Fail/Retry/Repair/Skip/Terminate";
+    fn parse(flow: Flow) -> Result<RecoveryControl, Flow> {
+        // Total: every `Flow` is admissible at an invalid-tool-call step, so this
+        // never returns `Err`. `Continue` collapses to the fail-fast default.
+        Ok(match flow {
+            Flow::Continue | Flow::Fail => RecoveryControl::Fail,
+            Flow::Retry { feedback } => RecoveryControl::Retry(feedback),
+            Flow::Repair { tool_name } => RecoveryControl::Repair(tool_name),
+            Flow::Skip { reason } => RecoveryControl::Skip(reason),
+            Flow::Terminate { reason } => RecoveryControl::Terminate(reason),
+        })
+    }
+}
+
 /// A per-run hook that observes and steers an agent run.
 ///
 /// Implement [`on_event`](AgentHook::on_event) and match on the [`StepEvent`]
@@ -690,5 +867,91 @@ mod tests {
             stack.on_event(tool_call_event()).await,
             Flow::Continue
         ));
+    }
+
+    // ── Typed step controls ───────────────────────────────────────────────
+
+    use super::{
+        InvalidToolCallStep, ObserveControl, ObserveStep, RecoveryControl, Step, ToolCallStep,
+        ToolControl,
+    };
+
+    #[test]
+    fn observe_step_admits_continue_terminate_and_rejects_the_rest() {
+        assert_eq!(
+            ObserveStep::parse(Flow::cont()),
+            Ok(ObserveControl::Continue)
+        );
+        assert_eq!(
+            ObserveStep::parse(Flow::terminate("stop")),
+            Ok(ObserveControl::Terminate("stop".into()))
+        );
+        // A steering action an observe-only step cannot honor is returned as
+        // `Err(flow)` for the driver to fail closed on — never silently dropped.
+        assert_eq!(
+            ObserveStep::parse(Flow::skip("nope")),
+            Err(Flow::skip("nope"))
+        );
+        assert_eq!(ObserveStep::parse(Flow::fail()), Err(Flow::fail()));
+    }
+
+    #[test]
+    fn tool_call_step_admits_continue_skip_terminate_only() {
+        assert_eq!(ToolCallStep::parse(Flow::cont()), Ok(ToolControl::Continue));
+        assert_eq!(
+            ToolCallStep::parse(Flow::skip("policy")),
+            Ok(ToolControl::Skip("policy".into()))
+        );
+        assert_eq!(
+            ToolCallStep::parse(Flow::terminate("halt")),
+            Ok(ToolControl::Terminate("halt".into()))
+        );
+        // `Fail`/`Retry`/`Repair` are inadmissible at a tool call → fail-closed.
+        assert_eq!(ToolCallStep::parse(Flow::fail()), Err(Flow::fail()));
+        assert_eq!(
+            ToolCallStep::parse(Flow::repair("add")),
+            Err(Flow::repair("add"))
+        );
+    }
+
+    #[test]
+    fn invalid_tool_call_step_is_total_and_continue_collapses_to_fail() {
+        // Every `Flow` is admissible here; `Continue` and `Fail` both fail fast.
+        assert_eq!(
+            InvalidToolCallStep::parse(Flow::cont()),
+            Ok(RecoveryControl::Fail)
+        );
+        assert_eq!(
+            InvalidToolCallStep::parse(Flow::fail()),
+            Ok(RecoveryControl::Fail)
+        );
+        assert_eq!(
+            InvalidToolCallStep::parse(Flow::retry("fix it")),
+            Ok(RecoveryControl::Retry("fix it".into()))
+        );
+        assert_eq!(
+            InvalidToolCallStep::parse(Flow::repair("add")),
+            Ok(RecoveryControl::Repair("add".into()))
+        );
+        assert_eq!(
+            InvalidToolCallStep::parse(Flow::skip("synthetic")),
+            Ok(RecoveryControl::Skip("synthetic".into()))
+        );
+        assert_eq!(
+            InvalidToolCallStep::parse(Flow::terminate("done")),
+            Ok(RecoveryControl::Terminate("done".into()))
+        );
+    }
+
+    #[test]
+    fn controls_round_trip_into_flow() {
+        // Each typed control erases back to exactly the `Flow` it came from, so
+        // the typed layer adds no observable behavior to the hook surface.
+        assert_eq!(Flow::from(ObserveControl::Continue), Flow::cont());
+        assert_eq!(Flow::from(ToolControl::Skip("r".into())), Flow::skip("r"));
+        assert_eq!(
+            Flow::from(RecoveryControl::Repair("add".into())),
+            Flow::repair("add")
+        );
     }
 }

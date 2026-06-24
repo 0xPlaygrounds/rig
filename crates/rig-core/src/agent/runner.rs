@@ -35,7 +35,10 @@ use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, build_prepared_completion_request},
-    hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, StepEvent},
+    hook::{
+        AgentHook, Flow, HookStack, InvalidToolCallHookAction, InvalidToolCallStep, ObserveControl,
+        ObserveStep, RecoveryControl, Step, StepEvent, ToolCallStep, ToolControl,
+    },
     prompt_request::{PromptResponse, tool_result_message, tool_result_output},
     run::{
         AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
@@ -64,22 +67,31 @@ fn flow_name(flow: &Flow) -> &'static str {
     }
 }
 
-/// Resolve a hook's [`Flow`] for an *observe-only* event — one that honors only
-/// [`Flow::Continue`] and [`Flow::Terminate`].
+/// Diagnostic for a hook action a step cannot honor. The message is derived from
+/// the typed [`Step`] itself, so every step reports its own admissible set from a
+/// single place — there is no per-event hand-written fallback string.
+fn fail_closed<S: Step>(bad: &Flow) -> String {
+    format!(
+        "hook returned `{}` for {}, which only honors {} — terminating the run \
+         (fail-closed) rather than proceeding",
+        flow_name(bad),
+        S::LABEL,
+        S::HONORS,
+    )
+}
+
+/// Resolve a hook's [`Flow`] for an *observe-only* event ([`ObserveStep`] — one
+/// that honors only [`Flow::Continue`] and [`Flow::Terminate`]).
 ///
 /// Returns `Some(reason)` when the run must terminate, `None` to proceed. This is
-/// **fail-closed and total**: any action other than `Continue`/`Terminate` is a
-/// hook misuse and terminates the run with a diagnostic rather than being
-/// silently dropped.
+/// **fail-closed and total**: any inadmissible action is rejected by
+/// [`ObserveStep::parse`] and terminates the run with a typed diagnostic rather
+/// than being silently dropped.
 pub(crate) fn observe_flow(flow: Flow) -> Option<String> {
-    match flow {
-        Flow::Continue => None,
-        Flow::Terminate { reason } => Some(reason),
-        other => Some(format!(
-            "hook returned `{}` for an observe-only event, which only honors \
-             Continue/Terminate — terminating the run (fail-closed)",
-            flow_name(&other)
-        )),
+    match ObserveStep::parse(flow) {
+        Ok(ObserveControl::Continue) => None,
+        Ok(ObserveControl::Terminate(reason)) => Some(reason),
+        Err(bad) => Some(fail_closed::<ObserveStep>(&bad)),
     }
 }
 
@@ -93,20 +105,15 @@ pub(crate) enum ToolCallDecision {
     Terminate(String),
 }
 
-/// Resolve a hook's [`Flow`] for a [`StepEvent::ToolCall`] event (honors
-/// `Continue`/`Skip`/`Terminate`). **Fail-closed**: any other action (e.g.
+/// Resolve a hook's [`Flow`] for a [`StepEvent::ToolCall`] event ([`ToolCallStep`],
+/// honors `Continue`/`Skip`/`Terminate`). **Fail-closed**: any other action (e.g.
 /// `Fail`/`Retry`/`Repair`) never executes the tool — it terminates the run.
 pub(crate) fn flow_into_tool_call(flow: Flow) -> ToolCallDecision {
-    match flow {
-        Flow::Continue => ToolCallDecision::Proceed,
-        Flow::Skip { reason } => ToolCallDecision::Skip(reason),
-        Flow::Terminate { reason } => ToolCallDecision::Terminate(reason),
-        other => ToolCallDecision::Terminate(format!(
-            "hook returned `{}` for a tool-call event, which only honors \
-             Continue/Skip/Terminate — terminating the run (fail-closed) rather \
-             than executing the tool",
-            flow_name(&other)
-        )),
+    match ToolCallStep::parse(flow) {
+        Ok(ToolControl::Continue) => ToolCallDecision::Proceed,
+        Ok(ToolControl::Skip(reason)) => ToolCallDecision::Skip(reason),
+        Ok(ToolControl::Terminate(reason)) => ToolCallDecision::Terminate(reason),
+        Err(bad) => ToolCallDecision::Terminate(fail_closed::<ToolCallStep>(&bad)),
     }
 }
 
@@ -118,21 +125,17 @@ pub(crate) enum InvalidDecision {
     Action(InvalidToolCallHookAction),
 }
 
-/// Resolve a hook's [`Flow`] for a [`StepEvent::InvalidToolCall`] event. All
-/// variants are meaningful here; `Continue` preserves the documented fail-fast
-/// default.
+/// Resolve a hook's [`Flow`] for a [`StepEvent::InvalidToolCall`] event
+/// ([`InvalidToolCallStep`]). Every variant is admissible — `Continue` preserves
+/// the documented fail-fast default — so [`InvalidToolCallStep::parse`] is total
+/// and there is no inadmissible (fail-closed) path here.
 pub(crate) fn flow_into_invalid(flow: Flow) -> InvalidDecision {
-    match flow {
-        Flow::Terminate { reason } => InvalidDecision::Terminate(reason),
-        Flow::Retry { feedback } => {
-            InvalidDecision::Action(InvalidToolCallHookAction::retry(feedback))
-        }
-        Flow::Repair { tool_name } => {
-            InvalidDecision::Action(InvalidToolCallHookAction::repair(tool_name))
-        }
-        Flow::Skip { reason } => InvalidDecision::Action(InvalidToolCallHookAction::skip(reason)),
-        // Continue and Fail both preserve fail-fast for invalid calls.
-        Flow::Continue | Flow::Fail => InvalidDecision::Action(InvalidToolCallHookAction::fail()),
+    match InvalidToolCallStep::parse(flow) {
+        Ok(RecoveryControl::Terminate(reason)) => InvalidDecision::Terminate(reason),
+        Ok(control) => InvalidDecision::Action(control.into()),
+        // `InvalidToolCallStep::parse` is total; map any future inadmissible
+        // action to the fail-fast default rather than an `unreachable!`.
+        Err(_) => InvalidDecision::Action(InvalidToolCallHookAction::fail()),
     }
 }
 
@@ -146,7 +149,10 @@ pub(crate) fn flow_into_invalid(flow: Flow) -> InvalidDecision {
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
-#[non_exhaustive]
+//
+// No `#[non_exhaustive]`: every field is already `pub(crate)`, so a downstream
+// crate can neither construct nor exhaustively match this struct regardless —
+// the attribute would add no further sealing (#1946).
 pub struct AgentRunner<M>
 where
     M: CompletionModel,
