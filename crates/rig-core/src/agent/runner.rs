@@ -888,6 +888,27 @@ mod tests {
         ))
     }
 
+    /// Whether any tool result in `messages` carries `expected` as verbatim text.
+    /// Used to pin a skip reason's actual value (a reason dropped or altered on
+    /// both drivers would still satisfy a blocking == streaming equality check).
+    fn tool_result_text_in_history(messages: &[Message], expected: &str) -> bool {
+        messages.iter().any(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.content.iter().any(|c| matches!(
+                                c,
+                                crate::message::ToolResultContent::Text(text)
+                                    if text.text == expected
+                            ))
+                    ))
+            )
+        })
+    }
+
     /// Even with `run()` executing tools concurrently, the tool-result order —
     /// and so the whole message history — matches the sequential streaming
     /// driver. (`run()` uses `buffered`, which preserves call order.)
@@ -1721,6 +1742,12 @@ mod tests {
             serde_json::to_value(&blocking_messages).expect("serialize blocking"),
             serde_json::to_value(&streaming_messages).expect("serialize streaming"),
         );
+        // Pin the actual reason, not just blocking == streaming (see the valid-tool
+        // skip test): a reason dropped or altered on BOTH paths would still pass.
+        assert!(
+            tool_result_text_in_history(&blocking_messages, "tool not permitted"),
+            "the verbatim invalid-tool skip reason must be the tool result content"
+        );
     }
 
     /// A turn that streams *text and* an invalid tool call, then is repaired, is
@@ -1875,9 +1902,15 @@ mod tests {
             blocking_hook.shared_events(),
             streaming_hook.shared_events()
         );
-        // The tool never ran, so its result is the verbatim skip reason on both
-        // drivers (not parsed tool output).
+        // A skipped valid tool call does not fire the `ToolResult` hook
+        // (`run_single_tool` returns the synthetic result before it), so the hook
+        // records no tool result on either driver — the verbatim skip reason
+        // lands in the message history instead (asserted below).
         assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
+        assert!(
+            blocking_hook.tool_results().is_empty(),
+            "a skipped tool executes nothing, so no ToolResult hook fires"
+        );
 
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
@@ -1887,6 +1920,12 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&blocking_messages).expect("serialize blocking"),
             serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        );
+        // Pin the actual reason, not just blocking == streaming: a reason dropped
+        // or altered on BOTH paths would still satisfy the equality above.
+        assert!(
+            tool_result_text_in_history(&blocking_messages, "skipped by policy"),
+            "the verbatim skip reason must be the tool result content in the history"
         );
     }
 }
