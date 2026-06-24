@@ -64,11 +64,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OneOrMany,
+    agent::hook::{InvalidToolCallContext, InvalidToolCallHookAction},
     agent::prompt_request::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
-        hooks::{InvalidToolCallContext, InvalidToolCallHookAction},
-        invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_user_content,
+        invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
     },
     completion::{Message, PromptError, Usage},
     json_utils,
@@ -1014,7 +1014,7 @@ impl AgentRun {
             for item in &items {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     skipped.entry(tool_call.id.clone()).or_insert_with(|| {
-                        tool_result_user_content(
+                        tool_result_message(
                             tool_call.id.clone(),
                             tool_call.call_id.clone(),
                             TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
@@ -1182,10 +1182,13 @@ impl AgentRun {
                     });
                 }
 
+                // Synthetic skip reason: emit verbatim text, matching the
+                // non-streamed `resolve_invalid_tool_call` skip path (parity) and
+                // avoiding re-parsing a rejection message as structured output.
                 let skipped_tool_result = ToolResult {
                     id: invalid.tool_call.id.clone(),
                     call_id: invalid.tool_call.call_id.clone(),
-                    content: ToolResultContent::from_tool_output(reason.clone()),
+                    content: OneOrMany::one(ToolResultContent::text(reason.clone())),
                 };
                 let Some((assistant_message, user_message)) =
                     partial.rollback_messages(invalid.tool_call.clone(), reason)

@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OneOrMany,
-    agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_user_content},
+    agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
     completion::{CompletionError, GetTokenUsage, Message, Usage},
     json_utils,
     message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult},
@@ -180,14 +180,14 @@ impl PartialStreamedTurn {
             .pending_tool_calls
             .iter()
             .map(|tool_call| {
-                tool_result_user_content(
+                tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                 )
             })
             .collect::<Vec<_>>();
-        retry_results.push(tool_result_user_content(
+        retry_results.push(tool_result_message(
             invalid_tool_call.id,
             invalid_tool_call.call_id,
             feedback,
@@ -663,7 +663,7 @@ impl StreamedTurnAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::prompt_request::hooks::InvalidToolCallHookAction;
+    use crate::agent::hook::InvalidToolCallHookAction;
     use crate::agent::run::{AgentRun, AgentRunStep};
     use crate::completion::PromptError;
     use crate::message::{Text, ToolResultContent, UserContent};

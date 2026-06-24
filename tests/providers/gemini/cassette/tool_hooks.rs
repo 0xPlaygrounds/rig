@@ -1,7 +1,7 @@
 //! Prompt-hook dispatch on the tool execution path: skip-with-reason,
 //! terminate-early, and observation of every call/result pair.
 
-use rig::agent::PromptHook;
+use rig::agent::AgentHook;
 use rig::client::CompletionClient;
 use rig::completion::{Prompt, PromptError};
 use rig::providers::gemini;
@@ -35,7 +35,7 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
             let response = agent
                 .prompt("What is 19 + 23?")
                 .max_turns(3)
-                .with_hook(SkipToolHook {
+                .add_hook(SkipToolHook {
                     tool_name: CountingAdd::NAME,
                     reason: SKIP_REASON,
                 })
@@ -78,7 +78,7 @@ async fn on_tool_call_terminate_cancels_run() {
             let error = agent
                 .prompt("What is 19 + 23?")
                 .max_turns(3)
-                .with_hook(TerminateOnToolHook {
+                .add_hook(TerminateOnToolHook {
                     tool_name: CountingAdd::NAME,
                     reason: TERMINATE_REASON,
                 })
@@ -122,7 +122,7 @@ async fn hooks_observe_every_tool_call_and_result() {
             let response = agent
                 .prompt("Use the add tool to calculate 19 + 23, then report the result.")
                 .max_turns(3)
-                .with_hook(recorder)
+                .add_hook(recorder)
                 .await
                 .expect("recorded tool prompt should succeed");
 
@@ -169,7 +169,7 @@ async fn hooks_observe_every_tool_call_and_result() {
 // builder code.
 #[allow(unused)]
 fn assert_hook_impls() {
-    fn requires_hook<H: PromptHook<gemini::completion::CompletionModel>>(_hook: H) {}
+    fn requires_hook<H: AgentHook<gemini::completion::CompletionModel>>(_hook: H) {}
     requires_hook(ToolEventRecorder::default());
     requires_hook(SkipToolHook {
         tool_name: "add",

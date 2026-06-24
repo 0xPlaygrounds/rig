@@ -167,7 +167,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let empty_history: &[Message] = &[];
     let response = orchestrator_agent
         .prompt(query)
-        .with_history(empty_history)
+        .history(empty_history)
         .max_turns(15) // Allow multiple turns to demonstrate the complex loop
         .extended_details()
         .await?;

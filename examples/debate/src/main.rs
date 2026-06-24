@@ -46,7 +46,7 @@ impl Debater {
             let resp_a = self
                 .gpt_4
                 .prompt(prompt_a.as_str())
-                .with_history(&history_a)
+                .history(&history_a)
                 .extended_details()
                 .await?;
             // Extract updated history for next iteration
@@ -59,7 +59,7 @@ impl Debater {
             let resp_b = self
                 .coral
                 .prompt(resp_a.output.as_str())
-                .with_history(&history_b)
+                .history(&history_b)
                 .extended_details()
                 .await?;
             // Extract updated history for next iteration

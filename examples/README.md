@@ -57,7 +57,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `rag_ollama` | See source. |
 | `rag` | See source. |
 | `reasoning_loop` | See source. |
-| `request_hook` | Demonstrates observing prompt/response lifecycle events with `PromptHook`. |
+| `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking two `AgentHook`s with `add_hook`. |
 | `reqwest_middleware` | Demonstrates supplying a custom reqwest client with retry middleware. |
 | `rmcp_example` | An example of how you can use `rmcp` with Rig to create an MCP friendly agent. |
 | `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |

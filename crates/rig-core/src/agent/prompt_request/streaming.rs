@@ -1,21 +1,19 @@
 use crate::{
     OneOrMany,
-    agent::completion::{DynamicContextStore, build_prepared_completion_request},
-    agent::prompt_request::{
-        HookAction, assistant_text_from_choice,
-        hooks::{InvalidToolCallHookAction, PromptHook},
-        is_empty_assistant_turn, tool_result_user_content,
-    },
+    agent::completion::build_prepared_completion_request,
+    agent::hook::{AgentHook, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind},
+    agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
-        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, OutputMode,
+        AgentRunStep,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
-    completion::{Document, GetTokenUsage},
-    json_utils,
-    memory::ConversationMemory,
-    message::{AssistantContent, ToolChoice, ToolResult, ToolResultContent, UserContent},
+    agent::runner::{
+        AgentRunner, InvalidDecision, build_agent_run, flow_into_invalid, observe_flow,
+        run_single_tool,
+    },
+    completion::GetTokenUsage,
+    message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
@@ -24,7 +22,7 @@ use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use super::{CompletionCall, ToolCallHookAction};
+use super::CompletionCall;
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -226,9 +224,12 @@ fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
 /// call (a real tool call would have routed to `CallTools`, not `Done`). In that
 /// case the tool call AND the model's prose are dropped, any reasoning/image
 /// content is kept, and `output` is appended as the final text — so the streamed
-/// `response()` is the structured output rather than the prose, with no
-/// unanswered tool_use, matching the non-streaming result. Otherwise returns
-/// `None` and the caller surfaces the turn's content unchanged.
+/// `response()` string is the structured output rather than the prose, with no
+/// unanswered tool_use, matching the non-streaming `output`. Note this shapes
+/// only the surfaced `FinalResponse.content()`; the persisted message history is
+/// built by the state machine (which keeps the prose, like the blocking driver),
+/// so `content()` and `history()` intentionally differ on prose in this case.
+/// Otherwise returns `None` and the caller surfaces the turn's content unchanged.
 fn finalize_streamed_choice(
     last_final_choice: &OneOrMany<AssistantContent>,
     output: &str,
@@ -285,209 +286,108 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct StreamingPromptRequest<M, P>
+pub struct StreamingPromptRequest<M>
 where
     M: CompletionModel,
-    P: PromptHook<M> + 'static,
 {
-    /// The prompt message to send to the model
-    prompt: Message,
-    /// Optional chat history provided by the caller.
-    chat_history: Option<Vec<Message>>,
-    /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
-    max_turns: usize,
-
-    // Agent data (cloned from agent to allow hook type transitions):
-    /// The completion model
-    model: Arc<M>,
-    /// Agent name for logging
-    agent_name: Option<String>,
-    /// System prompt
-    preamble: Option<String>,
-    /// Static context documents
-    static_context: Vec<Document>,
-    /// Temperature setting
-    temperature: Option<f64>,
-    /// Max tokens setting
-    max_tokens: Option<u64>,
-    /// Additional model parameters
-    additional_params: Option<serde_json::Value>,
-    /// Tool server handle for tool execution
-    tool_server_handle: ToolServerHandle,
-    /// Dynamic context store
-    dynamic_context: DynamicContextStore,
-    /// Tool choice setting
-    tool_choice: Option<ToolChoice>,
-    /// Optional JSON Schema for structured output
-    output_schema: Option<schemars::Schema>,
-    output_mode: OutputMode,
-    /// Optional per-request hook for events
-    hook: Option<P>,
-    /// Maximum number of invalid tool-call retries for this request.
-    max_invalid_tool_call_retries: usize,
-    /// Optional conversation memory backend cloned from the agent.
-    memory: Option<Arc<dyn ConversationMemory>>,
-    /// Optional conversation id used for loading and saving memory.
-    conversation_id: Option<String>,
+    /// The hook-aware driver this streaming request configures and runs.
+    runner: AgentRunner<M>,
 }
 
-impl<M, P> StreamingPromptRequest<M, P>
+impl<M> StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
-    P: PromptHook<M>,
 {
-    /// Create a new StreamingPromptRequest with the given prompt and model.
-    /// Note: This creates a request without an agent hook. Use `from_agent` to include the agent's hook.
-    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M, ()> {
+    /// Create a new StreamingPromptRequest from an agent WITHOUT the agent's
+    /// default hooks. Use [`from_agent`](Self::from_agent) to include them.
+    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
+        let mut runner = AgentRunner::from_agent(agent.as_ref(), prompt);
+        runner.hooks = HookStack::new();
+        StreamingPromptRequest { runner }
+    }
+
+    /// Create a new StreamingPromptRequest from an agent, cloning the agent's
+    /// data and default hook stack.
+    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
         StreamingPromptRequest {
-            prompt: prompt.into(),
-            chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or_default(),
-            model: agent.model.clone(),
-            agent_name: agent.name.clone(),
-            preamble: agent.preamble.clone(),
-            static_context: agent.static_context.clone(),
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            additional_params: agent.additional_params.clone(),
-            tool_server_handle: agent.tool_server_handle.clone(),
-            dynamic_context: agent.dynamic_context.clone(),
-            tool_choice: agent.tool_choice.clone(),
-            output_schema: agent.output_schema.clone(),
-            output_mode: agent.output_mode.clone(),
-            hook: None,
-            max_invalid_tool_call_retries: 0,
-            memory: agent.memory.clone(),
-            conversation_id: agent.default_conversation_id.clone(),
+            runner: AgentRunner::from_agent(agent, prompt),
         }
     }
 
-    /// Create a new StreamingPromptRequest from an agent, cloning the agent's data and default hook.
-    pub fn from_agent<P2>(
-        agent: &Agent<M, P2>,
-        prompt: impl Into<Message>,
-    ) -> StreamingPromptRequest<M, P2>
-    where
-        P2: PromptHook<M>,
-    {
-        StreamingPromptRequest {
-            prompt: prompt.into(),
-            chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or_default(),
-            model: agent.model.clone(),
-            agent_name: agent.name.clone(),
-            preamble: agent.preamble.clone(),
-            static_context: agent.static_context.clone(),
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            additional_params: agent.additional_params.clone(),
-            tool_server_handle: agent.tool_server_handle.clone(),
-            dynamic_context: agent.dynamic_context.clone(),
-            tool_choice: agent.tool_choice.clone(),
-            output_schema: agent.output_schema.clone(),
-            output_mode: agent.output_mode.clone(),
-            hook: agent.hook.clone(),
-            max_invalid_tool_call_retries: 0,
-            memory: agent.memory.clone(),
-            conversation_id: agent.default_conversation_id.clone(),
-        }
-    }
-
-    fn agent_name(&self) -> &str {
-        self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
-    }
-
-    /// Set the maximum Turns for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
-    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
+    /// Set the maximum Turns for multi-turn conversations (the maximum number of
+    /// turns an LLM can take calling tools before writing a text response).
     pub fn multi_turn(mut self, turns: usize) -> Self {
-        self.max_turns = turns;
+        self.runner = self.runner.max_turns(turns);
         self
     }
 
     /// Add chat history to the prompt request.
-    ///
-    /// When history is provided, the final [`FinalResponse`] will include the
-    /// updated chat history (original messages + new user prompt + assistant response).
-    /// ```ignore
-    /// let mut stream = agent
-    ///     .stream_prompt("Hello")
-    ///     .with_history(vec![])
-    ///     .await;
-    /// // ... consume stream ...
-    /// // Access updated history from FinalResponse::history()
-    /// ```
-    pub fn with_history<H, T>(mut self, history: H) -> Self
+    pub fn history<H, T>(mut self, history: H) -> Self
     where
         H: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self.runner = self.runner.history(history);
         self
     }
 
-    /// Attach a per-request hook for tool call events.
-    /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
+    /// Append a hook to this request's hook stack (on top of any the agent
+    /// already carries). Hooks run in registration order; the first to return a
+    /// non-`Continue` result short-circuits the rest.
+    pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        P2: PromptHook<M>,
+        H: AgentHook<M> + 'static,
     {
-        StreamingPromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_turns: self.max_turns,
-            model: self.model,
-            agent_name: self.agent_name,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            tool_server_handle: self.tool_server_handle,
-            dynamic_context: self.dynamic_context,
-            tool_choice: self.tool_choice,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            hook: Some(hook),
-            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            memory: self.memory,
-            conversation_id: self.conversation_id,
-        }
+        self.runner = self.runner.add_hook(hook);
+        self
     }
 
-    /// Set the retry budget for [`crate::agent::prompt_request::hooks::InvalidToolCallHookAction::Retry`].
+    /// Set the retry budget for invalid tool-call recovery.
     ///
     /// Invalid tool-call retries also consume normal multi-turn depth.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_invalid_tool_call_retries = retries;
+        self.runner = self.runner.max_invalid_tool_call_retries(retries);
         self
     }
 
     /// Set the conversation id used to load and persist memory for this request.
-    ///
-    /// Overrides any default conversation id set on the agent. If memory is not
-    /// configured on the agent, this has no effect.
     pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.conversation_id = Some(id.into());
+        self.runner = self.runner.conversation(id);
         self
     }
 
     /// Disable conversation memory for this request.
-    ///
-    /// History will neither be loaded from nor saved to the agent's memory backend.
     pub fn without_memory(mut self) -> Self {
-        self.memory = None;
-        self.conversation_id = None;
+        self.runner = self.runner.without_memory();
         self
     }
 
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
+        self.runner.stream().await
+    }
+}
+
+impl<M> AgentRunner<M>
+where
+    M: CompletionModel + 'static,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+{
+    /// Drive the agent loop, streaming assistant content, tool activity, and a
+    /// final response. Hooks fire at every observable point, including streamed
+    /// text and tool-call deltas. Returns the stream after loading any
+    /// configured conversation memory.
+    ///
+    /// This shares the drive loop, run construction, tool execution and
+    /// fail-closed hook handling with the blocking [`run`](AgentRunner::run), so
+    /// the two behave identically apart from the streamed delta events.
+    pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
         let (agent_span, created_agent_span) = if tracing::Span::current().is_disabled() {
             (
                 info_span!(
                     "invoke_agent",
                     gen_ai.operation.name = "invoke_agent",
-                    gen_ai.agent.name = self.agent_name(),
+                    gen_ai.agent.name = self.agent_name_or_default(),
                     gen_ai.system_instructions = self.preamble,
                     gen_ai.prompt = tracing::field::Empty,
                     gen_ai.completion = tracing::field::Empty,
@@ -535,29 +435,37 @@ where
                         let stream = async_stream::stream! {
                             yield Err(StreamingError::from(err));
                         };
-                        return Box::pin(stream);
+                        // Instrument under the agent span like the success path
+                        // (line ~995) so a load failure stays tied to invoke_agent.
+                        return Box::pin(stream.instrument(agent_span));
                     }
                 },
                 _ => (None, None),
             },
         };
-        let has_history = chat_history.is_some();
 
-        let mut run = AgentRun::new(prompt.clone())
-            .max_turns(self.max_turns)
-            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries)
-            .with_output_validation(
-                output_schema
-                    .as_ref()
-                    .map(|schema| schema.as_value().clone()),
-                DEFAULT_OUTPUT_RETRIES,
-            );
-        if let Some(history) = chat_history {
-            run = run.with_history(history);
-        }
-        if let Some(tool_choice) = tool_choice.clone() {
-            run = run.with_tool_choice(tool_choice);
-        }
+        // Shared construction with the blocking path so the two configure runs
+        // identically.
+        let mut run = build_agent_run(
+            prompt.clone(),
+            self.max_turns,
+            self.max_invalid_tool_call_retries,
+            output_schema.as_ref(),
+            chat_history,
+            tool_choice.clone(),
+        );
+
+        // Compute interest in the high-frequency streaming delta events once so
+        // the hot path can skip building and dispatching them when no hook
+        // observes them. (Only the streaming-only delta events are gated this
+        // way; the shared, steering events fire identically to the blocking
+        // path — see the `InvalidToolCall` handling below.)
+        let observes_text_delta = self.hooks.observes(StepEventKind::TextDelta);
+        let observes_tool_call_delta = self.hooks.observes(StepEventKind::ToolCallDelta);
+        // The invalid-tool diagnostic context is only built when a hook is
+        // present to consult — an empty stack always fails fast, matching the
+        // blocking path, without depending on `observes` for this steering event.
+        let has_hooks = !self.hooks.is_empty();
 
         // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
         // span context leaking to other concurrent tasks. Using span.enter() inside
@@ -592,10 +500,15 @@ where
                             );
                         }
 
-                        if let Some(ref hook) = self.hook
-                            && let HookAction::Terminate { reason } =
-                                hook.on_completion_call(&current_prompt, &history).await
-                        {
+                        if let Some(reason) = observe_flow(
+                            self.hooks
+                                .on_event(StepEvent::CompletionCall {
+                                    prompt: &current_prompt,
+                                    history: &history,
+                                    turn,
+                                })
+                                .await,
+                        ) {
                             yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                             break 'outer;
                         }
@@ -658,6 +571,12 @@ where
                         );
                         let mut completion_call_emitted = false;
                         let mut turn_abandoned = false;
+                        // Mirrors the blocking driver's `response_hook_suppressed`:
+                        // a turn whose invalid tool call was repaired is a
+                        // recovered turn, so its response-finish hook is
+                        // suppressed (the blocking path suppresses
+                        // `CompletionResponse` the same way).
+                        let mut turn_recovered = false;
 
                         'turn: while let Some(item) = stream.next().await {
                             let item = match item {
@@ -682,15 +601,20 @@ where
                             while let Some(event) = events.pop_front() {
                                 match event {
                                     StreamedTurnEvent::EmitIngested => {
-                                        if let Some(StreamedAssistantContent::Text(text)) =
-                                            item_slot.as_ref()
-                                            && let Some(ref hook) = self.hook
-                                            && let HookAction::Terminate { reason } = hook
-                                                .on_text_delta(
-                                                    &text.text,
-                                                    assembler.aggregated_text(),
-                                                )
-                                                .await
+                                        // Gated on `observes_text_delta`: skip the
+                                        // per-delta hook dispatch entirely when no
+                                        // hook subscribes (the item is still yielded).
+                                        if observes_text_delta
+                                            && let Some(StreamedAssistantContent::Text(text)) =
+                                                item_slot.as_ref()
+                                            && let Some(reason) = observe_flow(
+                                                self.hooks
+                                                    .on_event(StepEvent::TextDelta {
+                                                        delta: &text.text,
+                                                        aggregated: assembler.aggregated_text(),
+                                                    })
+                                                    .await,
+                                            )
                                         {
                                             yield Err(StreamingError::Prompt(Box::new(
                                                 run.cancel_error(reason),
@@ -706,8 +630,9 @@ where
                                         internal_call_id,
                                         content,
                                     } => {
-                                        if let Some(ref hook) = self.hook {
-                                            let (name, delta) = match &content {
+                                        // Gated on `observes_tool_call_delta` (hot path).
+                                        if observes_tool_call_delta {
+                                            let (delta_name, delta_text) = match &content {
                                                 ToolCallDeltaContent::Name(name) => {
                                                     (Some(name.as_str()), "")
                                                 }
@@ -715,16 +640,16 @@ where
                                                     (None, delta.as_str())
                                                 }
                                             };
-
-                                            if let HookAction::Terminate { reason } = hook
-                                                .on_tool_call_delta(
-                                                    &id,
-                                                    &internal_call_id,
-                                                    name,
-                                                    delta,
-                                                )
-                                                .await
-                                            {
+                                            if let Some(reason) = observe_flow(
+                                                self.hooks
+                                                    .on_event(StepEvent::ToolCallDelta {
+                                                        tool_call_id: &id,
+                                                        internal_call_id: &internal_call_id,
+                                                        tool_name: delta_name,
+                                                        delta: delta_text,
+                                                    })
+                                                    .await,
+                                            ) {
                                                 yield Err(StreamingError::Prompt(Box::new(
                                                     run.cancel_error(reason),
                                                 )));
@@ -764,13 +689,20 @@ where
                                                 final_resp,
                                             )) = item_slot.as_ref()
                                         {
-                                            if let Some(ref hook) = self.hook
-                                                && let HookAction::Terminate { reason } = hook
-                                                    .on_stream_completion_response_finish(
-                                                        &current_prompt,
-                                                        final_resp,
-                                                    )
-                                                    .await
+                                            // The response-finish hook is suppressed for a
+                                            // recovered turn (parity with the blocking
+                                            // `CompletionResponse`), but the streamed final
+                                            // item is still yielded so the text output and
+                                            // message history are unchanged.
+                                            if !turn_recovered
+                                                && let Some(reason) = observe_flow(
+                                                    self.hooks
+                                                        .on_event(StepEvent::StreamResponseFinish {
+                                                            prompt: &current_prompt,
+                                                            response: final_resp,
+                                                        })
+                                                        .await,
+                                                )
                                             {
                                                 yield Err(StreamingError::Prompt(Box::new(
                                                     run.cancel_error(reason),
@@ -785,15 +717,30 @@ where
                                     StreamedTurnEvent::InvalidToolCall(invalid) => {
                                         let partial =
                                             assembler.partial_turn(stream.message_id.clone());
-                                        let action = match self.hook.as_ref() {
-                                            Some(hook) => {
-                                                let context = run
-                                                    .streamed_invalid_tool_call_context(
-                                                        &partial, &invalid,
-                                                    );
-                                                hook.on_invalid_tool_call(&context).await
+                                        // Gated on `has_hooks`: building the
+                                        // diagnostic context clones the chat
+                                        // history, so an empty stack skips it and
+                                        // fails fast — identical to the blocking
+                                        // path's empty-stack outcome.
+                                        let action = if has_hooks {
+                                            let context = run.streamed_invalid_tool_call_context(
+                                                &partial, &invalid,
+                                            );
+                                            match flow_into_invalid(
+                                                self.hooks
+                                                    .on_event(StepEvent::InvalidToolCall(&context))
+                                                    .await,
+                                            ) {
+                                                InvalidDecision::Action(action) => action,
+                                                InvalidDecision::Terminate(reason) => {
+                                                    yield Err(StreamingError::Prompt(Box::new(
+                                                        run.cancel_error(reason),
+                                                    )));
+                                                    break 'outer;
+                                                }
                                             }
-                                            None => InvalidToolCallHookAction::fail(),
+                                        } else {
+                                            InvalidToolCallHookAction::fail()
                                         };
 
                                         let resolution = match run
@@ -810,7 +757,11 @@ where
                                         match resolution {
                                             StreamedResolution::Repaired { .. } => {
                                                 // Replayed name/argument deltas flow through
-                                                // the same event handling above.
+                                                // the same event handling above. The turn is
+                                                // now a recovered turn, so its response-finish
+                                                // hook must be suppressed (parity with the
+                                                // blocking path's recovered `CompletionResponse`).
+                                                turn_recovered = true;
                                                 events.extend(
                                                     assembler.resolve_pending_invalid(&resolution),
                                                 );
@@ -950,101 +901,34 @@ where
                                 },
                             ));
 
-                            let tc_result = async {
-                                let tool_span = tracing::Span::current();
-                                let tool_args =
-                                    json_utils::value_to_json_string(&tool_call.function.arguments);
-                                if let Some(ref hook) = self.hook {
-                                    let action = hook
-                                        .on_tool_call(
-                                            &tool_call.function.name,
-                                            tool_call.call_id.clone(),
-                                            &internal_call_id,
-                                            &tool_args,
-                                        )
-                                        .await;
-
-                                    if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(StreamingError::Prompt(Box::new(
-                                            PromptError::prompt_cancelled(
-                                                full_history_for_errors.clone(),
-                                                reason,
-                                            ),
-                                        )));
-                                    }
-
-                                    if let ToolCallHookAction::Skip { reason } = action {
-                                        // Tool execution rejected, return rejection message as tool result
-                                        tracing::info!(
-                                            tool_name = tool_call.function.name.as_str(),
-                                            reason = reason,
-                                            "Tool call rejected"
-                                        );
-                                        return Ok(reason);
-                                    }
-                                }
-
-                                tool_span.record("gen_ai.tool.name", &tool_call.function.name);
-                                tool_span.record("gen_ai.tool.call.arguments", &tool_args);
-
-                                let tool_result = match tool_server_handle
-                                    .call_tool(&tool_call.function.name, &tool_args)
-                                    .await
-                                {
-                                    Ok(result) => result,
-                                    Err(err) => {
-                                        tracing::warn!("Error while calling tool: {err}");
-                                        err.to_string()
-                                    }
-                                };
-
-                                tool_span.record("gen_ai.tool.call.result", &tool_result);
-
-                                if let Some(ref hook) = self.hook
-                                    && let HookAction::Terminate { reason } = hook
-                                        .on_tool_result(
-                                            &tool_call.function.name,
-                                            tool_call.call_id.clone(),
-                                            &internal_call_id,
-                                            &tool_args,
-                                            &tool_result.to_string(),
-                                        )
-                                        .await
-                                {
-                                    return Err(StreamingError::Prompt(Box::new(
-                                        PromptError::prompt_cancelled(
-                                            full_history_for_errors.clone(),
-                                            reason,
-                                        ),
-                                    )));
-                                }
-
-                                Ok(tool_result)
-                            }
+                            // Shared with the blocking path: identical hooks,
+                            // fail-closed skip/terminate, and result shaping
+                            // (skip reason verbatim, real output parsed).
+                            let result = run_single_tool(
+                                &self.hooks,
+                                &tool_server_handle,
+                                &tool_call,
+                                &internal_call_id,
+                                &full_history_for_errors,
+                            )
                             .instrument(tool_span)
                             .await;
 
-                            match tc_result {
-                                Ok(text) => {
-                                    results.push(tool_result_user_content(
-                                        tool_call.id.clone(),
-                                        tool_call.call_id.clone(),
-                                        text.clone(),
-                                    ));
-                                    let tool_result = ToolResult {
-                                        id: tool_call.id,
-                                        call_id: tool_call.call_id,
-                                        content: ToolResultContent::from_tool_output(text),
-                                    };
-                                    yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                        StreamedUserContent::ToolResult {
-                                            tool_result,
-                                            internal_call_id,
-                                        },
-                                    ));
+                            match result {
+                                Ok(content) => {
+                                    results.push(content.clone());
+                                    // Surface the shaped tool result as a stream item.
+                                    if let UserContent::ToolResult(tool_result) = content {
+                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                            StreamedUserContent::ToolResult {
+                                                tool_result,
+                                                internal_call_id,
+                                            },
+                                        ));
+                                    }
                                 }
                                 Err(err) => {
-                                    yield Err(err);
+                                    yield Err(StreamingError::Prompt(Box::new(err)));
                                     break 'outer;
                                 }
                             }
@@ -1092,11 +976,12 @@ where
                                 "conversation memory append failed; yielding final response anyway"
                             );
                         }
-                        let final_messages: Option<Vec<Message>> = if has_history {
-                            Some(response.messages.clone().unwrap_or_default())
-                        } else {
-                            None
-                        };
+                        // Always surface the accumulated messages (parity with
+                        // the blocking `run()`, whose `PromptResponse.messages`
+                        // is always populated), regardless of whether the caller
+                        // supplied input history.
+                        let final_messages: Option<Vec<Message>> =
+                            Some(response.messages.clone().unwrap_or_default());
                         yield Ok(MultiTurnStreamItem::final_response_with_completion_calls(
                             final_choice,
                             response.usage,
@@ -1113,11 +998,10 @@ where
     }
 }
 
-impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
+impl<M> IntoFuture for StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    P: PromptHook<M> + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1171,10 +1055,8 @@ pub async fn stream_to_stdout<R>(
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::agent::prompt_request::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
-    use crate::agent::prompt_request::hooks::{
-        InvalidToolCallContext, InvalidToolCallHookAction, PromptHook, ToolCallHookAction,
-    };
+    use crate::agent::hook::{AgentHook, Flow, InvalidToolCallContext, StepEvent};
+    use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
@@ -1358,8 +1240,8 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_user_content_preserves_multimodal_tool_output() {
-        let user_content = tool_result_user_content(
+    fn tool_result_output_preserves_multimodal_tool_output() {
+        let user_content = tool_result_output(
             "tool_call_1".to_string(),
             Some("call_1".to_string()),
             serde_json::json!({
@@ -1567,33 +1449,20 @@ mod tests {
     #[derive(Clone)]
     struct PanicOnUnknownToolHook;
 
-    impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_tool_call_delta(
-            &self,
-            _tool_call_id: &str,
-            _internal_call_id: &str,
-            _tool_name: Option<&str>,
-            _tool_call_delta: &str,
-        ) -> HookAction {
-            panic!("unknown tool call delta should fail before delta hooks run")
-        }
-
-        async fn on_tool_call(
-            &self,
-            _tool_name: &str,
-            _tool_call_id: Option<String>,
-            _internal_call_id: &str,
-            _args: &str,
-        ) -> ToolCallHookAction {
-            panic!("unknown tool call should fail before tool hooks run")
-        }
-
-        async fn on_stream_completion_response_finish(
-            &self,
-            _prompt: &Message,
-            _response: &MockResponse,
-        ) -> HookAction {
-            panic!("unknown tool call should fail before stream finish hooks run")
+    impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::ToolCallDelta { .. } => {
+                    panic!("unknown tool call delta should fail before delta hooks run")
+                }
+                StepEvent::ToolCall { .. } => {
+                    panic!("unknown tool call should fail before tool hooks run")
+                }
+                StepEvent::StreamResponseFinish { .. } => {
+                    panic!("unknown tool call should fail before stream finish hooks run")
+                }
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -1826,7 +1695,7 @@ mod tests {
         async {
             let mut stream = agent
                 .stream_prompt(prompt)
-                .with_history(empty_history)
+                .history(empty_history)
                 .multi_turn(max_turns)
                 .await;
 
@@ -2080,13 +1949,14 @@ mod tests {
     #[derive(Clone)]
     struct TerminateOnStreamFinish;
 
-    impl PromptHook<MockCompletionModel> for TerminateOnStreamFinish {
-        async fn on_stream_completion_response_finish(
-            &self,
-            _prompt: &Message,
-            _response: &<MockCompletionModel as CompletionModel>::StreamingResponse,
-        ) -> HookAction {
-            HookAction::terminate("stop after completion call")
+    impl AgentHook<MockCompletionModel> for TerminateOnStreamFinish {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::StreamResponseFinish { .. } => {
+                    Flow::terminate("stop after completion call")
+                }
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2095,15 +1965,14 @@ mod tests {
     #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for RepairDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let tool_name = context.tool_name.clone();
-            async move {
-                assert_eq!(tool_name, "default_api");
-                InvalidToolCallHookAction::repair("add")
+    impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    Flow::repair("add")
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2111,19 +1980,17 @@ mod tests {
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for RetryDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let tool_name = context.tool_name.clone();
-            let args = context.args.clone();
-            async move {
-                assert_eq!(tool_name, "default_api");
-                if let Some(args) = args {
-                    assert!(!args.is_empty());
+    impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    if let Some(args) = context.args.as_deref() {
+                        assert!(!args.is_empty());
+                    }
+                    Flow::retry("Use the add tool instead")
                 }
-                InvalidToolCallHookAction::retry("Use the add tool instead")
+                _ => Flow::cont(),
             }
         }
     }
@@ -2131,15 +1998,14 @@ mod tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for SkipDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let tool_name = context.tool_name.clone();
-            async move {
-                assert_eq!(tool_name, "default_api");
-                InvalidToolCallHookAction::skip("default_api was skipped")
+    impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    Flow::skip("default_api was skipped")
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2158,20 +2024,17 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let contexts = self.contexts.clone();
-            let context = context.clone();
-
-            async move {
-                contexts
-                    .lock()
-                    .expect("invalid tool context records mutex was poisoned")
-                    .push(context);
-                InvalidToolCallHookAction::fail()
+    impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    self.contexts
+                        .lock()
+                        .expect("invalid tool context records mutex was poisoned")
+                        .push(context.clone());
+                    Flow::fail()
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2190,28 +2053,28 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingToolCallDeltaHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            let deltas = self.deltas.clone();
-            let event = (
-                tool_call_id.to_string(),
-                internal_call_id.to_string(),
-                tool_name.map(str::to_string),
-                tool_call_delta.to_string(),
-            );
-
-            async move {
-                deltas
-                    .lock()
-                    .expect("tool call delta hook records mutex was poisoned")
-                    .push(event);
-                HookAction::cont()
+    impl AgentHook<MockCompletionModel> for RecordingToolCallDeltaHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::ToolCallDelta {
+                    tool_call_id,
+                    internal_call_id,
+                    tool_name,
+                    delta,
+                } => {
+                    let record = (
+                        tool_call_id.to_string(),
+                        internal_call_id.to_string(),
+                        tool_name.map(str::to_string),
+                        delta.to_string(),
+                    );
+                    self.deltas
+                        .lock()
+                        .expect("tool call delta hook records mutex was poisoned")
+                        .push(record);
+                    Flow::cont()
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2230,21 +2093,18 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingTextDeltaHook {
-        fn on_text_delta(
-            &self,
-            text_delta: &str,
-            full_text: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            let deltas = self.deltas.clone();
-            let event = (text_delta.to_string(), full_text.to_string());
-
-            async move {
-                deltas
-                    .lock()
-                    .expect("text delta hook records mutex was poisoned")
-                    .push(event);
-                HookAction::cont()
+    impl AgentHook<MockCompletionModel> for RecordingTextDeltaHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::TextDelta { delta, aggregated } => {
+                    let record = (delta.to_string(), aggregated.to_string());
+                    self.deltas
+                        .lock()
+                        .expect("text delta hook records mutex was poisoned")
+                        .push(record);
+                    Flow::cont()
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2254,20 +2114,13 @@ mod tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
-        fn on_text_delta(
-            &self,
-            text_delta: &str,
-            full_text: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.text.on_text_delta(text_delta, full_text)
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            SkipDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2276,20 +2129,13 @@ mod tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
-        fn on_text_delta(
-            &self,
-            text_delta: &str,
-            full_text: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.text.on_text_delta(text_delta, full_text)
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            RetryDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2298,27 +2144,13 @@ mod tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.delta.on_tool_call_delta(
-                tool_call_id,
-                internal_call_id,
-                tool_name,
-                tool_call_delta,
-            )
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            RetryDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2327,27 +2159,13 @@ mod tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.delta.on_tool_call_delta(
-                tool_call_id,
-                internal_call_id,
-                tool_name,
-                tool_call_delta,
-            )
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            SkipDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2365,28 +2183,28 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            let deltas = self.deltas.clone();
-            let event = (
-                tool_call_id.to_string(),
-                internal_call_id.to_string(),
-                tool_name.map(str::to_string),
-                tool_call_delta.to_string(),
-            );
-
-            async move {
-                deltas
-                    .lock()
-                    .expect("tool call delta hook records mutex was poisoned")
-                    .push(event);
-                HookAction::terminate("stop on tool call delta")
+    impl AgentHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::ToolCallDelta {
+                    tool_call_id,
+                    internal_call_id,
+                    tool_name,
+                    delta,
+                } => {
+                    let record = (
+                        tool_call_id.to_string(),
+                        internal_call_id.to_string(),
+                        tool_name.map(str::to_string),
+                        delta.to_string(),
+                    );
+                    self.deltas
+                        .lock()
+                        .expect("tool call delta hook records mutex was poisoned")
+                        .push(record);
+                    Flow::terminate("stop on tool call delta")
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2407,7 +2225,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -2485,7 +2303,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -2549,9 +2367,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RepairDefaultApiHook)
+            .add_hook(RepairDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut saw_repaired_tool_call = false;
         let mut saw_tool_result = false;
@@ -2615,7 +2433,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(invalid_hook.clone())
+            .add_hook(invalid_hook.clone())
             .multi_turn(3)
             .await;
         let mut error = None;
@@ -2665,9 +2483,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
         let mut final_response_text = None;
@@ -2754,9 +2572,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
         let mut completion_call_events = Vec::new();
@@ -2879,9 +2697,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
         let mut final_response_text = None;
@@ -2986,9 +2804,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
 
         while let Some(item) = stream.next().await {
@@ -3042,9 +2860,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
 
@@ -3088,11 +2906,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingTextAndSkipInvalidToolHook {
+            .add_hook(RecordingTextAndSkipInvalidToolHook {
                 text: text_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
 
         while let Some(item) = stream.next().await {
@@ -3148,11 +2966,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingDeltaAndRetryInvalidToolHook {
+            .add_hook(RecordingDeltaAndRetryInvalidToolHook {
                 delta: delta_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
         let mut completion_call_events = Vec::new();
@@ -3277,7 +3095,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(invalid_hook.clone())
+            .add_hook(invalid_hook.clone())
             .multi_turn(3)
             .await;
         let mut error = None;
@@ -3338,11 +3156,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingTextAndRetryInvalidToolHook {
+            .add_hook(RecordingTextAndRetryInvalidToolHook {
                 text: text_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
 
@@ -3398,11 +3216,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingDeltaAndSkipInvalidToolHook {
+            .add_hook(RecordingDeltaAndSkipInvalidToolHook {
                 delta: delta_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
         let mut final_response_text = None;
@@ -3513,7 +3331,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .max_invalid_tool_call_retries(0)
             .await;
@@ -3573,7 +3391,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .max_invalid_tool_call_retries(0)
             .await;
@@ -3633,7 +3451,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_text = false;
@@ -3734,7 +3552,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_completion_call = false;
@@ -3893,7 +3711,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the allowed tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -3974,7 +3792,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the allowed tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -4052,7 +3870,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do not use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -4116,7 +3934,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do not use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4177,7 +3995,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a bad tool call")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4238,7 +4056,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a bad tool call")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4294,7 +4112,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
-            .with_hook(hook.clone())
+            .add_hook(hook.clone())
             .await;
         let mut stream_deltas = Vec::new();
 
@@ -4377,7 +4195,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream an incomplete tool call")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4445,7 +4263,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do not use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4553,7 +4371,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
-            .with_hook(hook.clone())
+            .add_hook(hook.clone())
             .await;
         let mut stream_deltas = Vec::new();
 
@@ -4631,7 +4449,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
-            .with_hook(hook.clone())
+            .add_hook(hook.clone())
             .await;
         let mut saw_delta = false;
         let mut saw_final_response = false;
@@ -4698,7 +4516,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
         let mut completion_calls_events = Vec::new();
@@ -4801,7 +4619,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("say done")
-            .with_hook(TerminateOnStreamFinish)
+            .add_hook(TerminateOnStreamFinish)
             .await;
         let mut completion_calls = Vec::new();
         let mut saw_error = false;
@@ -4848,7 +4666,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
         let mut completion_calls_events = Vec::new();
@@ -4939,7 +4757,7 @@ mod tests {
         let empty_history: &[Message] = &[];
         let mut stream = agent
             .stream_prompt("answer with citations")
-            .with_history(empty_history)
+            .history(empty_history)
             .await;
         let mut final_response = None;
 
@@ -4982,7 +4800,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use a tool with citations")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
 
@@ -5137,10 +4955,11 @@ mod tests {
         Ok(())
     }
 
-    /// Test that FinalResponse contains the updated chat history when with_history is used.
+    /// Test that FinalResponse contains the updated chat history when a starting
+    /// history is provided via `.history(..)`.
     ///
     /// This verifies that:
-    /// 1. FinalResponse.history() returns Some when with_history was called
+    /// 1. FinalResponse.history() returns Some when a starting history was provided
     /// 2. The history contains both the user prompt and assistant response
     #[tokio::test]
     #[ignore = "This requires an API key"]
@@ -5159,7 +4978,7 @@ mod tests {
         let empty_history: &[Message] = &[];
         let mut stream = agent
             .stream_prompt("Say 'hello' and nothing else.")
-            .with_history(empty_history)
+            .history(empty_history)
             .await;
 
         // Consume the stream and collect FinalResponse
@@ -5258,7 +5077,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("think before answering")
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
 
         let mut history_in_final = None;
@@ -5349,7 +5168,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("hi")
             .conversation("t1")
-            .with_history(vec![Message::user("from-caller")])
+            .history(vec![Message::user("from-caller")])
             .await;
 
         while let Some(item) = stream.next().await {
@@ -5373,7 +5192,7 @@ mod tests {
         let memory = InMemoryConversationMemory::new();
         let agent = AgentBuilder::new(streaming_text_then_final_model())
             .memory(memory.clone())
-            .conversation_id("default")
+            .conversation("default")
             .build();
 
         let mut stream = agent.stream_prompt("hi").without_memory().await;

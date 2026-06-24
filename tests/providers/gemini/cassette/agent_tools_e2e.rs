@@ -238,7 +238,7 @@ async fn tool_concurrency_one_preserves_parallel_call_contract() {
             let response = agent
                 .prompt(PARALLEL_PROMPT)
                 .max_turns(3)
-                .with_tool_concurrency(1)
+                .tool_concurrency(1)
                 .extended_details()
                 .await
                 .expect("serial tool execution should succeed");

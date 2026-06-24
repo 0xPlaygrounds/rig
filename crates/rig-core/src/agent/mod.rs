@@ -106,15 +106,18 @@
 //! ```
 mod builder;
 mod completion;
+pub mod hook;
 pub(crate) mod prompt_request;
 pub mod run;
+pub mod runner;
 mod tool;
 
 pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
-pub use prompt_request::hooks::{
-    HookAction, InvalidToolCallContext, InvalidToolCallHookAction, PromptHook, ToolCallHookAction,
+pub use hook::{
+    AgentHook, Flow, HookStack, InvalidToolCallContext, InvalidToolCallHookAction, StepEvent,
+    StepEventKind,
 };
 pub use prompt_request::streaming::{
     FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
@@ -124,3 +127,4 @@ pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
+pub use runner::AgentRunner;

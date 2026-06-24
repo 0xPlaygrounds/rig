@@ -125,7 +125,7 @@ async fn extended_with_history_both_populated() {
 
     let resp = agent
         .prompt("hello")
-        .with_history(&initial_history)
+        .history(&initial_history)
         .extended_details()
         .await
         .expect("prompt should succeed");
@@ -158,7 +158,7 @@ async fn standard_with_history_works() {
 
     let result = agent
         .prompt("test")
-        .with_history(&history)
+        .history(&history)
         .await
         .expect("prompt should succeed");
 
@@ -314,7 +314,7 @@ async fn extended_details_works_without_with_history() {
         .tool(MockAddTool)
         .build();
 
-    // Note: NO .with_history() call — this is the new use case
+    // Note: NO .history() call — this is the new use case
     let resp = agent
         .prompt("compute 2+3")
         .max_turns(5)
