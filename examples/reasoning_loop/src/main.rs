@@ -49,7 +49,7 @@ impl<M: CompletionModel + 'static> Prompt for ReasoningAgent<M> {
         let response = self
             .executor
             .prompt(reasoning_prompt.as_str())
-            .with_history(&chat_history)
+            .history(&chat_history)
             .max_turns(20)
             .extended_details()
             .await?;

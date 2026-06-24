@@ -10,7 +10,6 @@
 
 use crate::OneOrMany;
 use crate::agent::Agent;
-use crate::agent::prompt_request::hooks::PromptHook;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
@@ -541,30 +540,14 @@ where
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     R: Clone + Unpin + GetTokenUsage,
 {
-    /// The hook type used by this streaming prompt implementation.
+    /// Stream a simple prompt to the model.
     ///
-    /// If your implementation does not need prompt hooks, use `()` as the hook type:
-    ///
-    /// ```ignore
-    /// impl<M, R> StreamingPrompt<M, R> for MyType<M>
-    /// where
-    ///     M: CompletionModel + 'static,
-    ///     // ... other bounds ...
-    /// {
-    ///     type Hook = ();
-    ///
-    ///     fn stream_prompt(&self, prompt: impl Into<Message>) -> StreamingPromptRequest<M, ()> {
-    ///         // ...
-    ///     }
-    /// }
-    /// ```
-    type Hook: PromptHook<M>;
-
-    /// Stream a simple prompt to the model
+    /// Attach hooks to observe or steer the run via
+    /// [`StreamingPromptRequest::add_hook`].
     fn stream_prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest<M, Self::Hook>;
+    ) -> StreamingPromptRequest<M>;
 }
 
 /// Trait for high-level streaming chat interface with conversation history.
@@ -578,29 +561,6 @@ where
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     R: Clone + Unpin + GetTokenUsage,
 {
-    /// The hook type used by this streaming chat implementation.
-    ///
-    /// If your implementation does not need prompt hooks, use `()` as the hook type:
-    ///
-    /// ```ignore
-    /// impl<M, R> StreamingChat<M, R> for MyType<M>
-    /// where
-    ///     M: CompletionModel + 'static,
-    ///     // ... other bounds ...
-    /// {
-    ///     type Hook = ();
-    ///
-    ///     fn stream_chat(
-    ///         &self,
-    ///         prompt: impl Into<Message>,
-    ///         chat_history: Vec<Message>,
-    ///     ) -> StreamingPromptRequest<M, ()> {
-    ///         // ...
-    ///     }
-    /// }
-    /// ```
-    type Hook: PromptHook<M>;
-
     /// Stream a chat with history to the model.
     ///
     /// The messages returned by the model can be accessed via `FinalResponse::history()`
@@ -629,7 +589,7 @@ where
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: I,
-    ) -> StreamingPromptRequest<M, Self::Hook>
+    ) -> StreamingPromptRequest<M>
     where
         I: IntoIterator<Item = T> + WasmCompatSend,
         T: Into<Message>;

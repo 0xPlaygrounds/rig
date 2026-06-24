@@ -1,19 +1,29 @@
-//! Drives the agent loop by hand with the sans-IO [`AgentRun`] state machine.
+//! Two complementary ways to drive the agent loop.
+//!
+//! ## Part 1 — hand-driven [`AgentRun`] state machine
 //!
 //! `agent.prompt(...)` runs this machine internally; stepping it yourself lets
 //! you inspect every model call, execute tools with your own policy, and —
 //! because the machine is fully serializable between steps — pause a run while
 //! tool calls are pending and resume it later (even in another process).
 //!
+//! ## Part 2 — high-level [`AgentRunner`] with hooks
+//!
+//! For the common case you don't need that level of control: attach an
+//! [`AgentHook`] to observe tool calls (and every other event) without
+//! hand-driving the loop. Use `agent.runner(prompt).add_hook(h).run().await`.
+//!
+//! Both approaches are demonstrated in `main` below.
+//!
 //! Requires `OPENAI_API_KEY`.
 
 use std::collections::BTreeSet;
 
 use anyhow::Result;
-use rig::agent::InvalidToolCallHookAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+use rig::agent::{AgentHook, Flow, InvalidToolCallHookAction, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{Completion, ToolDefinition};
+use rig::completion::{Completion, CompletionModel, ToolDefinition};
 use rig::message::{ToolResultContent, UserContent};
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -55,6 +65,25 @@ impl Tool for Add {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A minimal AgentHook that logs every tool call routed through the runner.
+// Used in Part 2 below to show the high-level hook-based path.
+// ---------------------------------------------------------------------------
+
+struct ToolLoggerHook;
+
+impl<M: CompletionModel> AgentHook<M> for ToolLoggerHook {
+    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        if let StepEvent::ToolCall {
+            tool_name, args, ..
+        } = event
+        {
+            println!("[hook] tool call: {tool_name}({args})");
+        }
+        Flow::cont()
     }
 }
 
@@ -146,6 +175,31 @@ async fn main() -> Result<()> {
             }
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Part 2 — high-level AgentRunner path with hooks
+    //
+    // Most use-cases don't need the manual stepping above. `agent.runner(…)`
+    // returns an `AgentRunner` that drives the same machine internally while
+    // firing an `AgentHook` at every observable point. Attach hooks with
+    // `.add_hook(h)`; each call appends another hook to the stack.
+    // -----------------------------------------------------------------------
+
+    println!("\n--- Part 2: AgentRunner with ToolLoggerHook ---");
+
+    let resp = agent
+        .runner("What is 2 + 5?")
+        .max_turns(2)
+        .add_hook(ToolLoggerHook)
+        .run()
+        .await?;
+
+    println!("✓ {}", resp.output);
+    println!(
+        "  {} model call(s), {} total tokens",
+        resp.completion_calls.len(),
+        resp.usage.total_tokens
+    );
 
     Ok(())
 }

@@ -73,7 +73,7 @@ where
         let mut response_stream = self
             .agent
             .stream_prompt(prompt)
-            .with_history(history.clone())
+            .history(history.clone())
             .multi_turn(self.max_turns)
             .await;
 

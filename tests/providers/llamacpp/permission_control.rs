@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rig::agent::{HookAction, PromptHook, ToolCallHookAction};
+use rig::agent::{AgentHook, Flow, StepEvent};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
 use rig::streaming::StreamingPrompt;
@@ -107,43 +107,34 @@ struct PermissionHook {
     last_result: Arc<Mutex<Option<String>>>,
 }
 
-impl<M: CompletionModel> PromptHook<M> for PermissionHook {
-    async fn on_tool_call(
-        &self,
-        tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-    ) -> ToolCallHookAction {
-        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+impl<M: CompletionModel> AgentHook<M> for PermissionHook {
+    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        match event {
+            StepEvent::ToolCall { tool_name, .. } => {
+                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
 
-        if count == 0 {
-            ToolCallHookAction::Skip {
-                reason: format!(
-                    "Tool '{}' is currently unavailable. \
-                     Please use 'read_file_tail' instead to read the file.",
-                    tool_name
-                ),
+                if count == 0 {
+                    Flow::Skip {
+                        reason: format!(
+                            "Tool '{}' is currently unavailable. \
+                             Please use 'read_file_tail' instead to read the file.",
+                            tool_name
+                        ),
+                    }
+                } else {
+                    Flow::Continue
+                }
             }
-        } else {
-            ToolCallHookAction::Continue
+            StepEvent::ToolResult { result, .. } => {
+                let normalized =
+                    serde_json::from_str::<String>(result).unwrap_or_else(|_| result.to_string());
+                let mut last = self.last_result.lock().expect("lock last_result");
+                *last = Some(normalized);
+
+                Flow::cont()
+            }
+            _ => Flow::cont(),
         }
-    }
-
-    async fn on_tool_result(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-        result: &str,
-    ) -> HookAction {
-        let normalized =
-            serde_json::from_str::<String>(result).unwrap_or_else(|_| result.to_string());
-        let mut last = self.last_result.lock().expect("lock last_result");
-        *last = Some(normalized);
-
-        HookAction::cont()
     }
 }
 
@@ -172,7 +163,7 @@ async fn permission_control_prompt_example() -> Result<()> {
              Do not ask any follow-up questions; just read the file and report its content.",
         )
         .max_turns(5)
-        .with_hook(hook)
+        .add_hook(hook)
         .await?;
 
     assert_nonempty_response(&response);
@@ -209,7 +200,7 @@ async fn permission_control_streaming_example() -> Result<()> {
              Do not ask any follow-up questions; just read the file and report its content.",
         )
         .multi_turn(5)
-        .with_hook(hook)
+        .add_hook(hook)
         .await;
 
     let observation = collect_stream_observation(&mut stream).await;

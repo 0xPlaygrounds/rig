@@ -6,8 +6,8 @@
 
 use futures::StreamExt;
 use rig::agent::{
-    FinalResponse, InvalidToolCallContext, InvalidToolCallHookAction, MultiTurnStreamItem,
-    PromptHook, StreamingResult,
+    AgentHook, FinalResponse, Flow, InvalidToolCallContext, MultiTurnStreamItem, StepEvent,
+    StreamingResult,
 };
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, ToolDefinition};
@@ -145,22 +145,25 @@ impl DefaultApiRepairHook {
     }
 }
 
-impl<M> PromptHook<M> for DefaultApiRepairHook
+impl<M> AgentHook<M> for DefaultApiRepairHook
 where
     M: CompletionModel,
 {
-    async fn on_invalid_tool_call(
-        &self,
-        context: &InvalidToolCallContext,
-    ) -> InvalidToolCallHookAction {
-        if let Ok(mut invalid_tool_names) = self.invalid_tool_names.lock() {
-            invalid_tool_names.push(context.tool_name.clone());
-        }
+    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        match event {
+            StepEvent::InvalidToolCall(context) => {
+                let context: &InvalidToolCallContext = context;
+                if let Ok(mut invalid_tool_names) = self.invalid_tool_names.lock() {
+                    invalid_tool_names.push(context.tool_name.clone());
+                }
 
-        if context.tool_name == "default_api" {
-            InvalidToolCallHookAction::repair(JavaScript::NAME)
-        } else {
-            InvalidToolCallHookAction::fail()
+                if context.tool_name == "default_api" {
+                    Flow::repair(JavaScript::NAME)
+                } else {
+                    Flow::fail()
+                }
+            }
+            _ => Flow::cont(),
         }
     }
 }
@@ -336,8 +339,8 @@ async fn run_workspace_canary_attempt(
 
     let stream = agent
         .stream_prompt(workspace_canary_prompt(attempt))
-        .with_hook(repair_hook.clone())
-        .with_history(Vec::<rig::message::Message>::new())
+        .add_hook(repair_hook.clone())
+        .history(Vec::<rig::message::Message>::new())
         .await;
 
     let mut observation = consume_workspace_like_stream(stream).await?;
