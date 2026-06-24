@@ -997,6 +997,51 @@ mod tests {
         ));
     }
 
+    /// Response-finish parity (#1946 item 2 / #1947): the streaming
+    /// `StreamResponseFinish` now fires on every non-recovered turn — including a
+    /// tool-only turn that streams no assistant text — so its count matches the
+    /// blocking `CompletionResponse` for the same scenario (a tool turn followed
+    /// by a text turn ⇒ 2 each). Pre-fix the streaming count was 1, because the
+    /// hook was gated on streamed text.
+    #[tokio::test]
+    async fn response_finish_count_matches_completion_response_across_drivers() {
+        let blocking_hook = RecordingHook::default();
+        AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(blocking_hook.clone())
+            .run()
+            .await
+            .expect("blocking run should succeed");
+
+        let streaming_hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(streaming_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(streaming_hook.clone())
+            .stream()
+            .await;
+        while stream.next().await.is_some() {}
+
+        // Blocking fires CompletionResponse on the tool turn and the text turn.
+        assert_eq!(
+            blocking_hook.count(StepEventKind::CompletionResponse),
+            2,
+            "blocking should fire CompletionResponse on both turns"
+        );
+        // Streaming now fires StreamResponseFinish on both turns too (the
+        // tool-only first turn included), matching the blocking count.
+        assert_eq!(
+            streaming_hook.count(StepEventKind::StreamResponseFinish),
+            blocking_hook.count(StepEventKind::CompletionResponse),
+            "StreamResponseFinish must match CompletionResponse on every non-recovered turn"
+        );
+    }
+
     /// run() and stream() of the same tool-calling scenario produce the same
     /// final output, the same final message history, the same tool-result
     /// content, and the same medium-independent hook event sequence.

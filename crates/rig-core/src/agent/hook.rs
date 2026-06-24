@@ -217,11 +217,12 @@ pub enum StepEvent<'a, M: CompletionModel> {
     },
     /// Streaming only: the provider finished streaming a completion response.
     /// This is the streaming counterpart of [`CompletionResponse`](Self::CompletionResponse)
-    /// and, like it, is suppressed for turns recovered by invalid tool-call
-    /// repair, skip, or retry. Note one medium-specific difference from
-    /// `CompletionResponse`: it fires only on turns that streamed assistant
-    /// **text** — a turn that emits only a tool call (or only reasoning) does
-    /// not fire it. Honors [`Flow::Continue`] and [`Flow::Terminate`].
+    /// and fires on the same turns: on **every** turn the model completes,
+    /// suppressed only for turns recovered by invalid tool-call repair, skip, or
+    /// retry. (A turn emitting only a tool call or only reasoning fires it just
+    /// like a text turn — the final stream response is delivered regardless of
+    /// whether assistant text was streamed.) Honors [`Flow::Continue`] and
+    /// [`Flow::Terminate`].
     StreamResponseFinish {
         /// The prompt message for this turn.
         prompt: &'a Message,

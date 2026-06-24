@@ -684,34 +684,41 @@ where
                                             ));
                                         }
 
-                                        if emit_final
+                                        // Fire the response-finish hook on EVERY
+                                        // non-recovered turn — parity with the
+                                        // blocking `CompletionResponse`, which is
+                                        // not gated on streamed text (#1946 item 2,
+                                        // #1947). The `Final` item is present at
+                                        // `Completed` whether or not the turn
+                                        // streamed text; a recovered turn (invalid
+                                        // tool-call repair/skip) is still suppressed,
+                                        // matching blocking's `response_hook_suppressed`.
+                                        if !turn_recovered
                                             && let Some(StreamedAssistantContent::Final(
                                                 final_resp,
                                             )) = item_slot.as_ref()
+                                            && let Some(reason) = observe_flow(
+                                                self.hooks
+                                                    .on_event(StepEvent::StreamResponseFinish {
+                                                        prompt: &current_prompt,
+                                                        response: final_resp,
+                                                    })
+                                                    .await,
+                                            )
                                         {
-                                            // The response-finish hook is suppressed for a
-                                            // recovered turn (parity with the blocking
-                                            // `CompletionResponse`), but the streamed final
-                                            // item is still yielded so the text output and
-                                            // message history are unchanged.
-                                            if !turn_recovered
-                                                && let Some(reason) = observe_flow(
-                                                    self.hooks
-                                                        .on_event(StepEvent::StreamResponseFinish {
-                                                            prompt: &current_prompt,
-                                                            response: final_resp,
-                                                        })
-                                                        .await,
-                                                )
-                                            {
-                                                yield Err(StreamingError::Prompt(Box::new(
-                                                    run.cancel_error(reason),
-                                                )));
-                                                break 'outer;
-                                            }
-                                            if let Some(item) = item_slot.take() {
-                                                yield Ok(MultiTurnStreamItem::stream_item(item));
-                                            }
+                                            yield Err(StreamingError::Prompt(Box::new(
+                                                run.cancel_error(reason),
+                                            )));
+                                            break 'outer;
+                                        }
+                                        // `emit_final` (= the turn streamed assistant
+                                        // text) governs only whether the final *item*
+                                        // is forwarded to the consumer, so the stream
+                                        // output and message history are unchanged.
+                                        if emit_final
+                                            && let Some(item) = item_slot.take()
+                                        {
+                                            yield Ok(MultiTurnStreamItem::stream_item(item));
                                         }
                                     }
                                     StreamedTurnEvent::InvalidToolCall(invalid) => {
