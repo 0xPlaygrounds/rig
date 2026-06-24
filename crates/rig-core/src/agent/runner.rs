@@ -35,7 +35,7 @@ use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, build_prepared_completion_request},
-    hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, StepEvent},
+    hook::{AgentHook, ControlCapability, Flow, HookStack, InvalidToolCallHookAction, StepEvent},
     prompt_request::{PromptResponse, tool_result_message, tool_result_output},
     run::{
         AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
@@ -64,6 +64,19 @@ fn flow_name(flow: &Flow) -> &'static str {
     }
 }
 
+/// The fail-closed diagnostic for a hook action an event cannot honor. Names the
+/// returned [`Flow`] and the actions the event's [`ControlCapability`] admits, so
+/// the honored set is sourced from the one capability declaration rather than
+/// restated per resolver.
+fn fail_closed(capability: ControlCapability, flow: &Flow) -> String {
+    format!(
+        "hook returned `{}` for an event that only honors {} — \
+         terminating the run (fail-closed)",
+        flow_name(flow),
+        capability.honored()
+    )
+}
+
 /// Resolve a hook's [`Flow`] for an *observe-only* event — one that honors only
 /// [`Flow::Continue`] and [`Flow::Terminate`].
 ///
@@ -75,11 +88,7 @@ pub(crate) fn observe_flow(flow: Flow) -> Option<String> {
     match flow {
         Flow::Continue => None,
         Flow::Terminate { reason } => Some(reason),
-        other => Some(format!(
-            "hook returned `{}` for an observe-only event, which only honors \
-             Continue/Terminate — terminating the run (fail-closed)",
-            flow_name(&other)
-        )),
+        other => Some(fail_closed(ControlCapability::Observe, &other)),
     }
 }
 
@@ -101,12 +110,7 @@ pub(crate) fn flow_into_tool_call(flow: Flow) -> ToolCallDecision {
         Flow::Continue => ToolCallDecision::Proceed,
         Flow::Skip { reason } => ToolCallDecision::Skip(reason),
         Flow::Terminate { reason } => ToolCallDecision::Terminate(reason),
-        other => ToolCallDecision::Terminate(format!(
-            "hook returned `{}` for a tool-call event, which only honors \
-             Continue/Skip/Terminate — terminating the run (fail-closed) rather \
-             than executing the tool",
-            flow_name(&other)
-        )),
+        other => ToolCallDecision::Terminate(fail_closed(ControlCapability::ToolCall, &other)),
     }
 }
 
@@ -715,8 +719,13 @@ mod tests {
     use futures::StreamExt;
     use serde_json::json;
 
+    use super::{
+        InvalidDecision, ToolCallDecision, flow_into_invalid, flow_into_tool_call, observe_flow,
+    };
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{AgentHook, Flow, StepEvent, StepEventKind};
+    use crate::agent::hook::{
+        AgentHook, Flow, InvalidToolCallHookAction, StepEvent, StepEventKind,
+    };
     use crate::agent::prompt_request::streaming::MultiTurnStreamItem;
     use crate::completion::{CompletionModel, Message, PromptError, ToolDefinition};
     use crate::message::{AssistantContent, ToolCall, ToolFunction, UserContent};
@@ -1927,5 +1936,135 @@ mod tests {
             tool_result_text_in_history(&blocking_messages, "skipped by policy"),
             "the verbatim skip reason must be the tool result content in the history"
         );
+    }
+
+    // ----------------------------------------------------------------------
+    // Fail-closed control resolution (#1947)
+    // ----------------------------------------------------------------------
+    //
+    // The resolvers translate a hook's `Flow` into a per-event decision and are
+    // *fail-closed*: an action the event cannot honor terminates the run with a
+    // diagnostic rather than being silently dropped. These pin that behavior
+    // directly (previously exercised only via cassette tests) and prove the
+    // resolvers cannot drift from the declared `StepEventKind` capability.
+
+    /// Marker carried by the fail-closed diagnostic (see `fail_closed`).
+    const FAIL_CLOSED: &str = "(fail-closed)";
+
+    fn every_flow() -> [Flow; 6] {
+        [
+            Flow::cont(),
+            Flow::terminate("stop"),
+            Flow::skip("skip"),
+            Flow::fail(),
+            Flow::retry("feedback"),
+            Flow::repair("add"),
+        ]
+    }
+
+    #[test]
+    fn observe_flow_honors_continue_and_terminate_else_fails_closed() {
+        assert_eq!(observe_flow(Flow::cont()), None);
+        assert_eq!(
+            observe_flow(Flow::terminate("stop")),
+            Some("stop".to_string())
+        );
+        for flow in [
+            Flow::skip("x"),
+            Flow::fail(),
+            Flow::retry("x"),
+            Flow::repair("x"),
+        ] {
+            let reason = observe_flow(flow.clone()).expect("non-honored flow must terminate");
+            assert!(reason.contains(FAIL_CLOSED), "{flow:?} -> {reason}");
+        }
+    }
+
+    #[test]
+    fn flow_into_tool_call_honors_continue_skip_terminate_else_fails_closed() {
+        assert!(matches!(
+            flow_into_tool_call(Flow::cont()),
+            ToolCallDecision::Proceed
+        ));
+        assert!(matches!(
+            flow_into_tool_call(Flow::skip("nope")),
+            ToolCallDecision::Skip(reason) if reason == "nope"
+        ));
+        assert!(matches!(
+            flow_into_tool_call(Flow::terminate("stop")),
+            ToolCallDecision::Terminate(reason) if reason == "stop"
+        ));
+        for flow in [Flow::fail(), Flow::retry("x"), Flow::repair("x")] {
+            assert!(
+                matches!(
+                    flow_into_tool_call(flow.clone()),
+                    ToolCallDecision::Terminate(reason) if reason.contains(FAIL_CLOSED)
+                ),
+                "{flow:?} must fail closed (never execute the tool)"
+            );
+        }
+    }
+
+    #[test]
+    fn flow_into_invalid_maps_every_variant_without_failing_closed() {
+        use InvalidToolCallHookAction as Action;
+        assert!(matches!(
+            flow_into_invalid(Flow::terminate("stop")),
+            InvalidDecision::Terminate(reason) if reason == "stop"
+        ));
+        // Continue and Fail both preserve the documented fail-fast default.
+        assert!(matches!(
+            flow_into_invalid(Flow::cont()),
+            InvalidDecision::Action(Action::Fail)
+        ));
+        assert!(matches!(
+            flow_into_invalid(Flow::fail()),
+            InvalidDecision::Action(Action::Fail)
+        ));
+        assert!(matches!(
+            flow_into_invalid(Flow::retry("fb")),
+            InvalidDecision::Action(Action::Retry { feedback }) if feedback == "fb"
+        ));
+        assert!(matches!(
+            flow_into_invalid(Flow::repair("add")),
+            InvalidDecision::Action(Action::Repair { tool_name }) if tool_name == "add"
+        ));
+        assert!(matches!(
+            flow_into_invalid(Flow::skip("no")),
+            InvalidDecision::Action(Action::Skip { reason }) if reason == "no"
+        ));
+    }
+
+    /// The resolvers and the declared `StepEventKind::honors` capability cannot
+    /// drift: for every (kind, flow), the resolver fails closed iff the
+    /// capability does not honor the flow.
+    #[test]
+    fn resolvers_agree_with_declared_capability() {
+        let observe_kinds = [
+            StepEventKind::CompletionCall,
+            StepEventKind::CompletionResponse,
+            StepEventKind::ToolResult,
+            StepEventKind::TextDelta,
+            StepEventKind::ToolCallDelta,
+            StepEventKind::StreamResponseFinish,
+        ];
+        for flow in every_flow() {
+            for kind in observe_kinds {
+                let failed_closed =
+                    observe_flow(flow.clone()).is_some_and(|reason| reason.contains(FAIL_CLOSED));
+                assert_eq!(failed_closed, !kind.honors(&flow), "{kind:?} / {flow:?}");
+            }
+            let tool_failed_closed = matches!(
+                flow_into_tool_call(flow.clone()),
+                ToolCallDecision::Terminate(reason) if reason.contains(FAIL_CLOSED)
+            );
+            assert_eq!(
+                tool_failed_closed,
+                !StepEventKind::ToolCall.honors(&flow),
+                "ToolCall / {flow:?}"
+            );
+            // Recovery honors every flow, so flow_into_invalid never fails closed.
+            assert!(StepEventKind::InvalidToolCall.honors(&flow));
+        }
     }
 }

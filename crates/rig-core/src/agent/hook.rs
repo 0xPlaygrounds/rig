@@ -268,6 +268,73 @@ pub enum StepEventKind {
     StreamResponseFinish,
 }
 
+/// The control capability of a [`StepEventKind`]: which [`Flow`] actions the
+/// runner honors when a hook returns one for that event.
+///
+/// This is the **single source of truth** for the event→action relation that the
+/// fail-closed resolvers in [`runner`](crate::agent::runner) enforce. An action
+/// outside an event's capability is a hook misuse: the runner terminates the run
+/// with a diagnostic rather than silently dropping it, so a steering hook can
+/// never fail open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ControlCapability {
+    /// Observe-only: honors `Continue` / `Terminate`.
+    Observe,
+    /// A tool call: honors `Continue` / `Skip` / `Terminate`.
+    ToolCall,
+    /// Invalid tool-call recovery: every `Flow` variant is meaningful
+    /// (`Continue` and `Fail` both mean fail-fast).
+    Recovery,
+}
+
+impl ControlCapability {
+    /// Whether this capability admits `flow`.
+    pub fn honors(self, flow: &Flow) -> bool {
+        match self {
+            Self::Observe => matches!(flow, Flow::Continue | Flow::Terminate { .. }),
+            Self::ToolCall => matches!(
+                flow,
+                Flow::Continue | Flow::Skip { .. } | Flow::Terminate { .. }
+            ),
+            Self::Recovery => true,
+        }
+    }
+
+    /// Human-readable list of honored actions, for fail-closed diagnostics.
+    pub(crate) fn honored(self) -> &'static str {
+        match self {
+            Self::Observe => "Continue/Terminate",
+            Self::ToolCall => "Continue/Skip/Terminate",
+            Self::Recovery => "Continue/Terminate/Fail/Retry/Repair/Skip",
+        }
+    }
+}
+
+impl StepEventKind {
+    /// The [`ControlCapability`] of this event — the `Flow` actions the runner
+    /// honors for it. Single source of truth for the fail-closed resolvers.
+    pub fn capability(self) -> ControlCapability {
+        match self {
+            Self::ToolCall => ControlCapability::ToolCall,
+            Self::InvalidToolCall => ControlCapability::Recovery,
+            Self::CompletionCall
+            | Self::CompletionResponse
+            | Self::ToolResult
+            | Self::TextDelta
+            | Self::ToolCallDelta
+            | Self::StreamResponseFinish => ControlCapability::Observe,
+        }
+    }
+
+    /// Whether the runner honors `flow` for this event kind (see
+    /// [`capability`](Self::capability)). Lets a hook validate its intended
+    /// [`Flow`] against the event before returning it.
+    pub fn honors(self, flow: &Flow) -> bool {
+        self.capability().honors(flow)
+    }
+}
+
 impl<M: CompletionModel> StepEvent<'_, M> {
     /// The [`StepEventKind`] discriminant of this event.
     pub fn kind(&self) -> StepEventKind {
@@ -576,7 +643,7 @@ where
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use super::{AgentHook, Flow, HookStack, StepEvent, StepEventKind};
+    use super::{AgentHook, ControlCapability, Flow, HookStack, StepEvent, StepEventKind};
     use crate::test_utils::MockCompletionModel;
 
     type M = MockCompletionModel;
@@ -690,5 +757,62 @@ mod tests {
             stack.on_event(tool_call_event()).await,
             Flow::Continue
         ));
+    }
+
+    /// Every event kind maps to its documented control capability.
+    #[test]
+    fn capability_table_is_correct() {
+        use StepEventKind::*;
+        assert_eq!(ToolCall.capability(), ControlCapability::ToolCall);
+        assert_eq!(InvalidToolCall.capability(), ControlCapability::Recovery);
+        for kind in [
+            CompletionCall,
+            CompletionResponse,
+            ToolResult,
+            TextDelta,
+            ToolCallDelta,
+            StreamResponseFinish,
+        ] {
+            assert_eq!(kind.capability(), ControlCapability::Observe, "{kind:?}");
+        }
+    }
+
+    fn every_flow() -> [Flow; 6] {
+        [
+            Flow::cont(),
+            Flow::terminate("stop"),
+            Flow::skip("skip"),
+            Flow::fail(),
+            Flow::retry("feedback"),
+            Flow::repair("add"),
+        ]
+    }
+
+    /// `honors` follows the capability: observe-only events admit only
+    /// Continue/Terminate, a tool call additionally admits Skip, and invalid
+    /// tool-call recovery admits every variant.
+    #[test]
+    fn honors_follows_capability() {
+        for flow in every_flow() {
+            let is_continue_or_terminate = matches!(flow, Flow::Continue | Flow::Terminate { .. });
+            assert_eq!(
+                StepEventKind::CompletionResponse.honors(&flow),
+                is_continue_or_terminate,
+                "observe {flow:?}"
+            );
+            let is_tool_call_admissible = matches!(
+                flow,
+                Flow::Continue | Flow::Skip { .. } | Flow::Terminate { .. }
+            );
+            assert_eq!(
+                StepEventKind::ToolCall.honors(&flow),
+                is_tool_call_admissible,
+                "tool call {flow:?}"
+            );
+            assert!(
+                StepEventKind::InvalidToolCall.honors(&flow),
+                "recovery honors all: {flow:?}"
+            );
+        }
     }
 }
