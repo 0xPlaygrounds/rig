@@ -1106,7 +1106,8 @@ where
                                         StreamingItemDoneOutput { item: responses_api::Output::Message(msg), .. } => {
                                             yield Ok(RawStreamingChoice::MessageId(msg.id.clone()));
                                         }
-                                        StreamingItemDoneOutput { item: responses_api::Output::Unknown, .. } => {}
+                                        // Preserved `Unknown` payload has no streaming choice to carry it yet; dropped intentionally (see issue #1861).
+                                        StreamingItemDoneOutput { item: responses_api::Output::Unknown(_), .. } => {}
                                     },
                                     ItemChunkKind::OutputTextDelta(delta) => {
                                         yield Ok(RawStreamingChoice::Message(delta.delta.clone()))

@@ -344,7 +344,11 @@ impl RawChoiceAccumulator {
             Output::Message(message) => {
                 immediate.push(streaming::RawStreamingChoice::MessageId(message.id));
             }
-            Output::Unknown => {}
+            // The preserved `Unknown` payload is reachable on the non-streaming
+            // `CompletionResponse.output`, but there is no streaming choice to
+            // carry it yet, so it is intentionally dropped here (surfacing it is
+            // a separate seam — see issue #1861).
+            Output::Unknown(_) => {}
         }
     }
 
