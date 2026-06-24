@@ -62,6 +62,7 @@ use crate::{
 /// model emits a tool call that Rig would reject before normal tool-call
 /// handling or execution.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct InvalidToolCallContext {
     /// Tool name emitted by the model.
     pub tool_name: String,
@@ -152,7 +153,7 @@ pub enum StepEvent<'a, M: CompletionModel> {
         turn: usize,
     },
     /// After a non-streaming completion response is received. Suppressed for
-    /// turns recovered by invalid tool-call repair/skip. Honors
+    /// turns recovered by invalid tool-call repair, skip, or retry. Honors
     /// [`Flow::Continue`] and [`Flow::Terminate`].
     CompletionResponse {
         /// The prompt message for this turn.
@@ -217,7 +218,10 @@ pub enum StepEvent<'a, M: CompletionModel> {
     /// Streaming only: the provider finished streaming a completion response.
     /// This is the streaming counterpart of [`CompletionResponse`](Self::CompletionResponse)
     /// and, like it, is suppressed for turns recovered by invalid tool-call
-    /// repair. Honors [`Flow::Continue`] and [`Flow::Terminate`].
+    /// repair, skip, or retry. Note one medium-specific difference from
+    /// `CompletionResponse`: it fires only on turns that streamed assistant
+    /// **text** — a turn that emits only a tool call (or only reasoning) does
+    /// not fire it. Honors [`Flow::Continue`] and [`Flow::Terminate`].
     StreamResponseFinish {
         /// The prompt message for this turn.
         prompt: &'a Message,

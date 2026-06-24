@@ -249,8 +249,11 @@ where
     /// `concurrency > 1` the tools run in parallel, so a `ToolCall`/`ToolResult`
     /// **hook may fire in completion order** rather than call order — the
     /// per-tool side effects interleave even though the final history does not.
+    ///
+    /// A `concurrency` of 0 is clamped to 1: `buffered(0)` never makes progress,
+    /// so it would otherwise hang the run the first time the model calls a tool.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.concurrency = concurrency;
+        self.concurrency = concurrency.max(1);
         self
     }
 

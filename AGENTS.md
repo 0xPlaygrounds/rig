@@ -134,19 +134,24 @@ Return `VectorStoreError` variants instead of ad hoc string errors.
 
 Use `WasmCompatSend` and `WasmCompatSync` bounds.
 
-## Prompt Hook Changes
+## Agent Hook Changes
 
-Prompt hooks are per-request lifecycle hooks.
+Agent hooks are per-run lifecycle observers: a single
+`AgentHook<M>::on_event(StepEvent) -> Flow` method, composed in registration
+order via `HookStack` (the first hook to return a non-`Continue` `Flow`
+short-circuits the rest).
 
-When modifying hook behavior, preserve the intended control flow:
+When modifying hook behavior, preserve the intended control flow. `Flow` is
+**fail-closed** — an action an event cannot honor terminates the run rather than
+silently proceeding:
 
-- `HookAction::Continue`
-- `HookAction::Terminate`
-- `ToolCallHookAction::Continue`
-- `ToolCallHookAction::Skip`
-- `ToolCallHookAction::Terminate`
+- `Flow::Continue` (observe only)
+- `Flow::Terminate`
+- `Flow::Skip` (tool call / invalid tool call only)
+- `Flow::Fail` / `Flow::Retry` / `Flow::Repair` (invalid tool call only)
 
-Check both streaming and non-streaming paths.
+Check both streaming and non-streaming paths (`AgentRunner::stream` and
+`AgentRunner::run` share one drive loop).
 
 ## Style
 

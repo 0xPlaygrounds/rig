@@ -224,9 +224,12 @@ fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
 /// call (a real tool call would have routed to `CallTools`, not `Done`). In that
 /// case the tool call AND the model's prose are dropped, any reasoning/image
 /// content is kept, and `output` is appended as the final text — so the streamed
-/// `response()` is the structured output rather than the prose, with no
-/// unanswered tool_use, matching the non-streaming result. Otherwise returns
-/// `None` and the caller surfaces the turn's content unchanged.
+/// `response()` string is the structured output rather than the prose, with no
+/// unanswered tool_use, matching the non-streaming `output`. Note this shapes
+/// only the surfaced `FinalResponse.content()`; the persisted message history is
+/// built by the state machine (which keeps the prose, like the blocking driver),
+/// so `content()` and `history()` intentionally differ on prose in this case.
+/// Otherwise returns `None` and the caller surfaces the turn's content unchanged.
 fn finalize_streamed_choice(
     last_final_choice: &OneOrMany<AssistantContent>,
     output: &str,
@@ -432,7 +435,9 @@ where
                         let stream = async_stream::stream! {
                             yield Err(StreamingError::from(err));
                         };
-                        return Box::pin(stream);
+                        // Instrument under the agent span like the success path
+                        // (line ~995) so a load failure stays tied to invoke_agent.
+                        return Box::pin(stream.instrument(agent_span));
                     }
                 },
                 _ => (None, None),
