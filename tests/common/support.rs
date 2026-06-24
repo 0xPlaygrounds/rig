@@ -514,6 +514,9 @@ pub(crate) async fn collect_stream_observation<R>(
                 StreamedAssistantContent::Final(_) => {
                     observation.events.push("stream_final");
                 }
+                StreamedAssistantContent::Unknown(_) => {
+                    observation.events.push("unknown");
+                }
             },
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 observation.tool_results += 1;
@@ -571,6 +574,9 @@ where
             Ok(StreamedAssistantContent::Final(_)) => {
                 observation.got_final = true;
                 observation.events.push("final");
+            }
+            Ok(StreamedAssistantContent::Unknown(_)) => {
+                observation.events.push("unknown");
             }
             Err(error) => {
                 observation.errors.push(error.to_string());

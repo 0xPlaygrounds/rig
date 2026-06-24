@@ -132,6 +132,14 @@ where
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Captured silently into `StreamingCompletionResponse::message_id`.
     MessageId(String),
+
+    /// A provider-native output item this version does not model — e.g. an
+    /// OpenAI Responses hosted-tool result (`web_search_call`, `file_search_call`,
+    /// `computer_call`, `code_interpreter_call`). Carries the raw item object
+    /// verbatim. Forwarded to the stream consumer as
+    /// [`StreamedAssistantContent::Unknown`] but not folded into the accumulated
+    /// assistant message (there is no `AssistantContent::Unknown` history slot).
+    Unknown(serde_json::Value),
 }
 
 /// Describes a streaming tool call response (in its entirety)
@@ -524,6 +532,12 @@ where
                     stream.message_id = Some(id);
                     stream.poll_next_unpin(cx)
                 }
+                RawStreamingChoice::Unknown(value) => {
+                    // Pass an unmodeled provider item straight through to the
+                    // consumer; it is intentionally not pushed into
+                    // `assistant_items` (no `AssistantContent::Unknown` exists).
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
+                }
             },
         }
     }
@@ -864,6 +878,10 @@ mod tests {
                     println!("Reasoning delta: {reasoning}");
                     chunk_count += 1;
                 }
+                Ok(StreamedAssistantContent::Unknown(value)) => {
+                    println!("\nUnknown item: {value:?}");
+                    chunk_count += 1;
+                }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
                     break;
@@ -1044,6 +1062,14 @@ pub enum StreamedAssistantContent<R> {
     },
     /// Final provider response object, if yielded by the provider stream.
     Final(R),
+    /// A provider-native output item rig does not model, preserved verbatim —
+    /// e.g. an OpenAI Responses hosted-tool result (`web_search_call`,
+    /// `file_search_call`, `computer_call`, `code_interpreter_call`). It is
+    /// yielded to the consumer for inspection/forwarding but is not added to the
+    /// accumulated assistant message or persisted history. Kept last because the
+    /// enum is `#[serde(untagged)]` and a raw [`Value`](serde_json::Value)
+    /// matches anything, so earlier (typed) variants must be tried first.
+    Unknown(serde_json::Value),
 }
 
 impl<R> StreamedAssistantContent<R>

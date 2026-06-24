@@ -447,6 +447,9 @@ pub(crate) async fn collect_stream_stats<R>(
                 StreamedAssistantContent::Final(_) => {
                     stats.events.push("final");
                 }
+                StreamedAssistantContent::Unknown(_) => {
+                    stats.events.push("unknown");
+                }
             },
             Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
                 StreamedUserContent::ToolResult { .. } => {

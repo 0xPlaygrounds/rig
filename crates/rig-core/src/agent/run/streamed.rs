@@ -473,6 +473,13 @@ impl StreamedTurnAssembler {
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
             }
+            StreamedAssistantContent::Unknown(_) => {
+                // Unmodeled provider item (e.g. a hosted-tool result): forward it
+                // to the consumer but do not fold it into the accumulated
+                // assistant message — there is no `AssistantContent::Unknown`, and
+                // it must not perturb text/tool-call/reasoning accumulation.
+                Ok(vec![StreamedTurnEvent::EmitIngested])
+            }
         }
     }
 
