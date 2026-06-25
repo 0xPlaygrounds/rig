@@ -15,10 +15,9 @@ use crate::support::{
     Subtract, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
     assert_raw_stream_contains_distinct_tool_calls_before_text, assert_raw_stream_text_contains,
     assert_raw_stream_tool_call_arguments_are_objects, assert_raw_stream_tool_call_precedes_text,
-    assert_stream_contains_zero_arg_tool_call_named,
-    assert_tool_call_precedes_later_text, assert_two_tool_roundtrip_contract,
-    collect_raw_stream_observation, collect_stream_final_response, collect_stream_observation,
-    zero_arg_tool_definition,
+    assert_stream_contains_zero_arg_tool_call_named, assert_tool_call_precedes_later_text,
+    assert_two_tool_roundtrip_contract, collect_raw_stream_observation,
+    collect_stream_final_response, collect_stream_observation, zero_arg_tool_definition,
 };
 
 fn non_thinking_params() -> serde_json::Value {
