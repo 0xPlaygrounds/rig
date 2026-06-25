@@ -132,6 +132,14 @@ where
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Captured silently into `StreamingCompletionResponse::message_id`.
     MessageId(String),
+
+    /// A provider-native output item this version does not model — e.g. an
+    /// OpenAI Responses hosted-tool result (`web_search_call`, `file_search_call`,
+    /// `computer_call`, `code_interpreter_call`). Carries the raw item object
+    /// verbatim. Forwarded to the stream consumer as
+    /// [`StreamedAssistantContent::Unknown`] but not folded into the accumulated
+    /// assistant message (there is no `AssistantContent::Unknown` history slot).
+    Unknown(serde_json::Value),
 }
 
 /// Describes a streaming tool call response (in its entirety)
@@ -524,6 +532,12 @@ where
                     stream.message_id = Some(id);
                     stream.poll_next_unpin(cx)
                 }
+                RawStreamingChoice::Unknown(value) => {
+                    // Pass an unmodeled provider item straight through to the
+                    // consumer; it is intentionally not pushed into
+                    // `assistant_items` (no `AssistantContent::Unknown` exists).
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
+                }
             },
         }
     }
@@ -864,6 +878,10 @@ mod tests {
                     println!("Reasoning delta: {reasoning}");
                     chunk_count += 1;
                 }
+                Ok(StreamedAssistantContent::Unknown(value)) => {
+                    println!("\nUnknown item: {value:?}");
+                    chunk_count += 1;
+                }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
                     break;
@@ -956,6 +974,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_choice_reaches_consumer_but_not_aggregated_choice() {
+        let unknown = serde_json::json!({
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+        });
+        let yielded = unknown.clone();
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Unknown(yielded));
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(1)));
+        };
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream));
+
+        let mut consumer_unknown = None;
+        let mut consumer_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Unknown(value) => consumer_unknown = Some(value),
+                StreamedAssistantContent::Text(text) => consumer_text.push_str(&text.text),
+                _ => {}
+            }
+        }
+
+        // The consumer receives the unmodeled item verbatim ...
+        assert_eq!(consumer_unknown.as_ref(), Some(&unknown));
+        assert_eq!(consumer_text, "done");
+
+        // ... but it is structurally absent from the aggregated assistant choice
+        // (the sole source of persisted history): only the text item remains.
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 1);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Text(Text { text, .. })) if text == "done"
+        ));
+    }
+
+    #[tokio::test]
     async fn test_stream_keeps_non_contiguous_text_chunks_split_by_tool_call() {
         let mut stream = create_text_tool_text_stream();
         while stream.next().await.is_some() {}
@@ -1044,6 +1101,14 @@ pub enum StreamedAssistantContent<R> {
     },
     /// Final provider response object, if yielded by the provider stream.
     Final(R),
+    /// A provider-native output item rig does not model, preserved verbatim —
+    /// e.g. an OpenAI Responses hosted-tool result (`web_search_call`,
+    /// `file_search_call`, `computer_call`, `code_interpreter_call`). It is
+    /// yielded to the consumer for inspection/forwarding but is not added to the
+    /// accumulated assistant message or persisted history. Kept last because the
+    /// enum is `#[serde(untagged)]` and a raw [`Value`](serde_json::Value)
+    /// matches anything, so earlier (typed) variants must be tried first.
+    Unknown(serde_json::Value),
 }
 
 impl<R> StreamedAssistantContent<R>

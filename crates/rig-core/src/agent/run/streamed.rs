@@ -473,6 +473,13 @@ impl StreamedTurnAssembler {
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
             }
+            StreamedAssistantContent::Unknown(_) => {
+                // Unmodeled provider item (e.g. a hosted-tool result): forward it
+                // to the consumer but do not fold it into the accumulated
+                // assistant message — there is no `AssistantContent::Unknown`, and
+                // it must not perturb text/tool-call/reasoning accumulation.
+                Ok(vec![StreamedTurnEvent::EmitIngested])
+            }
         }
     }
 
@@ -735,6 +742,27 @@ mod tests {
         ));
         asm.ingest(&text_item("lo")).expect("ingest should succeed");
         assert_eq!(asm.aggregated_text(), "hello");
+    }
+
+    #[test]
+    fn unknown_item_emits_to_consumer_without_touching_accumulation() {
+        let mut asm = assembler();
+        asm.ingest(&text_item("answer"))
+            .expect("ingest text should succeed");
+
+        let events = asm
+            .ingest(&StreamedAssistantContent::<MockResponse>::Unknown(
+                json!({ "type": "web_search_call", "id": "ws_1" }),
+            ))
+            .expect("ingest unknown should succeed");
+
+        // The unmodeled item is forwarded to the consumer ...
+        assert!(matches!(
+            events.as_slice(),
+            [StreamedTurnEvent::EmitIngested]
+        ));
+        // ... but perturbs no accumulation state used to build the assistant message.
+        assert_eq!(asm.aggregated_text(), "answer");
     }
 
     #[test]

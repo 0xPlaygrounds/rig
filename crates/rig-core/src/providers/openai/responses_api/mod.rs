@@ -1323,7 +1323,7 @@ pub enum Include {
 /// A modeled output item from the OpenAI Responses API.
 ///
 /// Unrecognized output items — notably provider-native hosted tools such as
-/// `web_search_call`, `file_search_call`, `computer_use_call`, and
+/// `web_search_call`, `file_search_call`, `computer_call`, and
 /// `code_interpreter_call` — decode to [`Output::Unknown`], which preserves
 /// the verbatim item object so callers can inspect or forward it. This keeps
 /// unknown item types from breaking deserialization of the entire
@@ -3092,6 +3092,49 @@ mod tests {
             serde_json::from_value(value).expect("reasoning should deserialize");
 
         assert_eq!(round_tripped, original);
+    }
+
+    #[test]
+    fn output_reasoning_none_optionals_serialize_as_explicit_null() {
+        // Wire-anchored complement to the round-trip test: with `None`
+        // optionals, the keys must still be emitted as explicit `null` (the
+        // derived behavior this hand-written serde replaced has no
+        // `skip_serializing_if`). Guards against a future refactor silently
+        // dropping the keys and changing the wire shape.
+        let value = serde_json::to_value(Output::Reasoning {
+            id: "reasoning_1".to_string(),
+            summary: vec![],
+            encrypted_content: None,
+            status: None,
+        })
+        .expect("reasoning should serialize");
+
+        assert_eq!(value["type"], "reasoning");
+        assert_eq!(value["encrypted_content"], Value::Null);
+        assert_eq!(value["status"], Value::Null);
+        assert!(value.get("encrypted_content").is_some());
+        assert!(value.get("status").is_some());
+    }
+
+    #[test]
+    fn output_message_round_trips_value_equal() {
+        // Wire-anchored serialize check for the `message` arm (only
+        // `function_call` was anchored): a decoded message item re-serializes
+        // value-equal to the input, tag included.
+        let item = json!({
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "status": "completed",
+            "content": [ { "type": "output_text", "text": "hello", "annotations": [] } ],
+        });
+
+        let output: Output =
+            serde_json::from_value(item.clone()).expect("message item should deserialize");
+        assert!(matches!(output, Output::Message(_)));
+
+        let serialized = serde_json::to_value(&output).expect("message should serialize");
+        assert_eq!(serialized, item);
     }
 
     #[test]
