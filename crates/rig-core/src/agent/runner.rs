@@ -30,7 +30,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use futures::{StreamExt, stream};
+use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
@@ -255,17 +255,24 @@ where
         self
     }
 
-    /// Execute up to `concurrency` tools at once (1 by default). Only affects
-    /// the blocking [`run`](Self::run) path (streaming executes tools
-    /// sequentially).
+    /// Execute up to `concurrency` tools at once (1 by default). Applies to
+    /// **both** the blocking [`run`](Self::run) and the streaming
+    /// [`stream`](Self::stream) paths.
     ///
     /// The resulting tool-result **order — and so the message history — is the
-    /// same** in both paths regardless of `concurrency` (`run()` collects with
+    /// same** in both paths regardless of `concurrency` (both collect with
     /// `buffered`, which preserves tool-call order). At the default
     /// `concurrency` of 1 the two paths are fully in lock-step; with
     /// `concurrency > 1` the tools run in parallel, so a `ToolCall`/`ToolResult`
     /// **hook may fire in completion order** rather than call order — the
     /// per-tool side effects interleave even though the final history does not.
+    ///
+    /// For the streaming path there is one additional caveat: at `concurrency >
+    /// 1` the driver emits *all* of a turn's `ToolCall` stream items eagerly (in
+    /// call order) and *then* the `ToolResult` items (also in call order),
+    /// rather than strictly interleaving one `ToolCall`/`ToolResult` pair per
+    /// tool as the sequential default does. The persisted message history is
+    /// unchanged.
     ///
     /// A `concurrency` of 0 is clamped to 1: `buffered(0)` never makes progress,
     /// so it would otherwise hang the run the first time the model calls a tool.
@@ -434,6 +441,81 @@ where
         tool_call.call_id.clone(),
         output,
     ))
+}
+
+/// Build the per-tool `execute_tool` span carrying the `gen_ai.tool.*` fields
+/// that [`run_single_tool`] records on the current span. Parented to the
+/// contextual current span; the blocking driver additionally chains it via
+/// `follows_from`, while the streaming driver uses it as-is. Shared by both
+/// drivers so the span shape stays defined in one place.
+pub(crate) fn new_execute_tool_span() -> tracing::Span {
+    info_span!(
+        "execute_tool",
+        gen_ai.operation.name = "execute_tool",
+        gen_ai.tool.type = "function",
+        gen_ai.tool.name = tracing::field::Empty,
+        gen_ai.tool.call.id = tracing::field::Empty,
+        gen_ai.tool.call.arguments = tracing::field::Empty,
+        gen_ai.tool.call.result = tracing::field::Empty
+    )
+}
+
+/// Execute a turn's tool calls with up to `concurrency` running at once,
+/// yielding each result **in tool-call (emission) order**.
+///
+/// Uses `buffered` (not `buffer_unordered`), so results land in call order
+/// regardless of `concurrency` — the resulting message history is identical at
+/// any `concurrency` and matches the streaming driver. Each call runs inside its
+/// paired span (built by the caller so the blocking and streaming drivers keep
+/// their own span-linking strategy); pre-resolved calls — those suppressed by
+/// invalid tool-call recovery — return their stored result without executing.
+/// Shared by the blocking [`run`](AgentRunner::run) and the concurrent streaming
+/// driver, both of which run a tool call through the same [`run_single_tool`].
+pub(crate) fn execute_tools_buffered<'a, M>(
+    hooks: &'a HookStack<M>,
+    tool_server: &'a ToolServerHandle,
+    tool_extensions: &'a ToolCallExtensions,
+    calls: Vec<(PendingToolCall, tracing::Span)>,
+    error_history: &'a [Message],
+    concurrency: usize,
+) -> impl Stream<Item = Result<UserContent, PromptError>> + 'a
+where
+    M: CompletionModel,
+{
+    stream::iter(calls)
+        .map(move |(pending, tool_span)| {
+            async move {
+                let PendingToolCall {
+                    tool_call,
+                    preresolved_result,
+                    internal_call_id,
+                } = pending;
+                // Tool calls suppressed by invalid tool-call recovery come
+                // pre-resolved and must not execute.
+                if let Some(result) = preresolved_result {
+                    return Ok(result);
+                }
+                // Reuse the call's correlation id when it arrived via a streamed
+                // turn (so the blocking driver keeps the ids a consumer already
+                // saw), otherwise mint a fresh one — matching the prior
+                // always-fresh blocking behavior when none is present.
+                let internal_call_id = internal_call_id.unwrap_or_else(crate::id::generate);
+                run_single_tool(
+                    hooks,
+                    tool_server,
+                    tool_extensions,
+                    &tool_call,
+                    &internal_call_id,
+                    error_history,
+                )
+                .await
+            }
+            .instrument(tool_span)
+        })
+        // `buffered` (not `buffer_unordered`) so results land in tool-call
+        // emission order — matching the streaming driver's order, so both
+        // produce the same message history even at concurrency > 1.
+        .buffered(concurrency)
 }
 
 impl<M> AgentRunner<M>
@@ -627,17 +709,12 @@ where
                     let full_history_for_errors = run.full_history();
                     let error_history: &[Message] = &full_history_for_errors;
 
-                    let tool_content = stream::iter(calls)
+                    // Build a `follows_from`-chained span per call, in call order,
+                    // then hand the calls to the shared buffered executor.
+                    let calls_with_spans: Vec<(PendingToolCall, tracing::Span)> = calls
+                        .into_iter()
                         .map(|pending| {
-                            let tool_span = info_span!(
-                                "execute_tool",
-                                gen_ai.operation.name = "execute_tool",
-                                gen_ai.tool.type = "function",
-                                gen_ai.tool.name = tracing::field::Empty,
-                                gen_ai.tool.call.id = tracing::field::Empty,
-                                gen_ai.tool.call.arguments = tracing::field::Empty,
-                                gen_ai.tool.call.result = tracing::field::Empty
-                            );
+                            let tool_span = new_execute_tool_span();
 
                             let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
                                 let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
@@ -650,39 +727,22 @@ where
                                 current_span_id.store(id.into_u64(), Ordering::SeqCst);
                             };
 
-                            async move {
-                                let PendingToolCall {
-                                    tool_call,
-                                    preresolved_result,
-                                    ..
-                                } = pending;
-                                // Tool calls suppressed by invalid tool-call
-                                // recovery come pre-resolved and must not execute.
-                                if let Some(result) = preresolved_result {
-                                    return Ok(result);
-                                }
-                                let internal_call_id = crate::id::generate();
-                                run_single_tool(
-                                    hooks,
-                                    tool_server,
-                                    tool_extensions,
-                                    &tool_call,
-                                    &internal_call_id,
-                                    error_history,
-                                )
-                                .await
-                            }
-                            .instrument(tool_span)
+                            (pending, tool_span)
                         })
-                        // `buffered` (not `buffer_unordered`) so results land in
-                        // tool-call emission order — matching the streaming
-                        // driver's sequential order, so both produce the same
-                        // message history even at concurrency > 1.
-                        .buffered(self.concurrency)
-                        .collect::<Vec<Result<UserContent, PromptError>>>()
-                        .await
-                        .into_iter()
-                        .collect::<Result<Vec<_>, _>>()?;
+                        .collect();
+
+                    let tool_content = execute_tools_buffered(
+                        hooks,
+                        tool_server,
+                        tool_extensions,
+                        calls_with_spans,
+                        error_history,
+                        self.concurrency,
+                    )
+                    .collect::<Vec<Result<UserContent, PromptError>>>()
+                    .await
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>()?;
 
                     run.tool_results(tool_content)?;
                 }
@@ -740,12 +800,13 @@ mod tests {
 
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, Flow, StepEvent, StepEventKind};
-    use crate::agent::prompt_request::streaming::MultiTurnStreamItem;
+    use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::completion::{CompletionModel, Message, PromptError, ToolDefinition};
     use crate::message::{AssistantContent, ToolCall, ToolFunction, UserContent};
+    use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
     use crate::test_utils::{
-        MockAddTool, MockCompletionModel, MockOperationArgs, MockStreamEvent, MockToolError,
-        MockTurn,
+        MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
+        MockToolError, MockTurn,
     };
     use crate::tool::Tool;
 
@@ -1070,6 +1131,372 @@ mod tests {
             .collect();
         // Call order (tc1 then tc2), even though tc2 finished first.
         assert_eq!(result_ids, vec!["tc1".to_string(), "tc2".to_string()]);
+    }
+
+    /// Drive a stream to completion, panicking on any stream error, and return
+    /// its final response.
+    async fn drive_to_final_response<R: Send + 'static>(
+        mut stream: crate::agent::prompt_request::streaming::StreamingResult<R>,
+    ) -> crate::agent::prompt_request::streaming::FinalResponse {
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(resp) =
+                item.unwrap_or_else(|err| panic!("stream item errored: {err}"))
+            {
+                final_response = Some(resp);
+            }
+        }
+        final_response.expect("stream should yield a final response")
+    }
+
+    /// Tool-result ids, in history order, across a run's message history.
+    fn tool_result_ids(messages: &[Message]) -> Vec<String> {
+        messages
+            .iter()
+            .flat_map(|message| match message {
+                Message::User { content } => content
+                    .iter()
+                    .filter_map(|item| match item {
+                        UserContent::ToolResult(result) => Some(result.id.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    /// The streaming driver under `tool_concurrency > 1` produces the **same
+    /// message history** as the blocking driver: both collect with `buffered`,
+    /// which preserves tool-call order, so concurrency never reorders the
+    /// persisted results.
+    #[tokio::test]
+    async fn stream_and_run_same_message_history_for_parallel_tool_calls_under_concurrency() {
+        let blocking_model = MockCompletionModel::from_turns([
+            MockTurn::from_contents([
+                tool_call_content("tc1", json!({"x": 2, "y": 3})),
+                tool_call_content("tc2", json!({"x": 10, "y": 20})),
+            ])
+            .expect("two tool calls is a valid turn"),
+            MockTurn::text("done"),
+        ]);
+        let blocking = AgentBuilder::new(blocking_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add two pairs")
+            .max_turns(3)
+            .tool_concurrency(4)
+            .run()
+            .await
+            .expect("blocking run should succeed");
+
+        let streaming_model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 10, "y": 20})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let stream = AgentBuilder::new(streaming_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add two pairs")
+            .max_turns(3)
+            .tool_concurrency(4)
+            .stream()
+            .await;
+        let final_response = drive_to_final_response(stream).await;
+
+        let blocking_messages = blocking.messages.expect("blocking messages");
+        let streaming_messages = final_response
+            .history()
+            .expect("streaming history")
+            .to_vec();
+        assert_eq!(
+            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
+            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        );
+    }
+
+    /// The streaming driver under concurrency surfaces tool results in **call
+    /// order** even when tools complete out of order — `buffered`, like the
+    /// blocking path. `OutOfOrderTool`'s first-called invocation only finishes
+    /// once the second runs, so this also proves the tools run concurrently:
+    /// sequential execution would deadlock on the first call.
+    #[tokio::test]
+    async fn stream_preserves_tool_call_order_under_out_of_order_completion() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 0})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 0})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let stream = AgentBuilder::new(model)
+            .tool(OutOfOrderTool {
+                gate: Arc::new(tokio::sync::Notify::new()),
+                order: Arc::new(AtomicU32::new(0)),
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .tool_concurrency(4)
+            .stream()
+            .await;
+        // Timeout so a regression to sequential execution fails cleanly instead
+        // of hanging (the first call only completes once the second runs).
+        let final_response = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            drive_to_final_response(stream),
+        )
+        .await
+        .expect("streamed tools must run concurrently, not deadlock on the first call");
+
+        let messages = final_response.history().expect("history").to_vec();
+        // Call order (tc1 then tc2), even though tc2 finished first.
+        assert_eq!(
+            tool_result_ids(&messages),
+            vec!["tc1".to_string(), "tc2".to_string()]
+        );
+    }
+
+    /// Two barrier-synchronized tools in one streamed turn finish only if they
+    /// run concurrently — each waits at the barrier for the other. At
+    /// `tool_concurrency(2)` the streamed turn completes; sequential execution
+    /// would block on the first call forever, so the timeout asserts genuine
+    /// concurrency on the streaming path.
+    #[tokio::test]
+    async fn stream_executes_tools_concurrently_under_concurrency() {
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("b1", "barrier_tool", json!({})),
+                MockStreamEvent::tool_call("b2", "barrier_tool", json!({})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let stream = AgentBuilder::new(model)
+            .tool(MockBarrierTool::new(barrier))
+            .build()
+            .runner("hit the barrier twice")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .stream()
+            .await;
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            drive_to_final_response(stream),
+        )
+        .await
+        .expect("streamed tools must run concurrently, not deadlock at the barrier");
+    }
+
+    /// The documented stream-item ordering: at `tool_concurrency > 1` the
+    /// streaming driver emits *all* of a turn's `ToolCall` items first (call
+    /// order) and *then* the `ToolResult`s, whereas the sequential default
+    /// strictly interleaves one pair per tool. (Both persist the same history —
+    /// covered above.)
+    #[tokio::test]
+    async fn stream_concurrent_emits_all_tool_calls_before_results() {
+        async fn markers(concurrency: usize) -> Vec<&'static str> {
+            let model = MockCompletionModel::from_stream_turns([
+                vec![
+                    MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
+                    MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 2})),
+                    MockStreamEvent::final_response_with_total_tokens(0),
+                ],
+                vec![
+                    MockStreamEvent::text("done"),
+                    MockStreamEvent::final_response_with_total_tokens(0),
+                ],
+            ]);
+            let mut stream = AgentBuilder::new(model)
+                .tool(MockAddTool)
+                .build()
+                .runner("add two pairs")
+                .max_turns(3)
+                .tool_concurrency(concurrency)
+                .stream()
+                .await;
+            let mut markers = Vec::new();
+            while let Some(item) = stream.next().await {
+                match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
+                    MultiTurnStreamItem::StreamAssistantItem(
+                        StreamedAssistantContent::ToolCall { .. },
+                    ) => markers.push("call"),
+                    MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                        ..
+                    }) => markers.push("result"),
+                    _ => {}
+                }
+            }
+            markers
+        }
+
+        // Sequential default: one pair per tool, interleaved.
+        assert_eq!(markers(1).await, vec!["call", "result", "call", "result"]);
+        // Concurrent: all calls first, then all results.
+        assert_eq!(markers(4).await, vec!["call", "call", "result", "result"]);
+    }
+
+    /// A hook that terminates the run the first time it observes a tool result.
+    struct TerminateOnToolResultHook;
+    impl<M: CompletionModel> AgentHook<M> for TerminateOnToolResultHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolResult { .. } = event {
+                Flow::terminate("stop after a tool result")
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    /// A probe tool for the concurrent error path: records how many calls
+    /// `started` and how many `completed`. The call whose `x` argument is 2
+    /// suspends across several polls *after* recording `started` but *before*
+    /// recording `completed`, so it is still in flight when the (fast) first
+    /// call's result terminates the run. A driver that **drains** the buffered
+    /// stream polls it to completion (`completed == 2`); one that **cancels**
+    /// in-flight siblings on error would drop it mid-poll (`completed == 1`).
+    #[derive(Clone)]
+    struct DrainProbeTool {
+        started: Arc<AtomicU32>,
+        completed: Arc<AtomicU32>,
+    }
+
+    impl Tool for DrainProbeTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = serde_json::Value;
+        type Output = i32;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            MockAddTool.definition(String::new()).await
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.started.fetch_add(1, SeqCst);
+            if args.get("x").and_then(serde_json::Value::as_i64) == Some(2) {
+                // Stay pending across several polls so this sibling is still
+                // executing when the first call's ToolResult terminates the
+                // run; only a draining driver keeps polling it to completion.
+                for _ in 0..8 {
+                    tokio::task::yield_now().await;
+                }
+            }
+            self.completed.fetch_add(1, SeqCst);
+            Ok(0)
+        }
+    }
+
+    /// On the concurrent streaming path, a hook that terminates from a tool
+    /// result surfaces a `StreamingError` and ends the run with no final
+    /// response. And, like the blocking driver, every tool already dispatched
+    /// under `tool_concurrency` still runs to completion: the driver **drains**
+    /// the buffered stream on error rather than cancelling in-flight siblings.
+    /// The slow sibling (`x == 2`) is still pending when the fast call (`tc1`,
+    /// the buffered head) terminates the run, so `completed == 2` holds only if
+    /// the driver drains it — a cancelling driver would leave `completed == 1`.
+    #[tokio::test]
+    async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
+        let started = Arc::new(AtomicU32::new(0));
+        let completed = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(DrainProbeTool {
+                started: started.clone(),
+                completed: completed.clone(),
+            })
+            .build()
+            .runner("add two pairs")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .add_hook(TerminateOnToolResultHook)
+            .stream()
+            .await;
+
+        let (saw_error, saw_final_response) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+                let mut saw_error = false;
+                let mut saw_final_response = false;
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
+                        Ok(_) => {}
+                        Err(StreamingError::Prompt(_)) => saw_error = true,
+                        Err(other) => panic!("unexpected streaming error: {other}"),
+                    }
+                }
+                (saw_error, saw_final_response)
+            })
+            .await
+            .expect("draining the concurrent tools must not hang");
+
+        assert!(
+            saw_error,
+            "a terminate hook on the concurrent path must surface a StreamingError::Prompt"
+        );
+        assert!(
+            !saw_final_response,
+            "a terminated run must not yield a final response"
+        );
+        // Both tools were dispatched, and — crucially — both ran to completion:
+        // the slow sibling finished under drain rather than being cancelled when
+        // the fast call terminated the run (cancel would leave completed == 1).
+        assert_eq!(started.load(SeqCst), 2, "both tools should be dispatched");
+        assert_eq!(
+            completed.load(SeqCst),
+            2,
+            "the in-flight sibling must be drained to completion, not cancelled"
+        );
+    }
+
+    /// `tool_concurrency(0)` is clamped to 1. Without the clamp the blocking
+    /// driver's `buffered(0)` never makes progress, so the run would hang the
+    /// first time the model calls a tool. The timeout turns a regression
+    /// (dropping the `.max(1)`) into a clean failure rather than a silent hang.
+    #[tokio::test]
+    async fn tool_concurrency_zero_is_clamped_and_does_not_hang() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
+            MockTurn::text("done"),
+        ]);
+        let run = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add")
+            .max_turns(3)
+            .tool_concurrency(0)
+            .run();
+
+        let response = tokio::time::timeout(std::time::Duration::from_secs(5), run)
+            .await
+            .expect("tool_concurrency(0) must clamp to 1, not hang on buffered(0)")
+            .expect("run should succeed");
+        assert_eq!(response.output, "done");
     }
 
     /// A tool that counts how many times it actually executes.
