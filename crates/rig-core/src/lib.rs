@@ -177,6 +177,7 @@ pub mod streaming;
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
+pub use tool::ToolCallExtensions;
 pub mod tools;
 pub mod transcription;
 pub mod vector_store;
