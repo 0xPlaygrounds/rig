@@ -2337,9 +2337,9 @@ mod tests {
         assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
     }
 
-    /// Streaming counterpart of the blocking empty-context default: with no
-    /// `.tool_extensions(..)`, the tool still runs with an empty context (observing
-    /// `no-session`), not a stale value.
+    /// Streaming counterpart of the blocking empty-extensions default: with no
+    /// `.tool_extensions(..)`, the tool still runs with empty extensions
+    /// (observing `no-session`), not a stale value.
     #[tokio::test]
     async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
         let model = MockCompletionModel::from_stream_turns([

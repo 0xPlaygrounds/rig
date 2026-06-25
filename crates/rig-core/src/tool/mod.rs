@@ -208,11 +208,11 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
 
-    /// Dynamic dispatch variant of tool execution with per-call runtime context.
+    /// Dynamic dispatch variant of tool execution with per-call runtime extensions.
     ///
-    /// The default ignores context and delegates to [`ToolDyn::call`].
-    /// The blanket impl for [`Tool`] types overrides this to thread context
-    /// through to [`Tool::call_with_extensions`].
+    /// The default ignores the extensions and delegates to [`ToolDyn::call`].
+    /// The blanket impl for [`Tool`] types overrides this to thread the
+    /// extensions through to [`Tool::call_with_extensions`].
     fn call_with_extensions<'a>(
         &'a self,
         args: String,
@@ -457,10 +457,11 @@ impl ToolSet {
             .await
     }
 
-    /// Call a tool with the given name, arguments, and per-call runtime context.
+    /// Call a tool with the given name, arguments, and per-call runtime extensions.
     ///
-    /// The context is threaded through to [`Tool::call_with_extensions`], allowing
-    /// tools to access caller-provided values (auth tokens, session IDs, etc.).
+    /// The extensions are threaded through to [`Tool::call_with_extensions`],
+    /// allowing tools to access caller-provided values (auth tokens, session
+    /// IDs, etc.).
     pub async fn call_with_extensions(
         &self,
         toolname: &str,

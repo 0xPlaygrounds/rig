@@ -45,9 +45,9 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
     }
 
     /// Propagate the caller's [`ToolCallExtensions`] into the sub-agent run, so the
-    /// inner agent's own tools observe it too (sub-agent delegation / A2A
-    /// chains). Without this, a sub-agent invoked as a tool would start with an
-    /// empty context.
+    /// inner agent's own tools observe them too (sub-agent delegation / A2A
+    /// chains). Without this, a sub-agent invoked as a tool would start with
+    /// empty extensions.
     async fn call_with_extensions(
         &self,
         args: Self::Args,

@@ -190,12 +190,12 @@ impl ToolServerHandle {
             .await
     }
 
-    /// Look up and execute a tool by name with per-call runtime context.
+    /// Look up and execute a tool by name with per-call runtime extensions.
     ///
-    /// The context is threaded through to [`Tool::call_with_extensions`], allowing
-    /// tools to access caller-provided values (auth tokens, session IDs, etc.).
-    /// The tool handle is cloned under a brief read lock so that long-running
-    /// tool executions never block writers.
+    /// The extensions are threaded through to [`Tool::call_with_extensions`],
+    /// allowing tools to access caller-provided values (auth tokens, session
+    /// IDs, etc.). The tool handle is cloned under a brief read lock so that
+    /// long-running tool executions never block writers.
     pub async fn call_tool_with_extensions(
         &self,
         tool_name: &str,

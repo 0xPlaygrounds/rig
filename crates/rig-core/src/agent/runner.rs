@@ -235,10 +235,10 @@ where
 
     /// Set the per-call runtime [`ToolCallExtensions`] for this run.
     ///
-    /// The context is threaded to every tool the agent executes, so tools can
-    /// read caller-provided values (auth tokens, session IDs, conversation
+    /// The extensions are threaded to every tool the agent executes, so tools
+    /// can read caller-provided values (auth tokens, session IDs, conversation
     /// state, …) via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions)
-    /// without the model ever seeing them. Replaces any context already set.
+    /// without the model ever seeing them. Replaces any extensions already set.
     pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
         self.tool_extensions = extensions;
         self
