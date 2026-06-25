@@ -9,10 +9,10 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
-pub mod context;
+pub mod extensions;
 pub mod server;
 
-pub use context::ToolCallContext;
+pub use extensions::ToolCallExtensions;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -145,15 +145,20 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
 
-    /// Tool execution with per-call runtime context.
+    /// Tool execution with per-call runtime [extensions](ToolCallExtensions).
     ///
-    /// Override this to access runtime values (auth, session IDs, etc.)
-    /// injected by the caller via [`ToolCallContext`]. The default ignores
-    /// context and delegates to [`Tool::call`].
-    fn call_with_context(
+    /// Override this to read runtime values (auth tokens, session IDs, A2A
+    /// `context_id`/`task_id`, …) that the caller injected for this call. The
+    /// default ignores the extensions and delegates to [`Tool::call`].
+    ///
+    /// The agent loop always dispatches through this method, so overriding it is
+    /// sufficient to receive extensions. [`Tool::call`] is the extension-free
+    /// entry point and remains the right method to override for tools that don't
+    /// need any; if you override both, keep their behaviour consistent.
+    fn call_with_extensions(
         &self,
         args: Self::Args,
-        _ctx: &ToolCallContext,
+        _extensions: &ToolCallExtensions,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend {
         self.call(args)
     }
@@ -198,15 +203,16 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
 
-    /// Dynamic dispatch variant of tool execution with per-call runtime context.
+    /// Dynamic dispatch variant of tool execution with per-call runtime
+    /// [extensions](ToolCallExtensions).
     ///
-    /// The default ignores context and delegates to [`ToolDyn::call`].
-    /// The blanket impl for [`Tool`] types overrides this to thread context
-    /// through to [`Tool::call_with_context`].
-    fn call_with_context<'a>(
+    /// The default ignores the extensions and delegates to [`ToolDyn::call`].
+    /// The blanket impl for [`Tool`] types overrides this to thread the
+    /// extensions through to [`Tool::call_with_extensions`].
+    fn call_with_extensions<'a>(
         &'a self,
         args: String,
-        _ctx: &'a ToolCallContext,
+        _extensions: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         self.call(args)
     }
@@ -229,13 +235,13 @@ impl<T: Tool> ToolDyn for T {
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
-        ToolDyn::call_with_context(self, args, &ToolCallContext::EMPTY)
+        ToolDyn::call_with_extensions(self, args, &ToolCallExtensions::EMPTY)
     }
 
-    fn call_with_context<'a>(
+    fn call_with_extensions<'a>(
         &'a self,
         args: String,
-        ctx: &'a ToolCallContext,
+        extensions: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
             // LLMs frequently send `null` for tools whose arguments are all optional.
@@ -250,7 +256,7 @@ impl<T: Tool> ToolDyn for T {
                 Err(err) => Err(err),
             };
             match args {
-                Ok(args) => <Self as Tool>::call_with_context(self, args, ctx)
+                Ok(args) => <Self as Tool>::call_with_extensions(self, args, extensions)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| serialize_tool_output(output).map_err(ToolError::JsonError)),
@@ -307,19 +313,14 @@ impl ToolType {
         }
     }
 
-    #[allow(dead_code)]
-    pub async fn call(&self, args: String) -> Result<String, ToolError> {
-        self.call_with_context(args, &ToolCallContext::new()).await
-    }
-
-    pub async fn call_with_context(
+    pub async fn call_with_extensions(
         &self,
         args: String,
-        ctx: &ToolCallContext,
+        extensions: &ToolCallExtensions,
     ) -> Result<String, ToolError> {
         match self {
-            ToolType::Simple(tool) => tool.call_with_context(args, ctx).await,
-            ToolType::Embedding(tool) => tool.call_with_context(args, ctx).await,
+            ToolType::Simple(tool) => tool.call_with_extensions(args, extensions).await,
+            ToolType::Embedding(tool) => tool.call_with_extensions(args, extensions).await,
         }
     }
 }
@@ -448,26 +449,28 @@ impl ToolSet {
 
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
-        self.call_with_context(toolname, args, &ToolCallContext::new())
+        self.call_with_extensions(toolname, args, &ToolCallExtensions::EMPTY)
             .await
     }
 
-    /// Call a tool with the given name, arguments, and per-call runtime context.
+    /// Call a tool with the given name, arguments, and per-call runtime
+    /// [extensions](ToolCallExtensions).
     ///
-    /// The context is threaded through to [`Tool::call_with_context`], allowing
-    /// tools to access caller-provided values (auth tokens, session IDs, etc.).
-    pub async fn call_with_context(
+    /// The extensions are threaded through to [`Tool::call_with_extensions`],
+    /// allowing tools to access caller-provided values (auth tokens, session
+    /// IDs, etc.).
+    pub async fn call_with_extensions(
         &self,
         toolname: &str,
         args: String,
-        ctx: &ToolCallContext,
+        extensions: &ToolCallExtensions,
     ) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::debug!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
                 args
             );
-            Ok(tool.call_with_context(args, ctx).await?)
+            Ok(tool.call_with_extensions(args, extensions).await?)
         } else {
             Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
         }
