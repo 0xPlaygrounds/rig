@@ -186,7 +186,7 @@ impl ToolServerHandle {
     /// The tool handle is cloned under a brief read lock so that
     /// long-running tool executions never block writers.
     pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
-        self.call_tool_with_context(tool_name, args, &ToolCallContext::new())
+        self.call_tool_with_context(tool_name, args, &ToolCallContext::EMPTY)
             .await
     }
 

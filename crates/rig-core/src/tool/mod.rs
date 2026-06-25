@@ -9,10 +9,10 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
-pub mod context;
+mod context;
 pub mod server;
 
-pub use context::ToolCallContext;
+pub use context::{MissingContextValue, ToolCallContext};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -150,6 +150,15 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// Override this to access runtime values (auth, session IDs, etc.)
     /// injected by the caller via [`ToolCallContext`]. The default ignores
     /// context and delegates to [`Tool::call`].
+    ///
+    /// **Override contract:** when you override this method it becomes the
+    /// single entry point for the tool — *every* dispatch path (including the
+    /// context-free [`call`](Tool::call) and the agent loop) routes here, with
+    /// an empty [`ToolCallContext`] when no caller supplied one. So put your
+    /// logic here and treat a missing value as the no-context case (e.g. via
+    /// [`ToolCallContext::get`] returning `None`); do not split behavior
+    /// between `call` and `call_with_context`, as `call`'s body is then
+    /// unreachable through dynamic dispatch.
     fn call_with_context(
         &self,
         args: Self::Args,
@@ -307,11 +316,6 @@ impl ToolType {
         }
     }
 
-    #[allow(dead_code)]
-    pub async fn call(&self, args: String) -> Result<String, ToolError> {
-        self.call_with_context(args, &ToolCallContext::new()).await
-    }
-
     pub async fn call_with_context(
         &self,
         args: String,
@@ -448,7 +452,7 @@ impl ToolSet {
 
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
-        self.call_with_context(toolname, args, &ToolCallContext::new())
+        self.call_with_context(toolname, args, &ToolCallContext::EMPTY)
             .await
     }
 
