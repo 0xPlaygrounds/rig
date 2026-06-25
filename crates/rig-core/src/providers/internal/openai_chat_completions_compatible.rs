@@ -474,8 +474,33 @@ fn append_tool_call_arguments(tool_call: &mut RawStreamingToolCall, chunk: &str)
 pub(crate) fn finalize_completed_streaming_tool_call(
     mut tool_call: RawStreamingToolCall,
 ) -> RawStreamingToolCall {
-    if tool_call.arguments.is_null() {
-        tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+    // The eviction path (distinct-named tool calls within one assistant turn)
+    // previously only normalized a `null` arguments value to `{}` and otherwise
+    // passed the value through verbatim. Streamed OpenAI-compatible tool-call
+    // arguments accumulate as a JSON *string* (`Value::String`), so an evicted
+    // tool call leaked a bare string into `ToolCall.function.arguments`. A
+    // downstream serializer that expects an object (e.g. the Anthropic protocol's
+    // `tool_use.input`) then emitted a string, which strict providers reject with
+    // `tool_use.input: Input should be a valid dictionary`. Mirror
+    // `finalize_pending_tool_call`: parse a string payload into the underlying
+    // object (empty string -> `{}`, unparseable -> `{}` rather than a bare string).
+    match &tool_call.arguments {
+        serde_json::Value::Null => {
+            tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+        }
+        serde_json::Value::String(arguments) => {
+            let parsed = json_utils::parse_tool_arguments(arguments)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+            // Guarantee an object even if the string parsed to valid-but-non-object
+            // JSON (a bare scalar/array would still trip the provider's
+            // `Input should be a valid dictionary` check).
+            tool_call.arguments = if parsed.is_object() {
+                parsed
+            } else {
+                serde_json::Value::Object(serde_json::Map::new())
+            };
+        }
+        _ => {}
     }
 
     tool_call
@@ -627,7 +652,10 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
-    use super::{finalize_pending_tool_call, send_compatible_streaming_request};
+    use super::{
+        finalize_completed_streaming_tool_call, finalize_pending_tool_call,
+        send_compatible_streaming_request,
+    };
     use crate::completion::CompletionError;
     use crate::http_client;
     use crate::streaming::RawStreamingToolCall;
@@ -700,6 +728,111 @@ mod tests {
             finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
 
         assert_eq!(finalized.arguments, serde_json::json!({}));
+    }
+
+    // Regression guard: the eviction finalizer must parse a JSON-string
+    // arguments payload into the underlying object, exactly like
+    // `finalize_pending_tool_call`. Before the fix it only normalized `null` and
+    // passed a `Value::String` through verbatim, so an evicted tool call leaked a
+    // string into `function.arguments`. A downstream serializer expecting an
+    // object (e.g. Anthropic's `tool_use.input`) then emitted a bare string,
+    // which strict providers reject with
+    // `tool_use.input: Input should be a valid dictionary`.
+    #[test]
+    fn eviction_finalizer_parses_string_arguments_into_object() {
+        let tool_call = RawStreamingToolCall::new(
+            "call_evicted".to_owned(),
+            "memory_search".to_owned(),
+            // The accumulated state when eviction fires before the args were
+            // recognized as a complete `{...}` object (e.g. whitespace/fragment).
+            serde_json::Value::String("{\"query\":\"one\"}".to_owned()),
+        );
+
+        let finalized = finalize_completed_streaming_tool_call(tool_call);
+
+        assert!(
+            finalized.arguments.is_object(),
+            "evicted tool_use input must be a JSON object, got: {:?}",
+            finalized.arguments
+        );
+        assert_eq!(finalized.arguments, serde_json::json!({"query": "one"}));
+    }
+
+    #[test]
+    fn eviction_finalizer_normalizes_empty_and_unparseable_strings_to_object() {
+        // Empty string -> {}.
+        let empty = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+            "c1".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::String(String::new()),
+        ));
+        assert_eq!(empty.arguments, serde_json::json!({}));
+
+        // Null -> {} (pre-existing behavior, kept).
+        let null = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+            "c2".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::Null,
+        ));
+        assert_eq!(null.arguments, serde_json::json!({}));
+
+        // Valid-but-non-object JSON (a bare scalar) -> {} so the provider never
+        // sees a non-dict input.
+        let scalar = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+            "c3".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::String("5".to_owned()),
+        ));
+        assert!(scalar.arguments.is_object());
+        assert_eq!(scalar.arguments, serde_json::json!({}));
+    }
+
+    #[tokio::test]
+    async fn evicted_tool_call_emits_object_input_end_to_end() {
+        // End-to-end through the streaming aggregator + eviction path: a distinct
+        // second tool call evicts the first via `finalize_completed_streaming_tool_call`.
+        // Every emitted tool call's arguments must be a JSON object so a downstream
+        // object-typed serializer (e.g. Anthropic's `tool_use.input`) never sends a
+        // bare string.
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "first_start",
+                "first_args",
+                "second_start",
+                "second_args",
+                "finish",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, DistinctToolCallEvictionProfile)
+                .await
+                .expect("stream should start");
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::ToolCall { tool_call, .. } =
+                item.expect("stream item should be ok")
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(collected_tool_calls.len(), 2);
+        for tc in &collected_tool_calls {
+            assert!(
+                tc.function.arguments.is_object(),
+                "tool_use input must be an object, got {:?} for {}",
+                tc.function.arguments,
+                tc.function.name
+            );
+        }
     }
 
     #[test]
