@@ -32,19 +32,19 @@
 //! # Per-call metadata
 //!
 //! [`McpTool`] forwards an [`rmcp::model::Meta`] (re-exported here as [`Meta`])
-//! placed in a [`ToolCallContext`] as the MCP request's `_meta` (SEP-1319) —
+//! placed in a [`ToolCallExtensions`] as the MCP request's `_meta` (SEP-1319) —
 //! the idiomatic channel for per-call values such as auth tokens, session ids,
 //! or A2A `context_id`/`task_id`, which the model never sees:
 //!
 //! ```rust,ignore
 //! use rig_core::tool::rmcp::Meta;
-//! use rig_core::tool::ToolCallContext;
+//! use rig_core::tool::ToolCallExtensions;
 //!
 //! let mut meta = Meta::new();
 //! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
-//! let mut ctx = ToolCallContext::new();
-//! ctx.insert(meta);
-//! let answer = agent.prompt("…").tool_context(ctx).await?;
+//! let mut extensions = ToolCallExtensions::new();
+//! extensions.insert(meta);
+//! let answer = agent.prompt("…").with_tool_extensions(extensions).await?;
 //! ```
 
 use std::borrow::Cow;
@@ -58,10 +58,10 @@ use tokio::sync::RwLock;
 use crate::completion::ToolDefinition;
 use crate::tool::ToolError;
 use crate::tool::server::{ToolServerError, ToolServerHandle};
-use crate::tool::{ToolCallContext, ToolDyn};
+use crate::tool::{ToolCallExtensions, ToolDyn};
 use crate::wasm_compat::WasmBoxedFuture;
 
-/// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolCallContext`] to have
+/// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolCallExtensions`] to have
 /// [`McpTool`] forward it as a call's MCP `_meta` (see the module docs).
 pub use rmcp::model::Meta;
 
@@ -161,13 +161,13 @@ impl From<McpToolError> for ToolError {
 }
 
 impl McpTool {
-    /// Shared executor for [`ToolDyn::call`] and [`ToolDyn::call_with_context`].
+    /// Shared executor for [`ToolDyn::call`] and [`ToolDyn::call_with_extensions`].
     ///
     /// `meta`, when present, is attached as the MCP request's `_meta`
     /// (SEP-1319) — the idiomatic channel for per-call metadata such as auth
     /// tokens, session ids, or A2A `context_id`/`task_id`. It is supplied by a
     /// caller that places an [`rmcp::model::Meta`] into the
-    /// [`ToolCallContext`]; otherwise the call behaves exactly as before.
+    /// [`ToolCallExtensions`]; otherwise the call behaves exactly as before.
     fn execute(
         &self,
         args: String,
@@ -298,17 +298,17 @@ impl ToolDyn for McpTool {
         self.execute(args, None)
     }
 
-    /// Forwards an [`rmcp::model::Meta`] from the [`ToolCallContext`], if present,
+    /// Forwards an [`rmcp::model::Meta`] from the [`ToolCallExtensions`], if present,
     /// as the MCP request's `_meta`. This lets callers attach per-call metadata
     /// (auth, session, A2A `context_id`/`task_id`) to MCP tool invocations
     /// without exposing it to the model. Absent a `Meta`, behaves like
     /// [`call`](ToolDyn::call).
-    fn call_with_context<'a>(
+    fn call_with_extensions<'a>(
         &'a self,
         args: String,
-        ctx: &'a ToolCallContext,
+        extensions: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
-        let meta = ctx.get::<rmcp::model::Meta>().cloned();
+        let meta = extensions.get::<rmcp::model::Meta>().cloned();
         self.execute(args, meta)
     }
 }
@@ -1001,13 +1001,13 @@ mod tests {
         }
     }
 
-    /// `McpTool::call_with_context` forwards an [`rmcp::model::Meta`] placed in the
-    /// [`ToolCallContext`] as the request's `_meta`, so callers can attach per-call
+    /// `McpTool::call_with_extensions` forwards an [`rmcp::model::Meta`] placed in the
+    /// [`ToolCallExtensions`] as the request's `_meta`, so callers can attach per-call
     /// auth/session metadata to MCP tool invocations (the A2A use-case).
     #[tokio::test]
     async fn mcp_tool_forwards_meta_from_context() {
         use super::McpTool;
-        use crate::tool::{ToolCallContext, ToolDyn};
+        use crate::tool::{ToolCallExtensions, ToolDyn};
 
         let seen_meta = Arc::new(RwLock::new(None));
         let server = MetaCapturingServer {
@@ -1042,11 +1042,11 @@ mod tests {
         let mut meta = Meta::new();
         meta.0
             .insert("authorization".to_string(), json!("Bearer xyz"));
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(meta);
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(meta);
 
         let out = mcp_tool
-            .call_with_context("{}".to_string(), &ctx)
+            .call_with_extensions("{}".to_string(), &extensions)
             .await
             .expect("call should succeed");
         assert_eq!(out, "ok");
@@ -1060,9 +1060,9 @@ mod tests {
 
         // Without a Meta in the context, the caller metadata is not forwarded.
         *seen_meta.write().await = None;
-        let empty_ctx = ToolCallContext::new();
+        let empty_ctx = ToolCallExtensions::new();
         let out = mcp_tool
-            .call_with_context("{}".to_string(), &empty_ctx)
+            .call_with_extensions("{}".to_string(), &empty_ctx)
             .await
             .expect("call should succeed");
         assert_eq!(out, "ok");

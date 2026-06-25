@@ -1,27 +1,63 @@
-//! Per-call runtime context for tool execution.
+//! Per-call runtime extensions for tool execution.
 //!
-//! This module provides [`ToolCallContext`], a type-map that allows callers
+//! This module provides [`ToolCallExtensions`], a type-map that allows callers
 //! to attach arbitrary typed values and tools to extract them at call time.
-//! Tools that don't need context simply ignore it.
+//! Tools that don't need any extensions simply ignore them.
 //!
 //! The implementation follows the `AnyClone` pattern from the [`http::Extensions`]
-//! type in the `http` crate.
+//! type in the `http` crate, including the no-op [`IdHasher`] over `TypeId` keys.
 //!
 //! [`http::Extensions`]: https://docs.rs/http/latest/http/struct.Extensions.html
 
 use std::any::{Any, TypeId, type_name};
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-type AnyMap = HashMap<TypeId, Box<dyn AnyClone>>;
+type AnyMap = HashMap<TypeId, Box<dyn AnyClone>, BuildHasherDefault<IdHasher>>;
+
+// --- IdHasher (modeled after `http::Extensions`) ---
+
+/// Hasher for the `TypeId` keys of the type-map.
+///
+/// A `TypeId` is already a high-quality hash, so the keys do not need to be
+/// re-hashed with the default `SipHash`. The fast path stores the `u64` that
+/// `TypeId`'s `Hash` impl writes directly. The byte-oriented [`write`](Hasher::write)
+/// fallback keeps this correct (never panicking) if a future `TypeId`
+/// representation hashes via a different `Hasher` method — a poor hash only
+/// costs extra probe work, never correctness, because the map still compares
+/// full `TypeId` keys.
+#[derive(Default)]
+struct IdHasher(u64);
+
+impl Hasher for IdHasher {
+    #[inline]
+    fn write_u64(&mut self, id: u64) {
+        self.0 = id;
+    }
+
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        // Fallback path: fold the bytes so we never panic regardless of how
+        // `TypeId` chooses to hash itself.
+        for &byte in bytes {
+            self.0 = self.0.rotate_left(8) ^ u64::from(byte);
+        }
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
 
 // --- AnyClone helper trait (modeled after `http::Extensions`) ---
 //
 // `WasmCompatSend`/`WasmCompatSync` are `Send`/`Sync` on every non-wasm target
 // and unconstrained on `wasm`, so a single trait definition covers both targets
 // (no `cfg`-duplicated copies). On non-wasm this transitively makes
-// `dyn AnyClone` — and therefore `ToolCallContext` — `Send + Sync`, which is
+// `dyn AnyClone` — and therefore `ToolCallExtensions` — `Send + Sync`, which is
 // required because the context is borrowed across `.await` points in async tool
 // execution. The `assert_send_sync` check below pins that property.
 
@@ -59,7 +95,7 @@ impl Clone for Box<dyn AnyClone> {
     }
 }
 
-// --- ToolCallContext ---
+// --- ToolCallExtensions ---
 
 /// Per-call runtime context for tools.
 ///
@@ -78,23 +114,23 @@ impl Clone for Box<dyn AnyClone> {
 ///
 /// # Example
 /// ```
-/// use rig_core::tool::ToolCallContext;
+/// use rig_core::tool::ToolCallExtensions;
 ///
-/// let mut ctx = ToolCallContext::new();
-/// assert_eq!(ctx.insert(42u32), None); // no prior value
-/// assert_eq!(ctx.get::<u32>(), Some(&42));
-/// assert_eq!(ctx.insert(7u32), Some(42)); // returns the displaced value
+/// let mut extensions = ToolCallExtensions::new();
+/// assert_eq!(extensions.insert(42u32), None); // no prior value
+/// assert_eq!(extensions.get::<u32>(), Some(&42));
+/// assert_eq!(extensions.insert(7u32), Some(42)); // returns the displaced value
 /// ```
 #[derive(Default, Clone)]
-pub struct ToolCallContext {
+pub struct ToolCallExtensions {
     map: Option<Box<AnyMap>>,
 }
 
-impl ToolCallContext {
+impl ToolCallExtensions {
     /// Shared empty instance. Lets dispatch layers that need a default context
     /// hand out a `'static` reference instead of constructing (and having to
     /// own) a fresh value just to borrow it.
-    pub(crate) const EMPTY: ToolCallContext = ToolCallContext { map: None };
+    pub(crate) const EMPTY: ToolCallExtensions = ToolCallExtensions { map: None };
 
     /// Create an empty context.
     pub const fn new() -> Self {
@@ -135,8 +171,8 @@ impl ToolCallContext {
     /// turning a silent `None` into an actionable failure.
     pub fn require<T: WasmCompatSend + WasmCompatSync + 'static>(
         &self,
-    ) -> Result<&T, MissingContextValue> {
-        self.get::<T>().ok_or(MissingContextValue(type_name::<T>()))
+    ) -> Result<&T, MissingExtension> {
+        self.get::<T>().ok_or(MissingExtension(type_name::<T>()))
     }
 
     /// Get a mutable reference to a value by type. Returns `None` if not present.
@@ -162,11 +198,21 @@ impl ToolCallContext {
             .as_ref()
             .is_some_and(|map| map.contains_key(&TypeId::of::<T>()))
     }
+
+    /// Number of values currently stored.
+    pub fn len(&self) -> usize {
+        self.map.as_ref().map_or(0, |map| map.len())
+    }
+
+    /// Whether no values are stored.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
-impl std::fmt::Debug for ToolCallContext {
+impl std::fmt::Debug for ToolCallExtensions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut dbg = f.debug_struct("ToolCallContext");
+        let mut dbg = f.debug_struct("ToolCallExtensions");
         if let Some(map) = &self.map {
             dbg.field("entries", &map.len());
             let type_names: Vec<&'static str> = map.values().map(|v| (**v).type_name()).collect();
@@ -178,19 +224,19 @@ impl std::fmt::Debug for ToolCallContext {
     }
 }
 
-/// Error returned by [`ToolCallContext::require`] when the requested value is
+/// Error returned by [`ToolCallExtensions::require`] when the requested value is
 /// not present in the context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("required tool-call context value of type `{0}` was not found")]
-pub struct MissingContextValue(pub &'static str);
+pub struct MissingExtension(pub &'static str);
 
-// `ToolCallContext` must stay `Send + Sync` on native targets: the agent loop
+// `ToolCallExtensions` must stay `Send + Sync` on native targets: the agent loop
 // borrows it across `.await` while executing tools. This fails to compile if a
 // future change (e.g. relaxing the `AnyClone` bounds) drops the property.
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<ToolCallContext>();
+    assert_send_sync::<ToolCallExtensions>();
 };
 
 #[cfg(test)]
@@ -199,49 +245,49 @@ mod tests {
 
     #[test]
     fn insert_and_get_returns_value() {
-        let mut ctx = ToolCallContext::new();
-        assert_eq!(ctx.insert(42u32), None);
-        assert_eq!(ctx.get::<u32>(), Some(&42));
+        let mut extensions = ToolCallExtensions::new();
+        assert_eq!(extensions.insert(42u32), None);
+        assert_eq!(extensions.get::<u32>(), Some(&42));
     }
 
     #[test]
     fn get_missing_type_returns_none() {
-        let ctx = ToolCallContext::new();
-        assert_eq!(ctx.get::<u32>(), None);
+        let extensions = ToolCallExtensions::new();
+        assert_eq!(extensions.get::<u32>(), None);
     }
 
     #[test]
     fn insert_overwrites_and_returns_previous() {
-        let mut ctx = ToolCallContext::new();
-        assert_eq!(ctx.insert(1u32), None);
-        assert_eq!(ctx.insert(2u32), Some(1));
-        assert_eq!(ctx.get::<u32>(), Some(&2));
+        let mut extensions = ToolCallExtensions::new();
+        assert_eq!(extensions.insert(1u32), None);
+        assert_eq!(extensions.insert(2u32), Some(1));
+        assert_eq!(extensions.get::<u32>(), Some(&2));
     }
 
     #[test]
     fn different_types_are_independent() {
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(42u32);
-        ctx.insert("hello".to_string());
-        assert_eq!(ctx.get::<u32>(), Some(&42));
-        assert_eq!(ctx.get::<String>(), Some(&"hello".to_string()));
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(42u32);
+        extensions.insert("hello".to_string());
+        assert_eq!(extensions.get::<u32>(), Some(&42));
+        assert_eq!(extensions.get::<String>(), Some(&"hello".to_string()));
     }
 
     #[test]
     fn contains_returns_true_when_present() {
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(42u32);
-        assert!(ctx.contains::<u32>());
-        assert!(!ctx.contains::<String>());
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(42u32);
+        assert!(extensions.contains::<u32>());
+        assert!(!extensions.contains::<String>());
     }
 
     #[test]
     fn clone_produces_independent_copy() {
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(42u32);
-        let mut cloned = ctx.clone();
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(42u32);
+        let mut cloned = extensions.clone();
         cloned.insert(99u32);
-        assert_eq!(ctx.get::<u32>(), Some(&42));
+        assert_eq!(extensions.get::<u32>(), Some(&42));
         assert_eq!(cloned.get::<u32>(), Some(&99));
     }
 
@@ -251,20 +297,20 @@ mod tests {
         // clone's inner value in place. A shallow clone (sharing the boxed
         // value) would let this mutation leak back into the original; a correct
         // `clone_box` deep-copies, so the original stays unchanged.
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(vec![1u8, 2, 3]);
-        let mut cloned = ctx.clone();
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(vec![1u8, 2, 3]);
+        let mut cloned = extensions.clone();
         cloned.get_mut::<Vec<u8>>().unwrap().push(4);
-        assert_eq!(ctx.get::<Vec<u8>>(), Some(&vec![1, 2, 3]));
+        assert_eq!(extensions.get::<Vec<u8>>(), Some(&vec![1, 2, 3]));
         assert_eq!(cloned.get::<Vec<u8>>(), Some(&vec![1, 2, 3, 4]));
     }
 
     #[test]
     fn debug_shows_entry_count_and_types() {
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(42u32);
-        ctx.insert("hi".to_string());
-        let debug = format!("{:?}", ctx);
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(42u32);
+        extensions.insert("hi".to_string());
+        let debug = format!("{:?}", extensions);
         assert!(debug.contains("entries: 2"));
         assert!(debug.contains("u32"));
         assert!(debug.contains("String"));
@@ -272,51 +318,99 @@ mod tests {
 
     #[test]
     fn empty_context_is_default() {
-        let ctx = ToolCallContext::default();
-        assert!(!ctx.contains::<u32>());
+        let extensions = ToolCallExtensions::default();
+        assert!(!extensions.contains::<u32>());
     }
 
     #[test]
     fn empty_context_has_no_allocation() {
-        let ctx = ToolCallContext::new();
-        assert!(ctx.map.is_none());
+        let extensions = ToolCallExtensions::new();
+        assert!(extensions.map.is_none());
     }
 
     #[test]
     fn get_mut_modifies_in_place() {
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(42u32);
-        if let Some(val) = ctx.get_mut::<u32>() {
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(42u32);
+        if let Some(val) = extensions.get_mut::<u32>() {
             *val = 99;
         }
-        assert_eq!(ctx.get::<u32>(), Some(&99));
+        assert_eq!(extensions.get::<u32>(), Some(&99));
     }
 
     #[test]
     fn remove_returns_value_and_clears_entry() {
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(42u32);
-        assert_eq!(ctx.remove::<u32>(), Some(42));
-        assert!(!ctx.contains::<u32>());
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(42u32);
+        assert_eq!(extensions.remove::<u32>(), Some(42));
+        assert!(!extensions.contains::<u32>());
     }
 
     #[test]
     fn remove_missing_type_returns_none() {
-        let mut ctx = ToolCallContext::new();
-        assert_eq!(ctx.remove::<u32>(), None);
+        let mut extensions = ToolCallExtensions::new();
+        assert_eq!(extensions.remove::<u32>(), None);
     }
 
     #[test]
     fn require_present_returns_value() {
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(42u32);
-        assert_eq!(ctx.require::<u32>().copied(), Ok(42));
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(42u32);
+        assert_eq!(extensions.require::<u32>().copied(), Ok(42));
     }
 
     #[test]
     fn require_missing_names_the_type() {
-        let ctx = ToolCallContext::new();
-        let err = ctx.require::<u32>().unwrap_err();
+        let extensions = ToolCallExtensions::new();
+        let err = extensions.require::<u32>().unwrap_err();
         assert!(err.to_string().contains("u32"));
+    }
+
+    #[test]
+    fn len_and_is_empty_track_entries() {
+        let mut extensions = ToolCallExtensions::new();
+        assert!(extensions.is_empty());
+        assert_eq!(extensions.len(), 0);
+        extensions.insert(1u32);
+        extensions.insert("two".to_string());
+        assert!(!extensions.is_empty());
+        assert_eq!(extensions.len(), 2);
+        extensions.remove::<u32>();
+        assert_eq!(extensions.len(), 1);
+    }
+
+    #[test]
+    fn many_distinct_types_round_trip_through_id_hasher() {
+        // Guards the custom IdHasher: distinct TypeId keys must not collide in a
+        // way that corrupts lookups. Insert several heterogeneous types and
+        // confirm each is retrievable with its own value.
+        #[derive(Clone, PartialEq, Debug)]
+        struct A(u8);
+        #[derive(Clone, PartialEq, Debug)]
+        struct B(u16);
+        #[derive(Clone, PartialEq, Debug)]
+        struct C(u32);
+        #[derive(Clone, PartialEq, Debug)]
+        struct D(u64);
+
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(A(1));
+        extensions.insert(B(2));
+        extensions.insert(C(3));
+        extensions.insert(D(4));
+        extensions.insert(5u8);
+        extensions.insert(6i64);
+        extensions.insert("seven".to_string());
+        extensions.insert(8.0f64);
+
+        assert_eq!(extensions.len(), 8);
+        assert_eq!(extensions.get::<A>(), Some(&A(1)));
+        assert_eq!(extensions.get::<B>(), Some(&B(2)));
+        assert_eq!(extensions.get::<C>(), Some(&C(3)));
+        assert_eq!(extensions.get::<D>(), Some(&D(4)));
+        assert_eq!(extensions.get::<u8>(), Some(&5));
+        assert_eq!(extensions.get::<i64>(), Some(&6));
+        assert_eq!(extensions.get::<String>(), Some(&"seven".to_string()));
+        assert_eq!(extensions.get::<f64>(), Some(&8.0));
     }
 }

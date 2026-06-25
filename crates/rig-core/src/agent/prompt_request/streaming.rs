@@ -14,7 +14,7 @@ use crate::{
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::ToolCallContext,
+    tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
@@ -323,14 +323,14 @@ where
         self
     }
 
-    /// Attach a per-call [`ToolCallContext`] for this streaming request.
+    /// Attach a per-call [`ToolCallExtensions`] for this streaming request.
     ///
     /// Every tool the agent executes during this request can read the
     /// caller-provided values (auth tokens, session IDs, conversation state, …)
-    /// via [`Tool::call_with_context`](crate::tool::Tool::call_with_context),
+    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
     /// without the model ever seeing them.
-    pub fn tool_context(mut self, ctx: ToolCallContext) -> Self {
-        self.runner = self.runner.tool_context(ctx);
+    pub fn with_tool_extensions(mut self, ctx: ToolCallExtensions) -> Self {
+        self.runner = self.runner.with_tool_extensions(ctx);
         self
     }
 
@@ -429,7 +429,7 @@ where
         let max_tokens = self.max_tokens;
         let additional_params = self.additional_params.clone();
         let tool_server_handle = self.tool_server_handle.clone();
-        let tool_context = self.tool_context.clone();
+        let tool_extensions = self.tool_extensions.clone();
         let dynamic_context = self.dynamic_context.clone();
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
@@ -920,7 +920,7 @@ where
                             let result = run_single_tool(
                                 &self.hooks,
                                 &tool_server_handle,
-                                &tool_context,
+                                &tool_extensions,
                                 &tool_call,
                                 &internal_call_id,
                                 &full_history_for_errors,
@@ -1082,10 +1082,11 @@ mod tests {
     use crate::providers::anthropic;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
-        AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel, MockContextProbeTool,
-        MockResponse, MockStreamEvent, MockSubtractTool, MockToolError, SessionId,
+        AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel,
+        MockExtensionsProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, MockToolError,
+        SessionId,
     };
-    use crate::tool::{Tool, ToolCallContext};
+    use crate::tool::{Tool, ToolCallExtensions};
     use futures::{StreamExt, TryStreamExt};
     use serde::Deserialize;
     use std::collections::HashMap;
@@ -2296,10 +2297,10 @@ mod tests {
         assert!(validate_follow_up_tool_history(&requests[1]).is_ok());
     }
 
-    /// The streaming driver threads the per-call `ToolCallContext` to executed
+    /// The streaming driver threads the per-call `ToolCallExtensions` to executed
     /// tools, exactly like the blocking path.
     #[tokio::test]
-    async fn tool_context_reaches_tool_through_streaming_loop() {
+    async fn tool_extensions_reach_tool_through_streaming_loop() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::tool_call("tool_call_1", "context_probe", serde_json::json!({}))
@@ -2311,16 +2312,16 @@ mod tests {
                 MockStreamEvent::final_response_with_total_tokens(6),
             ],
         ]);
-        let probe = MockContextProbeTool::default();
+        let probe = MockExtensionsProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
         let empty_history: &[Message] = &[];
 
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(SessionId("xyz-789".to_string()));
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("xyz-789".to_string()));
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .tool_context(ctx)
+            .with_tool_extensions(extensions)
             .history(empty_history)
             .multi_turn(3)
             .await;
@@ -2337,7 +2338,7 @@ mod tests {
     }
 
     /// Streaming counterpart of the blocking empty-context default: with no
-    /// `.tool_context(..)`, the tool still runs with an empty context (observing
+    /// `.with_tool_extensions(..)`, the tool still runs with an empty context (observing
     /// `no-session`), not a stale value.
     #[tokio::test]
     async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
@@ -2352,7 +2353,7 @@ mod tests {
                 MockStreamEvent::final_response_with_total_tokens(6),
             ],
         ]);
-        let probe = MockContextProbeTool::default();
+        let probe = MockExtensionsProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
         let empty_history: &[Message] = &[];
 

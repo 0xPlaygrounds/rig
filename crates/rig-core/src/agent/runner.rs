@@ -47,7 +47,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::{ToolCallContext, server::ToolServerHandle},
+    tool::{ToolCallExtensions, server::ToolServerHandle},
 };
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
@@ -164,9 +164,9 @@ where
     pub(crate) additional_params: Option<serde_json::Value>,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Per-call runtime context made available to every tool executed during
-    /// this run via [`Tool::call_with_context`](crate::tool::Tool::call_with_context).
-    /// Empty by default; populated with [`tool_context`](Self::tool_context).
-    pub(crate) tool_context: ToolCallContext,
+    /// this run via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
+    /// Empty by default; populated with [`tool_extensions`](Self::tool_extensions).
+    pub(crate) tool_extensions: ToolCallExtensions,
     pub(crate) dynamic_context: DynamicContextStore,
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
@@ -197,7 +197,7 @@ where
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
-            tool_context: ToolCallContext::new(),
+            tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
@@ -232,14 +232,14 @@ where
         self
     }
 
-    /// Set the per-call runtime [`ToolCallContext`] for this run.
+    /// Set the per-call runtime [`ToolCallExtensions`] for this run.
     ///
     /// The context is threaded to every tool the agent executes, so tools can
     /// read caller-provided values (auth tokens, session IDs, conversation
-    /// state, …) via [`Tool::call_with_context`](crate::tool::Tool::call_with_context)
+    /// state, …) via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions)
     /// without the model ever seeing them. Replaces any context already set.
-    pub fn tool_context(mut self, ctx: ToolCallContext) -> Self {
-        self.tool_context = ctx;
+    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.tool_extensions = extensions;
         self
     }
 
@@ -350,7 +350,7 @@ pub(crate) fn build_agent_run(
 pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
     tool_server: &ToolServerHandle,
-    tool_context: &ToolCallContext,
+    tool_extensions: &ToolCallExtensions,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
@@ -395,7 +395,7 @@ where
     }
 
     let output = match tool_server
-        .call_tool_with_context(tool_name, &args, tool_context)
+        .call_tool_with_extensions(tool_name, &args, tool_extensions)
         .await
     {
         Ok(res) => res,
@@ -618,7 +618,7 @@ where
                 AgentRunStep::CallTools { calls } => {
                     let hooks = &self.hooks;
                     let tool_server = &self.tool_server_handle;
-                    let tool_context = &self.tool_context;
+                    let tool_extensions = &self.tool_extensions;
                     // Materialize the diagnostic history once; tools only read it
                     // (verbatim, on a hook-terminate error path), so every tool
                     // future shares a single borrow instead of deep-cloning the
@@ -664,7 +664,7 @@ where
                                 run_single_tool(
                                     hooks,
                                     tool_server,
-                                    tool_context,
+                                    tool_extensions,
                                     &tool_call,
                                     &internal_call_id,
                                     error_history,

@@ -9,10 +9,10 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
-mod context;
+mod extensions;
 pub mod server;
 
-pub use context::{MissingContextValue, ToolCallContext};
+pub use extensions::{MissingExtension, ToolCallExtensions};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -145,24 +145,24 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
 
-    /// Tool execution with per-call runtime context.
+    /// Tool execution with per-call runtime extensions.
     ///
     /// Override this to access runtime values (auth, session IDs, etc.)
-    /// injected by the caller via [`ToolCallContext`]. The default ignores
-    /// context and delegates to [`Tool::call`].
+    /// injected by the caller via [`ToolCallExtensions`]. The default ignores
+    /// the extensions and delegates to [`Tool::call`].
     ///
     /// **Override contract:** when you override this method it becomes the
     /// single entry point for the tool — *every* dispatch path (including the
-    /// context-free [`call`](Tool::call) and the agent loop) routes here, with
-    /// an empty [`ToolCallContext`] when no caller supplied one. So put your
-    /// logic here and treat a missing value as the no-context case (e.g. via
-    /// [`ToolCallContext::get`] returning `None`); do not split behavior
-    /// between `call` and `call_with_context`, as `call`'s body is then
+    /// extension-free [`call`](Tool::call) and the agent loop) routes here, with
+    /// an empty [`ToolCallExtensions`] when no caller supplied one. So put your
+    /// logic here and treat a missing value as the no-extensions case (e.g. via
+    /// [`ToolCallExtensions::get`] returning `None`); do not split behavior
+    /// between `call` and `call_with_extensions`, as `call`'s body is then
     /// unreachable through dynamic dispatch.
-    fn call_with_context(
+    fn call_with_extensions(
         &self,
         args: Self::Args,
-        _ctx: &ToolCallContext,
+        _ctx: &ToolCallExtensions,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend {
         self.call(args)
     }
@@ -211,11 +211,11 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     ///
     /// The default ignores context and delegates to [`ToolDyn::call`].
     /// The blanket impl for [`Tool`] types overrides this to thread context
-    /// through to [`Tool::call_with_context`].
-    fn call_with_context<'a>(
+    /// through to [`Tool::call_with_extensions`].
+    fn call_with_extensions<'a>(
         &'a self,
         args: String,
-        _ctx: &'a ToolCallContext,
+        _ctx: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         self.call(args)
     }
@@ -238,13 +238,13 @@ impl<T: Tool> ToolDyn for T {
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
-        ToolDyn::call_with_context(self, args, &ToolCallContext::EMPTY)
+        ToolDyn::call_with_extensions(self, args, &ToolCallExtensions::EMPTY)
     }
 
-    fn call_with_context<'a>(
+    fn call_with_extensions<'a>(
         &'a self,
         args: String,
-        ctx: &'a ToolCallContext,
+        extensions: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
             // LLMs frequently send `null` for tools whose arguments are all optional.
@@ -259,7 +259,7 @@ impl<T: Tool> ToolDyn for T {
                 Err(err) => Err(err),
             };
             match args {
-                Ok(args) => <Self as Tool>::call_with_context(self, args, ctx)
+                Ok(args) => <Self as Tool>::call_with_extensions(self, args, extensions)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| serialize_tool_output(output).map_err(ToolError::JsonError)),
@@ -316,14 +316,14 @@ impl ToolType {
         }
     }
 
-    pub async fn call_with_context(
+    pub async fn call_with_extensions(
         &self,
         args: String,
-        ctx: &ToolCallContext,
+        extensions: &ToolCallExtensions,
     ) -> Result<String, ToolError> {
         match self {
-            ToolType::Simple(tool) => tool.call_with_context(args, ctx).await,
-            ToolType::Embedding(tool) => tool.call_with_context(args, ctx).await,
+            ToolType::Simple(tool) => tool.call_with_extensions(args, extensions).await,
+            ToolType::Embedding(tool) => tool.call_with_extensions(args, extensions).await,
         }
     }
 }
@@ -452,26 +452,26 @@ impl ToolSet {
 
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
-        self.call_with_context(toolname, args, &ToolCallContext::EMPTY)
+        self.call_with_extensions(toolname, args, &ToolCallExtensions::EMPTY)
             .await
     }
 
     /// Call a tool with the given name, arguments, and per-call runtime context.
     ///
-    /// The context is threaded through to [`Tool::call_with_context`], allowing
+    /// The context is threaded through to [`Tool::call_with_extensions`], allowing
     /// tools to access caller-provided values (auth tokens, session IDs, etc.).
-    pub async fn call_with_context(
+    pub async fn call_with_extensions(
         &self,
         toolname: &str,
         args: String,
-        ctx: &ToolCallContext,
+        extensions: &ToolCallExtensions,
     ) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::debug!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
                 args
             );
-            Ok(tool.call_with_context(args, ctx).await?)
+            Ok(tool.call_with_extensions(args, extensions).await?)
         } else {
             Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
         }

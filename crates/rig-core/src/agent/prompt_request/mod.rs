@@ -5,7 +5,7 @@ use crate::{
     OneOrMany,
     completion::{CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, ToolResultContent, UserContent},
-    tool::ToolCallContext,
+    tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use serde::{Deserialize, Serialize};
@@ -83,14 +83,14 @@ where
         self
     }
 
-    /// Attach a per-call [`ToolCallContext`] for this request.
+    /// Attach a per-call [`ToolCallExtensions`] for this request.
     ///
     /// Every tool the agent executes during this request can read the
     /// caller-provided values (auth tokens, session IDs, conversation state, …)
-    /// via [`Tool::call_with_context`](crate::tool::Tool::call_with_context),
+    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
     /// without the model ever seeing them.
-    pub fn tool_context(mut self, ctx: ToolCallContext) -> Self {
-        self.runner = self.runner.tool_context(ctx);
+    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.runner = self.runner.with_tool_extensions(extensions);
         self
     }
 
@@ -535,14 +535,14 @@ where
         self
     }
 
-    /// Attach a per-call [`ToolCallContext`] for this request.
+    /// Attach a per-call [`ToolCallExtensions`] for this request.
     ///
     /// Every tool the agent executes during this request can read the
     /// caller-provided values (auth tokens, session IDs, conversation state, …)
-    /// via [`Tool::call_with_context`](crate::tool::Tool::call_with_context),
+    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
     /// without the model ever seeing them.
-    pub fn tool_context(mut self, ctx: ToolCallContext) -> Self {
-        self.inner = self.inner.tool_context(ctx);
+    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.inner = self.inner.with_tool_extensions(extensions);
         self
     }
 
@@ -684,10 +684,10 @@ mod tests {
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockContextProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
+            MockExtensionsProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
             SessionId,
         },
-        tool::{Tool, ToolCallContext},
+        tool::{Tool, ToolCallExtensions},
     };
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -1146,23 +1146,23 @@ mod tests {
         assert_eq!(recorded.request_count(), 1);
     }
 
-    /// The motivating use-case: a `ToolCallContext` set on the prompt request is
+    /// The motivating use-case: a `ToolCallExtensions` set on the prompt request is
     /// threaded all the way to the tool the agent loop executes.
     #[tokio::test]
-    async fn tool_context_reaches_tool_through_agent_loop() {
+    async fn tool_extensions_reach_tool_through_agent_loop() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
             MockTurn::text("done"),
         ]);
-        let probe = MockContextProbeTool::default();
+        let probe = MockExtensionsProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(SessionId("abc-123".to_string()));
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
 
         let out = agent
             .prompt("use the tool")
-            .tool_context(ctx)
+            .with_tool_extensions(extensions)
             .max_turns(3)
             .await
             .expect("run succeeds");
@@ -1179,7 +1179,7 @@ mod tests {
             MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
             MockTurn::text("done"),
         ]);
-        let probe = MockContextProbeTool::default();
+        let probe = MockExtensionsProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
         let out = agent
@@ -1189,7 +1189,7 @@ mod tests {
             .expect("run succeeds");
 
         assert_eq!(out, "done");
-        // Reaches `call_with_context` with an empty context (the override is the
+        // Reaches `call_with_extensions` with an empty context (the override is the
         // single entry point), so it observes "no-session" rather than the
         // plain-`call` "call-no-context".
         assert_eq!(probe.observed().as_deref(), Some("no-session"));
@@ -1197,11 +1197,11 @@ mod tests {
 
     /// Pins the probe's sentinel: its plain `call` body records
     /// `"call-no-context"`. The dispatched-run tests above assert `"no-session"`
-    /// instead, which is what proves dispatch routes through `call_with_context`
+    /// instead, which is what proves dispatch routes through `call_with_extensions`
     /// rather than `call`.
     #[tokio::test]
     async fn probe_plain_call_records_sentinel() {
-        let probe = MockContextProbeTool::default();
+        let probe = MockExtensionsProbeTool::default();
         let out = probe.call(json!({})).await.expect("call succeeds");
         assert_eq!(out, "call-no-context");
         assert_eq!(probe.observed().as_deref(), Some("call-no-context"));

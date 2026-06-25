@@ -4,7 +4,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{Tool, ToolCallContext, ToolDyn, ToolSet, ToolSetError},
+    tool::{Tool, ToolCallExtensions, ToolDyn, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
@@ -186,21 +186,21 @@ impl ToolServerHandle {
     /// The tool handle is cloned under a brief read lock so that
     /// long-running tool executions never block writers.
     pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
-        self.call_tool_with_context(tool_name, args, &ToolCallContext::EMPTY)
+        self.call_tool_with_extensions(tool_name, args, &ToolCallExtensions::EMPTY)
             .await
     }
 
     /// Look up and execute a tool by name with per-call runtime context.
     ///
-    /// The context is threaded through to [`Tool::call_with_context`], allowing
+    /// The context is threaded through to [`Tool::call_with_extensions`], allowing
     /// tools to access caller-provided values (auth tokens, session IDs, etc.).
     /// The tool handle is cloned under a brief read lock so that long-running
     /// tool executions never block writers.
-    pub async fn call_tool_with_context(
+    pub async fn call_tool_with_extensions(
         &self,
         tool_name: &str,
         args: &str,
-        ctx: &ToolCallContext,
+        extensions: &ToolCallExtensions,
     ) -> Result<String, ToolServerError> {
         let tool = {
             let state = self.0.read().await;
@@ -213,7 +213,7 @@ impl ToolServerHandle {
                     "Calling tool {tool_name} with args:\n{}",
                     serde_json::to_string_pretty(&args).unwrap_or_default()
                 );
-                tool.call_with_context(args.to_string(), ctx)
+                tool.call_with_extensions(args.to_string(), extensions)
                     .await
                     .map_err(|e| ToolSetError::ToolCallError(e).into())
             }
@@ -608,21 +608,21 @@ mod tests {
         assert!(tool_names.contains(&"subtract"));
     }
 
-    // --- call_with_context tests ---
+    // --- call_with_extensions tests ---
 
     #[derive(Clone)]
     struct SessionId(String);
 
     #[derive(serde::Deserialize, serde::Serialize)]
-    struct ContextReader;
+    struct ExtensionsReader;
 
     #[derive(Debug, thiserror::Error)]
     #[error("context reader error")]
-    struct ContextReaderError;
+    struct ExtensionsReaderError;
 
-    impl crate::tool::Tool for ContextReader {
+    impl crate::tool::Tool for ExtensionsReader {
         const NAME: &'static str = "context_reader";
-        type Error = ContextReaderError;
+        type Error = ExtensionsReaderError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -638,12 +638,12 @@ mod tests {
             Ok("no context".to_string())
         }
 
-        async fn call_with_context(
+        async fn call_with_extensions(
             &self,
             _args: Self::Args,
-            ctx: &crate::tool::ToolCallContext,
+            extensions: &crate::tool::ToolCallExtensions,
         ) -> Result<Self::Output, Self::Error> {
-            match ctx.get::<SessionId>() {
+            match extensions.get::<SessionId>() {
                 Some(session) => Ok(format!("session:{}", session.0)),
                 None => Ok("no session".to_string()),
             }
@@ -651,15 +651,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_call_tool_with_context_reaches_tool() {
-        let server = ToolServer::new().tool(ContextReader);
+    async fn test_call_tool_with_extensions_reaches_tool() {
+        let server = ToolServer::new().tool(ExtensionsReader);
         let handle = server.run();
 
-        let mut ctx = crate::tool::ToolCallContext::new();
-        ctx.insert(SessionId("abc-123".to_string()));
+        let mut extensions = crate::tool::ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
 
         let result = handle
-            .call_tool_with_context("context_reader", "{}", &ctx)
+            .call_tool_with_extensions("context_reader", "{}", &extensions)
             .await
             .unwrap();
 
@@ -667,8 +667,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_call_tool_without_context_uses_default() {
-        let server = ToolServer::new().tool(ContextReader);
+    async fn test_call_tool_without_extensions_uses_default() {
+        let server = ToolServer::new().tool(ExtensionsReader);
         let handle = server.run();
 
         let result = handle.call_tool("context_reader", "{}").await.unwrap();
@@ -676,16 +676,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tool_ignoring_context_still_works() {
+    async fn test_tool_ignoring_extensions_still_works() {
         let server = ToolServer::new().tool(MockAddTool);
         let handle = server.run();
 
-        let mut ctx = crate::tool::ToolCallContext::new();
-        ctx.insert(SessionId("ignored".to_string()));
+        let mut extensions = crate::tool::ToolCallExtensions::new();
+        extensions.insert(SessionId("ignored".to_string()));
 
         let args = serde_json::to_string(&serde_json::json!({"x": 3, "y": 7})).unwrap();
         let result = handle
-            .call_tool_with_context("add", &args, &ctx)
+            .call_tool_with_extensions("add", &args, &extensions)
             .await
             .unwrap();
 

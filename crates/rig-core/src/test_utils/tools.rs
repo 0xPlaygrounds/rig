@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::{
     completion::ToolDefinition,
-    tool::{Tool, ToolCallContext, ToolSet},
+    tool::{Tool, ToolCallExtensions, ToolSet},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
 };
@@ -61,31 +61,34 @@ impl Tool for MockAddTool {
 }
 
 /// A caller-injected context value, like a session id or auth token carried in
-/// a [`ToolCallContext`](crate::tool::ToolCallContext).
+/// a [`ToolCallExtensions`](crate::tool::ToolCallExtensions).
 #[derive(Clone)]
 pub struct SessionId(pub String);
 
 /// A mock tool that records whatever it observed in its per-call
-/// [`ToolCallContext`], so tests can assert the context reached tool execution.
+/// [`ToolCallExtensions`], so tests can assert the context reached tool execution.
 ///
-/// `call_with_context` records `session:<id>` (or `no-session` when no
+/// `call_with_extensions` records `session:<id>` (or `no-session` when no
 /// [`SessionId`] is present). The plain `call` body records `call-no-context` as
-/// a sentinel: because an overridden `call_with_context` is the single dispatch
+/// a sentinel: because an overridden `call_with_extensions` is the single dispatch
 /// entry point, that sentinel must never surface from a dispatched run —
 /// observing it would mean dispatch wrongly bypassed the context-aware path.
 #[derive(Clone, Default)]
-pub struct MockContextProbeTool {
+pub struct MockExtensionsProbeTool {
     seen: Arc<Mutex<Option<String>>>,
 }
 
-impl MockContextProbeTool {
+impl MockExtensionsProbeTool {
     /// What the tool last observed, if it has been called.
     pub fn observed(&self) -> Option<String> {
-        self.seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+        self.seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 }
 
-impl Tool for MockContextProbeTool {
+impl Tool for MockExtensionsProbeTool {
     const NAME: &'static str = "context_probe";
     type Error = MockToolError;
     type Args = serde_json::Value;
@@ -100,20 +103,26 @@ impl Tool for MockContextProbeTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-        *self.seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some("call-no-context".to_string());
+        *self
+            .seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some("call-no-context".to_string());
         Ok("call-no-context".to_string())
     }
 
-    async fn call_with_context(
+    async fn call_with_extensions(
         &self,
         _args: Self::Args,
-        ctx: &ToolCallContext,
+        extensions: &ToolCallExtensions,
     ) -> Result<Self::Output, Self::Error> {
-        let observed = match ctx.get::<SessionId>() {
+        let observed = match extensions.get::<SessionId>() {
             Some(session) => format!("session:{}", session.0),
             None => "no-session".to_string(),
         };
-        *self.seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(observed.clone());
+        *self
+            .seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(observed.clone());
         Ok(observed)
     }
 }

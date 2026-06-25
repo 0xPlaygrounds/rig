@@ -1,7 +1,7 @@
 use crate::{
     agent::Agent,
     completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
-    tool::{Tool, ToolCallContext},
+    tool::{Tool, ToolCallExtensions},
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -44,16 +44,18 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
         self.prompt(args.prompt).await
     }
 
-    /// Propagate the caller's [`ToolCallContext`] into the sub-agent run, so the
+    /// Propagate the caller's [`ToolCallExtensions`] into the sub-agent run, so the
     /// inner agent's own tools observe it too (sub-agent delegation / A2A
     /// chains). Without this, a sub-agent invoked as a tool would start with an
     /// empty context.
-    async fn call_with_context(
+    async fn call_with_extensions(
         &self,
         args: Self::Args,
-        ctx: &ToolCallContext,
+        extensions: &ToolCallExtensions,
     ) -> Result<Self::Output, Self::Error> {
-        self.prompt(args.prompt).tool_context(ctx.clone()).await
+        self.prompt(args.prompt)
+            .with_tool_extensions(extensions.clone())
+            .await
     }
 
     fn name(&self) -> String {
@@ -65,14 +67,14 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::test_utils::{MockCompletionModel, MockContextProbeTool, MockTurn, SessionId};
+    use crate::test_utils::{MockCompletionModel, MockExtensionsProbeTool, MockTurn, SessionId};
 
-    /// A `ToolCallContext` set on the outer run propagates into a sub-agent
+    /// A `ToolCallExtensions` set on the outer run propagates into a sub-agent
     /// invoked as a tool, so the inner agent's own tools observe it.
     #[tokio::test]
     async fn context_propagates_into_sub_agent() {
         // Inner agent: calls a context-probing tool, then answers.
-        let probe = MockContextProbeTool::default();
+        let probe = MockExtensionsProbeTool::default();
         let inner_model = MockCompletionModel::new([
             MockTurn::tool_call("c1", "context_probe", json!({})),
             MockTurn::text("inner done"),
@@ -90,12 +92,12 @@ mod tests {
         ]);
         let outer = AgentBuilder::new(outer_model).tool(inner).build();
 
-        let mut ctx = ToolCallContext::new();
-        ctx.insert(SessionId("abc-123".to_string()));
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
 
         let out = outer
             .prompt("start")
-            .tool_context(ctx)
+            .with_tool_extensions(extensions)
             .max_turns(5)
             .await
             .expect("run succeeds");
