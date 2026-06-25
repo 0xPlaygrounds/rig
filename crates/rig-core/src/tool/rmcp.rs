@@ -44,7 +44,7 @@
 //! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
 //! let mut extensions = ToolCallExtensions::new();
 //! extensions.insert(meta);
-//! let answer = agent.prompt("…").with_tool_extensions(extensions).await?;
+//! let answer = agent.prompt("…").tool_extensions(extensions).await?;
 //! ```
 
 use std::borrow::Cow;

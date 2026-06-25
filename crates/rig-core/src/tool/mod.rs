@@ -152,17 +152,18 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// the extensions and delegates to [`Tool::call`].
     ///
     /// **Override contract:** when you override this method it becomes the
-    /// single entry point for the tool — *every* dispatch path (including the
-    /// extension-free [`call`](Tool::call) and the agent loop) routes here, with
-    /// an empty [`ToolCallExtensions`] when no caller supplied one. So put your
-    /// logic here and treat a missing value as the no-extensions case (e.g. via
-    /// [`ToolCallExtensions::get`] returning `None`); do not split behavior
-    /// between `call` and `call_with_extensions`, as `call`'s body is then
-    /// unreachable through dynamic dispatch.
+    /// single entry point for the tool under *dynamic dispatch* — every
+    /// [`ToolDyn`] path (the extension-free [`ToolDyn::call`] and the agent
+    /// loop) routes here, with an empty [`ToolCallExtensions`] when no caller
+    /// supplied one. So put your logic here and treat a missing value as the
+    /// no-extensions case (e.g. via [`ToolCallExtensions::get`] returning
+    /// `None`); do not split behavior between `call` and `call_with_extensions`,
+    /// as `call`'s body is then unreachable through dynamic dispatch (a direct
+    /// `Tool::call` call still runs its own body).
     fn call_with_extensions(
         &self,
         args: Self::Args,
-        _ctx: &ToolCallExtensions,
+        _extensions: &ToolCallExtensions,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend {
         self.call(args)
     }
@@ -215,7 +216,7 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     fn call_with_extensions<'a>(
         &'a self,
         args: String,
-        _ctx: &'a ToolCallExtensions,
+        _extensions: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         self.call(args)
     }

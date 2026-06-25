@@ -329,8 +329,8 @@ where
     /// caller-provided values (auth tokens, session IDs, conversation state, …)
     /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
     /// without the model ever seeing them.
-    pub fn with_tool_extensions(mut self, ctx: ToolCallExtensions) -> Self {
-        self.runner = self.runner.with_tool_extensions(ctx);
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.runner = self.runner.tool_extensions(extensions);
         self
     }
 
@@ -2321,7 +2321,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .with_tool_extensions(extensions)
+            .tool_extensions(extensions)
             .history(empty_history)
             .multi_turn(3)
             .await;
@@ -2338,7 +2338,7 @@ mod tests {
     }
 
     /// Streaming counterpart of the blocking empty-context default: with no
-    /// `.with_tool_extensions(..)`, the tool still runs with an empty context (observing
+    /// `.tool_extensions(..)`, the tool still runs with an empty context (observing
     /// `no-session`), not a stale value.
     #[tokio::test]
     async fn streaming_tool_runs_with_empty_context_when_none_supplied() {

@@ -238,7 +238,7 @@ where
     /// read caller-provided values (auth tokens, session IDs, conversation
     /// state, …) via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions)
     /// without the model ever seeing them. Replaces any context already set.
-    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
         self.tool_extensions = extensions;
         self
     }

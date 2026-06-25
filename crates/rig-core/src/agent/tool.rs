@@ -54,7 +54,7 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
         extensions: &ToolCallExtensions,
     ) -> Result<Self::Output, Self::Error> {
         self.prompt(args.prompt)
-            .with_tool_extensions(extensions.clone())
+            .tool_extensions(extensions.clone())
             .await
     }
 
@@ -97,7 +97,7 @@ mod tests {
 
         let out = outer
             .prompt("start")
-            .with_tool_extensions(extensions)
+            .tool_extensions(extensions)
             .max_turns(5)
             .await
             .expect("run succeeds");

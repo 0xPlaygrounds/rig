@@ -89,8 +89,8 @@ where
     /// caller-provided values (auth tokens, session IDs, conversation state, …)
     /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
     /// without the model ever seeing them.
-    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
-        self.runner = self.runner.with_tool_extensions(extensions);
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.runner = self.runner.tool_extensions(extensions);
         self
     }
 
@@ -541,8 +541,8 @@ where
     /// caller-provided values (auth tokens, session IDs, conversation state, …)
     /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
     /// without the model ever seeing them.
-    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
-        self.inner = self.inner.with_tool_extensions(extensions);
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.inner = self.inner.tool_extensions(extensions);
         self
     }
 
@@ -1162,7 +1162,7 @@ mod tests {
 
         let out = agent
             .prompt("use the tool")
-            .with_tool_extensions(extensions)
+            .tool_extensions(extensions)
             .max_turns(3)
             .await
             .expect("run succeeds");
