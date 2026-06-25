@@ -9,7 +9,7 @@ use crate::{
     },
     agent::runner::{
         AgentRunner, InvalidDecision, build_agent_run, execute_tools_buffered, flow_into_invalid,
-        observe_flow, run_single_tool,
+        new_execute_tool_span, observe_flow, run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
@@ -911,16 +911,7 @@ where
                                     .internal_call_id
                                     .unwrap_or_else(crate::id::generate);
 
-                                let tool_span = info_span!(
-                                    parent: tracing::Span::current(),
-                                    "execute_tool",
-                                    gen_ai.operation.name = "execute_tool",
-                                    gen_ai.tool.type = "function",
-                                    gen_ai.tool.name = tracing::field::Empty,
-                                    gen_ai.tool.call.id = tracing::field::Empty,
-                                    gen_ai.tool.call.arguments = tracing::field::Empty,
-                                    gen_ai.tool.call.result = tracing::field::Empty
-                                );
+                                let tool_span = new_execute_tool_span();
 
                                 yield Ok(MultiTurnStreamItem::stream_item(
                                     StreamedAssistantContent::ToolCall {
@@ -985,16 +976,7 @@ where
                                 Vec::with_capacity(calls.len());
 
                             for mut pending in calls {
-                                let tool_span = info_span!(
-                                    parent: tracing::Span::current(),
-                                    "execute_tool",
-                                    gen_ai.operation.name = "execute_tool",
-                                    gen_ai.tool.type = "function",
-                                    gen_ai.tool.name = tracing::field::Empty,
-                                    gen_ai.tool.call.id = tracing::field::Empty,
-                                    gen_ai.tool.call.arguments = tracing::field::Empty,
-                                    gen_ai.tool.call.result = tracing::field::Empty
-                                );
+                                let tool_span = new_execute_tool_span();
 
                                 if pending.preresolved_result.is_some() {
                                     // No ToolCall / ToolResult stream items, as in
