@@ -363,6 +363,19 @@ where
         self
     }
 
+    /// Attach per-call runtime [extensions](crate::tool::ToolCallExtensions) for
+    /// this request.
+    ///
+    /// The extensions are threaded through the agent loop to every tool executed
+    /// during this run, where they can be read by overriding
+    /// [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
+    /// Use this to pass auth tokens, session IDs, A2A `context_id`/`task_id`, or
+    /// any other per-call value to tools without exposing it to the model.
+    pub fn with_tool_extensions(mut self, extensions: crate::tool::ToolCallExtensions) -> Self {
+        self.runner = self.runner.tool_extensions(extensions);
+        self
+    }
+
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
         self.runner.stream().await
     }
@@ -907,6 +920,7 @@ where
                             let result = run_single_tool(
                                 &self.hooks,
                                 &tool_server_handle,
+                                &self.tool_extensions,
                                 &tool_call,
                                 &internal_call_id,
                                 &full_history_for_errors,
@@ -5291,6 +5305,86 @@ mod tests {
         assert!(
             saw_final,
             "FinalResponse must be yielded even when memory.append fails"
+        );
+    }
+
+    // --- tool call extensions end-to-end (streaming) ---
+
+    #[derive(Clone)]
+    struct StreamSessionId(String);
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("read session error")]
+    struct StreamReadSessionError;
+
+    #[derive(Clone)]
+    struct StreamingExtensionsTool {
+        seen: Arc<Mutex<Option<String>>>,
+    }
+
+    impl Tool for StreamingExtensionsTool {
+        const NAME: &'static str = "read_session";
+        type Error = StreamReadSessionError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "reads the session id from the call extensions".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            *self.seen.lock().unwrap() = None;
+            Ok("no-extensions".to_string())
+        }
+
+        async fn call_with_extensions(
+            &self,
+            _args: Self::Args,
+            extensions: &crate::tool::ToolCallExtensions,
+        ) -> Result<Self::Output, Self::Error> {
+            let session = extensions.get::<StreamSessionId>().map(|s| s.0.clone());
+            *self.seen.lock().unwrap() = session.clone();
+            Ok(session.unwrap_or_else(|| "no-session".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn streaming_tool_extensions_reach_tool() {
+        let seen = Arc::new(Mutex::new(None));
+        let tool = StreamingExtensionsTool { seen: seen.clone() };
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tool_call_1", "read_session", serde_json::json!({})),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).tool(tool).build();
+
+        let mut extensions = crate::tool::ToolCallExtensions::new();
+        extensions.insert(StreamSessionId("stream-session".to_string()));
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_tool_extensions(extensions)
+            .multi_turn(3)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            item.expect("stream item should not error");
+        }
+
+        assert_eq!(
+            seen.lock().unwrap().as_deref(),
+            Some("stream-session"),
+            "the injected StreamSessionId must reach the tool through the streaming agent loop"
         );
     }
 }
