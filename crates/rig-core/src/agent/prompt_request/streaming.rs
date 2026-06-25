@@ -2336,6 +2336,43 @@ mod tests {
         assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
     }
 
+    /// Streaming counterpart of the blocking empty-context default: with no
+    /// `.tool_context(..)`, the tool still runs with an empty context (observing
+    /// `no-session`), not a stale value.
+    #[tokio::test]
+    async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tool_call_1", "context_probe", serde_json::json!({}))
+                    .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let probe = MockContextProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .history(empty_history)
+            .multi_turn(3)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+                Ok(_) => {}
+            }
+        }
+
+        assert_eq!(probe.observed().as_deref(), Some("no-session"));
+    }
+
     #[tokio::test]
     async fn unknown_tool_call_fails_before_streaming_second_request() {
         let model = MockCompletionModel::from_stream_turns([

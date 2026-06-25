@@ -28,6 +28,24 @@
 //!     .tool_server_handle(tool_server_handle)
 //!     .build();
 //! ```
+//!
+//! # Per-call metadata
+//!
+//! [`McpTool`] forwards an [`rmcp::model::Meta`] (re-exported here as [`Meta`])
+//! placed in a [`ToolCallContext`] as the MCP request's `_meta` (SEP-1319) —
+//! the idiomatic channel for per-call values such as auth tokens, session ids,
+//! or A2A `context_id`/`task_id`, which the model never sees:
+//!
+//! ```rust,ignore
+//! use rig_core::tool::rmcp::Meta;
+//! use rig_core::tool::ToolCallContext;
+//!
+//! let mut meta = Meta::new();
+//! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
+//! let mut ctx = ToolCallContext::new();
+//! ctx.insert(meta);
+//! let answer = agent.prompt("…").tool_context(ctx).await?;
+//! ```
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -42,6 +60,10 @@ use crate::tool::ToolError;
 use crate::tool::server::{ToolServerError, ToolServerHandle};
 use crate::tool::{ToolCallContext, ToolDyn};
 use crate::wasm_compat::WasmBoxedFuture;
+
+/// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolCallContext`] to have
+/// [`McpTool`] forward it as a call's MCP `_meta` (see the module docs).
+pub use rmcp::model::Meta;
 
 /// Default per-call timeout applied to MCP tools (see issue #1914).
 ///

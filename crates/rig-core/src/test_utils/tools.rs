@@ -68,9 +68,11 @@ pub struct SessionId(pub String);
 /// A mock tool that records whatever it observed in its per-call
 /// [`ToolCallContext`], so tests can assert the context reached tool execution.
 ///
-/// `call_with_context` records `session:<id>` (or `no-session` when absent); the
-/// plain `call` path records `call-no-context`, which lets a test tell the two
-/// dispatch paths apart.
+/// `call_with_context` records `session:<id>` (or `no-session` when no
+/// [`SessionId`] is present). The plain `call` body records `call-no-context` as
+/// a sentinel: because an overridden `call_with_context` is the single dispatch
+/// entry point, that sentinel must never surface from a dispatched run —
+/// observing it would mean dispatch wrongly bypassed the context-aware path.
 #[derive(Clone, Default)]
 pub struct MockContextProbeTool {
     seen: Arc<Mutex<Option<String>>>,

@@ -1195,6 +1195,18 @@ mod tests {
         assert_eq!(probe.observed().as_deref(), Some("no-session"));
     }
 
+    /// Pins the probe's sentinel: its plain `call` body records
+    /// `"call-no-context"`. The dispatched-run tests above assert `"no-session"`
+    /// instead, which is what proves dispatch routes through `call_with_context`
+    /// rather than `call`.
+    #[tokio::test]
+    async fn probe_plain_call_records_sentinel() {
+        let probe = MockContextProbeTool::default();
+        let out = probe.call(json!({})).await.expect("call succeeds");
+        assert_eq!(out, "call-no-context");
+        assert_eq!(probe.observed().as_deref(), Some("call-no-context"));
+    }
+
     #[tokio::test]
     async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
         let invalid_hook = RecordingInvalidToolCallHook::default();
