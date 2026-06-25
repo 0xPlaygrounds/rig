@@ -4,12 +4,12 @@ use crate::{
     agent::hook::{AgentHook, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind},
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
-        AgentRunStep,
+        AgentRunStep, PendingToolCall,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, InvalidDecision, build_agent_run, flow_into_invalid, observe_flow,
-        run_single_tool,
+        AgentRunner, InvalidDecision, build_agent_run, execute_tools_buffered, flow_into_invalid,
+        observe_flow, run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
@@ -320,6 +320,16 @@ where
     /// turns an LLM can take calling tools before writing a text response).
     pub fn multi_turn(mut self, turns: usize) -> Self {
         self.runner = self.runner.max_turns(turns);
+        self
+    }
+
+    /// Execute up to `concurrency` of a turn's tool calls at once (1 by default,
+    /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: the streamed
+    /// message history is unchanged at any `concurrency`, but at `concurrency >
+    /// 1` the stream emits all of a turn's `ToolCall` items (call order) and
+    /// then the `ToolResult` items, rather than strictly interleaving each pair.
+    pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
+        self.runner = self.runner.tool_concurrency(concurrency);
         self
     }
 
@@ -879,78 +889,197 @@ where
                     }
                     AgentRunStep::CallTools { calls } => {
                         let full_history_for_errors = run.full_history();
-                        let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
 
-                        for pending in calls {
-                            let tool_call = pending.tool_call;
-                            if let Some(result) = pending.preresolved_result {
-                                // Pre-resolved results only occur when invalid
-                                // tool-call recovery suppressed execution; the
-                                // streamed path abandons such turns instead, so
-                                // this arm only serves machine-level drivers
-                                // mixing streamed and non-streamed turns.
-                                results.push(result);
-                                continue;
+                        if self.concurrency <= 1 {
+                            // Sequential default: one ToolCall/ToolResult pair per
+                            // tool, strictly interleaved. Byte-identical to the
+                            // pre-concurrency behavior.
+                            let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
+
+                            for pending in calls {
+                                let tool_call = pending.tool_call;
+                                if let Some(result) = pending.preresolved_result {
+                                    // Pre-resolved results only occur when invalid
+                                    // tool-call recovery suppressed execution; the
+                                    // streamed path abandons such turns instead, so
+                                    // this arm only serves machine-level drivers
+                                    // mixing streamed and non-streamed turns.
+                                    results.push(result);
+                                    continue;
+                                }
+                                let internal_call_id = pending
+                                    .internal_call_id
+                                    .unwrap_or_else(crate::id::generate);
+
+                                let tool_span = info_span!(
+                                    parent: tracing::Span::current(),
+                                    "execute_tool",
+                                    gen_ai.operation.name = "execute_tool",
+                                    gen_ai.tool.type = "function",
+                                    gen_ai.tool.name = tracing::field::Empty,
+                                    gen_ai.tool.call.id = tracing::field::Empty,
+                                    gen_ai.tool.call.arguments = tracing::field::Empty,
+                                    gen_ai.tool.call.result = tracing::field::Empty
+                                );
+
+                                yield Ok(MultiTurnStreamItem::stream_item(
+                                    StreamedAssistantContent::ToolCall {
+                                        tool_call: tool_call.clone(),
+                                        internal_call_id: internal_call_id.clone(),
+                                    },
+                                ));
+
+                                // Shared with the blocking path: identical hooks,
+                                // fail-closed skip/terminate, and result shaping
+                                // (skip reason verbatim, real output parsed).
+                                let result = run_single_tool(
+                                    &self.hooks,
+                                    &tool_server_handle,
+                                    &tool_extensions,
+                                    &tool_call,
+                                    &internal_call_id,
+                                    &full_history_for_errors,
+                                )
+                                .instrument(tool_span)
+                                .await;
+
+                                match result {
+                                    Ok(content) => {
+                                        results.push(content.clone());
+                                        // Surface the shaped tool result as a stream item.
+                                        if let UserContent::ToolResult(tool_result) = content {
+                                            yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                                StreamedUserContent::ToolResult {
+                                                    tool_result,
+                                                    internal_call_id,
+                                                },
+                                            ));
+                                        }
+                                    }
+                                    Err(err) => {
+                                        yield Err(StreamingError::Prompt(Box::new(err)));
+                                        break 'outer;
+                                    }
+                                }
                             }
-                            let internal_call_id = pending
-                                .internal_call_id
-                                .unwrap_or_else(crate::id::generate);
 
-                            let tool_span = info_span!(
-                                parent: tracing::Span::current(),
-                                "execute_tool",
-                                gen_ai.operation.name = "execute_tool",
-                                gen_ai.tool.type = "function",
-                                gen_ai.tool.name = tracing::field::Empty,
-                                gen_ai.tool.call.id = tracing::field::Empty,
-                                gen_ai.tool.call.arguments = tracing::field::Empty,
-                                gen_ai.tool.call.result = tracing::field::Empty
-                            );
+                            if let Err(err) = run.tool_results(results) {
+                                yield Err(Box::new(err).into());
+                                break 'outer;
+                            }
+                        } else {
+                            // Concurrent path (`tool_concurrency(n)`, n > 1): emit
+                            // every ToolCall stream item eagerly in call order,
+                            // then drive the shared buffered executor — which runs
+                            // up to `concurrency` tools at once but preserves call
+                            // order — and emit each ToolResult as it lands. The
+                            // persisted history is identical to the sequential
+                            // path; only the stream-item interleaving differs.
+                            let mut calls_with_spans: Vec<(PendingToolCall, tracing::Span)> =
+                                Vec::with_capacity(calls.len());
+                            // `None` marks a call with no eagerly-emitted ToolCall
+                            // (pre-resolved) so its result is not surfaced either,
+                            // matching the sequential path; otherwise the call's
+                            // correlation id, used to tag its ToolResult item.
+                            let mut yield_ids: Vec<Option<String>> =
+                                Vec::with_capacity(calls.len());
 
-                            yield Ok(MultiTurnStreamItem::stream_item(
-                                StreamedAssistantContent::ToolCall {
-                                    tool_call: tool_call.clone(),
-                                    internal_call_id: internal_call_id.clone(),
-                                },
-                            ));
+                            for mut pending in calls {
+                                let tool_span = info_span!(
+                                    parent: tracing::Span::current(),
+                                    "execute_tool",
+                                    gen_ai.operation.name = "execute_tool",
+                                    gen_ai.tool.type = "function",
+                                    gen_ai.tool.name = tracing::field::Empty,
+                                    gen_ai.tool.call.id = tracing::field::Empty,
+                                    gen_ai.tool.call.arguments = tracing::field::Empty,
+                                    gen_ai.tool.call.result = tracing::field::Empty
+                                );
 
-                            // Shared with the blocking path: identical hooks,
-                            // fail-closed skip/terminate, and result shaping
-                            // (skip reason verbatim, real output parsed).
-                            let result = run_single_tool(
+                                if pending.preresolved_result.is_some() {
+                                    // No ToolCall / ToolResult stream items, as in
+                                    // the sequential path; the executor returns the
+                                    // stored result so history stays consistent.
+                                    yield_ids.push(None);
+                                    calls_with_spans.push((pending, tool_span));
+                                    continue;
+                                }
+
+                                let internal_call_id = pending
+                                    .internal_call_id
+                                    .clone()
+                                    .unwrap_or_else(crate::id::generate);
+                                pending.internal_call_id = Some(internal_call_id.clone());
+
+                                yield Ok(MultiTurnStreamItem::stream_item(
+                                    StreamedAssistantContent::ToolCall {
+                                        tool_call: pending.tool_call.clone(),
+                                        internal_call_id: internal_call_id.clone(),
+                                    },
+                                ));
+
+                                yield_ids.push(Some(internal_call_id));
+                                calls_with_spans.push((pending, tool_span));
+                            }
+
+                            let buffered = execute_tools_buffered(
                                 &self.hooks,
                                 &tool_server_handle,
                                 &tool_extensions,
-                                &tool_call,
-                                &internal_call_id,
+                                calls_with_spans,
                                 &full_history_for_errors,
-                            )
-                            .instrument(tool_span)
-                            .await;
+                                self.concurrency,
+                            );
+                            futures::pin_mut!(buffered);
 
-                            match result {
-                                Ok(content) => {
-                                    results.push(content.clone());
-                                    // Surface the shaped tool result as a stream item.
-                                    if let UserContent::ToolResult(tool_result) = content {
-                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                            StreamedUserContent::ToolResult {
-                                                tool_result,
-                                                internal_call_id,
-                                            },
-                                        ));
-                                    }
+                            let mut results: Vec<UserContent> =
+                                Vec::with_capacity(yield_ids.len());
+                            // Hold the first error (in call order) but keep
+                            // draining `buffered` so sibling tools already in
+                            // flight run to completion and fire their hooks — the
+                            // blocking path collects the whole stream before
+                            // surfacing an error, so draining keeps the two
+                            // drivers' tool execution / side effects identical.
+                            let mut first_error: Option<PromptError> = None;
+                            // `buffered` preserves call order, so advancing this
+                            // iterator in lockstep pairs each result with the
+                            // matching eagerly-emitted ToolCall's id (or `None`
+                            // for a pre-resolved call, which emits no items).
+                            let mut yield_ids = yield_ids.into_iter();
+                            while let Some(result) = buffered.next().await {
+                                let yield_id = yield_ids.next().flatten();
+                                // Once terminating, drain the rest without
+                                // surfacing further results.
+                                if first_error.is_some() {
+                                    continue;
                                 }
-                                Err(err) => {
-                                    yield Err(StreamingError::Prompt(Box::new(err)));
-                                    break 'outer;
+                                match result {
+                                    Ok(content) => {
+                                        results.push(content.clone());
+                                        if let Some(internal_call_id) = yield_id
+                                            && let UserContent::ToolResult(tool_result) = content
+                                        {
+                                            yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                                StreamedUserContent::ToolResult {
+                                                    tool_result,
+                                                    internal_call_id,
+                                                },
+                                            ));
+                                        }
+                                    }
+                                    Err(err) => first_error = Some(err),
                                 }
                             }
-                        }
 
-                        if let Err(err) = run.tool_results(results) {
-                            yield Err(Box::new(err).into());
-                            break 'outer;
+                            if let Some(err) = first_error {
+                                yield Err(StreamingError::Prompt(Box::new(err)));
+                                break 'outer;
+                            }
+
+                            if let Err(err) = run.tool_results(results) {
+                                yield Err(Box::new(err).into());
+                                break 'outer;
+                            }
                         }
                     }
                     AgentRunStep::Done(response) => {
@@ -1082,7 +1211,7 @@ mod tests {
     use crate::providers::anthropic;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
-        AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel,
+        AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
         MockExtensionsProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, MockToolError,
         SessionId,
     };
@@ -2295,6 +2424,45 @@ mod tests {
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
         assert!(validate_follow_up_tool_history(&requests[1]).is_ok());
+    }
+
+    /// `StreamingPromptRequest::tool_concurrency` reaches the runner: two
+    /// barrier-synchronized tools in a streamed turn only finish if they run
+    /// concurrently. At `tool_concurrency(2)` the stream completes; sequential
+    /// execution would block on the first tool forever, so the timeout asserts
+    /// the public builder actually enables concurrency on the streaming path.
+    #[tokio::test]
+    async fn streaming_prompt_request_tool_concurrency_runs_tools_concurrently() {
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("b1", "barrier_tool", serde_json::json!({})),
+                MockStreamEvent::tool_call("b2", "barrier_tool", serde_json::json!({})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model)
+            .tool(MockBarrierTool::new(barrier))
+            .build();
+
+        let drive = async {
+            let mut stream = agent
+                .stream_prompt("hit the barrier twice")
+                .multi_turn(3)
+                .tool_concurrency(2)
+                .await;
+            while let Some(item) = stream.next().await {
+                item.unwrap_or_else(|err| panic!("unexpected streaming error: {err:?}"));
+            }
+        };
+
+        tokio::time::timeout(Duration::from_secs(5), drive)
+            .await
+            .expect("streamed tools must run concurrently, not deadlock at the barrier");
     }
 
     /// The streaming driver threads the per-call `ToolCallExtensions` to executed
