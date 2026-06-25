@@ -13,3 +13,6 @@ target/
 # nodejs stuff
 node_modules/
 dist/
+
+# local LanceDB stores created by integration tests
+/data/

@@ -19,19 +19,27 @@
 //! `lancedb` feature is enabled.
 
 use std::ops::Range;
+use std::sync::Arc;
 
+use arrow_array::{
+    ArrayRef, FixedSizeListArray, RecordBatch,
+    types::{Float32Type, Float64Type},
+};
+use arrow_json::ReaderBuilder;
 use lancedb::{
     DistanceType,
+    arrow::arrow_schema::{DataType, Field, Fields, Schema},
     query::{QueryBase, VectorQuery},
 };
 use rig_core::{
-    embeddings::embedding::EmbeddingModel,
+    Embed, OneOrMany,
+    embeddings::{Embedding, embedding::EmbeddingModel},
     vector_store::{
-        VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{FilterError, SearchFilter, VectorSearchRequest},
     },
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utils::{FilterTableColumns, QueryToJson};
 
@@ -43,6 +51,10 @@ fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
 
 fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
     VectorStoreError::JsonError(e)
+}
+
+fn arrow_to_rig_error(e: lancedb::arrow::arrow_schema::ArrowError) -> VectorStoreError {
+    VectorStoreError::DatastoreError(Box::new(e))
 }
 
 /// Type on which vector searches can be performed for a lanceDb table.
@@ -128,6 +140,48 @@ where
         }
 
         query
+    }
+}
+
+/// Resolve the embedding column: an explicit `configured` column wins, otherwise
+/// auto-detect the single `FixedSizeList<Float32|Float64>` column in the schema
+/// (the same default LanceDB uses to pick a vector column). Errors if there is
+/// no such column or more than one and none was configured.
+fn resolve_embedding_column(
+    schema: &Schema,
+    configured: Option<&str>,
+) -> Result<String, VectorStoreError> {
+    if let Some(column) = configured {
+        return Ok(column.to_string());
+    }
+
+    let candidates: Vec<&str> = schema
+        .fields()
+        .iter()
+        .filter(|field| {
+            matches!(
+                field.data_type(),
+                DataType::FixedSizeList(inner, _)
+                    if matches!(inner.data_type(), DataType::Float32 | DataType::Float64)
+            )
+        })
+        .map(|field| field.name().as_str())
+        .collect();
+
+    match candidates.as_slice() {
+        [only] => Ok((*only).to_string()),
+        [] => Err(VectorStoreError::DatastoreError(
+            "no FixedSizeList<Float32|Float64> column found in table schema; \
+             set SearchParams::column to specify the embedding column"
+                .into(),
+        )),
+        _ => Err(VectorStoreError::DatastoreError(
+            format!(
+                "multiple FixedSizeList columns found ({candidates:?}); \
+                 set SearchParams::column to disambiguate"
+            )
+            .into(),
+        )),
     }
 }
 
@@ -499,5 +553,200 @@ where
                 ))
             })
             .collect()
+    }
+}
+
+/// Insert `(Doc, OneOrMany<Embedding>)` pairs directly into the backing LanceDB
+/// table without hand-building Arrow `RecordBatch`es.
+///
+/// Each embedding produces one row: the document's JSON fields are flattened
+/// onto that row (a non-object doc is stored under a `document` field), and the
+/// embedding vector is written to the table's `FixedSizeList<Float32|Float64>`
+/// column. The embedding column is taken from [`SearchParams::column`] when set,
+/// otherwise auto-detected. Doc fields absent from the table schema are dropped
+/// by the Arrow JSON decoder, so rows must be consistent with the schema the
+/// table was created with.
+impl<M> InsertDocuments for LanceDbVectorIndex<M>
+where
+    M: EmbeddingModel + Sync + Send,
+{
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        if documents.is_empty() {
+            return Ok(());
+        }
+
+        let table_schema: Arc<Schema> = self.table.schema().await.map_err(lancedb_to_rig_error)?;
+        let embedding_column =
+            resolve_embedding_column(&table_schema, self.search_params.column.as_deref())?;
+
+        let embedding_field = table_schema
+            .field_with_name(&embedding_column)
+            .map_err(arrow_to_rig_error)?
+            .clone();
+        let (embedding_inner_dtype, embedding_dims) = match embedding_field.data_type() {
+            DataType::FixedSizeList(inner, dims) => (inner.data_type().clone(), *dims),
+            _ => {
+                return Err(VectorStoreError::DatastoreError(
+                    format!("embedding column `{embedding_column}` is not a FixedSizeList").into(),
+                ));
+            }
+        };
+
+        // Decode the document rows against the non-embedding columns, then splice
+        // the embedding column back in at its schema position.
+        let non_embedding_fields: Vec<Arc<Field>> = table_schema
+            .fields()
+            .iter()
+            .filter(|field| field.name() != &embedding_column)
+            .cloned()
+            .collect();
+        let non_embedding_schema = Arc::new(Schema::new(Fields::from(non_embedding_fields)));
+
+        let mut json_rows: Vec<Value> = Vec::new();
+        let mut embedding_vecs: Vec<Vec<f64>> = Vec::new();
+        for (doc, embeddings) in documents {
+            let doc_value = serde_json::to_value(&doc).map_err(serde_to_rig_error)?;
+            for embedding in embeddings.into_iter() {
+                if embedding.vec.len() != embedding_dims as usize {
+                    return Err(VectorStoreError::DatastoreError(
+                        format!(
+                            "embedding dim mismatch: got {} expected {embedding_dims} for column `{embedding_column}`",
+                            embedding.vec.len(),
+                        )
+                        .into(),
+                    ));
+                }
+                let row = match &doc_value {
+                    Value::Object(_) => doc_value.clone(),
+                    other => {
+                        let mut map = serde_json::Map::new();
+                        map.insert("document".to_string(), other.clone());
+                        Value::Object(map)
+                    }
+                };
+                json_rows.push(row);
+                embedding_vecs.push(embedding.vec);
+            }
+        }
+
+        let mut decoder = ReaderBuilder::new(non_embedding_schema.clone())
+            .build_decoder()
+            .map_err(arrow_to_rig_error)?;
+        decoder.serialize(&json_rows).map_err(arrow_to_rig_error)?;
+        let partial_batch = decoder
+            .flush()
+            .map_err(arrow_to_rig_error)?
+            .ok_or_else(|| {
+                VectorStoreError::DatastoreError("arrow-json decoder produced no batch".into())
+            })?;
+
+        let embedding_array: ArrayRef = match embedding_inner_dtype {
+            DataType::Float64 => {
+                Arc::new(
+                    FixedSizeListArray::from_iter_primitive::<Float64Type, _, _>(
+                        embedding_vecs
+                            .iter()
+                            .map(|v| Some(v.iter().copied().map(Some).collect::<Vec<_>>()))
+                            .collect::<Vec<_>>(),
+                        embedding_dims,
+                    ),
+                )
+            }
+            DataType::Float32 => {
+                Arc::new(
+                    FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+                        embedding_vecs
+                            .iter()
+                            .map(|v| Some(v.iter().map(|x| Some(*x as f32)).collect::<Vec<_>>()))
+                            .collect::<Vec<_>>(),
+                        embedding_dims,
+                    ),
+                )
+            }
+            other => {
+                return Err(VectorStoreError::DatastoreError(
+                    format!(
+                        "unsupported embedding inner dtype `{other:?}`; expected Float32 or Float64"
+                    )
+                    .into(),
+                ));
+            }
+        };
+
+        let mut columns: Vec<ArrayRef> = Vec::with_capacity(table_schema.fields().len());
+        for field in table_schema.fields() {
+            if field.name() == &embedding_column {
+                columns.push(embedding_array.clone());
+            } else {
+                let idx = non_embedding_schema
+                    .index_of(field.name())
+                    .map_err(arrow_to_rig_error)?;
+                columns.push(partial_batch.column(idx).clone());
+            }
+        }
+
+        let batch = RecordBatch::try_new(table_schema, columns).map_err(arrow_to_rig_error)?;
+
+        self.table
+            .add(vec![batch])
+            .execute()
+            .await
+            .map_err(lancedb_to_rig_error)?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixed_size_list(inner: DataType) -> DataType {
+        DataType::FixedSizeList(Arc::new(Field::new("item", inner, true)), 4)
+    }
+
+    fn schema_with(fields: Vec<(&str, DataType)>) -> Schema {
+        Schema::new(
+            fields
+                .into_iter()
+                .map(|(name, dt)| Field::new(name, dt, true))
+                .collect::<Fields>(),
+        )
+    }
+
+    #[test]
+    fn resolve_embedding_column_auto_detects_single_vector_column() {
+        let schema = schema_with(vec![
+            ("id", DataType::Utf8),
+            ("embedding", fixed_size_list(DataType::Float64)),
+        ]);
+        assert_eq!(
+            resolve_embedding_column(&schema, None).unwrap(),
+            "embedding"
+        );
+    }
+
+    #[test]
+    fn resolve_embedding_column_prefers_configured_override() {
+        let schema = schema_with(vec![
+            ("vec_a", fixed_size_list(DataType::Float32)),
+            ("vec_b", fixed_size_list(DataType::Float64)),
+        ]);
+        // Ambiguous without an override...
+        assert!(resolve_embedding_column(&schema, None).is_err());
+        // ...but the explicit column is honored.
+        assert_eq!(
+            resolve_embedding_column(&schema, Some("vec_b")).unwrap(),
+            "vec_b"
+        );
+    }
+
+    #[test]
+    fn resolve_embedding_column_errors_when_no_vector_column() {
+        let schema = schema_with(vec![("id", DataType::Utf8), ("n", DataType::Int64)]);
+        assert!(resolve_embedding_column(&schema, None).is_err());
     }
 }
