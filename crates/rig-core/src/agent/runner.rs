@@ -30,7 +30,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use futures::{StreamExt, stream};
+use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
@@ -255,17 +255,31 @@ where
         self
     }
 
-    /// Execute up to `concurrency` tools at once (1 by default). Only affects
-    /// the blocking [`run`](Self::run) path (streaming executes tools
-    /// sequentially).
+    /// Execute up to `concurrency` of a turn's tool calls at once (1 by
+    /// default). Honored by **both** the blocking [`run`](Self::run) and the
+    /// streaming
+    /// [`stream`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
+    /// drivers, which share the same call-ordered [`execute_tools_buffered`]
+    /// helper.
     ///
     /// The resulting tool-result **order — and so the message history — is the
-    /// same** in both paths regardless of `concurrency` (`run()` collects with
+    /// same** on both paths regardless of `concurrency` (execution collects with
     /// `buffered`, which preserves tool-call order). At the default
-    /// `concurrency` of 1 the two paths are fully in lock-step; with
+    /// `concurrency` of 1 the two drivers are fully in lock-step; with
     /// `concurrency > 1` the tools run in parallel, so a `ToolCall`/`ToolResult`
     /// **hook may fire in completion order** rather than call order — the
     /// per-tool side effects interleave even though the final history does not.
+    /// If a hook terminates the run mid-turn under `concurrency > 1`, the
+    /// streaming driver cancels any still-in-flight sibling tool calls while the
+    /// blocking driver lets them finish first; both surface the same
+    /// (first-in-call-order) error and persist the same history, but a cancelled
+    /// sibling's `ToolResult` hook does not fire under streaming.
+    ///
+    /// Under the streaming driver `concurrency > 1` also changes the **stream
+    /// item** order within a turn: every `ToolCall` item is yielded eagerly (in
+    /// call order), then the `ToolResult` items (also in call order), rather than
+    /// strictly interleaved `ToolCall`/`ToolResult` pairs. The default of 1 keeps
+    /// the interleaved emission unchanged.
     ///
     /// A `concurrency` of 0 is clamped to 1: `buffered(0)` never makes progress,
     /// so it would otherwise hang the run the first time the model calls a tool.
@@ -434,6 +448,63 @@ where
         tool_call.call_id.clone(),
         output,
     ))
+}
+
+/// Execute a turn's tool calls with up to `concurrency` running at once,
+/// yielding each shaped result in tool-call (emission) order.
+///
+/// **Shared by the blocking and streaming drivers** so a concurrent turn
+/// produces an identical message history on both. The combinator is
+/// [`buffered`](futures::stream::StreamExt::buffered) — not `buffer_unordered`
+/// — so results land in call order even when tools finish out of order: result
+/// *i* corresponds to call *i* (and so to its paired `internal_call_id`). Each
+/// future is instrumented with the span the caller paired with it, since the two
+/// drivers build their `execute_tool` spans differently (the blocking driver
+/// threads `follows_from`; streaming parents on the current span).
+///
+/// A pre-resolved call — one suppressed by invalid tool-call recovery — returns
+/// its stored result without executing the tool or firing any hook; its paired
+/// `internal_call_id` is then unused.
+pub(crate) fn execute_tools_buffered<'a, M>(
+    hooks: &'a HookStack<M>,
+    tool_server: &'a ToolServerHandle,
+    tool_extensions: &'a ToolCallExtensions,
+    error_history: &'a [Message],
+    concurrency: usize,
+    prepared_calls: Vec<(PendingToolCall, String, tracing::Span)>,
+) -> impl Stream<Item = Result<UserContent, PromptError>> + 'a
+where
+    M: CompletionModel,
+{
+    stream::iter(prepared_calls)
+        .map(move |(pending, internal_call_id, tool_span)| {
+            async move {
+                let PendingToolCall {
+                    tool_call,
+                    preresolved_result,
+                    ..
+                } = pending;
+                // Tool calls suppressed by invalid tool-call recovery come
+                // pre-resolved and must not execute.
+                if let Some(result) = preresolved_result {
+                    return Ok(result);
+                }
+                run_single_tool(
+                    hooks,
+                    tool_server,
+                    tool_extensions,
+                    &tool_call,
+                    &internal_call_id,
+                    error_history,
+                )
+                .await
+            }
+            .instrument(tool_span)
+        })
+        // `buffered` (not `buffer_unordered`) so results land in tool-call
+        // emission order — both drivers then produce the same message history
+        // even at concurrency > 1.
+        .buffered(concurrency)
 }
 
 impl<M> AgentRunner<M>
@@ -617,17 +688,19 @@ where
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let hooks = &self.hooks;
-                    let tool_server = &self.tool_server_handle;
-                    let tool_extensions = &self.tool_extensions;
                     // Materialize the diagnostic history once; tools only read it
                     // (verbatim, on a hook-terminate error path), so every tool
                     // future shares a single borrow instead of deep-cloning the
                     // whole conversation per call on the common success path.
                     let full_history_for_errors = run.full_history();
-                    let error_history: &[Message] = &full_history_for_errors;
 
-                    let tool_content = stream::iter(calls)
+                    // Pre-build `(call, internal_call_id, span)` in call order:
+                    // the `execute_tool` span carries this driver's `follows_from`
+                    // threading, and the fresh `internal_call_id` is what the
+                    // shared helper passes to the tool hooks. The helper then runs
+                    // them `buffered`, preserving call order.
+                    let prepared_calls: Vec<(PendingToolCall, String, tracing::Span)> = calls
+                        .into_iter()
                         .map(|pending| {
                             let tool_span = info_span!(
                                 "execute_tool",
@@ -650,39 +723,22 @@ where
                                 current_span_id.store(id.into_u64(), Ordering::SeqCst);
                             };
 
-                            async move {
-                                let PendingToolCall {
-                                    tool_call,
-                                    preresolved_result,
-                                    ..
-                                } = pending;
-                                // Tool calls suppressed by invalid tool-call
-                                // recovery come pre-resolved and must not execute.
-                                if let Some(result) = preresolved_result {
-                                    return Ok(result);
-                                }
-                                let internal_call_id = crate::id::generate();
-                                run_single_tool(
-                                    hooks,
-                                    tool_server,
-                                    tool_extensions,
-                                    &tool_call,
-                                    &internal_call_id,
-                                    error_history,
-                                )
-                                .await
-                            }
-                            .instrument(tool_span)
+                            (pending, crate::id::generate(), tool_span)
                         })
-                        // `buffered` (not `buffer_unordered`) so results land in
-                        // tool-call emission order — matching the streaming
-                        // driver's sequential order, so both produce the same
-                        // message history even at concurrency > 1.
-                        .buffered(self.concurrency)
-                        .collect::<Vec<Result<UserContent, PromptError>>>()
-                        .await
-                        .into_iter()
-                        .collect::<Result<Vec<_>, _>>()?;
+                        .collect();
+
+                    let tool_content = execute_tools_buffered(
+                        &self.hooks,
+                        &self.tool_server_handle,
+                        &self.tool_extensions,
+                        &full_history_for_errors,
+                        self.concurrency,
+                        prepared_calls,
+                    )
+                    .collect::<Vec<Result<UserContent, PromptError>>>()
+                    .await
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>()?;
 
                     run.tool_results(tool_content)?;
                 }
@@ -994,6 +1050,71 @@ mod tests {
         );
     }
 
+    /// Streaming honors `tool_concurrency(>1)` while keeping its message history
+    /// byte-identical to the blocking path (both collect with `buffered`, which
+    /// preserves call order). Mirrors
+    /// `run_and_stream_same_message_history_for_parallel_tool_calls`, except the
+    /// streaming driver *also* runs the turn's tools concurrently.
+    #[tokio::test]
+    async fn run_and_stream_same_message_history_under_streaming_tool_concurrency() {
+        let blocking_model = MockCompletionModel::from_turns([
+            MockTurn::from_contents([
+                tool_call_content("tc1", json!({"x": 2, "y": 3})),
+                tool_call_content("tc2", json!({"x": 10, "y": 20})),
+            ])
+            .expect("two tool calls is a valid turn"),
+            MockTurn::text("done"),
+        ]);
+        let blocking = AgentBuilder::new(blocking_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add two pairs")
+            .max_turns(3)
+            .tool_concurrency(4)
+            .run()
+            .await
+            .expect("blocking run should succeed");
+
+        let streaming_model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 10, "y": 20})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(streaming_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add two pairs")
+            .max_turns(3)
+            .tool_concurrency(4)
+            .stream()
+            .await;
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
+                item.map_err(|err| panic!("stream item errored: {err}"))
+            {
+                final_response = Some(resp);
+            }
+        }
+        let final_response = final_response.expect("stream should yield a final response");
+
+        let blocking_messages = blocking.messages.expect("blocking messages");
+        let streaming_messages = final_response
+            .history()
+            .expect("streaming history")
+            .to_vec();
+        assert_eq!(
+            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
+            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        );
+    }
+
     /// A tool whose first-*called* invocation completes *after* the second, so a
     /// completion-ordered combinator (`buffer_unordered`) would reorder results
     /// while call-ordered `buffered` does not. The first call (in poll/call
@@ -1041,18 +1162,25 @@ mod tests {
             .expect("two tool calls is a valid turn"),
             MockTurn::text("done"),
         ]);
-        let response = AgentBuilder::new(model)
-            .tool(OutOfOrderTool {
-                gate: Arc::new(tokio::sync::Notify::new()),
-                order: Arc::new(AtomicU32::new(0)),
-            })
-            .build()
-            .runner("go")
-            .max_turns(3)
-            .tool_concurrency(4)
-            .run()
-            .await
-            .expect("run should succeed");
+        // A regression to sequential execution would deadlock (the first tool
+        // blocks until a later one releases it), so drive under a timeout to fail
+        // fast rather than hang.
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            AgentBuilder::new(model)
+                .tool(OutOfOrderTool {
+                    gate: Arc::new(tokio::sync::Notify::new()),
+                    order: Arc::new(AtomicU32::new(0)),
+                })
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .tool_concurrency(4)
+                .run(),
+        )
+        .await
+        .expect("concurrent tools must not deadlock under tool_concurrency(4)")
+        .expect("run should succeed");
 
         let messages = response.messages.expect("messages");
         let result_ids: Vec<String> = messages
