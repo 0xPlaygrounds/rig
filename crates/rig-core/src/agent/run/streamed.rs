@@ -745,6 +745,27 @@ mod tests {
     }
 
     #[test]
+    fn unknown_item_emits_to_consumer_without_touching_accumulation() {
+        let mut asm = assembler();
+        asm.ingest(&text_item("answer"))
+            .expect("ingest text should succeed");
+
+        let events = asm
+            .ingest(&StreamedAssistantContent::<MockResponse>::Unknown(
+                json!({ "type": "web_search_call", "id": "ws_1" }),
+            ))
+            .expect("ingest unknown should succeed");
+
+        // The unmodeled item is forwarded to the consumer ...
+        assert!(matches!(
+            events.as_slice(),
+            [StreamedTurnEvent::EmitIngested]
+        ));
+        // ... but perturbs no accumulation state used to build the assistant message.
+        assert_eq!(asm.aggregated_text(), "answer");
+    }
+
+    #[test]
     fn argument_deltas_buffer_until_name_validates() {
         let mut asm = assembler();
 

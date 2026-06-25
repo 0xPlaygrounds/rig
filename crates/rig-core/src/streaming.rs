@@ -974,6 +974,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_choice_reaches_consumer_but_not_aggregated_choice() {
+        let unknown = serde_json::json!({
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+        });
+        let yielded = unknown.clone();
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Unknown(yielded));
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(1)));
+        };
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream));
+
+        let mut consumer_unknown = None;
+        let mut consumer_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Unknown(value) => consumer_unknown = Some(value),
+                StreamedAssistantContent::Text(text) => consumer_text.push_str(&text.text),
+                _ => {}
+            }
+        }
+
+        // The consumer receives the unmodeled item verbatim ...
+        assert_eq!(consumer_unknown.as_ref(), Some(&unknown));
+        assert_eq!(consumer_text, "done");
+
+        // ... but it is structurally absent from the aggregated assistant choice
+        // (the sole source of persisted history): only the text item remains.
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 1);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Text(Text { text, .. })) if text == "done"
+        ));
+    }
+
+    #[tokio::test]
     async fn test_stream_keeps_non_contiguous_text_chunks_split_by_tool_call() {
         let mut stream = create_text_tool_text_stream();
         while stream.next().await.is_some() {}
