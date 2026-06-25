@@ -1,13 +1,13 @@
 //! Tool helpers for deterministic tests.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
     completion::ToolDefinition,
-    tool::{Tool, ToolSet},
+    tool::{Tool, ToolCallContext, ToolSet},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
 };
@@ -57,6 +57,62 @@ impl Tool for MockAddTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
+    }
+}
+
+/// A caller-injected context value, like a session id or auth token carried in
+/// a [`ToolCallContext`](crate::tool::ToolCallContext).
+#[derive(Clone)]
+pub struct SessionId(pub String);
+
+/// A mock tool that records whatever it observed in its per-call
+/// [`ToolCallContext`], so tests can assert the context reached tool execution.
+///
+/// `call_with_context` records `session:<id>` (or `no-session` when absent); the
+/// plain `call` path records `call-no-context`, which lets a test tell the two
+/// dispatch paths apart.
+#[derive(Clone, Default)]
+pub struct MockContextProbeTool {
+    seen: Arc<Mutex<Option<String>>>,
+}
+
+impl MockContextProbeTool {
+    /// What the tool last observed, if it has been called.
+    pub fn observed(&self) -> Option<String> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+impl Tool for MockContextProbeTool {
+    const NAME: &'static str = "context_probe";
+    type Error = MockToolError;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Records the SessionId observed in its call context".to_string(),
+            parameters: json!({"type": "object", "properties": {}}),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        *self.seen.lock().unwrap() = Some("call-no-context".to_string());
+        Ok("call-no-context".to_string())
+    }
+
+    async fn call_with_context(
+        &self,
+        _args: Self::Args,
+        ctx: &ToolCallContext,
+    ) -> Result<Self::Output, Self::Error> {
+        let observed = match ctx.get::<SessionId>() {
+            Some(session) => format!("session:{}", session.0),
+            None => "no-session".to_string(),
+        };
+        *self.seen.lock().unwrap() = Some(observed.clone());
+        Ok(observed)
     }
 }
 
