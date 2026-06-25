@@ -47,7 +47,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::server::ToolServerHandle,
+    tool::{ToolCallExtensions, server::ToolServerHandle},
 };
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
@@ -163,6 +163,11 @@ where
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
     pub(crate) tool_server_handle: ToolServerHandle,
+    /// Per-call runtime extensions made available to every tool executed during
+    /// this run via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
+    /// Empty by default; set with the [`tool_extensions`](Self::tool_extensions())
+    /// builder.
+    pub(crate) tool_extensions: ToolCallExtensions,
     pub(crate) dynamic_context: DynamicContextStore,
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
@@ -193,6 +198,7 @@ where
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
+            tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
@@ -224,6 +230,17 @@ where
     /// answer). Exceeding it returns [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, depth: usize) -> Self {
         self.max_turns = depth;
+        self
+    }
+
+    /// Set the per-call runtime [`ToolCallExtensions`] for this run.
+    ///
+    /// The extensions are threaded to every tool the agent executes, so tools
+    /// can read caller-provided values (auth tokens, session IDs, conversation
+    /// state, …) via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions)
+    /// without the model ever seeing them. Replaces any extensions already set.
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.tool_extensions = extensions;
         self
     }
 
@@ -334,6 +351,7 @@ pub(crate) fn build_agent_run(
 pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
     tool_server: &ToolServerHandle,
+    tool_extensions: &ToolCallExtensions,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
@@ -377,7 +395,10 @@ where
         ToolCallDecision::Proceed => {}
     }
 
-    let output = match tool_server.call_tool(tool_name, &args).await {
+    let output = match tool_server
+        .call_tool_with_extensions(tool_name, &args, tool_extensions)
+        .await
+    {
         Ok(res) => res,
         Err(e) => {
             tracing::warn!("Error while executing tool: {e}");
@@ -598,6 +619,7 @@ where
                 AgentRunStep::CallTools { calls } => {
                     let hooks = &self.hooks;
                     let tool_server = &self.tool_server_handle;
+                    let tool_extensions = &self.tool_extensions;
                     // Materialize the diagnostic history once; tools only read it
                     // (verbatim, on a hook-terminate error path), so every tool
                     // future shares a single borrow instead of deep-cloning the
@@ -643,6 +665,7 @@ where
                                 run_single_tool(
                                     hooks,
                                     tool_server,
+                                    tool_extensions,
                                     &tool_call,
                                     &internal_call_id,
                                     error_history,

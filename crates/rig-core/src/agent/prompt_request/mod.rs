@@ -5,6 +5,7 @@ use crate::{
     OneOrMany,
     completion::{CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, ToolResultContent, UserContent},
+    tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use serde::{Deserialize, Serialize};
@@ -79,6 +80,17 @@ where
     /// This will cause the agent to execute tools concurrently.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.runner = self.runner.tool_concurrency(concurrency);
+        self
+    }
+
+    /// Attach a per-call [`ToolCallExtensions`] for this request.
+    ///
+    /// Every tool the agent executes during this request can read the
+    /// caller-provided values (auth tokens, session IDs, conversation state, …)
+    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
+    /// without the model ever seeing them.
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.runner = self.runner.tool_extensions(extensions);
         self
     }
 
@@ -523,6 +535,17 @@ where
         self
     }
 
+    /// Attach a per-call [`ToolCallExtensions`] for this request.
+    ///
+    /// Every tool the agent executes during this request can read the
+    /// caller-provided values (auth tokens, session IDs, conversation state, …)
+    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
+    /// without the model ever seeing them.
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.inner = self.inner.tool_extensions(extensions);
+        self
+    }
+
     /// Add chat history to the prompt request.
     pub fn history<H, U>(mut self, history: H) -> Self
     where
@@ -661,9 +684,10 @@ mod tests {
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
+            MockExtensionsProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
+            SessionId,
         },
-        tool::Tool,
+        tool::{Tool, ToolCallExtensions},
     };
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -1120,6 +1144,97 @@ mod tests {
             other => panic!("expected UnknownToolCall, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
+    }
+
+    /// The motivating use-case: a `ToolCallExtensions` set on the prompt request is
+    /// threaded all the way to the tool the agent loop executes.
+    #[tokio::test]
+    async fn tool_extensions_reach_tool_through_agent_loop() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
+
+        let out = agent
+            .prompt("use the tool")
+            .tool_extensions(extensions)
+            .max_turns(3)
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(out, "done");
+        assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
+    }
+
+    /// Extensions persist for the whole run, across *multiple* tool-call rounds
+    /// (the headline value prop). The model calls the probe in two consecutive
+    /// rounds; both must observe the same injected value, not just the first.
+    #[tokio::test]
+    async fn tool_extensions_persist_across_multiple_rounds() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("c1", "context_probe", json!({})),
+            MockTurn::tool_call("c2", "context_probe", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
+
+        let out = agent
+            .prompt("use the tool twice")
+            .tool_extensions(extensions)
+            .max_turns(5)
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(out, "done");
+        assert_eq!(
+            probe.observations(),
+            vec!["session:abc-123".to_string(), "session:abc-123".to_string()],
+        );
+    }
+
+    /// Without a context, the same tool runs with an empty one (no panic, no
+    /// stale value) — the backward-compatible default path.
+    #[tokio::test]
+    async fn tool_runs_with_empty_context_when_none_supplied() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+
+        let out = agent
+            .prompt("use the tool")
+            .max_turns(3)
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(out, "done");
+        // Reaches `call_with_extensions` with an empty context (the override is the
+        // single entry point), so it observes "no-session" rather than the
+        // plain-`call` "call-no-context".
+        assert_eq!(probe.observed().as_deref(), Some("no-session"));
+    }
+
+    /// Pins the probe's sentinel: its plain `call` body records
+    /// `"call-no-context"`. The dispatched-run tests above assert `"no-session"`
+    /// instead, which is what proves dispatch routes through `call_with_extensions`
+    /// rather than `call`.
+    #[tokio::test]
+    async fn probe_plain_call_records_sentinel() {
+        let probe = MockExtensionsProbeTool::default();
+        let out = probe.call(json!({})).await.expect("call succeeds");
+        assert_eq!(out, "call-no-context");
+        assert_eq!(probe.observed().as_deref(), Some("call-no-context"));
     }
 
     #[tokio::test]
