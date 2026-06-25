@@ -14,7 +14,8 @@ use crate::support::{
     ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT,
     Subtract, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
     assert_raw_stream_contains_distinct_tool_calls_before_text, assert_raw_stream_text_contains,
-    assert_raw_stream_tool_call_precedes_text, assert_stream_contains_zero_arg_tool_call_named,
+    assert_raw_stream_tool_call_arguments_are_objects, assert_raw_stream_tool_call_precedes_text,
+    assert_stream_contains_zero_arg_tool_call_named,
     assert_tool_call_precedes_later_text, assert_two_tool_roundtrip_contract,
     collect_raw_stream_observation, collect_stream_final_response, collect_stream_observation,
     zero_arg_tool_definition,
@@ -97,6 +98,44 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             .await;
 
             assert_raw_stream_contains_distinct_tool_calls_before_text(
+                &observation,
+                &["lookup_harbor_label", "lookup_orchard_label"],
+            );
+        },
+    )
+    .await;
+}
+
+/// Live end-to-end guard for the #1958 invariant: every tool call surfaced by
+/// the streaming aggregator carries a JSON **object** as its arguments, never a
+/// bare string. Recorded against real DeepSeek traffic with two tool calls in a
+/// single streamed turn (which exercises the same-turn multi-tool accumulation
+/// path). DeepSeek assigns distinct indices, so this complements — rather than
+/// replaces — the in-crate unit tests that drive the same-index eviction path
+/// directly (a quirk only some API gateways emit and not reproducible live).
+#[tokio::test]
+async fn raw_stream_tool_call_arguments_are_objects() {
+    with_deepseek_cassette(
+        "streaming_tools/raw_stream_tool_call_arguments_are_objects",
+        |client| async move {
+            let model = client.completion_model(DEEPSEEK_V4_FLASH);
+            let request = model
+                .completion_request(TWO_TOOL_STREAM_PROMPT)
+                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
+                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(BetaSignal.definition(String::new()).await)
+                .additional_params(non_thinking_params())
+                .build();
+
+            let observation = collect_raw_stream_observation(
+                model
+                    .stream(request)
+                    .await
+                    .expect("raw stream should start"),
+            )
+            .await;
+
+            assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
                 &["lookup_harbor_label", "lookup_orchard_label"],
             );
