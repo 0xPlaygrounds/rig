@@ -38,9 +38,9 @@ use rmcp::model::RawContent;
 use tokio::sync::RwLock;
 
 use crate::completion::ToolDefinition;
-use crate::tool::ToolDyn;
 use crate::tool::ToolError;
 use crate::tool::server::{ToolServerError, ToolServerHandle};
+use crate::tool::{ToolCallContext, ToolDyn};
 use crate::wasm_compat::WasmBoxedFuture;
 
 /// Default per-call timeout applied to MCP tools (see issue #1914).
@@ -138,37 +138,30 @@ impl From<McpToolError> for ToolError {
     }
 }
 
-impl ToolDyn for McpTool {
-    fn name(&self) -> String {
-        self.definition.name.to_string()
-    }
-
-    fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
-        Box::pin(async move {
-            ToolDefinition {
-                name: self.definition.name.to_string(),
-                description: self
-                    .definition
-                    .description
-                    .clone()
-                    .unwrap_or(Cow::from(""))
-                    .to_string(),
-                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
-            }
-        })
-    }
-
-    fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
+impl McpTool {
+    /// Shared executor for [`ToolDyn::call`] and [`ToolDyn::call_with_context`].
+    ///
+    /// `meta`, when present, is attached as the MCP request's `_meta`
+    /// (SEP-1319) — the idiomatic channel for per-call metadata such as auth
+    /// tokens, session ids, or A2A `context_id`/`task_id`. It is supplied by a
+    /// caller that places an [`rmcp::model::Meta`] into the
+    /// [`ToolCallContext`]; otherwise the call behaves exactly as before.
+    fn execute(
+        &self,
+        args: String,
+        meta: Option<rmcp::model::Meta>,
+    ) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
         let name = self.definition.name.clone();
         let arguments: Option<rmcp::model::JsonObject> =
             serde_json::from_str(&args).unwrap_or_default();
 
         Box::pin(async move {
-            let request = arguments
+            let mut request = arguments
                 .map(|arguments| {
                     rmcp::model::CallToolRequestParams::new(name.clone()).with_arguments(arguments)
                 })
                 .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
+            request.meta = meta;
 
             let call = self.client.call_tool(request);
             // Bound the call so a never-answered request (see issue #1914)
@@ -256,6 +249,45 @@ impl ToolDyn for McpTool {
 
             Ok(content)
         })
+    }
+}
+
+impl ToolDyn for McpTool {
+    fn name(&self) -> String {
+        self.definition.name.to_string()
+    }
+
+    fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
+        Box::pin(async move {
+            ToolDefinition {
+                name: self.definition.name.to_string(),
+                description: self
+                    .definition
+                    .description
+                    .clone()
+                    .unwrap_or(Cow::from(""))
+                    .to_string(),
+                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
+            }
+        })
+    }
+
+    fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
+        self.execute(args, None)
+    }
+
+    /// Forwards an [`rmcp::model::Meta`] from the [`ToolCallContext`], if present,
+    /// as the MCP request's `_meta`. This lets callers attach per-call metadata
+    /// (auth, session, A2A `context_id`/`task_id`) to MCP tool invocations
+    /// without exposing it to the model. Absent a `Meta`, behaves like
+    /// [`call`](ToolDyn::call).
+    fn call_with_context<'a>(
+        &'a self,
+        args: String,
+        ctx: &'a ToolCallContext,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        let meta = ctx.get::<rmcp::model::Meta>().cloned();
+        self.execute(args, meta)
     }
 }
 
@@ -434,6 +466,7 @@ mod tests {
     use rmcp::model::*;
     use rmcp::service::RequestContext;
     use rmcp::{RoleServer, ServerHandler, ServiceExt};
+    use serde_json::json;
     use tokio::sync::RwLock;
 
     use super::McpClientHandler;
@@ -904,6 +937,121 @@ mod tests {
         assert!(
             err.to_string().contains("timed out"),
             "expected a timeout error, got: {err}"
+        );
+
+        server_task.abort();
+    }
+
+    /// An MCP server that records the `_meta` of the last `call_tool` request, so
+    /// a test can assert what metadata reached the server.
+    #[derive(Clone)]
+    struct MetaCapturingServer {
+        seen_meta: Arc<RwLock<Option<Meta>>>,
+    }
+
+    impl ServerHandler for MetaCapturingServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("meta-capturing-server", "0.1.0"))
+        }
+
+        async fn list_tools(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<ListToolsResult, ErrorData> {
+            Ok(ListToolsResult::with_all_items(vec![make_tool(
+                "echo_meta",
+                "records the request _meta",
+            )]))
+        }
+
+        async fn call_tool(
+            &self,
+            _request: CallToolRequestParams,
+            context: RequestContext<RoleServer>,
+        ) -> Result<CallToolResult, ErrorData> {
+            // rmcp's router moves the request's `_meta` into `RequestContext.meta`
+            // (a `std::mem::swap`), so the forwarded metadata lands here.
+            *self.seen_meta.write().await = Some(context.meta.clone());
+            Ok(CallToolResult::success(vec![Content::text("ok")]))
+        }
+    }
+
+    /// `McpTool::call_with_context` forwards an [`rmcp::model::Meta`] placed in the
+    /// [`ToolCallContext`] as the request's `_meta`, so callers can attach per-call
+    /// auth/session metadata to MCP tool invocations (the A2A use-case).
+    #[tokio::test]
+    async fn mcp_tool_forwards_meta_from_context() {
+        use super::McpTool;
+        use crate::tool::{ToolCallContext, ToolDyn};
+
+        let seen_meta = Arc::new(RwLock::new(None));
+        let server = MetaCapturingServer {
+            seen_meta: seen_meta.clone(),
+        };
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        let server_clone = server.clone();
+        let server_task = tokio::spawn(async move {
+            let running = server_clone
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+
+        let tools = client
+            .peer()
+            .list_all_tools()
+            .await
+            .expect("list_tools failed");
+        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone());
+
+        // Caller-supplied per-call metadata, the kind an A2A integration carries.
+        let mut meta = Meta::new();
+        meta.0
+            .insert("authorization".to_string(), json!("Bearer xyz"));
+        let mut ctx = ToolCallContext::new();
+        ctx.insert(meta);
+
+        let out = mcp_tool
+            .call_with_context("{}".to_string(), &ctx)
+            .await
+            .expect("call should succeed");
+        assert_eq!(out, "ok");
+
+        let received = seen_meta
+            .read()
+            .await
+            .clone()
+            .expect("server should have observed a request");
+        assert_eq!(received.0.get("authorization"), Some(&json!("Bearer xyz")));
+
+        // Without a Meta in the context, the caller metadata is not forwarded.
+        *seen_meta.write().await = None;
+        let empty_ctx = ToolCallContext::new();
+        let out = mcp_tool
+            .call_with_context("{}".to_string(), &empty_ctx)
+            .await
+            .expect("call should succeed");
+        assert_eq!(out, "ok");
+        let received = seen_meta
+            .read()
+            .await
+            .clone()
+            .expect("server should have observed a request");
+        assert!(
+            received.0.get("authorization").is_none(),
+            "no caller metadata should be forwarded when the context carries none"
         );
 
         server_task.abort();
