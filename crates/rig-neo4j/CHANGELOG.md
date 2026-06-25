@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- *(neo4j)* implement `InsertDocuments` for `Neo4jVectorIndex` — bulk-insert documents with precomputed embeddings via a single `UNWIND` Cypher write (one node per embedding, document fields flattened onto the node alongside `embedded_text` and the configured embedding property). Nodes are written under the index's label, which `get_index` now resolves from the index's `labelsOrTypes` (default `Document`); `IndexConfig` gains a `node_label` field + builder. (closes [#1636](https://github.com/0xPlaygrounds/rig/issues/1636))
+
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.5.7...rig-neo4j-v0.38.1) - 2026-06-02
 
 ### Other

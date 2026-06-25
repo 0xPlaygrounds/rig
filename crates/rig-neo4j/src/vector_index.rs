@@ -6,15 +6,16 @@
 
 use neo4rs::{Graph, Query};
 use rig_core::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::Error};
 
-use crate::{Neo4jClient, Neo4jSearchFilter};
+use crate::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 
 pub struct Neo4jVectorIndex<M>
 where
@@ -32,11 +33,16 @@ where
 /// - `index_name`: "vector_index"
 /// - `embedding_property`: "embedding"
 /// - `similarity_function`: VectorSimilarityFunction::Cosine
+/// - `node_label`: None (inserts default to the `Document` label)
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
     pub index_name: String,
     pub embedding_property: String,
     pub similarity_function: VectorSimilarityFunction,
+    /// The node label that [`InsertDocuments`] writes to (and that the index
+    /// applies to). Populated from the index's `labelsOrTypes` when loaded via
+    /// [`Neo4jClient::get_index`](crate::Neo4jClient::get_index).
+    pub node_label: Option<String>,
 }
 
 impl Default for IndexConfig {
@@ -45,6 +51,7 @@ impl Default for IndexConfig {
             index_name: "vector_index".to_string(),
             embedding_property: "embedding".to_string(),
             similarity_function: VectorSimilarityFunction::Cosine,
+            node_label: None,
         }
     }
 }
@@ -55,6 +62,7 @@ impl IndexConfig {
             index_name: index_name.into(),
             embedding_property: "embedding".to_string(),
             similarity_function: VectorSimilarityFunction::Cosine,
+            node_label: None,
         }
     }
 
@@ -70,6 +78,12 @@ impl IndexConfig {
 
     pub fn embedding_property(mut self, embedding_property: &str) -> Self {
         self.embedding_property = embedding_property.to_string();
+        self
+    }
+
+    /// Sets the node label that [`InsertDocuments`] writes to.
+    pub fn node_label(mut self, node_label: &str) -> Self {
+        self.node_label = Some(node_label.to_string());
         self
     }
 }
@@ -266,5 +280,97 @@ where
             .collect::<Vec<_>>();
 
         Ok(results)
+    }
+}
+
+/// The node label [`InsertDocuments`] writes to when the index config does not
+/// specify one (i.e. `node_label` is `None`).
+const DEFAULT_NODE_LABEL: &str = "Document";
+
+/// The Cypher used to bulk-insert nodes from an `$items` parameter list.
+fn insert_documents_query(node_label: &str) -> String {
+    format!("UNWIND $items AS item CREATE (n:{node_label}) SET n = item")
+}
+
+impl<M> InsertDocuments for Neo4jVectorIndex<M>
+where
+    M: EmbeddingModel + Send + Sync,
+{
+    /// Inserts one node per embedding, flattening the document's JSON fields
+    /// onto the node alongside the embedding (`embedding_property`) and its
+    /// source text (`embedded_text`). Nodes are written under the index's
+    /// `node_label`, defaulting to [`DEFAULT_NODE_LABEL`].
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let node_label = self
+            .index_config
+            .node_label
+            .as_deref()
+            .unwrap_or(DEFAULT_NODE_LABEL);
+        let embedding_property = &self.index_config.embedding_property;
+
+        // Build one parameter map per embedding for a single UNWIND insert.
+        let mut items: Vec<neo4rs::BoltType> = Vec::new();
+        for (document, embeddings) in documents {
+            let json_doc = serde_json::to_value(&document)?;
+
+            for embedding in embeddings {
+                let mut props = neo4rs::BoltMap::new();
+                if let serde_json::Value::Object(map) = &json_doc {
+                    for (key, value) in map {
+                        props.put(neo4rs::BoltString::new(key), value.to_bolt_type());
+                    }
+                } else {
+                    props.put(neo4rs::BoltString::new("document"), json_doc.to_bolt_type());
+                }
+                props.put(
+                    neo4rs::BoltString::new("embedded_text"),
+                    neo4rs::BoltType::String(neo4rs::BoltString::new(&embedding.document)),
+                );
+                props.put(
+                    neo4rs::BoltString::new(embedding_property),
+                    embedding.vec.to_bolt_type(),
+                );
+                items.push(neo4rs::BoltType::Map(props));
+            }
+        }
+
+        self.graph
+            .run(neo4rs::query(&insert_documents_query(node_label)).param("items", items))
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_label_defaults_to_none_and_builder_sets_it() {
+        assert_eq!(IndexConfig::new("idx").node_label, None);
+        assert_eq!(
+            IndexConfig::new("idx")
+                .node_label("Movie")
+                .node_label
+                .as_deref(),
+            Some("Movie"),
+        );
+    }
+
+    #[test]
+    fn insert_documents_query_uses_label_else_default() {
+        assert_eq!(
+            insert_documents_query("Movie"),
+            "UNWIND $items AS item CREATE (n:Movie) SET n = item",
+        );
+        assert_eq!(
+            insert_documents_query(DEFAULT_NODE_LABEL),
+            "UNWIND $items AS item CREATE (n:Document) SET n = item",
+        );
     }
 }
