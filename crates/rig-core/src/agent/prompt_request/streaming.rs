@@ -15,7 +15,7 @@ use crate::{
     memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResult, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::server::ToolServerHandle,
+    tool::{ToolCallExtensions, server::ToolServerHandle},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
@@ -278,6 +278,8 @@ where
     additional_params: Option<serde_json::Value>,
     /// Tool server handle for tool execution
     tool_server_handle: ToolServerHandle,
+    /// Per-call runtime extensions threaded to every tool executed in this run.
+    tool_extensions: ToolCallExtensions,
     /// Dynamic context store
     dynamic_context: DynamicContextStore,
     /// Tool choice setting
@@ -315,6 +317,7 @@ where
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
+            tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
@@ -345,6 +348,7 @@ where
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
+            tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
@@ -387,6 +391,18 @@ where
         self
     }
 
+    /// Attach per-call runtime [extensions](ToolCallExtensions) for this request.
+    ///
+    /// The extensions are threaded through the streaming agent loop to every
+    /// tool executed during this run, where they can be read by overriding
+    /// [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
+    /// Use this to pass auth tokens, session IDs, A2A `context_id`/`task_id`, or
+    /// any other per-call value to tools without exposing it to the model.
+    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.tool_extensions = extensions;
+        self
+    }
+
     /// Attach a per-request hook for tool call events.
     /// This overrides any default hook set on the agent.
     pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
@@ -405,6 +421,7 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_server_handle: self.tool_server_handle,
+            tool_extensions: self.tool_extensions,
             dynamic_context: self.dynamic_context,
             tool_choice: self.tool_choice,
             output_schema: self.output_schema,
@@ -477,6 +494,7 @@ where
         let max_tokens = self.max_tokens;
         let additional_params = self.additional_params.clone();
         let tool_server_handle = self.tool_server_handle.clone();
+        let tool_extensions = self.tool_extensions.clone();
         let dynamic_context = self.dynamic_context.clone();
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
@@ -932,7 +950,11 @@ where
                                 tool_span.record("gen_ai.tool.call.arguments", &tool_args);
 
                                 let tool_result = match tool_server_handle
-                                    .call_tool(&tool_call.function.name, &tool_args)
+                                    .call_tool_with_extensions(
+                                        &tool_call.function.name,
+                                        &tool_args,
+                                        &tool_extensions,
+                                    )
                                     .await
                                 {
                                     Ok(result) => result,

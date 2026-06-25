@@ -12,7 +12,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
-    tool::server::ToolServerHandle,
+    tool::{ToolCallExtensions, server::ToolServerHandle},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{StreamExt, stream};
@@ -74,6 +74,8 @@ where
     additional_params: Option<serde_json::Value>,
     /// Tool server handle for tool execution
     tool_server_handle: ToolServerHandle,
+    /// Per-call runtime extensions threaded to every tool executed in this run.
+    tool_extensions: ToolCallExtensions,
     /// Dynamic context store
     dynamic_context: DynamicContextStore,
     /// Tool choice setting
@@ -114,6 +116,7 @@ where
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
+            tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             state: PhantomData,
@@ -152,6 +155,7 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_server_handle: self.tool_server_handle,
+            tool_extensions: self.tool_extensions,
             dynamic_context: self.dynamic_context,
             tool_choice: self.tool_choice,
             state: PhantomData,
@@ -175,6 +179,44 @@ where
     /// This will cause the agent to execute tools concurrently.
     pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency;
+        self
+    }
+
+    /// Attach per-call runtime [extensions](ToolCallExtensions) for this request.
+    ///
+    /// The extensions are threaded through the agent loop to every tool executed
+    /// during this run, where they can be read by overriding
+    /// [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
+    /// Use this to pass auth tokens, session IDs, A2A `context_id`/`task_id`, or
+    /// any other per-call value to tools without exposing it to the model.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use rig_core::{
+    ///     client::{CompletionClient, ProviderClient},
+    ///     completion::Prompt,
+    ///     providers::openai,
+    ///     tool::ToolCallExtensions,
+    /// };
+    ///
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// #[derive(Clone)]
+    /// struct SessionId(String);
+    ///
+    /// let agent = openai::Client::from_env()?.agent(openai::GPT_5_2).build();
+    ///
+    /// let mut extensions = ToolCallExtensions::new();
+    /// extensions.insert(SessionId("session-123".to_string()));
+    ///
+    /// let answer = agent
+    ///     .prompt("do the thing")
+    ///     .with_tool_extensions(extensions)
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.tool_extensions = extensions;
         self
     }
 
@@ -224,6 +266,7 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_server_handle: self.tool_server_handle,
+            tool_extensions: self.tool_extensions,
             dynamic_context: self.dynamic_context,
             tool_choice: self.tool_choice,
             state: PhantomData,
@@ -672,6 +715,10 @@ where
                 AgentRunStep::CallTools { calls } => {
                     let hook = self.hook.clone();
                     let tool_server_handle = self.tool_server_handle.clone();
+                    // Share one copy of the extensions across all (possibly
+                    // concurrent) tool calls in this turn instead of deep-cloning
+                    // the type-map per call.
+                    let tool_extensions = Arc::new(self.tool_extensions.clone());
 
                     // For error handling in concurrent tool execution, we need to build full history
                     let full_history_for_errors = run.full_history();
@@ -681,6 +728,7 @@ where
                             let hook1 = hook.clone();
                             let hook2 = hook.clone();
                             let tool_server_handle = tool_server_handle.clone();
+                            let tool_extensions = tool_extensions.clone();
 
                             let tool_span = info_span!(
                                 "execute_tool",
@@ -761,14 +809,16 @@ where
                                         }
                                     }
                                 }
-                                let output =
-                                    match tool_server_handle.call_tool(tool_name, &args).await {
-                                        Ok(res) => res,
-                                        Err(e) => {
-                                            tracing::warn!("Error while executing tool: {e}");
-                                            e.to_string()
-                                        }
-                                    };
+                                let output = match tool_server_handle
+                                    .call_tool_with_extensions(tool_name, &args, &tool_extensions)
+                                    .await
+                                {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        tracing::warn!("Error while executing tool: {e}");
+                                        e.to_string()
+                                    }
+                                };
                                 if let Some(hook) = hook2
                                     && let HookAction::Terminate { reason } = hook
                                         .on_tool_result(
@@ -2622,5 +2672,107 @@ mod tests {
             .expect("append failure must not block successful completion");
 
         assert!(!response.is_empty());
+    }
+
+    // --- tool call extensions end-to-end ---
+
+    #[derive(Clone)]
+    struct CallSessionId(String);
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("read session error")]
+    struct ReadSessionError;
+
+    /// Tool that reports the `CallSessionId` it received via the call
+    /// extensions, also recording it into a shared slot for assertions.
+    #[derive(Clone)]
+    struct RecordingExtensionsTool {
+        seen: Arc<Mutex<Option<String>>>,
+    }
+
+    impl Tool for RecordingExtensionsTool {
+        const NAME: &'static str = "read_session";
+        type Error = ReadSessionError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "reads the session id from the call extensions".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            // The agent always dispatches through `call_with_extensions`; this
+            // bare path should not be hit during an agent run.
+            *self.seen.lock().unwrap() = None;
+            Ok("no-extensions".to_string())
+        }
+
+        async fn call_with_extensions(
+            &self,
+            _args: Self::Args,
+            extensions: &crate::tool::ToolCallExtensions,
+        ) -> Result<Self::Output, Self::Error> {
+            let session = extensions.get::<CallSessionId>().map(|s| s.0.clone());
+            *self.seen.lock().unwrap() = session.clone();
+            Ok(session.unwrap_or_else(|| "no-session".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_extensions_reach_tool_through_agent_prompt() {
+        let seen = Arc::new(Mutex::new(None));
+        let tool = RecordingExtensionsTool { seen: seen.clone() };
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "read_session", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let agent = AgentBuilder::new(model).tool(tool).build();
+
+        let mut extensions = crate::tool::ToolCallExtensions::new();
+        extensions.insert(CallSessionId("session-xyz".to_string()));
+
+        let answer: String = agent
+            .prompt("use the tool")
+            .with_tool_extensions(extensions)
+            .max_turns(3)
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(answer, "done");
+        assert_eq!(
+            seen.lock().unwrap().as_deref(),
+            Some("session-xyz"),
+            "the injected CallSessionId must reach the tool through the agent loop"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_without_tool_extensions_dispatches_empty_extensions() {
+        // Pre-seed a stale value so we can prove `call_with_extensions` ran with
+        // an empty map (not that the slot was simply never written).
+        let seen = Arc::new(Mutex::new(Some("stale".to_string())));
+        let tool = RecordingExtensionsTool { seen: seen.clone() };
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "read_session", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let agent = AgentBuilder::new(model).tool(tool).build();
+
+        let answer: String = agent
+            .prompt("use the tool")
+            .max_turns(3)
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(answer, "done");
+        assert_eq!(
+            seen.lock().unwrap().as_deref(),
+            None,
+            "with no extensions set, the tool should observe an empty extensions map"
+        );
     }
 }
