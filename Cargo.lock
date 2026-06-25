@@ -9716,6 +9716,7 @@ version = "0.39.0"
 dependencies = [
  "anyhow",
  "arrow-array",
+ "arrow-json",
  "deranged",
  "futures",
  "httpmock",

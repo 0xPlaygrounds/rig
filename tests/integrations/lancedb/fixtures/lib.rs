@@ -3,9 +3,9 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type};
 use rig::embeddings::Embedding;
 use rig::{Embed, OneOrMany};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Embed, Clone, Deserialize, Debug)]
+#[derive(Embed, Clone, Deserialize, Serialize, Debug)]
 pub struct Word {
     pub id: String,
     #[embed]

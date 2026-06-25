@@ -17,7 +17,7 @@ use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     prelude::CompletionClient,
     providers::openai,
-    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::{InsertDocuments, VectorStoreIndex, request::VectorSearchRequest},
 };
 
 #[path = "./fixtures/lib.rs"]
@@ -407,6 +407,132 @@ async fn agent_with_dynamic_context_test() {
 
     assert!(response.contains("zindle") || response.contains("pretend to be working"));
     assert!(response.contains("important") || response.contains("unproductive"));
+
+    db.drop_table(table_name, &[]).await.unwrap();
+}
+
+#[tokio::test]
+async fn insert_documents_test() {
+    // Mock embeddings per distinct request: the response `data` length must
+    // match the request `input` length. We don't assert ranking, so the vector
+    // values are arbitrary.
+    let server = httpmock::MockServer::start();
+    let embedding = |index: usize| json!({ "object": "embedding", "embedding": vec![0.1; 1536], "index": index });
+    // Seed row (1 input).
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .json_body(json!({ "input": ["seed row"], "model": "text-embedding-ada-002" }));
+        then.status(200).header("content-type", "application/json").json_body(json!({
+            "object": "list", "data": [embedding(0)],
+            "model": "text-embedding-ada-002", "usage": { "prompt_tokens": 8, "total_tokens": 8 }
+        }));
+    });
+    // The two inserted rows (2 inputs).
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .json_body(json!({
+                "input": ["first inserted row", "second inserted row"],
+                "model": "text-embedding-ada-002"
+            }));
+        then.status(200).header("content-type", "application/json").json_body(json!({
+            "object": "list", "data": [embedding(0), embedding(1)],
+            "model": "text-embedding-ada-002", "usage": { "prompt_tokens": 8, "total_tokens": 8 }
+        }));
+    });
+    // The search query (1 input).
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .json_body(json!({ "input": ["anything"], "model": "text-embedding-ada-002" }));
+        then.status(200).header("content-type", "application/json").json_body(json!({
+            "object": "list", "data": [embedding(0)],
+            "model": "text-embedding-ada-002", "usage": { "prompt_tokens": 8, "total_tokens": 8 }
+        }));
+    });
+
+    let openai_client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+
+    let db = lancedb::connect("data/lancedb-insert-documents")
+        .execute()
+        .await
+        .unwrap();
+
+    let table_name = "insert_docs";
+    if db
+        .table_names()
+        .execute()
+        .await
+        .unwrap()
+        .contains(&table_name.to_string())
+    {
+        db.drop_table(table_name, &[]).await.unwrap();
+    }
+
+    // Seed one row to establish the table's Arrow schema.
+    let seed = EmbeddingsBuilder::new(model.clone())
+        .documents(vec![Word {
+            id: "seed".to_string(),
+            definition: "seed row".to_string(),
+        }])
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+    let table = db
+        .create_table(
+            table_name,
+            vec![as_record_batch(seed, model.ndims()).unwrap()],
+        )
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(table.count_rows(None).await.unwrap(), 1);
+
+    let vector_store_index =
+        LanceDbVectorIndex::new(table, model.clone(), "id", SearchParams::default())
+            .await
+            .unwrap();
+
+    // Insert two more documents through the trait under test.
+    let new_docs = EmbeddingsBuilder::new(model.clone())
+        .documents(vec![
+            Word {
+                id: "inserted-1".to_string(),
+                definition: "first inserted row".to_string(),
+            },
+            Word {
+                id: "inserted-2".to_string(),
+                definition: "second inserted row".to_string(),
+            },
+        ])
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+    vector_store_index.insert_documents(new_docs).await.unwrap();
+
+    // Round-trip: the row count grew by two and the inserted ids are searchable.
+    let after = db.open_table(table_name).execute().await.unwrap();
+    assert_eq!(after.count_rows(None).await.unwrap(), 3);
+
+    let req = VectorSearchRequest::builder()
+        .query("anything")
+        .samples(5)
+        .build();
+    let results = vector_store_index
+        .top_n::<serde_json::Value>(req)
+        .await
+        .unwrap();
+    let ids: Vec<String> = results.iter().map(|(_, id, _)| id.clone()).collect();
+    assert!(ids.contains(&"inserted-1".to_string()), "ids = {ids:?}");
+    assert!(ids.contains(&"inserted-2".to_string()), "ids = {ids:?}");
 
     db.drop_table(table_name, &[]).await.unwrap();
 }
