@@ -58,7 +58,7 @@ impl Hasher for IdHasher {
 // and unconstrained on `wasm`, so a single trait definition covers both targets
 // (no `cfg`-duplicated copies). On non-wasm this transitively makes
 // `dyn AnyClone` — and therefore `ToolCallExtensions` — `Send + Sync`, which is
-// required because the context is borrowed across `.await` points in async tool
+// required because the extensions map is borrowed across `.await` points in async tool
 // execution. The `assert_send_sync` check below pins that property.
 
 trait AnyClone: Any + WasmCompatSend + WasmCompatSync {
@@ -97,14 +97,20 @@ impl Clone for Box<dyn AnyClone> {
 
 // --- ToolCallExtensions ---
 
-/// Per-call runtime context for tools.
+/// Per-call runtime extensions for tools.
 ///
 /// A type-map that allows callers to attach arbitrary typed values and tools to
-/// extract them. Tools that don't need context ignore it.
+/// extract them. Tools that don't need any extensions ignore them.
 ///
 /// Inspired by [`http::Extensions`](https://docs.rs/http/latest/http/struct.Extensions.html).
-/// Uses `Option<Box<HashMap>>` internally so that empty contexts (the common
+/// Uses `Option<Box<HashMap>>` internally so that empty extensions (the common
 /// case when no caller-provided values are needed) require zero allocation.
+///
+/// Tools receive these by shared reference, so a tool reads values with
+/// [`get`](Self::get) / [`require`](Self::require) / [`contains`](Self::contains);
+/// the mutating accessors ([`insert`](Self::insert), [`get_mut`](Self::get_mut),
+/// [`remove`](Self::remove)) are owner-side, used by the caller that builds the
+/// extensions before a run.
 ///
 /// Values are keyed by [`TypeId`], so [`get`](Self::get) returns `None` both
 /// when nothing was inserted under that type *and* when a different type was
@@ -127,12 +133,12 @@ pub struct ToolCallExtensions {
 }
 
 impl ToolCallExtensions {
-    /// Shared empty instance. Lets dispatch layers that need a default context
+    /// Shared empty instance. Lets dispatch layers that need a default value
     /// hand out a `'static` reference instead of constructing (and having to
     /// own) a fresh value just to borrow it.
     pub(crate) const EMPTY: ToolCallExtensions = ToolCallExtensions { map: None };
 
-    /// Create an empty context.
+    /// Create an empty set of extensions.
     pub const fn new() -> Self {
         Self::EMPTY
     }
@@ -166,7 +172,7 @@ impl ToolCallExtensions {
     /// Get a reference to a value by type, returning a descriptive error instead
     /// of `None` when it is absent.
     ///
-    /// Prefer this over [`get`](Self::get) for tools that *require* a context
+    /// Prefer this over [`get`](Self::get) for tools that *require* an extension
     /// value (auth tokens, session IDs, …): the error names the missing type,
     /// turning a silent `None` into an actionable failure.
     pub fn require<T: WasmCompatSend + WasmCompatSync + 'static>(
@@ -225,9 +231,9 @@ impl std::fmt::Debug for ToolCallExtensions {
 }
 
 /// Error returned by [`ToolCallExtensions::require`] when the requested value is
-/// not present in the context.
+/// not present in the extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("required tool-call context value of type `{0}` was not found")]
+#[error("required tool-call extension of type `{0}` was not found")]
 pub struct MissingExtension(pub &'static str);
 
 // `ToolCallExtensions` must stay `Send + Sync` on native targets: the agent loop
@@ -293,7 +299,7 @@ mod tests {
 
     #[test]
     fn clone_deep_copies_inner_value() {
-        // Insert a heap-allocated value, clone the context, then mutate the
+        // Insert a heap-allocated value, clone the extensions, then mutate the
         // clone's inner value in place. A shallow clone (sharing the boxed
         // value) would let this mutation leak back into the original; a correct
         // `clone_box` deep-copies, so the original stays unchanged.
@@ -317,13 +323,13 @@ mod tests {
     }
 
     #[test]
-    fn empty_context_is_default() {
+    fn empty_extensions_is_default() {
         let extensions = ToolCallExtensions::default();
         assert!(!extensions.contains::<u32>());
     }
 
     #[test]
-    fn empty_context_has_no_allocation() {
+    fn empty_extensions_has_no_allocation() {
         let extensions = ToolCallExtensions::new();
         assert!(extensions.map.is_none());
     }

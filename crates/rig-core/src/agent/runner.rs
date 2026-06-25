@@ -163,9 +163,10 @@ where
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
     pub(crate) tool_server_handle: ToolServerHandle,
-    /// Per-call runtime context made available to every tool executed during
+    /// Per-call runtime extensions made available to every tool executed during
     /// this run via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
-    /// Empty by default; populated with [`tool_extensions`](Self::tool_extensions).
+    /// Empty by default; set with the [`tool_extensions`](Self::tool_extensions())
+    /// builder.
     pub(crate) tool_extensions: ToolCallExtensions,
     pub(crate) dynamic_context: DynamicContextStore,
     pub(crate) tool_choice: Option<ToolChoice>,

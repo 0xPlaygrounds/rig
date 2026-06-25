@@ -75,12 +75,23 @@ pub struct SessionId(pub String);
 /// observing it would mean dispatch wrongly bypassed the context-aware path.
 #[derive(Clone, Default)]
 pub struct MockExtensionsProbeTool {
-    seen: Arc<Mutex<Option<String>>>,
+    /// One entry per call, in call order — lets tests assert across multiple
+    /// tool-call rounds, not just the most recent.
+    seen: Arc<Mutex<Vec<String>>>,
 }
 
 impl MockExtensionsProbeTool {
-    /// What the tool last observed, if it has been called.
+    /// What the tool observed on its most recent call, if it has been called.
     pub fn observed(&self) -> Option<String> {
+        self.seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .last()
+            .cloned()
+    }
+
+    /// Everything the tool observed, one entry per call in call order.
+    pub fn observations(&self) -> Vec<String> {
         self.seen
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -103,10 +114,10 @@ impl Tool for MockExtensionsProbeTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-        *self
-            .seen
+        self.seen
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some("call-no-context".to_string());
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push("call-no-context".to_string());
         Ok("call-no-context".to_string())
     }
 
@@ -119,10 +130,10 @@ impl Tool for MockExtensionsProbeTool {
             Some(session) => format!("session:{}", session.0),
             None => "no-session".to_string(),
         };
-        *self
-            .seen
+        self.seen
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(observed.clone());
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(observed.clone());
         Ok(observed)
     }
 }

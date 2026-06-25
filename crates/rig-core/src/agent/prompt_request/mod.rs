@@ -1171,6 +1171,36 @@ mod tests {
         assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
     }
 
+    /// Extensions persist for the whole run, across *multiple* tool-call rounds
+    /// (the headline value prop). The model calls the probe in two consecutive
+    /// rounds; both must observe the same injected value, not just the first.
+    #[tokio::test]
+    async fn tool_extensions_persist_across_multiple_rounds() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("c1", "context_probe", json!({})),
+            MockTurn::tool_call("c2", "context_probe", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
+
+        let out = agent
+            .prompt("use the tool twice")
+            .tool_extensions(extensions)
+            .max_turns(5)
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(out, "done");
+        assert_eq!(
+            probe.observations(),
+            vec!["session:abc-123".to_string(), "session:abc-123".to_string()],
+        );
+    }
+
     /// Without a context, the same tool runs with an empty one (no panic, no
     /// stale value) — the backward-compatible default path.
     #[tokio::test]
