@@ -789,15 +789,27 @@ mod tests {
 
     #[tokio::test]
     async fn evicted_tool_call_emits_object_input_end_to_end() {
-        // End-to-end through the streaming aggregator + eviction path: a distinct
-        // second tool call evicts the first via `finalize_completed_streaming_tool_call`.
-        // Every emitted tool call's arguments must be a JSON object so a downstream
-        // object-typed serializer (e.g. Anthropic's `tool_use.input`) never sends a
-        // bare string.
+        // Regression guard for #1958, end-to-end through the streaming aggregator.
+        //
+        // The first tool call is evicted (a distinct second call starts at the
+        // same index) **while its arguments are still a partial, non-object
+        // string** (`first_args_partial` streams `{"query":` — a fragment the
+        // accumulator holds as a bare `Value::String`). Before the fix,
+        // `finalize_completed_streaming_tool_call` forwarded that string verbatim,
+        // so the evicted call emerged with a string `function.arguments`; a
+        // downstream object-typed serializer (e.g. Anthropic's `tool_use.input`)
+        // then sent a bare string and strict providers rejected it.
+        //
+        // This sequence is what makes the test load-bearing: with the fix
+        // reverted the evicted call's arguments are `String("{\"query\":")` and
+        // the `is_object()` assertion below fails; the sibling
+        // `distinct_same_name_tool_calls_evict_by_id_when_a_new_call_starts` test
+        // (which lets the first call's args *complete* before eviction) does not
+        // exercise this path.
         let client = MockStreamingClient {
             sse_bytes: sse_bytes_from_data_lines([
                 "first_start",
-                "first_args",
+                "first_args_partial",
                 "second_start",
                 "second_args",
                 "finish",
@@ -833,6 +845,11 @@ mod tests {
                 tc.function.name
             );
         }
+        // Pin the evicted call specifically: its unparseable partial string is
+        // normalized to `{}` (not forwarded as a string, not dropped).
+        let evicted = &collected_tool_calls[0];
+        assert_eq!(evicted.id, "call_aaa");
+        assert_eq!(evicted.function.arguments, serde_json::json!({}));
     }
 
     #[test]

@@ -103,6 +103,14 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
                 CompatibleFinishReason::Other,
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":\"one\"}"))],
             )),
+            // A partial (still-streaming) argument fragment: the accumulator
+            // holds it as a bare `Value::String` because it is not yet a complete
+            // `{...}` object. If the first call is evicted at this point, its
+            // arguments are a non-object string — the exact #1958 leak condition.
+            "first_args_partial" => Some(tool_call_choice(
+                CompatibleFinishReason::Other,
+                vec![tool_call_chunk(0, None, None, Some("{\"query\":"))],
+            )),
             "second_start" => Some(tool_call_choice(
                 CompatibleFinishReason::Other,
                 vec![tool_call_chunk(
