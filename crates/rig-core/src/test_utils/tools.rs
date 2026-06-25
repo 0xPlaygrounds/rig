@@ -81,7 +81,7 @@ pub struct MockContextProbeTool {
 impl MockContextProbeTool {
     /// What the tool last observed, if it has been called.
     pub fn observed(&self) -> Option<String> {
-        self.seen.lock().unwrap().clone()
+        self.seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
     }
 }
 
@@ -100,7 +100,7 @@ impl Tool for MockContextProbeTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-        *self.seen.lock().unwrap() = Some("call-no-context".to_string());
+        *self.seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some("call-no-context".to_string());
         Ok("call-no-context".to_string())
     }
 
@@ -113,7 +113,7 @@ impl Tool for MockContextProbeTool {
             Some(session) => format!("session:{}", session.0),
             None => "no-session".to_string(),
         };
-        *self.seen.lock().unwrap() = Some(observed.clone());
+        *self.seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(observed.clone());
         Ok(observed)
     }
 }
