@@ -119,23 +119,34 @@ impl Tool for DeleteFile {
 // ---------------------------------------------------------------------------
 
 /// Print `prompt`, then read one trimmed line from stdin without blocking the
-/// async runtime (the blocking read runs on a dedicated thread).
-async fn ask(prompt: &str) -> String {
+/// async runtime (the blocking read runs on a dedicated thread). Returns `None`
+/// on EOF / closed stdin (e.g. piped `< /dev/null`, Ctrl-D) or a read error —
+/// the caller treats "no input" as fail-closed, never as approval.
+async fn ask(prompt: &str) -> Option<String> {
     use std::io::Write;
     print!("{prompt}");
     let _ = std::io::stdout().flush();
-    tokio::task::spawn_blocking(|| {
+    let line = tokio::task::spawn_blocking(|| {
         let mut line = String::new();
-        let _ = std::io::stdin().read_line(&mut line);
-        line
+        match std::io::stdin().read_line(&mut line) {
+            Ok(0) | Err(_) => None, // EOF / closed stdin / read error
+            Ok(_) => Some(line),
+        }
     })
     .await
-    .unwrap_or_default()
-    .trim()
-    .to_string()
+    .ok()
+    .flatten()?;
+    Some(line.trim().to_string())
 }
 
 /// Gates every tool call behind interactive human approval.
+///
+/// The gate is **fail-closed**: anything other than an explicit approval (an
+/// empty line, an unrecognized choice, or closed stdin) denies or aborts rather
+/// than running the tool. An approval prompt that guards side-effecting tools
+/// must never run them on ambiguous input — and note that the prompt is a UX
+/// affordance, not a security boundary; real authorization belongs inside the
+/// tool itself.
 struct ApprovalHook;
 
 impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
@@ -153,52 +164,62 @@ impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
         println!("     tool: {tool_name}");
         println!("     args: {args}");
 
-        match ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort run? ")
-            .await
-            .chars()
-            .next()
-        {
-            // Approve (also the default on an empty line): run as requested.
-            Some('a') | None => {
+        // No input at all (closed stdin) → abort the run; there is no reviewer.
+        let Some(choice) = ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort run? ").await
+        else {
+            println!("     → no input (stdin closed); aborting (fail-closed)");
+            return Flow::terminate("no reviewer input available (stdin closed)");
+        };
+
+        // Match the whole (lowercased) answer, accepting either the hotkey or the
+        // full word, so typing "abort" can never be mistaken for "approve".
+        match choice.to_ascii_lowercase().as_str() {
+            "a" | "approve" => {
                 println!("     → approved");
                 Flow::cont()
             }
             // Deny: the tool does not run; the reason is fed back to the model as
             // the tool result so it can choose another course of action.
-            Some('d') => {
-                let reason = ask("     reason (shown to the model): ").await;
-                let reason = if reason.is_empty() {
-                    "denied by the human reviewer".to_string()
-                } else {
-                    reason
-                };
+            "d" | "deny" | "n" | "no" => {
+                let reason = ask("     reason (shown to the model): ")
+                    .await
+                    .filter(|r| !r.is_empty())
+                    .unwrap_or_else(|| "denied by the human reviewer".to_string());
                 println!("     → denied");
                 Flow::skip(reason)
             }
             // Edit: run the tool with human-supplied JSON arguments instead.
-            Some('e') => {
-                let raw = ask("     replacement JSON args: ").await;
-                match serde_json::from_str::<serde_json::Value>(&raw) {
-                    Ok(value) => {
+            "e" | "edit" => {
+                match ask("     replacement JSON args (single line): ")
+                    .await
+                    .as_deref()
+                    .map(serde_json::from_str::<serde_json::Value>)
+                {
+                    Some(Ok(value)) => {
                         println!("     → running with edited arguments");
                         Flow::rewrite_args(value)
                     }
-                    Err(err) => {
-                        println!("     ! invalid JSON ({err}); denying instead");
-                        Flow::skip(format!(
-                            "the reviewer tried to edit the arguments but supplied invalid JSON: {err}"
-                        ))
+                    other => {
+                        println!("     ! no valid JSON ({other:?}); denying instead");
+                        Flow::skip(
+                            "the reviewer tried to edit the arguments but supplied no valid JSON",
+                        )
                     }
                 }
             }
             // Abort: stop the whole run.
-            Some('b') => {
+            "b" | "abort" | "q" | "quit" => {
                 println!("     → aborting the run");
                 Flow::terminate("run aborted by the human reviewer")
             }
-            Some(other) => {
-                println!("     ! unrecognized choice '{other}', approving by default");
-                Flow::cont()
+            // Fail closed: empty or unrecognized input denies rather than runs.
+            "" => {
+                println!("     → empty input; denying (fail-closed)");
+                Flow::skip("denied: the reviewer gave no decision")
+            }
+            other => {
+                println!("     ! unrecognized choice '{other}'; denying (fail-closed)");
+                Flow::skip(format!("denied: unrecognized reviewer input '{other}'"))
             }
         }
     }

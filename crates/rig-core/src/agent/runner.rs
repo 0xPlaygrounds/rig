@@ -3057,7 +3057,6 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// A human reviewer's decision for a pending tool call.
-    #[derive(Clone)]
     enum Decision {
         /// Run the tool as the model requested.
         Approve,
@@ -3119,7 +3118,7 @@ mod tests {
     /// edits the third's arguments behaves identically under `run()` and
     /// `stream()`: approved/edited tools execute (and the edit takes effect),
     /// the denied tool runs nothing while its reason reaches the model, and the
-    /// model-visible history is byte-identical across drivers.
+    /// model-visible history is identical across drivers (compared structurally).
     #[tokio::test]
     async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         // One turn issues three tool calls; the reviewer decides each differently.
@@ -3192,9 +3191,28 @@ mod tests {
             streaming_recorder.tool_results()
         );
 
-        // The reviewer was consulted for all three calls, identically per driver.
-        assert_eq!(blocking_approver.reviewed().len(), 3);
-        assert_eq!(blocking_approver.reviewed(), streaming_approver.reviewed());
+        // The denied call (10 + 20) never executed, so its result 30 is absent —
+        // this, with tool_results == [5, 101], rules out the test passing if deny
+        // were silently treated as approve.
+        assert!(
+            !blocking_recorder.tool_results().contains(&"30".to_string()),
+            "the denied call must not have executed"
+        );
+
+        // The reviewer was consulted for all three calls, in order, identically per
+        // driver — pinning each decision to its call (approve=2+3, deny=10+20,
+        // edit=the third).
+        let reviewed = blocking_approver.reviewed();
+        assert_eq!(reviewed.len(), 3);
+        assert_eq!(reviewed, streaming_approver.reviewed());
+        assert!(
+            reviewed[0].contains('2') && reviewed[0].contains('3'),
+            "first reviewed call should be add(2, 3): {reviewed:?}"
+        );
+        assert!(
+            reviewed[1].contains("10") && reviewed[1].contains("20"),
+            "the denied (second) call should be add(10, 20): {reviewed:?}"
+        );
 
         assert_eq!(blocking.output, "done");
         assert_eq!(final_response.response(), blocking.output);
@@ -3203,8 +3221,9 @@ mod tests {
             streaming_recorder.shared_events()
         );
 
-        // Model-visible history is byte-identical across drivers and carries the
-        // denial reason and the edited result 101 (not the model's 1 + 1 = 2).
+        // Model-visible history is identical across drivers (compared structurally
+        // as serde_json::Value) and carries the denial reason and the edited result
+        // 101 (not the model's 1 + 1 = 2).
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
             .history()
@@ -3225,13 +3244,17 @@ mod tests {
     }
 
     /// A HITL hook that aborts a tool call (`Decision::Abort` -> `Flow::terminate`)
-    /// stops the run and surfaces the reason as a `PromptCancelled` error.
+    /// stops the run and surfaces the reason as a `PromptCancelled` error — on both
+    /// the blocking and streaming drivers.
     #[tokio::test]
     async fn human_in_the_loop_abort_terminates_the_run() {
         let turns = [
             ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
             ScriptedTurn::Text("unreachable"),
         ];
+        const ABORT_REASON: &str = "aborted by the human reviewer";
+
+        // Blocking driver: the run resolves to a PromptCancelled error.
         let blocking_model =
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
         let err = AgentBuilder::new(blocking_model)
@@ -3239,15 +3262,44 @@ mod tests {
             .build()
             .runner("do the sensitive thing")
             .max_turns(3)
-            .add_hook(HumanApprovalHook::new([Decision::Abort(
-                "aborted by the human reviewer",
-            )]))
+            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]))
             .run()
             .await
-            .expect_err("an aborted tool call should terminate the run");
+            .expect_err("an aborted tool call should terminate the blocking run");
         assert!(
-            format!("{err}").contains("aborted by the human reviewer"),
-            "the abort reason should surface in the error, got: {err}"
+            format!("{err}").contains(ABORT_REASON),
+            "the abort reason should surface in the blocking error, got: {err}"
+        );
+
+        // Streaming driver: the stream yields an error carrying the same reason and
+        // never reaches the "unreachable" final text.
+        let streaming_model = MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        );
+        let mut stream = AgentBuilder::new(streaming_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("do the sensitive thing")
+            .max_turns(3)
+            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]))
+            .stream()
+            .await;
+        let mut stream_error = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Err(err) => stream_error = Some(format!("{err}")),
+                Ok(MultiTurnStreamItem::FinalResponse(resp)) => {
+                    panic!("aborted stream must not finalize, got: {}", resp.response())
+                }
+                Ok(_) => {}
+            }
+        }
+        let stream_error = stream_error.expect("an aborted tool call should error the stream");
+        assert!(
+            stream_error.contains(ABORT_REASON),
+            "the abort reason should surface in the streaming error, got: {stream_error}"
         );
     }
 }
