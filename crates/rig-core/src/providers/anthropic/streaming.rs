@@ -107,25 +107,28 @@ fn create_streaming_request_body(
         merge_inplace(&mut body, json!({ "temperature": temperature }));
     }
 
+    // Convert the request's tool choice unconditionally so a choice Anthropic
+    // cannot represent (e.g. a multi-name `Specific`) fails closed with a request
+    // error exactly like the blocking path (completion.rs), even when no tools are
+    // advertised this turn — rather than being silently dropped on streaming only.
+    let tool_choice = completion_request
+        .tool_choice
+        .take()
+        .map(ToolChoice::try_from)
+        .transpose()?;
+
     if !tools.is_empty() {
         // Carry the request's tool choice (defaulting to Auto when unset) rather
         // than hardcoding Auto — otherwise a caller's `tool_choice` (including one
         // set per-turn via a `RequestOverride`) is silently dropped on the
-        // streaming path, unlike the non-streaming path which honors it. A choice
-        // Anthropic cannot represent (e.g. a multi-name `Specific`) is surfaced as
-        // an error rather than silently downgraded to Auto, matching the blocking
-        // path and failing closed for callers that meant to constrain tool use.
-        let tool_choice = completion_request
-            .tool_choice
-            .take()
-            .map(ToolChoice::try_from)
-            .transpose()?
-            .unwrap_or(ToolChoice::Auto);
+        // streaming path, unlike the non-streaming path which honors it. Anthropic
+        // only accepts `tool_choice` alongside a non-empty tool set, so it is sent
+        // only here.
         merge_inplace(
             &mut body,
             json!({
                 "tools": tools,
-                "tool_choice": tool_choice,
+                "tool_choice": tool_choice.unwrap_or(ToolChoice::Auto),
             }),
         );
     }

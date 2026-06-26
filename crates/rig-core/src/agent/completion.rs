@@ -302,14 +302,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             }
         };
 
-    // Capture the full advertised tool set BEFORE any per-turn `active_tools`
-    // filtering. The synthetic output-tool name is picked to avoid colliding with
-    // ANY of these, not just this turn's narrowed set: a tool filtered out by
-    // `active_tools` this turn can be advertised again on a later turn, while the
-    // output-tool name is pinned for the whole run — so picking against only the
+    // When a per-turn `active_tools` allow-list is present, capture the full tool
+    // set BEFORE filtering: the synthetic output-tool name must avoid colliding
+    // with ANY advertised tool, not just this turn's narrowed set — a tool
+    // filtered out this turn can be advertised again on a later turn, while the
+    // output-tool name is pinned for the whole run, so picking against only the
     // narrowed set could commit a name that collides once the filter lifts.
-    let all_advertised_tool_names: BTreeSet<String> =
-        tooldefs.iter().map(|tool| tool.name.clone()).collect();
+    // Without a filter the full set equals `executable_tool_names` below, so we
+    // skip the extra allocation and reuse that.
+    let pre_filter_tool_names: Option<BTreeSet<String>> =
+        active_tools.map(|_| tooldefs.iter().map(|tool| tool.name.clone()).collect());
 
     // Apply a per-turn `active_tools` allow-list (from a `CompletionCall` hook):
     // narrow the advertised tool set to the named tools BEFORE computing the
@@ -360,11 +362,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         )
     };
 
-    // In Tool mode, reuse the run's committed name or pick a collision-safe one.
+    // In Tool mode, reuse the run's committed name or pick a collision-safe one
+    // against the full pre-filter set (or the executable set when unfiltered).
     let output_tool_name = matches!(resolved_mode, OutputMode::Tool).then(|| {
-        committed_output_tool
-            .map(str::to_owned)
-            .unwrap_or_else(|| pick_output_tool_name(&all_advertised_tool_names))
+        committed_output_tool.map(str::to_owned).unwrap_or_else(|| {
+            pick_output_tool_name(
+                pre_filter_tool_names
+                    .as_ref()
+                    .unwrap_or(&executable_tool_names),
+            )
+        })
     });
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a

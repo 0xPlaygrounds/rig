@@ -364,6 +364,13 @@ impl RequestOverride {
     }
 
     /// Restrict the advertised tools to this allow-list (by name) for this turn.
+    ///
+    /// This narrows the executable tool set, so it composes with `tool_choice`:
+    /// if the effective tool choice is a [`ToolChoice::Specific`] naming a tool
+    /// that `active_tools` filters out (e.g. the agent's baseline choice is
+    /// inherited because this override didn't set its own), the request fails
+    /// closed with a request error rather than silently forcing a dropped tool.
+    /// When narrowing the set, set a compatible `tool_choice` in the same patch.
     pub fn active_tools<I, S>(mut self, names: I) -> Self
     where
         I: IntoIterator<Item = S>,

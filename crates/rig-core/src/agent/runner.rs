@@ -703,13 +703,16 @@ where
                         CompletionCallDecision::Proceed => None,
                     };
 
-                    // Record the preamble actually sent this turn: a per-turn
-                    // `RequestOverride` can replace it, and the request built below
-                    // applies the same precedence (override, else baseline).
+                    // Record this turn's base system prompt — the override-or-baseline
+                    // preamble, before any output-mode augmentation the request
+                    // builder appends (the provider-level span records the final
+                    // value). A per-turn `RequestOverride` can replace it, and the
+                    // builder below resolves the same precedence; borrow rather than
+                    // clone since the value only needs to outlive span creation.
                     let effective_preamble = request_override
                         .as_ref()
-                        .and_then(|o| o.preamble.clone())
-                        .or_else(|| self.preamble.clone());
+                        .and_then(|o| o.preamble.as_deref())
+                        .or(self.preamble.as_deref());
 
                     let span = tracing::Span::current();
                     let chat_span = info_span!(
@@ -921,8 +924,8 @@ mod tests {
 
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, Flow, RequestOverride, StepEvent, StepEventKind};
-    use crate::agent::run::OutputMode;
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
+    use crate::agent::run::OutputMode;
     use crate::completion::{CompletionModel, Message, PromptError, ToolDefinition};
     use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
@@ -2995,14 +2998,17 @@ mod tests {
     #[tokio::test]
     async fn active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_real_tool() {
         // The model finalizes by calling the (correctly-picked) output tool, so a
-        // run on the fixed code completes cleanly in a single turn.
+        // run on the fixed code completes cleanly in a single turn. Asserting the
+        // run succeeds also exercises finalization: the model's call to
+        // `final_result_1` must be intercepted as the output tool, so this fails if
+        // the picked name and the intercept name ever drift apart.
         let model = MockCompletionModel::from_turns([MockTurn::tool_call(
             "out1",
             "final_result_1",
             json!({ "answer": "done" }),
         )]);
         let probe = model.clone();
-        let _ = AgentBuilder::new(model)
+        let response = AgentBuilder::new(model)
             .tool(MockAddTool)
             .tool(FinalResultTool)
             .output_schema::<Answer>()
@@ -3012,7 +3018,14 @@ mod tests {
             .runner("go")
             .max_turns(2)
             .run()
-            .await;
+            .await
+            .expect("run should finalize via the picked output tool `final_result_1`");
+        assert!(
+            response.output.contains("done"),
+            "the intercepted output-tool call should produce the structured result, \
+             got {:?}",
+            response.output
+        );
 
         let requests = probe.requests();
         assert!(

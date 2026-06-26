@@ -543,13 +543,16 @@ where
                             CompletionCallDecision::Proceed => None,
                         };
 
-                        // Record the preamble actually sent this turn: a per-turn
-                        // `RequestOverride` can replace it, and the request built
-                        // below applies the same precedence (override, else baseline).
+                        // Record this turn's base system prompt — the override-or-baseline
+                        // preamble, before any output-mode augmentation the request
+                        // builder appends (the provider-level span records the final
+                        // value). A per-turn `RequestOverride` can replace it, and the
+                        // builder below resolves the same precedence; borrow rather than
+                        // clone since the value only needs to outlive span creation.
                         let effective_preamble = request_override
                             .as_ref()
-                            .and_then(|o| o.preamble.clone())
-                            .or_else(|| preamble.clone());
+                            .and_then(|o| o.preamble.as_deref())
+                            .or(preamble.as_deref());
 
                         let chat_stream_span = info_span!(
                             target: "rig::agent_chat",
