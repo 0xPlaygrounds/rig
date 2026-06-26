@@ -33,7 +33,7 @@
 //! | `on_completion_call` | [`CompletionCall`](StepEvent::CompletionCall) `{ prompt, history, turn }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_completion_response` | [`CompletionResponse`](StepEvent::CompletionResponse) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_invalid_tool_call` | [`InvalidToolCall`](StepEvent::InvalidToolCall)`(ctx)` | [`fail`](Flow::fail) (default) / [`retry`](Flow::retry) / [`repair`](Flow::repair) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
-//! | `on_tool_call` | [`ToolCall`](StepEvent::ToolCall) `{ tool_name, tool_call_id, internal_call_id, args }` | [`cont`](Flow::cont) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
+//! | `on_tool_call` | [`ToolCall`](StepEvent::ToolCall) `{ tool_name, tool_call_id, internal_call_id, args }` | [`cont`](Flow::cont) / [`rewrite_args`](Flow::rewrite_args) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
 //! | `on_tool_result` | [`ToolResult`](StepEvent::ToolResult) `{ tool_name, .., result }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_text_delta` | [`TextDelta`](StepEvent::TextDelta) `{ delta, aggregated }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call_delta` | [`ToolCallDelta`](StepEvent::ToolCallDelta) `{ tool_call_id, internal_call_id, tool_name, delta }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
@@ -166,8 +166,9 @@ pub enum StepEvent<'a, M: CompletionModel> {
     /// [`Flow::Repair`], [`Flow::Skip`] and [`Flow::Terminate`];
     /// [`Flow::Continue`] is treated as [`Flow::Fail`].
     InvalidToolCall(&'a InvalidToolCallContext),
-    /// Before a tool is executed. Honors [`Flow::Continue`], [`Flow::Skip`]
-    /// (return `reason` as the tool result without executing) and
+    /// Before a tool is executed. Honors [`Flow::Continue`],
+    /// [`Flow::RewriteArgs`] (execute the tool with rewritten arguments),
+    /// [`Flow::Skip`] (return `reason` as the tool result without executing) and
     /// [`Flow::Terminate`].
     ToolCall {
         /// Name of the tool about to be called.
@@ -309,6 +310,30 @@ pub enum Flow {
         /// The message returned to the model in place of the tool result.
         reason: String,
     },
+    /// [`StepEvent::ToolCall`] only: rewrite the tool-call arguments, then
+    /// execute the tool with the replacement. This is the steering action for
+    /// guardrails that normalize, clamp, redirect, or inject scoped parameters
+    /// before a tool runs.
+    ///
+    /// The rewritten arguments are what the tool is invoked with, what the
+    /// following [`StepEvent::ToolResult`] reports, and what the
+    /// `gen_ai.tool.call.arguments` span field records.
+    ///
+    /// This rewrites only what the tool *executes against*, not the model's
+    /// transcript: the assistant message that recorded the original tool call is
+    /// unchanged and keeps the model's original arguments. It is therefore an
+    /// execution-args rewrite (inject defaults, clamp a range, redirect a path),
+    /// **not** a history redactor — it does not scrub a value the model already
+    /// emitted from the conversation.
+    ///
+    /// Note: a rewrite is single-shot. Because a [`HookStack`] short-circuits on
+    /// the first non-[`Flow::Continue`] result, only the first hook to rewrite a
+    /// given call takes effect.
+    RewriteArgs {
+        /// The JSON arguments the tool is invoked with, in place of the ones the
+        /// model emitted.
+        args: serde_json::Value,
+    },
     /// [`StepEvent::InvalidToolCall`] only: fail the run fast (the default for
     /// invalid tool calls).
     Fail,
@@ -344,6 +369,41 @@ impl Flow {
         Self::Skip {
             reason: reason.into(),
         }
+    }
+
+    /// Rewrite a tool call's arguments, then execute the tool with the
+    /// replacement (tool calls only).
+    ///
+    /// Accepts anything convertible into a [`serde_json::Value`] — most often
+    /// the [`serde_json::json!`] macro or a value built from the parsed original
+    /// arguments. To rewrite from a typed value instead, use
+    /// [`try_rewrite_args`](Flow::try_rewrite_args).
+    ///
+    /// ```rust,ignore
+    /// // Inject a scoped parameter the model never sees, leaving the rest intact.
+    /// let mut args: serde_json::Value = serde_json::from_str(emitted_args)?;
+    /// args["account_id"] = serde_json::json!(session.account_id);
+    /// Flow::rewrite_args(args)
+    /// ```
+    pub fn rewrite_args(args: impl Into<serde_json::Value>) -> Self {
+        Self::RewriteArgs { args: args.into() }
+    }
+
+    /// Rewrite a tool call's arguments from a serializable value (tool calls
+    /// only), serializing it to JSON.
+    ///
+    /// This is the typed convenience over [`rewrite_args`](Flow::rewrite_args)
+    /// for callers that hold a Rust args struct. It only fails if the value
+    /// cannot be serialized to JSON; a hook typically maps that error to
+    /// [`Flow::terminate`]:
+    ///
+    /// ```rust,ignore
+    /// Flow::try_rewrite_args(&new_args).unwrap_or_else(|e| Flow::terminate(e.to_string()))
+    /// ```
+    pub fn try_rewrite_args<T: serde::Serialize>(value: &T) -> Result<Self, serde_json::Error> {
+        Ok(Self::RewriteArgs {
+            args: serde_json::to_value(value)?,
+        })
     }
 
     /// Fail fast on an invalid tool call (the default).
