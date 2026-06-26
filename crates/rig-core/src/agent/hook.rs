@@ -30,7 +30,7 @@
 //!
 //! | Old `PromptHook` method | [`StepEvent`] variant | [`Flow`] to return |
 //! |---|---|---|
-//! | `on_completion_call` | [`CompletionCall`](StepEvent::CompletionCall) `{ prompt, history, turn }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
+//! | `on_completion_call` | [`CompletionCall`](StepEvent::CompletionCall) `{ prompt, history, turn }` | [`cont`](Flow::cont) / [`override_request`](Flow::override_request) / [`terminate`](Flow::terminate) |
 //! | `on_completion_response` | [`CompletionResponse`](StepEvent::CompletionResponse) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_invalid_tool_call` | [`InvalidToolCall`](StepEvent::InvalidToolCall)`(ctx)` | [`fail`](Flow::fail) (default) / [`retry`](Flow::retry) / [`repair`](Flow::repair) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call` | [`ToolCall`](StepEvent::ToolCall) `{ tool_name, tool_call_id, internal_call_id, args }` | [`cont`](Flow::cont) / [`rewrite_args`](Flow::rewrite_args) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
@@ -143,7 +143,8 @@ impl InvalidToolCallHookAction {
 #[non_exhaustive]
 pub enum StepEvent<'a, M: CompletionModel> {
     /// Before a completion request is sent to the model. Honors
-    /// [`Flow::Continue`] and [`Flow::Terminate`].
+    /// [`Flow::Continue`], [`Flow::OverrideRequest`] (patch this turn's request)
+    /// and [`Flow::Terminate`].
     CompletionCall {
         /// The prompt message for this turn.
         prompt: &'a Message,
@@ -287,6 +288,106 @@ impl<M: CompletionModel> StepEvent<'_, M> {
     }
 }
 
+/// A partial patch over the model request for a single turn, returned by a hook
+/// via [`Flow::OverrideRequest`] on a [`StepEvent::CompletionCall`] event.
+///
+/// Every field is optional: a `Some` value overrides the agent's configured
+/// value for this turn, a `None` value inherits it. The patch is **per-turn and
+/// non-sticky** — it never changes the agent's baseline, so the next turn
+/// resolves from the baseline again. `additional_params` is shallow-merged
+/// (top-level keys, the override winning) onto the agent's passthrough params;
+/// every other field replaces.
+///
+/// Build one with the setters:
+///
+/// ```rust,ignore
+/// Flow::override_request(
+///     RequestOverride::new()
+///         .tool_choice(ToolChoice::Required)
+///         .active_tools(["search"])
+///         .temperature(0.0),
+/// )
+/// ```
+#[derive(Debug, Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct RequestOverride {
+    /// Override the system prompt / preamble for this turn.
+    pub preamble: Option<String>,
+    /// Override the sampling temperature for this turn.
+    pub temperature: Option<f64>,
+    /// Override the max output tokens for this turn.
+    pub max_tokens: Option<u64>,
+    /// Override the tool choice for this turn.
+    pub tool_choice: Option<ToolChoice>,
+    /// Restrict the advertised tools to this allow-list (by name) for this turn.
+    /// `Some(vec![])` advertises no executable tools; `None` keeps the full set.
+    pub active_tools: Option<Vec<String>>,
+    /// Provider-passthrough params shallow-merged onto the agent's for this turn.
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl RequestOverride {
+    /// An empty override — a no-op patch, identical to returning [`Flow::cont`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Override the system prompt / preamble for this turn.
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+        self.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Override the sampling temperature for this turn.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Override the max output tokens for this turn.
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Override the tool choice for this turn.
+    ///
+    /// Not every provider honors `tool_choice`: some in-core providers (e.g.
+    /// Ollama, Hyperbolic, Mira, Perplexity) ignore it and log a warning, so
+    /// forcing a tool this way is a no-op there. A choice a provider cannot
+    /// represent (e.g. a multi-name [`ToolChoice::Specific`] on Anthropic, which
+    /// forces a single tool) surfaces as a request error rather than being
+    /// silently downgraded.
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Restrict the advertised tools to this allow-list (by name) for this turn.
+    ///
+    /// This narrows the executable tool set, so it composes with `tool_choice`:
+    /// if the effective tool choice is a [`ToolChoice::Specific`] naming a tool
+    /// that `active_tools` filters out (e.g. the agent's baseline choice is
+    /// inherited because this override didn't set its own), the request fails
+    /// closed with a request error rather than silently forcing a dropped tool.
+    /// When narrowing the set, set a compatible `tool_choice` in the same patch.
+    pub fn active_tools<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.active_tools = Some(names.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Shallow-merge these provider-passthrough params onto the agent's for this
+    /// turn.
+    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
+        self.additional_params = Some(additional_params);
+        self
+    }
+}
+
 /// Control-flow result returned by [`AgentHook::on_event`].
 ///
 /// Each [`StepEvent`] honors a specific subset of variants (documented on each
@@ -295,7 +396,10 @@ impl<M: CompletionModel> StepEvent<'_, M> {
 /// particular, a blocking action such as [`Flow::Fail`] returned for a
 /// [`StepEvent::ToolCall`] stops the run rather than letting the tool execute.
 /// Returning [`Flow::Continue`] is always the way to "do nothing".
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Flow` is `PartialEq` but not `Eq`, because [`Flow::OverrideRequest`] carries
+/// a [`RequestOverride`] whose `temperature` is an `f64`.
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Flow {
     /// Proceed normally.
@@ -359,6 +463,27 @@ pub enum Flow {
         /// The result delivered to the model in place of the tool's actual
         /// output.
         result: String,
+    },
+    /// [`StepEvent::CompletionCall`] only: override fields of the model request
+    /// for this turn before it is sent. The per-turn request-steering action —
+    /// for hooks that adjust the system prompt, sampling, tool choice, or the
+    /// advertised tool set from run state (e.g. force a tool on the first turn,
+    /// lower the temperature on a critical step, or shrink the tool set after a
+    /// phase).
+    ///
+    /// The override is a partial patch ([`RequestOverride`]): each set field
+    /// replaces (or, for `additional_params`, shallow-merges onto) the agent's
+    /// configured value; unset fields are inherited. It applies to *this turn
+    /// only* and does not change the agent's baseline — the next turn re-fires
+    /// [`CompletionCall`](StepEvent::CompletionCall) and re-resolves from it.
+    ///
+    /// Note: like the other steering actions, this is single-shot. Because a
+    /// [`HookStack`] short-circuits on the first non-[`Flow::Continue`] result,
+    /// only the first hook to override a given turn takes effect; compose several
+    /// patches into one hook to combine them.
+    OverrideRequest {
+        /// The partial request patch applied to this turn.
+        request: RequestOverride,
     },
     /// [`StepEvent::InvalidToolCall`] only: fail the run fast (the default for
     /// invalid tool calls).
@@ -446,6 +571,12 @@ impl Flow {
         Self::RewriteResult {
             result: result.into(),
         }
+    }
+
+    /// Override fields of the model request for this turn (completion calls
+    /// only). See [`RequestOverride`] for the partial-patch, per-turn semantics.
+    pub fn override_request(request: RequestOverride) -> Self {
+        Self::OverrideRequest { request }
     }
 
     /// Fail fast on an invalid tool call (the default).

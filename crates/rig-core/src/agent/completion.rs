@@ -1,4 +1,4 @@
-use super::hook::HookStack;
+use super::hook::{HookStack, RequestOverride};
 use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
@@ -8,6 +8,7 @@ use crate::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         GetTokenUsage, Message, Prompt, PromptError, TypedPrompt,
     },
+    json_utils,
     message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     tool::server::ToolServerHandle,
@@ -174,6 +175,8 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         // output-tool call, so it always uses native structured output (#1928).
         &OutputMode::Native,
         None,
+        // No agent run loop, so no `CompletionCall` hook to override the request.
+        None,
     )
     .await?
     .builder)
@@ -197,7 +200,37 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     output_schema: Option<&schemars::Schema>,
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
+    request_override: Option<&RequestOverride>,
 ) -> Result<PreparedCompletionRequest<M>, CompletionError> {
+    // Apply a per-turn request override (a partial patch from a `CompletionCall`
+    // hook): each set field replaces the agent's configured value for this turn,
+    // unset fields inherit it, and `additional_params` is shallow-merged. This is
+    // per-turn only — it never mutates the agent's baseline.
+    let preamble = request_override
+        .and_then(|o| o.preamble.as_deref())
+        .or(preamble);
+    let temperature = request_override.and_then(|o| o.temperature).or(temperature);
+    let max_tokens = request_override.and_then(|o| o.max_tokens).or(max_tokens);
+    let tool_choice = request_override
+        .and_then(|o| o.tool_choice.as_ref())
+        .or(tool_choice);
+    // Provider passthrough params: when both the baseline and the override are
+    // JSON objects, shallow-merge them (top-level keys, the override winning);
+    // otherwise the override value wins wholesale when set, else the baseline.
+    // This keeps the override winning consistently instead of silently dropping a
+    // non-object patch — `json_utils::merge` returns its first argument unchanged
+    // when either side isn't an object.
+    let additional_params: Option<serde_json::Value> = match (
+        additional_params,
+        request_override.and_then(|o| o.additional_params.as_ref()),
+    ) {
+        (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
+            Some(json_utils::merge(base.clone(), patch.clone()))
+        }
+        (base, patch) => patch.or(base).cloned(),
+    };
+    let active_tools = request_override.and_then(|o| o.active_tools.as_deref());
+
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
     let rag_text = rag_text.or_else(|| {
@@ -269,6 +302,39 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             }
         };
 
+    // When a per-turn `active_tools` allow-list is present, capture the full tool
+    // set BEFORE filtering: the synthetic output-tool name must avoid colliding
+    // with ANY advertised tool, not just this turn's narrowed set — a tool
+    // filtered out this turn can be advertised again on a later turn, while the
+    // output-tool name is pinned for the whole run, so picking against only the
+    // narrowed set could commit a name that collides once the filter lifts.
+    // Without a filter the full set equals `executable_tool_names` below, so we
+    // skip the extra allocation and reuse that.
+    let pre_filter_tool_names: Option<BTreeSet<String>> =
+        active_tools.map(|_| tooldefs.iter().map(|tool| tool.name.clone()).collect());
+
+    // Apply a per-turn `active_tools` allow-list (from a `CompletionCall` hook):
+    // narrow the advertised tool set to the named tools BEFORE computing the
+    // executable set, so tool-choice resolution and invalid-tool-call validation
+    // all operate on the narrowed set. The synthetic output tool is appended
+    // later and is unaffected, so structured output still works under an empty
+    // allow-list. A name that isn't available this turn is a hook bug, surfaced
+    // as a request error (mirroring `ToolChoice::Specific`'s contract).
+    if let Some(allow) = active_tools {
+        if let Some(missing) = allow
+            .iter()
+            .find(|name| !tooldefs.iter().any(|tool| &tool.name == *name))
+        {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "active_tools requested tool `{missing}`, which is not available this turn"
+                )
+                .into(),
+            ));
+        }
+        tooldefs.retain(|tool| allow.iter().any(|name| name == &tool.name));
+    }
+
     // Executable tools are the real tool-server tools, computed BEFORE any
     // synthetic output tool is appended.
     let executable_tool_names: BTreeSet<String> =
@@ -296,11 +362,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         )
     };
 
-    // In Tool mode, reuse the run's committed name or pick a collision-safe one.
+    // In Tool mode, reuse the run's committed name or pick a collision-safe one
+    // against the full pre-filter set (or the executable set when unfiltered).
     let output_tool_name = matches!(resolved_mode, OutputMode::Tool).then(|| {
-        committed_output_tool
-            .map(str::to_owned)
-            .unwrap_or_else(|| pick_output_tool_name(&executable_tool_names))
+        committed_output_tool.map(str::to_owned).unwrap_or_else(|| {
+            pick_output_tool_name(
+                pre_filter_tool_names
+                    .as_ref()
+                    .unwrap_or(&executable_tool_names),
+            )
+        })
     });
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a
@@ -314,6 +385,23 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             output_tool = %name,
             "a real tool now shares the synthetic output-tool name; a call to it \
              will finalize the run instead of being dispatched"
+        );
+    }
+
+    // In committed Tool mode the run can only finalize by calling the synthetic
+    // output tool, and the mode is pinned (it cannot degrade to Native mid-run,
+    // see #1928). A `tool_choice` that forbids the output-tool call — `None`, or
+    // a `Specific` set that excludes it, e.g. from a per-turn `RequestOverride` —
+    // therefore produces a turn that cannot emit the structured result. The
+    // non-committed path degrades to Native via `resolve_output_mode`, so this
+    // only fires once a turn has committed Tool mode; warn rather than silently
+    // stall the run.
+    if output_tool_name.is_some() && !tool_choice_permits_output_tool(tool_choice) {
+        tracing::warn!(
+            "the active tool_choice forbids calling the structured-output tool while the \
+             run is pinned to Tool output mode; this turn cannot emit the structured \
+             result (check for a `RequestOverride` setting `tool_choice` to None or a \
+             Specific set that excludes the output tool)"
         );
     }
 
@@ -376,7 +464,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         .messages(chat_history)
         .temperature_opt(temperature)
         .max_tokens_opt(max_tokens)
-        .additional_params_opt(additional_params.cloned())
+        .additional_params_opt(additional_params)
         .documents(static_context.to_vec())
         .tools(tooldefs);
 

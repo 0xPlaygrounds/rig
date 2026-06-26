@@ -116,8 +116,8 @@ pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
 pub use hook::{
-    AgentHook, Flow, HookStack, InvalidToolCallContext, InvalidToolCallHookAction, StepEvent,
-    StepEventKind,
+    AgentHook, Flow, HookStack, InvalidToolCallContext, InvalidToolCallHookAction, RequestOverride,
+    StepEvent, StepEventKind,
 };
 pub use prompt_request::streaming::{
     FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,

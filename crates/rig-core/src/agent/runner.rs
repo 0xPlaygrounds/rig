@@ -35,7 +35,7 @@ use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, build_prepared_completion_request},
-    hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, StepEvent},
+    hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, RequestOverride, StepEvent},
     prompt_request::{PromptResponse, tool_result_message, tool_result_output},
     run::{
         AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
@@ -60,6 +60,7 @@ fn flow_name(flow: &Flow) -> &'static str {
         Flow::Skip { .. } => "Skip",
         Flow::RewriteArgs { .. } => "RewriteArgs",
         Flow::RewriteResult { .. } => "RewriteResult",
+        Flow::OverrideRequest { .. } => "OverrideRequest",
         Flow::Fail => "Fail",
         Flow::Retry { .. } => "Retry",
         Flow::Repair { .. } => "Repair",
@@ -143,6 +144,32 @@ pub(crate) fn flow_into_tool_result(flow: Flow) -> ToolResultDecision {
     }
 }
 
+/// Decision for a [`StepEvent::CompletionCall`] event.
+pub(crate) enum CompletionCallDecision {
+    /// Build and send the request as configured.
+    Proceed,
+    /// Build and send the request with this per-turn override applied.
+    Override(RequestOverride),
+    /// Terminate the run.
+    Terminate(String),
+}
+
+/// Resolve a hook's [`Flow`] for a [`StepEvent::CompletionCall`] event (honors
+/// `Continue`/`OverrideRequest`/`Terminate`). **Fail-closed**: any other action
+/// terminates the run rather than silently sending the request.
+pub(crate) fn flow_into_completion_call(flow: Flow) -> CompletionCallDecision {
+    match flow {
+        Flow::Continue => CompletionCallDecision::Proceed,
+        Flow::OverrideRequest { request } => CompletionCallDecision::Override(request),
+        Flow::Terminate { reason } => CompletionCallDecision::Terminate(reason),
+        other => CompletionCallDecision::Terminate(format!(
+            "hook returned `{}` for a completion-call event, which only honors \
+             Continue/OverrideRequest/Terminate — terminating the run (fail-closed)",
+            flow_name(&other)
+        )),
+    }
+}
+
 /// Decision for a [`StepEvent::InvalidToolCall`] event.
 pub(crate) enum InvalidDecision {
     /// Terminate the run.
@@ -166,17 +193,17 @@ pub(crate) fn flow_into_invalid(flow: Flow) -> InvalidDecision {
         Flow::Skip { reason } => InvalidDecision::Action(InvalidToolCallHookAction::skip(reason)),
         // Continue and Fail both preserve fail-fast for invalid calls.
         Flow::Continue | Flow::Fail => InvalidDecision::Action(InvalidToolCallHookAction::fail()),
-        // `RewriteArgs`/`RewriteResult` steer a *valid* tool call; they cannot
-        // repair an unknown or disallowed one (use `Repair` to rewrite the
-        // name), so they are fail-closed here.
-        other @ (Flow::RewriteArgs { .. } | Flow::RewriteResult { .. }) => {
-            InvalidDecision::Terminate(format!(
-                "hook returned `{}` for an invalid tool-call event, which only \
+        // `RewriteArgs`/`RewriteResult`/`OverrideRequest` steer a *valid* call;
+        // they cannot repair an unknown or disallowed one (use `Repair` to
+        // rewrite the name), so they are fail-closed here.
+        other @ (Flow::RewriteArgs { .. }
+        | Flow::RewriteResult { .. }
+        | Flow::OverrideRequest { .. }) => InvalidDecision::Terminate(format!(
+            "hook returned `{}` for an invalid tool-call event, which only \
                  honors Fail/Retry/Repair/Skip/Terminate — terminating the run \
                  (fail-closed)",
-                flow_name(&other)
-            ))
-        }
+            flow_name(&other)
+        )),
     }
 }
 
@@ -660,7 +687,7 @@ where
                         tracing::info!("Current conversation depth: {}/{}", turn, self.max_turns);
                     }
 
-                    if let Some(reason) = observe_flow(
+                    let request_override = match flow_into_completion_call(
                         self.hooks
                             .on_event(StepEvent::CompletionCall {
                                 prompt: &prompt,
@@ -669,8 +696,23 @@ where
                             })
                             .await,
                     ) {
-                        return Err(run.cancel_error(reason));
-                    }
+                        CompletionCallDecision::Terminate(reason) => {
+                            return Err(run.cancel_error(reason));
+                        }
+                        CompletionCallDecision::Override(request) => Some(request),
+                        CompletionCallDecision::Proceed => None,
+                    };
+
+                    // Record this turn's base system prompt — the override-or-baseline
+                    // preamble, before any output-mode augmentation the request
+                    // builder appends (the provider-level span records the final
+                    // value). A per-turn `RequestOverride` can replace it, and the
+                    // builder below resolves the same precedence; borrow rather than
+                    // clone since the value only needs to outlive span creation.
+                    let effective_preamble = request_override
+                        .as_ref()
+                        .and_then(|o| o.preamble.as_deref())
+                        .or(self.preamble.as_deref());
 
                     let span = tracing::Span::current();
                     let chat_span = info_span!(
@@ -679,7 +721,7 @@ where
                         "chat",
                         gen_ai.operation.name = "chat",
                         gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                        gen_ai.system_instructions = self.preamble,
+                        gen_ai.system_instructions = effective_preamble,
                         gen_ai.provider.name = tracing::field::Empty,
                         gen_ai.request.model = tracing::field::Empty,
                         gen_ai.response.id = tracing::field::Empty,
@@ -723,6 +765,7 @@ where
                         self.output_schema.as_ref(),
                         &self.output_mode,
                         committed_output_tool.as_deref(),
+                        request_override.as_ref(),
                     )
                     .await?;
 
@@ -880,14 +923,15 @@ mod tests {
     use serde_json::json;
 
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{AgentHook, Flow, StepEvent, StepEventKind};
+    use crate::agent::hook::{AgentHook, Flow, RequestOverride, StepEvent, StepEventKind};
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
+    use crate::agent::run::OutputMode;
     use crate::completion::{CompletionModel, Message, PromptError, ToolDefinition};
-    use crate::message::{AssistantContent, ToolCall, ToolFunction, UserContent};
+    use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-        MockToolError, MockTurn,
+        MockSubtractTool, MockToolError, MockTurn,
     };
     use crate::tool::Tool;
 
@@ -2738,6 +2782,270 @@ mod tests {
             tool_result_text_in_history(&messages, IMAGE_JSON),
             "the JSON-shaped replacement must reach history verbatim as text, not be \
              re-parsed into a structured/image content block"
+        );
+    }
+
+    /// A hook that overrides the model request for the turn (`Flow::OverrideRequest`
+    /// on `CompletionCall`): forces tool_choice + temperature, narrows the
+    /// advertised tools to an allow-list, and injects a passthrough param.
+    struct OverrideRequestHook;
+
+    impl<M: CompletionModel> AgentHook<M> for OverrideRequestHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::CompletionCall { .. } = event {
+                Flow::override_request(
+                    RequestOverride::new()
+                        .preamble(OVERRIDE_PREAMBLE)
+                        .temperature(0.25)
+                        .max_tokens(OVERRIDE_MAX_TOKENS)
+                        .tool_choice(ToolChoice::Required)
+                        .active_tools(["add"])
+                        .additional_params(json!({"injected": true})),
+                )
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
+    const OVERRIDE_MAX_TOKENS: u64 = 512;
+
+    /// `Flow::OverrideRequest` resolves to an `Override` completion-call decision
+    /// carrying the patch, and is named for fail-closed diagnostics.
+    #[test]
+    fn override_request_resolves_to_override_for_completion_call() {
+        let patch = RequestOverride::new()
+            .temperature(0.25)
+            .tool_choice(ToolChoice::Required);
+        match super::flow_into_completion_call(Flow::override_request(patch.clone())) {
+            super::CompletionCallDecision::Override(got) => assert_eq!(got, patch),
+            _ => panic!("OverrideRequest should resolve to Override for a completion call"),
+        }
+        assert_eq!(
+            super::flow_name(&Flow::override_request(RequestOverride::new())),
+            "OverrideRequest"
+        );
+    }
+
+    /// `OverrideRequest` is only honored by `CompletionCall`; every other event is
+    /// fail-closed, and `CompletionCall` only honors Continue/OverrideRequest/Terminate.
+    #[test]
+    fn override_request_is_fail_closed_off_the_completion_call_event() {
+        let patch = || Flow::override_request(RequestOverride::new());
+        assert!(matches!(
+            super::flow_into_invalid(patch()),
+            super::InvalidDecision::Terminate(_)
+        ));
+        assert!(matches!(
+            super::flow_into_tool_call(patch()),
+            super::ToolCallDecision::Terminate(_)
+        ));
+        assert!(matches!(
+            super::flow_into_tool_result(patch()),
+            super::ToolResultDecision::Terminate(_)
+        ));
+        assert!(super::observe_flow(patch()).is_some());
+        // The completion-call event rejects an action it can't honor (e.g. Skip).
+        assert!(matches!(
+            super::flow_into_completion_call(Flow::skip("x")),
+            super::CompletionCallDecision::Terminate(_)
+        ));
+    }
+
+    /// A `Flow::OverrideRequest` hook patches the request for the turn identically
+    /// under `run()` and `stream()`: the captured completion request shows the
+    /// overridden temperature/tool_choice, the merged additional_params, and the
+    /// tool set narrowed to the allow-list — on both drivers.
+    #[tokio::test]
+    async fn override_request_parity_across_run_and_stream() {
+        fn assert_request(req: &crate::completion::CompletionRequest) {
+            assert_eq!(
+                req.temperature,
+                Some(0.25),
+                "override temperature wins over the agent's 0.9"
+            );
+            assert_eq!(
+                req.max_tokens,
+                Some(OVERRIDE_MAX_TOKENS),
+                "override max_tokens wins over the agent's 64"
+            );
+            // The override preamble wins and is sent as the leading system message.
+            let system = req.chat_history.iter().find_map(|m| match m {
+                Message::System { content } => Some(content.as_str()),
+                _ => None,
+            });
+            assert_eq!(
+                system,
+                Some(OVERRIDE_PREAMBLE),
+                "override preamble wins over the agent's baseline and is the leading system message"
+            );
+            assert!(matches!(req.tool_choice, Some(ToolChoice::Required)));
+            let tool_names: Vec<&str> = req.tools.iter().map(|t| t.name.as_str()).collect();
+            assert_eq!(
+                tool_names,
+                ["add"],
+                "active_tools narrows the advertised set to `add` (drops `subtract`)"
+            );
+            // additional_params is shallow-merged: the agent baseline survives and
+            // the override's key is added.
+            let params = req.additional_params.as_ref().expect("additional_params");
+            assert_eq!(
+                params.get("baseline").and_then(|v| v.as_str()),
+                Some("keep")
+            );
+            assert_eq!(params.get("injected").and_then(|v| v.as_bool()), Some(true));
+        }
+
+        let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let blocking_probe = blocking_model.clone();
+        let blocking = AgentBuilder::new(blocking_model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .preamble("baseline preamble")
+            .temperature(0.9)
+            .max_tokens(64)
+            .additional_params(json!({"baseline": "keep"}))
+            .add_hook(OverrideRequestHook)
+            .build()
+            .runner("go")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_eq!(blocking.output, "done");
+        let blocking_requests = blocking_probe.requests();
+        assert_eq!(blocking_requests.len(), 1);
+        assert_request(&blocking_requests[0]);
+
+        let streaming_model = MockCompletionModel::from_stream_turns([
+            ScriptedTurn::Text("done").as_stream_events(StreamShape::Complete)
+        ]);
+        let streaming_probe = streaming_model.clone();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .preamble("baseline preamble")
+            .temperature(0.9)
+            .max_tokens(64)
+            .additional_params(json!({"baseline": "keep"}))
+            .add_hook(OverrideRequestHook)
+            .build()
+            .runner("go")
+            .max_turns(2)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        let streaming_requests = streaming_probe.requests();
+        assert_eq!(streaming_requests.len(), 1);
+        assert_request(&streaming_requests[0]);
+    }
+
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)]
+    struct Answer {
+        answer: String,
+    }
+
+    /// A real tool whose name equals the default synthetic output-tool name
+    /// (`final_result`). Used to prove a per-turn `active_tools` filter cannot
+    /// make the picked output-tool name collide with it.
+    struct FinalResultTool;
+
+    impl Tool for FinalResultTool {
+        const NAME: &'static str = "final_result";
+        type Error = MockToolError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "A real tool sharing the default output-tool name".to_string(),
+                parameters: json!({ "type": "object", "properties": {} }),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok("real final_result output".to_string())
+        }
+    }
+
+    /// Narrows the advertised tools to `add` for the turn, filtering out the real
+    /// `final_result` tool.
+    struct ActiveToolsAddOnly;
+
+    impl<M: CompletionModel> AgentHook<M> for ActiveToolsAddOnly {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::CompletionCall { .. } = event {
+                Flow::override_request(RequestOverride::new().active_tools(["add"]))
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    /// Regression guard: a per-turn `active_tools` allow-list that filters out a
+    /// real tool whose name equals the default synthetic output-tool name must not
+    /// let the picked output-tool name collide with that (filtered) real tool. The
+    /// name is pinned for the whole run, so picking it against the FULL advertised
+    /// set — not just this turn's narrowed executable set — keeps it collision-safe
+    /// once the filter lifts on a later turn. With the bug, the output tool would
+    /// be named `final_result` (picked against the narrowed `{add}`), colliding
+    /// with the real `final_result` whenever the filter is gone.
+    #[tokio::test]
+    async fn active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_real_tool() {
+        // The model finalizes by calling the (correctly-picked) output tool, so a
+        // run on the fixed code completes cleanly in a single turn. Asserting the
+        // run succeeds also exercises finalization: the model's call to
+        // `final_result_1` must be intercepted as the output tool, so this fails if
+        // the picked name and the intercept name ever drift apart.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "out1",
+            "final_result_1",
+            json!({ "answer": "done" }),
+        )]);
+        let probe = model.clone();
+        let response = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(FinalResultTool)
+            .output_schema::<Answer>()
+            .output_mode(OutputMode::Tool)
+            .add_hook(ActiveToolsAddOnly)
+            .build()
+            .runner("go")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("run should finalize via the picked output tool `final_result_1`");
+        assert!(
+            response.output.contains("done"),
+            "the intercepted output-tool call should produce the structured result, \
+             got {:?}",
+            response.output
+        );
+
+        let requests = probe.requests();
+        assert!(
+            !requests.is_empty(),
+            "the first model request should be captured"
+        );
+        let tool_names: Vec<&str> = requests[0].tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(
+            tool_names.contains(&"add"),
+            "active_tools keeps `add` advertised, saw {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"final_result_1"),
+            "the synthetic output tool must avoid the filtered real `final_result` name, \
+             saw {tool_names:?}"
+        );
+        assert!(
+            !tool_names.contains(&"final_result"),
+            "the real `final_result` is filtered out and the output tool must not reuse \
+             its name, saw {tool_names:?}"
         );
     }
 }

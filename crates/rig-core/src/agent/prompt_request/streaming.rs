@@ -8,7 +8,8 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, InvalidDecision, build_agent_run, execute_tools_buffered, flow_into_invalid,
+        AgentRunner, CompletionCallDecision, InvalidDecision, build_agent_run,
+        execute_tools_buffered, flow_into_completion_call, flow_into_invalid,
         new_execute_tool_span, observe_flow, run_single_tool,
     },
     completion::GetTokenUsage,
@@ -523,7 +524,7 @@ where
                             );
                         }
 
-                        if let Some(reason) = observe_flow(
+                        let request_override = match flow_into_completion_call(
                             self.hooks
                                 .on_event(StepEvent::CompletionCall {
                                     prompt: &current_prompt,
@@ -532,9 +533,26 @@ where
                                 })
                                 .await,
                         ) {
-                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                            break 'outer;
-                        }
+                            CompletionCallDecision::Terminate(reason) => {
+                                yield Err(StreamingError::Prompt(Box::new(
+                                    run.cancel_error(reason),
+                                )));
+                                break 'outer;
+                            }
+                            CompletionCallDecision::Override(request) => Some(request),
+                            CompletionCallDecision::Proceed => None,
+                        };
+
+                        // Record this turn's base system prompt — the override-or-baseline
+                        // preamble, before any output-mode augmentation the request
+                        // builder appends (the provider-level span records the final
+                        // value). A per-turn `RequestOverride` can replace it, and the
+                        // builder below resolves the same precedence; borrow rather than
+                        // clone since the value only needs to outlive span creation.
+                        let effective_preamble = request_override
+                            .as_ref()
+                            .and_then(|o| o.preamble.as_deref())
+                            .or(preamble.as_deref());
 
                         let chat_stream_span = info_span!(
                             target: "rig::agent_chat",
@@ -542,7 +560,7 @@ where
                             "chat_streaming",
                             gen_ai.operation.name = "chat",
                             gen_ai.agent.name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                            gen_ai.system_instructions = preamble,
+                            gen_ai.system_instructions = effective_preamble,
                             gen_ai.provider.name = tracing::field::Empty,
                             gen_ai.request.model = tracing::field::Empty,
                             gen_ai.response.id = tracing::field::Empty,
@@ -577,6 +595,7 @@ where
                             output_schema.as_ref(),
                             &output_mode,
                             committed_output_tool.as_deref(),
+                            request_override.as_ref(),
                         )
                         .await?;
 
