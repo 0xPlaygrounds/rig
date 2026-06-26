@@ -214,14 +214,20 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     let tool_choice = request_override
         .and_then(|o| o.tool_choice.as_ref())
         .or(tool_choice);
+    // Provider passthrough params: when both the baseline and the override are
+    // JSON objects, shallow-merge them (top-level keys, the override winning);
+    // otherwise the override value wins wholesale when set, else the baseline.
+    // This keeps the override winning consistently instead of silently dropping a
+    // non-object patch — `json_utils::merge` returns its first argument unchanged
+    // when either side isn't an object.
     let additional_params: Option<serde_json::Value> = match (
         additional_params,
         request_override.and_then(|o| o.additional_params.as_ref()),
     ) {
-        (Some(base), Some(patch)) => Some(json_utils::merge(base.clone(), patch.clone())),
-        (Some(base), None) => Some(base.clone()),
-        (None, Some(patch)) => Some(patch.clone()),
-        (None, None) => None,
+        (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
+            Some(json_utils::merge(base.clone(), patch.clone()))
+        }
+        (base, patch) => patch.or(base).cloned(),
     };
     let active_tools = request_override.and_then(|o| o.active_tools.as_deref());
 
@@ -296,6 +302,15 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             }
         };
 
+    // Capture the full advertised tool set BEFORE any per-turn `active_tools`
+    // filtering. The synthetic output-tool name is picked to avoid colliding with
+    // ANY of these, not just this turn's narrowed set: a tool filtered out by
+    // `active_tools` this turn can be advertised again on a later turn, while the
+    // output-tool name is pinned for the whole run — so picking against only the
+    // narrowed set could commit a name that collides once the filter lifts.
+    let all_advertised_tool_names: BTreeSet<String> =
+        tooldefs.iter().map(|tool| tool.name.clone()).collect();
+
     // Apply a per-turn `active_tools` allow-list (from a `CompletionCall` hook):
     // narrow the advertised tool set to the named tools BEFORE computing the
     // executable set, so tool-choice resolution and invalid-tool-call validation
@@ -349,7 +364,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     let output_tool_name = matches!(resolved_mode, OutputMode::Tool).then(|| {
         committed_output_tool
             .map(str::to_owned)
-            .unwrap_or_else(|| pick_output_tool_name(&executable_tool_names))
+            .unwrap_or_else(|| pick_output_tool_name(&all_advertised_tool_names))
     });
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a
@@ -363,6 +378,23 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             output_tool = %name,
             "a real tool now shares the synthetic output-tool name; a call to it \
              will finalize the run instead of being dispatched"
+        );
+    }
+
+    // In committed Tool mode the run can only finalize by calling the synthetic
+    // output tool, and the mode is pinned (it cannot degrade to Native mid-run,
+    // see #1928). A `tool_choice` that forbids the output-tool call — `None`, or
+    // a `Specific` set that excludes it, e.g. from a per-turn `RequestOverride` —
+    // therefore produces a turn that cannot emit the structured result. The
+    // non-committed path degrades to Native via `resolve_output_mode`, so this
+    // only fires once a turn has committed Tool mode; warn rather than silently
+    // stall the run.
+    if output_tool_name.is_some() && !tool_choice_permits_output_tool(tool_choice) {
+        tracing::warn!(
+            "the active tool_choice forbids calling the structured-output tool while the \
+             run is pinned to Tool output mode; this turn cannot emit the structured \
+             result (check for a `RequestOverride` setting `tool_choice` to None or a \
+             Specific set that excludes the output tool)"
         );
     }
 

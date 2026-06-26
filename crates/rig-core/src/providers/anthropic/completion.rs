@@ -2338,7 +2338,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             max_tokens,
             system,
             temperature: req.temperature,
-            tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
+            tool_choice: req.tool_choice.map(ToolChoice::try_from).transpose()?,
             tools,
             output_config,
             // Automatic caching: one top-level field; the API moves the breakpoint automatically.

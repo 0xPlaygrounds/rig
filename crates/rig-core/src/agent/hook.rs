@@ -351,6 +351,13 @@ impl RequestOverride {
     }
 
     /// Override the tool choice for this turn.
+    ///
+    /// Not every provider honors `tool_choice`: some in-core providers (e.g.
+    /// Ollama, Hyperbolic, Mira, Perplexity) ignore it and log a warning, so
+    /// forcing a tool this way is a no-op there. A choice a provider cannot
+    /// represent (e.g. a multi-name [`ToolChoice::Specific`] on Anthropic, which
+    /// forces a single tool) surfaces as a request error rather than being
+    /// silently downgraded.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
         self

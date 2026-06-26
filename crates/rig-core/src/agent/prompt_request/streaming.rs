@@ -543,13 +543,21 @@ where
                             CompletionCallDecision::Proceed => None,
                         };
 
+                        // Record the preamble actually sent this turn: a per-turn
+                        // `RequestOverride` can replace it, and the request built
+                        // below applies the same precedence (override, else baseline).
+                        let effective_preamble = request_override
+                            .as_ref()
+                            .and_then(|o| o.preamble.clone())
+                            .or_else(|| preamble.clone());
+
                         let chat_stream_span = info_span!(
                             target: "rig::agent_chat",
                             parent: tracing::Span::current(),
                             "chat_streaming",
                             gen_ai.operation.name = "chat",
                             gen_ai.agent.name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                            gen_ai.system_instructions = preamble,
+                            gen_ai.system_instructions = effective_preamble,
                             gen_ai.provider.name = tracing::field::Empty,
                             gen_ai.request.model = tracing::field::Empty,
                             gen_ai.response.id = tracing::field::Empty,

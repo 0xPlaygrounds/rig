@@ -703,6 +703,14 @@ where
                         CompletionCallDecision::Proceed => None,
                     };
 
+                    // Record the preamble actually sent this turn: a per-turn
+                    // `RequestOverride` can replace it, and the request built below
+                    // applies the same precedence (override, else baseline).
+                    let effective_preamble = request_override
+                        .as_ref()
+                        .and_then(|o| o.preamble.clone())
+                        .or_else(|| self.preamble.clone());
+
                     let span = tracing::Span::current();
                     let chat_span = info_span!(
                         target: "rig::agent_chat",
@@ -710,7 +718,7 @@ where
                         "chat",
                         gen_ai.operation.name = "chat",
                         gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                        gen_ai.system_instructions = self.preamble,
+                        gen_ai.system_instructions = effective_preamble,
                         gen_ai.provider.name = tracing::field::Empty,
                         gen_ai.request.model = tracing::field::Empty,
                         gen_ai.response.id = tracing::field::Empty,
@@ -913,6 +921,7 @@ mod tests {
 
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, Flow, RequestOverride, StepEvent, StepEventKind};
+    use crate::agent::run::OutputMode;
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::completion::{CompletionModel, Message, PromptError, ToolDefinition};
     use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
@@ -2783,7 +2792,9 @@ mod tests {
             if let StepEvent::CompletionCall { .. } = event {
                 Flow::override_request(
                     RequestOverride::new()
+                        .preamble(OVERRIDE_PREAMBLE)
                         .temperature(0.25)
+                        .max_tokens(OVERRIDE_MAX_TOKENS)
                         .tool_choice(ToolChoice::Required)
                         .active_tools(["add"])
                         .additional_params(json!({"injected": true})),
@@ -2793,6 +2804,9 @@ mod tests {
             }
         }
     }
+
+    const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
+    const OVERRIDE_MAX_TOKENS: u64 = 512;
 
     /// `Flow::OverrideRequest` resolves to an `Override` completion-call decision
     /// carrying the patch, and is named for fail-closed diagnostics.
@@ -2848,6 +2862,21 @@ mod tests {
                 Some(0.25),
                 "override temperature wins over the agent's 0.9"
             );
+            assert_eq!(
+                req.max_tokens,
+                Some(OVERRIDE_MAX_TOKENS),
+                "override max_tokens wins over the agent's 64"
+            );
+            // The override preamble wins and is sent as the leading system message.
+            let system = req.chat_history.iter().find_map(|m| match m {
+                Message::System { content } => Some(content.as_str()),
+                _ => None,
+            });
+            assert_eq!(
+                system,
+                Some(OVERRIDE_PREAMBLE),
+                "override preamble wins over the agent's baseline and is the leading system message"
+            );
             assert!(matches!(req.tool_choice, Some(ToolChoice::Required)));
             let tool_names: Vec<&str> = req.tools.iter().map(|t| t.name.as_str()).collect();
             assert_eq!(
@@ -2870,7 +2899,9 @@ mod tests {
         let blocking = AgentBuilder::new(blocking_model)
             .tool(MockAddTool)
             .tool(MockSubtractTool)
+            .preamble("baseline preamble")
             .temperature(0.9)
+            .max_tokens(64)
             .additional_params(json!({"baseline": "keep"}))
             .add_hook(OverrideRequestHook)
             .build()
@@ -2891,7 +2922,9 @@ mod tests {
         let mut stream = AgentBuilder::new(streaming_model)
             .tool(MockAddTool)
             .tool(MockSubtractTool)
+            .preamble("baseline preamble")
             .temperature(0.9)
+            .max_tokens(64)
             .additional_params(json!({"baseline": "keep"}))
             .add_hook(OverrideRequestHook)
             .build()
@@ -2905,5 +2938,101 @@ mod tests {
         let streaming_requests = streaming_probe.requests();
         assert_eq!(streaming_requests.len(), 1);
         assert_request(&streaming_requests[0]);
+    }
+
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)]
+    struct Answer {
+        answer: String,
+    }
+
+    /// A real tool whose name equals the default synthetic output-tool name
+    /// (`final_result`). Used to prove a per-turn `active_tools` filter cannot
+    /// make the picked output-tool name collide with it.
+    struct FinalResultTool;
+
+    impl Tool for FinalResultTool {
+        const NAME: &'static str = "final_result";
+        type Error = MockToolError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "A real tool sharing the default output-tool name".to_string(),
+                parameters: json!({ "type": "object", "properties": {} }),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok("real final_result output".to_string())
+        }
+    }
+
+    /// Narrows the advertised tools to `add` for the turn, filtering out the real
+    /// `final_result` tool.
+    struct ActiveToolsAddOnly;
+
+    impl<M: CompletionModel> AgentHook<M> for ActiveToolsAddOnly {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::CompletionCall { .. } = event {
+                Flow::override_request(RequestOverride::new().active_tools(["add"]))
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    /// Regression guard: a per-turn `active_tools` allow-list that filters out a
+    /// real tool whose name equals the default synthetic output-tool name must not
+    /// let the picked output-tool name collide with that (filtered) real tool. The
+    /// name is pinned for the whole run, so picking it against the FULL advertised
+    /// set — not just this turn's narrowed executable set — keeps it collision-safe
+    /// once the filter lifts on a later turn. With the bug, the output tool would
+    /// be named `final_result` (picked against the narrowed `{add}`), colliding
+    /// with the real `final_result` whenever the filter is gone.
+    #[tokio::test]
+    async fn active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_real_tool() {
+        // The model finalizes by calling the (correctly-picked) output tool, so a
+        // run on the fixed code completes cleanly in a single turn.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "out1",
+            "final_result_1",
+            json!({ "answer": "done" }),
+        )]);
+        let probe = model.clone();
+        let _ = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(FinalResultTool)
+            .output_schema::<Answer>()
+            .output_mode(OutputMode::Tool)
+            .add_hook(ActiveToolsAddOnly)
+            .build()
+            .runner("go")
+            .max_turns(2)
+            .run()
+            .await;
+
+        let requests = probe.requests();
+        assert!(
+            !requests.is_empty(),
+            "the first model request should be captured"
+        );
+        let tool_names: Vec<&str> = requests[0].tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(
+            tool_names.contains(&"add"),
+            "active_tools keeps `add` advertised, saw {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"final_result_1"),
+            "the synthetic output tool must avoid the filtered real `final_result` name, \
+             saw {tool_names:?}"
+        );
+        assert!(
+            !tool_names.contains(&"final_result"),
+            "the real `final_result` is filtered out and the output tool must not reuse \
+             its name, saw {tool_names:?}"
+        );
     }
 }

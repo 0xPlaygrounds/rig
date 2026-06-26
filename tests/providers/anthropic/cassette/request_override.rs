@@ -185,61 +185,65 @@ struct RecordedRequest {
 async fn request_overridden_by_hook_blocking() {
     let weather = GetWeather::default();
     let probe = weather.clone();
-    let scenario = "request_override/request_overridden_by_hook_blocking";
 
-    with_anthropic_cassette(scenario, move |client| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(PREAMBLE)
-            .tool(weather)
-            .tool(GetTime)
-            .add_hook(ForceWeatherOnlyOnFirstTurn)
-            .build();
+    with_anthropic_cassette(
+        "request_override/request_overridden_by_hook_blocking",
+        move |client| async move {
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble(PREAMBLE)
+                .tool(weather)
+                .tool(GetTime)
+                .add_hook(ForceWeatherOnlyOnFirstTurn)
+                .build();
 
-        let response = agent
-            .prompt(PROMPT)
-            .max_turns(5)
-            .await
-            .expect("blocking prompt should succeed");
+            let response = agent
+                .prompt(PROMPT)
+                .max_turns(5)
+                .await
+                .expect("blocking prompt should succeed");
 
-        assert!(!response.is_empty(), "agent should produce a final answer");
-    })
+            assert!(!response.is_empty(), "agent should produce a final answer");
+        },
+    )
     .await;
 
     assert!(
         probe.calls.load(Ordering::SeqCst) >= 1,
         "the forced tool_choice should make the model call get_weather"
     );
-    assert_first_request_was_overridden(scenario);
+    assert_first_request_was_overridden("request_override/request_overridden_by_hook_blocking");
 }
 
 #[tokio::test]
 async fn request_overridden_by_hook_streaming() {
     let weather = GetWeather::default();
     let probe = weather.clone();
-    let scenario = "request_override/request_overridden_by_hook_streaming";
 
-    with_anthropic_cassette(scenario, move |client| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(PREAMBLE)
-            .tool(weather)
-            .tool(GetTime)
-            .add_hook(ForceWeatherOnlyOnFirstTurn)
-            .build();
+    with_anthropic_cassette(
+        "request_override/request_overridden_by_hook_streaming",
+        move |client| async move {
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble(PREAMBLE)
+                .tool(weather)
+                .tool(GetTime)
+                .add_hook(ForceWeatherOnlyOnFirstTurn)
+                .build();
 
-        let mut stream = agent.stream_prompt(PROMPT).multi_turn(5).await;
-        let response = collect_stream_final_response(&mut stream)
-            .await
-            .expect("streaming prompt should succeed");
+            let mut stream = agent.stream_prompt(PROMPT).multi_turn(5).await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming prompt should succeed");
 
-        assert!(!response.is_empty(), "stream should produce a final answer");
-    })
+            assert!(!response.is_empty(), "stream should produce a final answer");
+        },
+    )
     .await;
 
     assert!(
         probe.calls.load(Ordering::SeqCst) >= 1,
         "the forced tool_choice should make the model call get_weather"
     );
-    assert_first_request_was_overridden(scenario);
+    assert_first_request_was_overridden("request_override/request_overridden_by_hook_streaming");
 }

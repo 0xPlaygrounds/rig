@@ -111,11 +111,15 @@ fn create_streaming_request_body(
         // Carry the request's tool choice (defaulting to Auto when unset) rather
         // than hardcoding Auto — otherwise a caller's `tool_choice` (including one
         // set per-turn via a `RequestOverride`) is silently dropped on the
-        // streaming path, unlike the non-streaming path which honors it.
+        // streaming path, unlike the non-streaming path which honors it. A choice
+        // Anthropic cannot represent (e.g. a multi-name `Specific`) is surfaced as
+        // an error rather than silently downgraded to Auto, matching the blocking
+        // path and failing closed for callers that meant to constrain tool use.
         let tool_choice = completion_request
             .tool_choice
-            .clone()
-            .and_then(|tc| ToolChoice::try_from(tc).ok())
+            .take()
+            .map(ToolChoice::try_from)
+            .transpose()?
             .unwrap_or(ToolChoice::Auto);
         merge_inplace(
             &mut body,
