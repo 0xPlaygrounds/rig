@@ -108,11 +108,20 @@ fn create_streaming_request_body(
     }
 
     if !tools.is_empty() {
+        // Carry the request's tool choice (defaulting to Auto when unset) rather
+        // than hardcoding Auto — otherwise a caller's `tool_choice` (including one
+        // set per-turn via a `RequestOverride`) is silently dropped on the
+        // streaming path, unlike the non-streaming path which honors it.
+        let tool_choice = completion_request
+            .tool_choice
+            .clone()
+            .and_then(|tc| ToolChoice::try_from(tc).ok())
+            .unwrap_or(ToolChoice::Auto);
         merge_inplace(
             &mut body,
             json!({
                 "tools": tools,
-                "tool_choice": ToolChoice::Auto,
+                "tool_choice": tool_choice,
             }),
         );
     }

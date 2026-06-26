@@ -8,7 +8,8 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, InvalidDecision, build_agent_run, execute_tools_buffered, flow_into_invalid,
+        AgentRunner, CompletionCallDecision, InvalidDecision, build_agent_run,
+        execute_tools_buffered, flow_into_completion_call, flow_into_invalid,
         new_execute_tool_span, observe_flow, run_single_tool,
     },
     completion::GetTokenUsage,
@@ -523,7 +524,7 @@ where
                             );
                         }
 
-                        if let Some(reason) = observe_flow(
+                        let request_override = match flow_into_completion_call(
                             self.hooks
                                 .on_event(StepEvent::CompletionCall {
                                     prompt: &current_prompt,
@@ -532,9 +533,15 @@ where
                                 })
                                 .await,
                         ) {
-                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                            break 'outer;
-                        }
+                            CompletionCallDecision::Terminate(reason) => {
+                                yield Err(StreamingError::Prompt(Box::new(
+                                    run.cancel_error(reason),
+                                )));
+                                break 'outer;
+                            }
+                            CompletionCallDecision::Override(request) => Some(request),
+                            CompletionCallDecision::Proceed => None,
+                        };
 
                         let chat_stream_span = info_span!(
                             target: "rig::agent_chat",
@@ -577,6 +584,7 @@ where
                             output_schema.as_ref(),
                             &output_mode,
                             committed_output_tool.as_deref(),
+                            request_override.as_ref(),
                         )
                         .await?;
 
