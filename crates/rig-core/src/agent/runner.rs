@@ -3048,4 +3048,206 @@ mod tests {
              its name, saw {tool_names:?}"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Human-in-the-loop (HITL): one hook gates each tool call behind a human
+    // decision, mapping approve/deny/edit/abort onto the existing Flow actions
+    // (cont / skip / rewrite_args / terminate). The runnable interactive
+    // version lives in `examples/agent_with_human_in_the_loop`.
+    // -----------------------------------------------------------------------
+
+    /// A human reviewer's decision for a pending tool call.
+    #[derive(Clone)]
+    enum Decision {
+        /// Run the tool as the model requested.
+        Approve,
+        /// Don't run the tool; feed `reason` back to the model as the result.
+        Deny(&'static str),
+        /// Run the tool with these arguments instead of the model's.
+        Edit(serde_json::Value),
+        /// Abort the whole run with this reason.
+        Abort(&'static str),
+    }
+
+    /// Simulates a human reviewer by popping a scripted decision per `ToolCall`
+    /// and mapping it to the matching `Flow`. A real reviewer would `.await`
+    /// interactive input here (the hook is async) rather than read a queue.
+    #[derive(Clone)]
+    struct HumanApprovalHook {
+        decisions: Arc<Mutex<std::collections::VecDeque<Decision>>>,
+        reviewed: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl HumanApprovalHook {
+        fn new(decisions: impl IntoIterator<Item = Decision>) -> Self {
+            Self {
+                decisions: Arc::new(Mutex::new(decisions.into_iter().collect())),
+                reviewed: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        /// `"name(args)"` for each call presented for review, in order.
+        fn reviewed(&self) -> Vec<String> {
+            self.reviewed.lock().unwrap().clone()
+        }
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for HumanApprovalHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            let StepEvent::ToolCall {
+                tool_name, args, ..
+            } = event
+            else {
+                return Flow::cont();
+            };
+            self.reviewed
+                .lock()
+                .unwrap()
+                .push(format!("{tool_name}({args})"));
+            let decision = self.decisions.lock().unwrap().pop_front();
+            match decision {
+                // Default to approval when the script runs out, like the example.
+                Some(Decision::Approve) | None => Flow::cont(),
+                Some(Decision::Deny(reason)) => Flow::skip(reason),
+                Some(Decision::Edit(args)) => Flow::rewrite_args(args),
+                Some(Decision::Abort(reason)) => Flow::terminate(reason),
+            }
+        }
+    }
+
+    /// A HITL hook that approves the first tool call, denies the second, and
+    /// edits the third's arguments behaves identically under `run()` and
+    /// `stream()`: approved/edited tools execute (and the edit takes effect),
+    /// the denied tool runs nothing while its reason reaches the model, and the
+    /// model-visible history is byte-identical across drivers.
+    #[tokio::test]
+    async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
+        // One turn issues three tool calls; the reviewer decides each differently.
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![
+                add_call("tc1", 2, 3),   // approve -> runs, 2 + 3 = 5
+                add_call("tc2", 10, 20), // deny    -> skipped; model sees the reason
+                add_call("tc3", 1, 1),   // edit    -> runs 1 + 100 = 101, not 1 + 1 = 2
+            ]),
+            ScriptedTurn::Text("done"),
+        ];
+        let denial = "denied by reviewer: amount too large";
+        let decisions = || {
+            vec![
+                Decision::Approve,
+                Decision::Deny(denial),
+                Decision::Edit(json!({"x": 1, "y": 100})),
+            ]
+        };
+
+        let blocking_model =
+            MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
+        let blocking_recorder = RecordingHook::default();
+        let blocking_approver = HumanApprovalHook::new(decisions());
+        let blocking = AgentBuilder::new(blocking_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("carry out the plan")
+            .max_turns(3)
+            .add_hook(blocking_recorder.clone())
+            .add_hook(blocking_approver.clone())
+            .run()
+            .await
+            .expect("blocking HITL run should succeed");
+
+        let streaming_model = MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        );
+        let streaming_recorder = RecordingHook::default();
+        let streaming_approver = HumanApprovalHook::new(decisions());
+        let mut stream = AgentBuilder::new(streaming_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("carry out the plan")
+            .max_turns(3)
+            .add_hook(streaming_recorder.clone())
+            .add_hook(streaming_approver.clone())
+            .stream()
+            .await;
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
+                item.map_err(|err| panic!("stream item errored: {err}"))
+            {
+                final_response = Some(resp);
+            }
+        }
+        let final_response = final_response.expect("stream should yield a final response");
+
+        // Approved (5) and edited (101) tools executed, in call order; the denied
+        // call executed nothing, so it fired no ToolResult — on both drivers.
+        assert_eq!(
+            blocking_recorder.tool_results(),
+            vec!["5".to_string(), "101".to_string()]
+        );
+        assert_eq!(
+            blocking_recorder.tool_results(),
+            streaming_recorder.tool_results()
+        );
+
+        // The reviewer was consulted for all three calls, identically per driver.
+        assert_eq!(blocking_approver.reviewed().len(), 3);
+        assert_eq!(blocking_approver.reviewed(), streaming_approver.reviewed());
+
+        assert_eq!(blocking.output, "done");
+        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(
+            blocking_recorder.shared_events(),
+            streaming_recorder.shared_events()
+        );
+
+        // Model-visible history is byte-identical across drivers and carries the
+        // denial reason and the edited result 101 (not the model's 1 + 1 = 2).
+        let blocking_messages = blocking.messages.expect("blocking messages");
+        let streaming_messages = final_response
+            .history()
+            .expect("streaming history")
+            .to_vec();
+        assert_eq!(
+            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
+            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        );
+        assert!(
+            tool_result_text_in_history(&blocking_messages, denial),
+            "the denial reason must be the denied call's tool result in the history"
+        );
+        assert!(
+            tool_result_text_in_history(&blocking_messages, "101"),
+            "the edited call must have executed with the rewritten arguments"
+        );
+    }
+
+    /// A HITL hook that aborts a tool call (`Decision::Abort` -> `Flow::terminate`)
+    /// stops the run and surfaces the reason as a `PromptCancelled` error.
+    #[tokio::test]
+    async fn human_in_the_loop_abort_terminates_the_run() {
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
+            ScriptedTurn::Text("unreachable"),
+        ];
+        let blocking_model =
+            MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
+        let err = AgentBuilder::new(blocking_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("do the sensitive thing")
+            .max_turns(3)
+            .add_hook(HumanApprovalHook::new([Decision::Abort(
+                "aborted by the human reviewer",
+            )]))
+            .run()
+            .await
+            .expect_err("an aborted tool call should terminate the run");
+        assert!(
+            format!("{err}").contains("aborted by the human reviewer"),
+            "the abort reason should surface in the error, got: {err}"
+        );
+    }
 }

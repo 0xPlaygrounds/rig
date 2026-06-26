@@ -187,6 +187,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_with_human_in_the_loop"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "agent_with_loaders"
 version = "0.39.0"
 dependencies = [

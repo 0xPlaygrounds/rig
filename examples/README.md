@@ -23,6 +23,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_with_context` | Demonstrates adding small context documents directly to an agent. |
 | `agent_with_default_max_turns` | Demonstrates extending the default agent loop budget for tool-heavy prompts. |
 | `agent_with_echochambers` | See source. |
+| `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve/deny/edit/abort, mapped onto `Flow` (`cont`/`skip`/`rewrite_args`/`terminate`). |
 | `agent_with_loaders` | Demonstrates loading real example files into agent context. |
 | `agent_with_memory_streaming` | Demonstrates Rig-managed conversation memory with streaming. |
 | `agent_with_memory` | Demonstrates Rig-managed conversation memory with an in-memory backend. |
