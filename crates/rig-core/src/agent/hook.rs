@@ -34,7 +34,7 @@
 //! | `on_completion_response` | [`CompletionResponse`](StepEvent::CompletionResponse) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_invalid_tool_call` | [`InvalidToolCall`](StepEvent::InvalidToolCall)`(ctx)` | [`fail`](Flow::fail) (default) / [`retry`](Flow::retry) / [`repair`](Flow::repair) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call` | [`ToolCall`](StepEvent::ToolCall) `{ tool_name, tool_call_id, internal_call_id, args }` | [`cont`](Flow::cont) / [`rewrite_args`](Flow::rewrite_args) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
-//! | `on_tool_result` | [`ToolResult`](StepEvent::ToolResult) `{ tool_name, .., result }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
+//! | `on_tool_result` | [`ToolResult`](StepEvent::ToolResult) `{ tool_name, .., result }` | [`cont`](Flow::cont) / [`rewrite_result`](Flow::rewrite_result) / [`terminate`](Flow::terminate) |
 //! | `on_text_delta` | [`TextDelta`](StepEvent::TextDelta) `{ delta, aggregated }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call_delta` | [`ToolCallDelta`](StepEvent::ToolCallDelta) `{ tool_call_id, internal_call_id, tool_name, delta }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_stream_completion_response_finish` | [`StreamResponseFinish`](StepEvent::StreamResponseFinish) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
@@ -181,7 +181,9 @@ pub enum StepEvent<'a, M: CompletionModel> {
         args: &'a str,
     },
     /// After a tool has been executed and produced a result. Honors
-    /// [`Flow::Continue`] and [`Flow::Terminate`].
+    /// [`Flow::Continue`], [`Flow::RewriteResult`] (substitute the result the
+    /// model sees) and [`Flow::Terminate`]. `result` is the tool's actual
+    /// output, observed before any [`Flow::RewriteResult`] is applied.
     ToolResult {
         /// Name of the tool that was called.
         tool_name: &'a str,
@@ -334,6 +336,30 @@ pub enum Flow {
         /// model emitted.
         args: serde_json::Value,
     },
+    /// [`StepEvent::ToolResult`] only: replace the tool's result with this string
+    /// before the model sees it. The post-execution counterpart of
+    /// [`RewriteArgs`](Flow::RewriteArgs) — for guardrails that redact, truncate,
+    /// or normalize a tool's output.
+    ///
+    /// The replacement is what the model receives as the tool result and what the
+    /// `gen_ai.tool.call.result` span field records. As with
+    /// [`RewriteArgs`](Flow::RewriteArgs), this changes only what the model
+    /// *sees*: the tool still ran and produced its real output (which the
+    /// [`ToolResult`](StepEvent::ToolResult) event observed before this
+    /// replacement is applied). It does not scrub the tool's output from logs.
+    ///
+    /// The replacement is delivered to the model verbatim — it is not re-parsed
+    /// as structured/multimodal tool output, so a JSON-shaped replacement reaches
+    /// the model as literal text.
+    ///
+    /// Note: a rewrite is single-shot. Because a [`HookStack`] short-circuits on
+    /// the first non-[`Flow::Continue`] result, only the first hook to rewrite a
+    /// given result takes effect.
+    RewriteResult {
+        /// The result delivered to the model in place of the tool's actual
+        /// output.
+        result: String,
+    },
     /// [`StepEvent::InvalidToolCall`] only: fail the run fast (the default for
     /// invalid tool calls).
     Fail,
@@ -404,6 +430,22 @@ impl Flow {
         Ok(Self::RewriteArgs {
             args: serde_json::to_value(value)?,
         })
+    }
+
+    /// Replace a tool's result with `result` before the model sees it (tool
+    /// results only).
+    ///
+    /// The post-execution counterpart of [`rewrite_args`](Flow::rewrite_args),
+    /// for guardrails that redact, truncate, or normalize a tool's output:
+    ///
+    /// ```rust,ignore
+    /// // Redact a secret from the tool output before it reaches the model.
+    /// Flow::rewrite_result(redact(tool_output))
+    /// ```
+    pub fn rewrite_result(result: impl Into<String>) -> Self {
+        Self::RewriteResult {
+            result: result.into(),
+        }
     }
 
     /// Fail fast on an invalid tool call (the default).

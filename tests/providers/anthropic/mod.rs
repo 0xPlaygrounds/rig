@@ -20,6 +20,7 @@ mod cassette {
     mod think_tool;
     mod think_tool_with_other_tools;
     mod tool_call_rewrite_args;
+    mod tool_result_rewrite;
 }
 
 mod live {}

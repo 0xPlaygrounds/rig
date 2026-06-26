@@ -59,6 +59,7 @@ fn flow_name(flow: &Flow) -> &'static str {
         Flow::Terminate { .. } => "Terminate",
         Flow::Skip { .. } => "Skip",
         Flow::RewriteArgs { .. } => "RewriteArgs",
+        Flow::RewriteResult { .. } => "RewriteResult",
         Flow::Fail => "Fail",
         Flow::Retry { .. } => "Retry",
         Flow::Repair { .. } => "Repair",
@@ -116,6 +117,32 @@ pub(crate) fn flow_into_tool_call(flow: Flow) -> ToolCallDecision {
     }
 }
 
+/// Decision for a [`StepEvent::ToolResult`] event.
+pub(crate) enum ToolResultDecision {
+    /// Deliver the tool's actual output to the model unchanged.
+    Keep,
+    /// Deliver this string to the model in place of the tool's actual output.
+    Replace(String),
+    /// Terminate the run.
+    Terminate(String),
+}
+
+/// Resolve a hook's [`Flow`] for a [`StepEvent::ToolResult`] event (honors
+/// `Continue`/`RewriteResult`/`Terminate`). **Fail-closed**: any other action
+/// terminates the run rather than silently delivering the tool's output.
+pub(crate) fn flow_into_tool_result(flow: Flow) -> ToolResultDecision {
+    match flow {
+        Flow::Continue => ToolResultDecision::Keep,
+        Flow::RewriteResult { result } => ToolResultDecision::Replace(result),
+        Flow::Terminate { reason } => ToolResultDecision::Terminate(reason),
+        other => ToolResultDecision::Terminate(format!(
+            "hook returned `{}` for a tool-result event, which only honors \
+             Continue/RewriteResult/Terminate — terminating the run (fail-closed)",
+            flow_name(&other)
+        )),
+    }
+}
+
 /// Decision for a [`StepEvent::InvalidToolCall`] event.
 pub(crate) enum InvalidDecision {
     /// Terminate the run.
@@ -139,14 +166,17 @@ pub(crate) fn flow_into_invalid(flow: Flow) -> InvalidDecision {
         Flow::Skip { reason } => InvalidDecision::Action(InvalidToolCallHookAction::skip(reason)),
         // Continue and Fail both preserve fail-fast for invalid calls.
         Flow::Continue | Flow::Fail => InvalidDecision::Action(InvalidToolCallHookAction::fail()),
-        // `RewriteArgs` rewrites arguments for a *valid* tool call; it cannot
+        // `RewriteArgs`/`RewriteResult` steer a *valid* tool call; they cannot
         // repair an unknown or disallowed one (use `Repair` to rewrite the
-        // name), so it is fail-closed here.
-        other @ Flow::RewriteArgs { .. } => InvalidDecision::Terminate(format!(
-            "hook returned `{}` for an invalid tool-call event, which only honors \
-             Fail/Retry/Repair/Skip/Terminate — terminating the run (fail-closed)",
-            flow_name(&other)
-        )),
+        // name), so they are fail-closed here.
+        other @ (Flow::RewriteArgs { .. } | Flow::RewriteResult { .. }) => {
+            InvalidDecision::Terminate(format!(
+                "hook returned `{}` for an invalid tool-call event, which only \
+                 honors Fail/Retry/Repair/Skip/Terminate — terminating the run \
+                 (fail-closed)",
+                flow_name(&other)
+            ))
+        }
     }
 }
 
@@ -443,31 +473,55 @@ where
     // Record the result on the span before consulting the result hook, so the
     // trace keeps the output even if a hook then terminates the run.
     tool_span.record("gen_ai.tool.call.result", &output);
-    tracing::info!("executed tool {tool_name} with args {args}. result: {output}");
 
-    if let Some(reason) = observe_flow(
+    match flow_into_tool_result(
         hooks
             .on_event(StepEvent::ToolResult {
                 tool_name,
                 tool_call_id: tool_call.call_id.as_deref(),
                 internal_call_id,
+                // The result hook observes the tool's actual output, before any
+                // `RewriteResult` replacement is applied below.
                 args: &args,
                 result: &output,
             })
             .await,
     ) {
-        return Err(PromptError::prompt_cancelled(
-            error_history.to_vec(),
-            reason,
-        ));
+        ToolResultDecision::Terminate(reason) => {
+            tracing::info!("executed tool {tool_name} with args {args}. result: {output}");
+            Err(PromptError::prompt_cancelled(
+                error_history.to_vec(),
+                reason,
+            ))
+        }
+        ToolResultDecision::Replace(replacement) => {
+            // The hook replaced the model-visible result. Re-record the span and
+            // log only that a rewrite happened — never the tool's raw output — so
+            // a redaction hook does not leak the original via the trace or the
+            // log. The replacement is hook-supplied content, so it is delivered
+            // verbatim (like a `Skip` reason via [`tool_result_message`]) rather
+            // than re-parsed as tool output, which would let a JSON-shaped
+            // replacement be reinterpreted as a structured/multimodal result.
+            tool_span.record("gen_ai.tool.call.result", &replacement);
+            tracing::info!(
+                "executed tool {tool_name} with args {args}; result rewritten by a hook"
+            );
+            Ok(tool_result_message(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                replacement,
+            ))
+        }
+        ToolResultDecision::Keep => {
+            tracing::info!("executed tool {tool_name} with args {args}. result: {output}");
+            // Real tool output: parsed (may be multimodal).
+            Ok(tool_result_output(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                output,
+            ))
+        }
     }
-
-    // Real tool output: parsed (may be multimodal).
-    Ok(tool_result_output(
-        tool_call.id.clone(),
-        tool_call.call_id.clone(),
-        output,
-    ))
 }
 
 /// Build the per-tool `execute_tool` span carrying the `gen_ai.tool.*` fields
@@ -2520,5 +2574,170 @@ mod tests {
             streaming_hook.shared_events()
         );
         assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
+    }
+
+    /// A hook that rewrites a tool's result (`Flow::RewriteResult` on
+    /// `ToolResult`) so the model sees the replacement instead of the tool's
+    /// actual output.
+    struct RewriteToolResultHook(&'static str);
+
+    impl<M: CompletionModel> AgentHook<M> for RewriteToolResultHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolResult { .. } = event {
+                Flow::rewrite_result(self.0)
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    /// `Flow::RewriteResult` resolves to a `Replace` tool-result decision carrying
+    /// the replacement, and is named for fail-closed diagnostics.
+    #[test]
+    fn rewrite_result_resolves_to_replace_for_tool_result() {
+        match super::flow_into_tool_result(Flow::rewrite_result("redacted")) {
+            super::ToolResultDecision::Replace(result) => assert_eq!(result, "redacted"),
+            _ => panic!("RewriteResult should resolve to Replace for a tool result"),
+        }
+        assert_eq!(
+            super::flow_name(&Flow::rewrite_result("x")),
+            "RewriteResult"
+        );
+    }
+
+    /// `RewriteResult` is only honored by `ToolResult`, and the tool-result event
+    /// only honors `RewriteResult` (not `RewriteArgs`) — both directions are
+    /// fail-closed.
+    #[test]
+    fn rewrite_result_is_fail_closed_off_the_tool_result_event() {
+        // Invalid tool calls don't honor RewriteResult.
+        assert!(matches!(
+            super::flow_into_invalid(Flow::rewrite_result("x")),
+            super::InvalidDecision::Terminate(_)
+        ));
+        // Observe-only events (CompletionResponse, deltas, ...) don't honor it.
+        assert!(super::observe_flow(Flow::rewrite_result("x")).is_some());
+        // The tool-RESULT event rejects RewriteArgs (the pre-tool action),
+        // mirroring how the tool-CALL event rejects RewriteResult.
+        assert!(matches!(
+            super::flow_into_tool_result(Flow::rewrite_args(json!({}))),
+            super::ToolResultDecision::Terminate(_)
+        ));
+    }
+
+    /// A hook that rewrites a tool's result (`Flow::RewriteResult` on
+    /// `ToolResult`) is honored identically under `run()` and `stream()`: the
+    /// model-visible history carries the replacement while the `ToolResult` event
+    /// still observed the tool's actual output, and both drivers reach the same
+    /// output and history. Both share `run_single_tool`, so they stay in
+    /// lock-step.
+    #[tokio::test]
+    async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
+        // The tool computes 2 + 3 = 5; the hook replaces what the model sees with
+        // "redacted-result".
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
+            ScriptedTurn::Text("acknowledged"),
+        ];
+
+        let blocking_model =
+            MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
+        let blocking_hook = RecordingHook::default();
+        let blocking = AgentBuilder::new(blocking_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(blocking_hook.clone())
+            .add_hook(RewriteToolResultHook("redacted-result"))
+            .run()
+            .await
+            .expect("blocking run should succeed with a rewritten tool result");
+
+        let streaming_model = MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        );
+        let streaming_hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(streaming_hook.clone())
+            .add_hook(RewriteToolResultHook("redacted-result"))
+            .stream()
+            .await;
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
+                item.map_err(|err| panic!("stream item errored: {err}"))
+            {
+                final_response = Some(resp);
+            }
+        }
+        let final_response = final_response.expect("stream should yield a final response");
+
+        assert_eq!(blocking.output, "acknowledged");
+        assert_eq!(final_response.response(), blocking.output);
+
+        // The ToolResult event observes the tool's ACTUAL output (5) on both
+        // drivers — the replacement is applied after the event fires.
+        assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
+        assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
+
+        // The model-visible history carries the REWRITTEN result, not "5", and is
+        // byte-identical across drivers.
+        let blocking_messages = blocking.messages.expect("blocking messages");
+        let streaming_messages = final_response
+            .history()
+            .expect("streaming history")
+            .to_vec();
+        assert_eq!(
+            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
+            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        );
+        assert!(
+            tool_result_text_in_history(&blocking_messages, "redacted-result"),
+            "the model-visible tool result must be the hook's replacement"
+        );
+        assert!(
+            !tool_result_text_in_history(&blocking_messages, "5"),
+            "the tool's original output must not reach the model after a rewrite"
+        );
+    }
+
+    /// A `RewriteResult` replacement is delivered to the model verbatim, not
+    /// re-parsed as structured/multimodal tool output. A JSON-shaped replacement
+    /// (here, an image payload that `tool_result_output` would turn into an image
+    /// content block for *real* tool output) reaches history as literal text —
+    /// so a redaction hook returning JSON cannot be silently restructured.
+    #[tokio::test]
+    async fn rewrite_result_is_delivered_verbatim_not_reparsed() {
+        const IMAGE_JSON: &str = r#"{"type":"image","data":"abc","mimeType":"image/png"}"#;
+
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
+            ScriptedTurn::Text("done"),
+        ];
+        let model =
+            MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
+        let result = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(RewriteToolResultHook(IMAGE_JSON))
+            .run()
+            .await
+            .expect("run should succeed with a JSON-shaped rewritten result");
+
+        let messages = result.messages.expect("messages");
+        assert!(
+            tool_result_text_in_history(&messages, IMAGE_JSON),
+            "the JSON-shaped replacement must reach history verbatim as text, not be \
+             re-parsed into a structured/image content block"
+        );
     }
 }
