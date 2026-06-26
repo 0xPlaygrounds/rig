@@ -2188,4 +2188,73 @@ mod tests {
             self
         }
     }
+
+    /// Durable human-in-the-loop: the run is serialized while tool calls are
+    /// pending, reconstructed from JSON (as a separate process / request would),
+    /// and only then does the human decision land — approve one call, deny the
+    /// other. The resumed-from-bytes run accepts those results and continues to
+    /// completion, proving approval can happen out-of-process / arbitrarily later.
+    /// This is the state-machine foundation for `examples/agent_with_durable_approval`.
+    #[test]
+    fn durable_human_in_the_loop_approval_survives_serialize_resume() {
+        let mut run = AgentRun::new("pay two invoices").max_turns(3);
+        let (_, _, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 1);
+
+        // Turn 1: the model emits two tool calls.
+        let two_calls =
+            OneOrMany::many([tool_call("c1", "add"), tool_call("c2", "add")]).expect("two calls");
+        let outcome = run
+            .model_response(ModelTurn::new(
+                None,
+                two_calls,
+                Usage::new(),
+                tool_names(&["add"]),
+                tool_names(&["add"]),
+            ))
+            .expect("model_response");
+        expect_continue(outcome);
+
+        // CallTools is now pending. Serialize the run (a durable checkpoint) and
+        // reconstruct it from the bytes — nothing live crosses this boundary.
+        let checkpoint = serde_json::to_string(&run).expect("serialize suspended run");
+        let mut resumed: AgentRun = serde_json::from_str(&checkpoint).expect("deserialize run");
+
+        // The resumed run re-emits the pending calls purely from its own state.
+        let calls = expect_call_tools(&mut resumed);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].tool_call.id, "c1");
+        assert_eq!(calls[1].tool_call.id, "c2");
+
+        // The human decision lands only after the resume: approve c1 (real
+        // result), deny c2 (the reason becomes the tool result the model sees).
+        resumed
+            .tool_results(vec![
+                tool_result("c1", "approved-result"),
+                tool_result("c2", "denied by reviewer: second payment not authorized"),
+            ])
+            .expect("tool_results on the resumed run");
+
+        // Both decisions are recorded in the resumed run's persisted state.
+        let after = serde_json::to_string(&resumed).expect("serialize resumed run");
+        assert!(
+            after.contains("approved-result"),
+            "the approved call's result must be in the resumed run state"
+        );
+        assert!(
+            after.contains("denied by reviewer: second payment not authorized"),
+            "the denied call's reason must be in the resumed run state"
+        );
+
+        // Turn 2: the model wraps up; the run completes from the resumed state.
+        let (_, _, turn2) = expect_call_model(&mut resumed);
+        assert_eq!(turn2, 2);
+        expect_continue(
+            resumed
+                .model_response(text_turn("done"))
+                .expect("model_response 2"),
+        );
+        let response = expect_done(&mut resumed);
+        assert_eq!(response.output, "done");
+    }
 }

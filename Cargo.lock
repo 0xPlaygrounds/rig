@@ -153,6 +153,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_with_approval_policy"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "agent_with_context"
 version = "0.39.0"
 dependencies = [
@@ -163,6 +175,18 @@ dependencies = [
 
 [[package]]
 name = "agent_with_default_max_turns"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_durable_approval"
 version = "0.39.0"
 dependencies = [
  "anyhow",

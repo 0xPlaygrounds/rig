@@ -3105,11 +3105,13 @@ mod tests {
                 .push(format!("{tool_name}({args})"));
             let decision = self.decisions.lock().unwrap().pop_front();
             match decision {
-                // Default to approval when the script runs out, like the example.
-                Some(Decision::Approve) | None => Flow::cont(),
+                Some(Decision::Approve) => Flow::cont(),
                 Some(Decision::Deny(reason)) => Flow::skip(reason),
                 Some(Decision::Edit(args)) => Flow::rewrite_args(args),
                 Some(Decision::Abort(reason)) => Flow::terminate(reason),
+                // Fail closed if the script is exhausted (it shouldn't be) — deny
+                // rather than silently approve, matching the example's contract.
+                None => Flow::skip("denied: no scripted decision (fail-closed)"),
             }
         }
     }
@@ -3300,6 +3302,114 @@ mod tests {
         assert!(
             stream_error.contains(ABORT_REASON),
             "the abort reason should surface in the streaming error, got: {stream_error}"
+        );
+    }
+
+    /// A non-interactive *policy* HITL hook: auto-approve an allow-list, deny
+    /// everything else (fail-closed), and cache each decision so a repeated tool
+    /// is not re-evaluated ("sticky", like the OpenAI Agents SDK's
+    /// `always_approve`). Backs `examples/agent_with_approval_policy`.
+    #[derive(Clone)]
+    struct PolicyHook {
+        auto_approve: std::collections::HashSet<&'static str>,
+        /// Tool names the policy actually evaluated (cache misses), in order.
+        evaluated: Arc<Mutex<Vec<String>>>,
+        /// Sticky cache of prior decisions, keyed by tool name.
+        cache: Arc<Mutex<std::collections::HashMap<String, bool>>>,
+    }
+
+    impl PolicyHook {
+        fn new(auto_approve: impl IntoIterator<Item = &'static str>) -> Self {
+            Self {
+                auto_approve: auto_approve.into_iter().collect(),
+                evaluated: Arc::new(Mutex::new(Vec::new())),
+                cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            }
+        }
+
+        fn evaluated(&self) -> Vec<String> {
+            self.evaluated.lock().unwrap().clone()
+        }
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for PolicyHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            let StepEvent::ToolCall { tool_name, .. } = event else {
+                return Flow::cont();
+            };
+            let cached = self.cache.lock().unwrap().get(tool_name).copied();
+            let approved = match cached {
+                Some(decision) => decision, // sticky: reuse without re-evaluating
+                None => {
+                    self.evaluated.lock().unwrap().push(tool_name.to_string());
+                    let decision = self.auto_approve.contains(tool_name);
+                    self.cache
+                        .lock()
+                        .unwrap()
+                        .insert(tool_name.to_string(), decision);
+                    decision
+                }
+            };
+            if approved {
+                Flow::cont()
+            } else {
+                Flow::skip(format!("denied by policy: `{tool_name}` not allowed"))
+            }
+        }
+    }
+
+    /// The policy hook auto-approves `add` and denies `subtract`, and its decision
+    /// is sticky: a second `add` call reuses the cached approval instead of being
+    /// re-evaluated. The denied call never runs and its reason reaches the model.
+    #[tokio::test]
+    async fn approval_policy_allow_list_with_sticky_decisions() {
+        // One turn issues three calls: add, subtract (denied), add again (sticky).
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![
+                add_call("c1", 2, 3),
+                ScriptedToolCall {
+                    id: "c2",
+                    name: "subtract",
+                    args: json!({ "x": 10, "y": 4 }),
+                },
+                add_call("c3", 2, 3),
+            ]),
+            ScriptedTurn::Text("done"),
+        ];
+
+        let model =
+            MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
+        let recorder = RecordingHook::default();
+        let policy = PolicyHook::new(["add"]);
+        let out = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .add_hook(recorder.clone())
+            .add_hook(policy.clone())
+            .run()
+            .await
+            .expect("policy run should succeed");
+
+        assert_eq!(out.output, "done");
+        // `add` ran twice (auto-approved, then sticky-reused); `subtract` was denied
+        // and executed nothing.
+        assert_eq!(
+            recorder.tool_results(),
+            vec!["5".to_string(), "5".to_string()]
+        );
+        // The policy evaluated each distinct tool once; the second `add` reused the
+        // cached decision rather than being re-evaluated.
+        assert_eq!(
+            policy.evaluated(),
+            vec!["add".to_string(), "subtract".to_string()]
+        );
+        let messages = out.messages.expect("messages");
+        assert!(
+            tool_result_text_in_history(&messages, "denied by policy: `subtract` not allowed"),
+            "the policy denial reason must reach the model as the subtract tool result"
         );
     }
 }
