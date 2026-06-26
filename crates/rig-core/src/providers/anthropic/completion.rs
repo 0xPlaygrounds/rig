@@ -1062,7 +1062,7 @@ impl TryFrom<message::AssistantContent> for Content {
                 Ok(Content::ToolUse {
                     id,
                     name: function.name,
-                    input: function.arguments,
+                    input: coerce_tool_input(function.arguments),
                 })
             }
             message::AssistantContent::Reasoning(reasoning) => Ok(Content::Thinking {
@@ -1070,6 +1070,28 @@ impl TryFrom<message::AssistantContent> for Content {
                 signature: reasoning.first_signature().map(str::to_owned),
             }),
         }
+    }
+}
+
+/// The Anthropic Messages API requires `tool_use.input` to be a JSON OBJECT.
+/// `ToolCall.function.arguments` can arrive as a JSON-encoded STRING (some
+/// providers / replayed conversation history) or as `null`/empty (a tool called
+/// with no arguments); sending any of those verbatim is rejected with
+/// `messages.N.content.M.tool_use.input: Input should be a valid dictionary` (a
+/// deterministic 400 that breaks every multi-turn tool conversation, e.g. on the
+/// managed / MiniMax anthropic-shaped endpoint). Coerce to an object at the send
+/// boundary so the contract holds regardless of how `arguments` was built. This
+/// re-adds the fork's tool_use.input invariant that a rig version bump dropped;
+/// the server-tool path already guards empty input in streaming.rs.
+fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
+    match input {
+        v @ serde_json::Value::Object(_) => v,
+        serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(&s) {
+            Ok(serde_json::Value::Object(m)) => serde_json::Value::Object(m),
+            _ => serde_json::json!({}),
+        },
+        // null / array / number / bool: no valid object form -> empty args.
+        _ => serde_json::json!({}),
     }
 }
 
@@ -1087,7 +1109,7 @@ fn anthropic_content_from_assistant_content(
             Ok(vec![Content::ToolUse {
                 id,
                 name: function.name,
-                input: function.arguments,
+                input: coerce_tool_input(function.arguments),
             }])
         }
         message::AssistantContent::Reasoning(reasoning) => {
@@ -5820,5 +5842,32 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[test]
+    fn coerce_tool_input_normalizes_non_object_arguments() {
+        use serde_json::json;
+
+        // Object passes through untouched.
+        assert_eq!(
+            coerce_tool_input(json!({"q": "rust", "n": 3})),
+            json!({"q": "rust", "n": 3})
+        );
+
+        // A JSON string that encodes an object is parsed into that object.
+        assert_eq!(
+            coerce_tool_input(json!("{\"q\":\"rust\"}")),
+            json!({"q": "rust"})
+        );
+
+        // A non-JSON string, a JSON string that is not an object, null, arrays,
+        // numbers and bools all collapse to an empty object: the only shape the
+        // Anthropic API accepts for tool_use.input.
+        assert_eq!(coerce_tool_input(json!("not json")), json!({}));
+        assert_eq!(coerce_tool_input(json!("[1,2,3]")), json!({}));
+        assert_eq!(coerce_tool_input(json!(null)), json!({}));
+        assert_eq!(coerce_tool_input(json!([1, 2, 3])), json!({}));
+        assert_eq!(coerce_tool_input(json!(42)), json!({}));
+        assert_eq!(coerce_tool_input(json!(true)), json!({}));
     }
 }
