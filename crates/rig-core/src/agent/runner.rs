@@ -58,6 +58,7 @@ fn flow_name(flow: &Flow) -> &'static str {
         Flow::Continue => "Continue",
         Flow::Terminate { .. } => "Terminate",
         Flow::Skip { .. } => "Skip",
+        Flow::RewriteArgs { .. } => "RewriteArgs",
         Flow::Fail => "Fail",
         Flow::Retry { .. } => "Retry",
         Flow::Repair { .. } => "Repair",
@@ -87,6 +88,9 @@ pub(crate) fn observe_flow(flow: Flow) -> Option<String> {
 pub(crate) enum ToolCallDecision {
     /// Execute the tool as normal.
     Proceed,
+    /// Execute the tool with these rewritten arguments instead of the ones the
+    /// model emitted.
+    ProceedWith(serde_json::Value),
     /// Skip execution and return `reason` to the model as the tool result.
     Skip(String),
     /// Terminate the run.
@@ -94,17 +98,19 @@ pub(crate) enum ToolCallDecision {
 }
 
 /// Resolve a hook's [`Flow`] for a [`StepEvent::ToolCall`] event (honors
-/// `Continue`/`Skip`/`Terminate`). **Fail-closed**: any other action (e.g.
-/// `Fail`/`Retry`/`Repair`) never executes the tool — it terminates the run.
+/// `Continue`/`RewriteArgs`/`Skip`/`Terminate`). **Fail-closed**: any other
+/// action (e.g. `Fail`/`Retry`/`Repair`) never executes the tool — it
+/// terminates the run.
 pub(crate) fn flow_into_tool_call(flow: Flow) -> ToolCallDecision {
     match flow {
         Flow::Continue => ToolCallDecision::Proceed,
+        Flow::RewriteArgs { args } => ToolCallDecision::ProceedWith(args),
         Flow::Skip { reason } => ToolCallDecision::Skip(reason),
         Flow::Terminate { reason } => ToolCallDecision::Terminate(reason),
         other => ToolCallDecision::Terminate(format!(
             "hook returned `{}` for a tool-call event, which only honors \
-             Continue/Skip/Terminate — terminating the run (fail-closed) rather \
-             than executing the tool",
+             Continue/RewriteArgs/Skip/Terminate — terminating the run (fail-closed) \
+             rather than executing the tool",
             flow_name(&other)
         )),
     }
@@ -133,6 +139,14 @@ pub(crate) fn flow_into_invalid(flow: Flow) -> InvalidDecision {
         Flow::Skip { reason } => InvalidDecision::Action(InvalidToolCallHookAction::skip(reason)),
         // Continue and Fail both preserve fail-fast for invalid calls.
         Flow::Continue | Flow::Fail => InvalidDecision::Action(InvalidToolCallHookAction::fail()),
+        // `RewriteArgs` rewrites arguments for a *valid* tool call; it cannot
+        // repair an unknown or disallowed one (use `Repair` to rewrite the
+        // name), so it is fail-closed here.
+        other @ Flow::RewriteArgs { .. } => InvalidDecision::Terminate(format!(
+            "hook returned `{}` for an invalid tool-call event, which only honors \
+             Fail/Retry/Repair/Skip/Terminate — terminating the run (fail-closed)",
+            flow_name(&other)
+        )),
     }
 }
 
@@ -367,7 +381,9 @@ where
     M: CompletionModel,
 {
     let tool_name = &tool_call.function.name;
-    let args = json_utils::value_to_json_string(&tool_call.function.arguments);
+    // `mut` so a `Flow::RewriteArgs` hook can rewrite the arguments the tool
+    // runs with (the model's emitted arguments are otherwise used verbatim).
+    let mut args = json_utils::value_to_json_string(&tool_call.function.arguments);
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
@@ -398,6 +414,17 @@ where
                 tool_call.call_id.clone(),
                 reason,
             ));
+        }
+        ToolCallDecision::ProceedWith(replacement) => {
+            // Run the tool with the hook's rewritten arguments. Re-record the
+            // span so the trace, and the downstream `ToolResult` event, reflect
+            // what the tool actually received rather than what the model emitted.
+            args = json_utils::value_to_json_string(&replacement);
+            tool_span.record("gen_ai.tool.call.arguments", &args);
+            tracing::debug!(
+                tool_name = tool_name,
+                "tool-call arguments rewritten by a hook"
+            );
         }
         ToolCallDecision::Proceed => {}
     }
@@ -2377,5 +2404,121 @@ mod tests {
             tool_result_text_in_history(&blocking_messages, "skipped by policy"),
             "the verbatim skip reason must be the tool result content in the history"
         );
+    }
+
+    /// A hook that rewrites a valid tool call's arguments (`Flow::RewriteArgs` on
+    /// `ToolCall`) so the tool executes with the replacement instead of what the
+    /// model emitted.
+    struct RewriteToolArgsHook(serde_json::Value);
+
+    impl<M: CompletionModel> AgentHook<M> for RewriteToolArgsHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { .. } = event {
+                Flow::rewrite_args(self.0.clone())
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    /// `Flow::RewriteArgs` resolves to a `ProceedWith` tool-call decision that
+    /// carries the replacement arguments, and is named for fail-closed
+    /// diagnostics.
+    #[test]
+    fn rewrite_args_resolves_to_proceed_with_for_tool_call() {
+        let args = json!({"x": 1, "y": 2});
+        match super::flow_into_tool_call(Flow::rewrite_args(args.clone())) {
+            super::ToolCallDecision::ProceedWith(replacement) => assert_eq!(replacement, args),
+            _ => panic!("RewriteArgs should resolve to ProceedWith for a tool call"),
+        }
+        assert_eq!(
+            super::flow_name(&Flow::rewrite_args(json!({}))),
+            "RewriteArgs"
+        );
+        // The typed convenience builds the same variant as the value constructor.
+        assert_eq!(
+            Flow::try_rewrite_args(&json!({"x": 1, "y": 2})).expect("serializes"),
+            Flow::rewrite_args(json!({"x": 1, "y": 2})),
+        );
+    }
+
+    /// `RewriteArgs` is only honored by `ToolCall`; every other event is
+    /// fail-closed and terminates the run rather than silently proceeding.
+    #[test]
+    fn rewrite_args_is_fail_closed_off_the_tool_call_event() {
+        // Invalid tool calls only honor Fail/Retry/Repair/Skip/Terminate.
+        assert!(matches!(
+            super::flow_into_invalid(Flow::rewrite_args(json!({}))),
+            super::InvalidDecision::Terminate(_)
+        ));
+        // Observe-only events only honor Continue/Terminate.
+        assert!(super::observe_flow(Flow::rewrite_args(json!({}))).is_some());
+    }
+
+    /// A hook that rewrites a *valid* tool call's arguments (`Flow::RewriteArgs`
+    /// on `ToolCall`) is honored identically under `run()` and `stream()`: the
+    /// tool executes with the replacement, so both drivers observe the same
+    /// rewritten tool result and reach the same output, tool-result content and
+    /// message history. Both drivers share `run_single_tool`, so they stay in
+    /// lock-step.
+    #[tokio::test]
+    async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
+        // The model asks to add 2 + 3; the hook rewrites the arguments to 2 + 40,
+        // so the tool returns 42 rather than 5.
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
+            ScriptedTurn::Text("acknowledged"),
+        ];
+        let replacement = json!({"x": 2, "y": 40});
+
+        let blocking_model =
+            MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
+        let blocking_hook = RecordingHook::default();
+        let blocking = AgentBuilder::new(blocking_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(blocking_hook.clone())
+            .add_hook(RewriteToolArgsHook(replacement.clone()))
+            .run()
+            .await
+            .expect("blocking run should succeed with rewritten tool arguments");
+
+        let streaming_model = MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        );
+        let streaming_hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(streaming_hook.clone())
+            .add_hook(RewriteToolArgsHook(replacement))
+            .stream()
+            .await;
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
+                item.map_err(|err| panic!("stream item errored: {err}"))
+            {
+                final_response = Some(resp);
+            }
+        }
+        let final_response = final_response.expect("stream should yield a final response");
+
+        // The tool ran with the rewritten arguments (2 + 40 = 42), not the
+        // model's emitted 2 + 3 = 5 — on both drivers.
+        assert_eq!(blocking_hook.tool_results(), vec!["42".to_string()]);
+        assert_eq!(blocking.output, "acknowledged");
+        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(
+            blocking_hook.shared_events(),
+            streaming_hook.shared_events()
+        );
+        assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
     }
 }
