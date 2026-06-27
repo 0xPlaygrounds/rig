@@ -269,6 +269,21 @@ pub struct Message {
     pub content: OneOrMany<Content>,
 }
 
+impl crate::providers::coalesce::CoalesceSameRole for Message {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        // Only merge consecutive USER turns (a tool-result user turn, a RAG/
+        // document user turn, or a hoisted-system gap, followed by another user
+        // turn such as an injection). Assistant turns are left untouched.
+        self.role == Role::User && next.role == Role::User
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        for block in next.content {
+            self.content.push(block);
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -2303,10 +2318,16 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
         let mut full_history = vec![];
         full_history.extend(chat_history);
 
-        let mut messages = full_history
+        let messages = full_history
             .into_iter()
             .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
+        // Merge adjacent same-role turns (an injected user turn after a
+        // tool-result user turn, a RAG/document user turn before the prompt, a
+        // hoisted system position) into one before cache-control is applied, so
+        // the request never sends two consecutive same-role messages. See
+        // `crate::providers::coalesce`.
+        let mut messages = crate::providers::coalesce::coalesce_same_role(messages);
 
         let mut additional_params_payload = req
             .additional_params
@@ -3359,9 +3380,13 @@ mod tests {
         );
 
         let messages = value["messages"].as_array().unwrap();
-        assert_eq!(messages.len(), 2);
+        // Hoisting the mid-conversation system message leaves two adjacent user
+        // turns, which coalesce into one (see `crate::providers::coalesce`).
+        assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
-        assert_eq!(messages[1]["role"], "user");
+        let merged = serde_json::to_string(&messages[0]).unwrap();
+        assert!(merged.contains("Review this code."));
+        assert!(merged.contains("Now review this other file."));
     }
 
     #[test]

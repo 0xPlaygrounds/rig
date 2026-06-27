@@ -27,6 +27,7 @@ use tracing_futures::Instrument;
 use super::CompletionCall;
 use crate::{
     agent::Agent,
+    agent::inject::drain_injections,
     completion::{CompletionError, CompletionModel, PromptError},
     message::{Message, Text},
     tool::ToolSetError,
@@ -386,6 +387,17 @@ where
         self
     }
 
+    /// Arm this request for message injection and return a cloneable
+    /// [`MessageInjector`](crate::agent::MessageInjector) bound to the run.
+    ///
+    /// Call before starting the stream; see
+    /// [`AgentRunner::message_injector`](crate::agent::AgentRunner::message_injector)
+    /// for the full pattern. Because awaiting the stream consumes `self`, take the
+    /// injector first, then start the stream.
+    pub fn message_injector(&mut self) -> crate::agent::MessageInjector {
+        self.runner.message_injector()
+    }
+
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
         self.runner.stream().await
     }
@@ -404,7 +416,11 @@ where
     /// This shares the drive loop, run construction, tool execution and
     /// fail-closed hook handling with the blocking [`run`](AgentRunner::run), so
     /// the two behave identically apart from the streamed delta events.
-    pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
+    pub async fn stream(mut self) -> StreamingResult<M::StreamingResponse> {
+        // Take the injection receiver (if armed) out of `self` before it is moved
+        // into the stream below; the drive loop drains it before each model call.
+        let mut injection_rx = self.injection_rx.take();
+
         let (agent_span, created_agent_span) = if tracing::Span::current().is_disabled() {
             (
                 info_span!(
@@ -506,6 +522,10 @@ where
             let mut last_message_id: Option<String> = None;
 
             'outer: loop {
+                // Fold in anything injected since the last step before advancing,
+                // so a queued message is picked up by the next model call.
+                drain_injections(&mut injection_rx, &mut run);
+
                 let step = match run.next_step() {
                     Ok(step) => step,
                     Err(err) => {
@@ -1084,6 +1104,18 @@ where
                         }
                     }
                     AgentRunStep::Done(response) => {
+                        // The run is finished: nothing more can be delivered. Drain
+                        // once to surface a too-late injection, then drop the
+                        // receiver so an in-flight `inject` fails fast with
+                        // `RunFinished` rather than queueing into the void.
+                        drain_injections(&mut injection_rx, &mut run);
+                        if run.has_pending_injections() {
+                            tracing::warn!(
+                                "message injected as the run was finishing was not delivered (no further turn)"
+                            );
+                        }
+                        let _ = injection_rx.take();
+
                         // Tool output mode (#1928): when the finishing turn made
                         // the output-tool call, surface the run's structured
                         // output as the final content (see `finalize_streamed_

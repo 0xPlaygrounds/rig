@@ -183,6 +183,35 @@ impl Message {
     }
 }
 
+impl crate::providers::coalesce::CoalesceSameRole for Message {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        // ONLY merge consecutive USER turns (e.g. a tool-result/RAG/hoisted-system
+        // user turn followed by an injected user turn). Tool results are a distinct
+        // `Message::ToolResult` variant — each carrying its own `tool_call_id`, and
+        // a parallel-tool turn produces several consecutive ones — so they never
+        // match here; assistant and system turns are likewise left untouched.
+        matches!((self, next), (Message::User { .. }, Message::User { .. }))
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        // Append the next user turn's content onto this one, keeping this
+        // accumulator's `name`.
+        let Message::User {
+            content: next_content,
+            ..
+        } = next
+        else {
+            return;
+        };
+        let Message::User { content, .. } = self else {
+            return;
+        };
+        for part in next_content {
+            content.push(part);
+        }
+    }
+}
+
 fn history_contains_tool_result(messages: &[Message]) -> bool {
     messages
         .iter()
@@ -1237,6 +1266,14 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 .collect::<Vec<_>>(),
         );
 
+        // Merge runs of consecutive user turns into one valid turn. An injected
+        // user turn (see `agent::inject`), RAG documents, or a hoisted-system gap
+        // can land a user message next to another user turn; OpenAI-compatible
+        // backends expect a single turn. Tool results are a distinct
+        // `Message::ToolResult` variant, so parallel tool-call results are never
+        // merged.
+        full_history = crate::providers::coalesce::coalesce_same_role(full_history);
+
         if full_history.is_empty() {
             return Err(CompletionError::RequestError(
                 std::io::Error::new(
@@ -1608,26 +1645,28 @@ mod tests {
             serde_json::to_value(&openai_request.messages).expect("messages should serialize");
         let messages = serialized.as_array().expect("messages should be an array");
 
-        assert_eq!(messages.len(), 5);
+        // The document user turn and the prior "Earlier user turn" are adjacent
+        // same-role turns, so they coalesce into one (see `providers::coalesce`).
+        assert_eq!(messages.len(), 4);
         assert_eq!(messages[0]["role"], "system");
         assert_eq!(messages[1]["role"], "user");
+        let merged = messages[1].to_string();
         assert!(
-            messages[1].to_string().contains("<file id: doc1>"),
+            merged.contains("<file id: doc1>"),
             "document message should follow system message: {messages:?}"
         );
-        assert_eq!(messages[2]["role"], "user");
         assert!(
-            messages[2].to_string().contains("Earlier user turn"),
-            "prior user history should follow document message: {messages:?}"
+            merged.contains("Earlier user turn"),
+            "prior user history coalesces into the document turn: {messages:?}"
         );
-        assert_eq!(messages[3]["role"], "assistant");
+        assert_eq!(messages[2]["role"], "assistant");
         assert!(
-            messages[3].to_string().contains("Earlier assistant turn"),
-            "prior assistant history should follow prior user history: {messages:?}"
+            messages[2].to_string().contains("Earlier assistant turn"),
+            "prior assistant history should follow: {messages:?}"
         );
-        assert_eq!(messages[4]["role"], "user");
+        assert_eq!(messages[3]["role"], "user");
         assert!(
-            messages[4].to_string().contains("Prompt"),
+            messages[3].to_string().contains("Prompt"),
             "prompt should remain last: {messages:?}"
         );
     }
@@ -1683,6 +1722,146 @@ mod tests {
             1,
             "document message should appear exactly once: {messages:?}"
         );
+    }
+
+    #[test]
+    fn consecutive_user_turns_coalesce_into_one() {
+        // Two adjacent user turns (e.g. a prior user turn + an injected user
+        // turn) must merge into a single valid turn after conversion.
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::many(vec![
+                crate::completion::Message::user("first user turn"),
+                crate::completion::Message::user("second user turn"),
+            ])
+            .unwrap(),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        assert_eq!(
+            openai_request.messages.len(),
+            1,
+            "two consecutive user turns should coalesce into one: {:?}",
+            openai_request.messages
+        );
+
+        let Message::User { content, .. } = &openai_request.messages[0] else {
+            panic!(
+                "expected a single coalesced user message, got {:?}",
+                openai_request.messages[0]
+            );
+        };
+
+        // The merged turn carries BOTH messages' content, in order.
+        let texts: Vec<&str> = content
+            .iter()
+            .filter_map(|part| match part {
+                UserContent::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, vec!["first user turn", "second user turn"]);
+    }
+
+    #[test]
+    fn parallel_tool_results_are_not_coalesced() {
+        // A single assistant turn with two tool calls produces two consecutive
+        // `Message::ToolResult` messages on the next user turn. These must NOT be
+        // merged: each carries its own `tool_call_id`, and merging would corrupt
+        // the request.
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: crate::OneOrMany::many(vec![
+                message::AssistantContent::tool_call(
+                    "call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                ),
+                message::AssistantContent::tool_call(
+                    "call_2",
+                    "sub",
+                    serde_json::json!({"x": 5, "y": 3}),
+                ),
+            ])
+            .unwrap(),
+        };
+
+        let tool_results = message::Message::User {
+            content: crate::OneOrMany::many(vec![
+                message::UserContent::tool_result(
+                    "call_1",
+                    crate::OneOrMany::one(message::ToolResultContent::text("3")),
+                ),
+                message::UserContent::tool_result(
+                    "call_2",
+                    crate::OneOrMany::one(message::ToolResultContent::text("2")),
+                ),
+            ])
+            .unwrap(),
+        };
+
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::many(vec![
+                crate::completion::Message::user("compute"),
+                assistant,
+                tool_results,
+            ])
+            .unwrap(),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let tool_result_count = openai_request
+            .messages
+            .iter()
+            .filter(|m| matches!(m, Message::ToolResult { .. }))
+            .count();
+        assert_eq!(
+            tool_result_count, 2,
+            "parallel tool results must not be merged: {:?}",
+            openai_request.messages
+        );
+
+        // Full shape preserved: user, assistant(tool calls), tool result, tool result.
+        assert_eq!(openai_request.messages.len(), 4);
+        assert!(matches!(
+            openai_request.messages[2],
+            Message::ToolResult { .. }
+        ));
+        assert!(matches!(
+            openai_request.messages[3],
+            Message::ToolResult { .. }
+        ));
     }
 
     #[test]
@@ -2360,6 +2539,44 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert!(matches!(parts[0], UserContent::Text { .. }));
         assert!(matches!(parts[1], UserContent::File { .. }));
+    }
+
+    /// Regression for in-flight message injection: an injected user message is
+    /// delivered as its OWN user turn, never merged into a tool-result turn.
+    /// This pins *why* — OpenAI's converter drops non-tool content from a user
+    /// message that also carries a tool result, so the merged shape would
+    /// silently lose the injection, while the separate-turn shape survives.
+    #[test]
+    fn injected_user_turn_survives_conversion_unlike_a_merged_tool_result_turn() {
+        // The BROKEN (merged) shape: one user message with a tool result AND text.
+        let merged = message::Message::User {
+            content: OneOrMany::many(vec![
+                message::UserContent::tool_result(
+                    "call_1",
+                    message::ToolResultContent::from_tool_output("42"),
+                ),
+                message::UserContent::text("injected: also weigh cost"),
+            ])
+            .expect("non-empty content"),
+        };
+        let converted: Vec<Message> = merged.try_into().expect("conversion should succeed");
+        let dumped = serde_json::to_string(&converted).expect("serialize");
+        assert!(
+            !dumped.contains("injected: also weigh cost"),
+            "OpenAI drops non-tool content merged into a tool-result turn (the shape we avoid): {dumped}"
+        );
+
+        // The CORRECT (separate-turn) shape: the injection is its own user
+        // message, so it converts and reaches the model intact.
+        let separate = message::Message::User {
+            content: OneOrMany::one(message::UserContent::text("injected: also weigh cost")),
+        };
+        let converted: Vec<Message> = separate.try_into().expect("conversion should succeed");
+        let dumped = serde_json::to_string(&converted).expect("serialize");
+        assert!(
+            dumped.contains("injected: also weigh cost"),
+            "a standalone injected user turn must survive conversion: {dumped}"
+        );
     }
 
     #[tokio::test]

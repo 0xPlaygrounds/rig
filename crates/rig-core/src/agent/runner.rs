@@ -30,12 +30,14 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
+use futures::channel::mpsc::UnboundedReceiver;
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, build_prepared_completion_request},
     hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, RequestOverride, StepEvent},
+    inject::{MessageInjector, drain_injections, injector_channel},
     prompt_request::{PromptResponse, tool_result_message, tool_result_output},
     run::{
         AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
@@ -247,6 +249,10 @@ where
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack<M>,
+    /// Receiver half of an in-flight message-injection channel, armed by
+    /// [`AgentRunner::message_injector`]. `None` (the default) means no injector
+    /// was attached and the drive loop never touches a channel.
+    pub(crate) injection_rx: Option<UnboundedReceiver<Message>>,
 }
 
 impl<M> AgentRunner<M>
@@ -278,6 +284,7 @@ where
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
+            injection_rx: None,
         }
     }
 
@@ -290,6 +297,37 @@ where
     {
         self.hooks.push(hook);
         self
+    }
+
+    /// Arm this runner for message injection and return a cloneable
+    /// [`MessageInjector`] bound to the run.
+    ///
+    /// Call this **before** starting the run (i.e. before [`run`](Self::run) or
+    /// [`stream`](Self::stream)), then move the runner into a task and push
+    /// messages from anywhere holding the handle:
+    ///
+    /// ```rust,no_run
+    /// # use rig_core::agent::Agent;
+    /// # use rig_core::completion::CompletionModel;
+    /// # async fn example<M: CompletionModel + 'static>(agent: Agent<M>) -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut runner = agent.runner("Work on this for a while.").max_turns(10);
+    /// let injector = runner.message_injector();
+    /// let handle = tokio::spawn(async move { runner.run().await });
+    ///
+    /// injector.inject("One more thing: prioritize correctness over speed.")?;
+    ///
+    /// let response = handle.await??;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Calling it more than once replaces the channel, detaching any handle
+    /// returned earlier; clone the returned [`MessageInjector`] instead to get
+    /// multiple producers for the same run.
+    pub fn message_injector(&mut self) -> MessageInjector {
+        let (injector, rx) = injector_channel();
+        self.injection_rx = Some(rx);
+        injector
     }
 }
 
@@ -633,7 +671,12 @@ where
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+    pub async fn run(mut self) -> Result<PromptResponse, PromptError> {
+        // Take the injection receiver (if armed) out of `self`; the loop drains
+        // it before each model call. `None` when no injector was attached, in
+        // which case `drain_injections` is a no-op.
+        let mut injection_rx = self.injection_rx.take();
+
         let agent_span = if tracing::Span::current().is_disabled() {
             info_span!(
                 "invoke_agent",
@@ -677,6 +720,10 @@ where
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
         loop {
+            // Fold in anything injected since the last step before advancing, so
+            // a queued message is picked up by the next model call.
+            drain_injections(&mut injection_rx, &mut run);
+
             match run.next_step()? {
                 AgentRunStep::CallModel {
                     prompt,
@@ -871,6 +918,21 @@ where
                     run.tool_results(tool_content)?;
                 }
                 AgentRunStep::Done(response) => {
+                    // The run is finished: no further model call, so nothing more
+                    // can be delivered. Drain once to surface a too-late injection,
+                    // then drop the receiver so any in-flight `inject` fails fast
+                    // with `RunFinished` rather than queueing into the void.
+                    drain_injections(&mut injection_rx, &mut run);
+                    if run.has_pending_injections() {
+                        tracing::warn!(
+                            "message injected as the run was finishing was not delivered (no further turn)"
+                        );
+                    }
+                    // Drop the receiver so an `inject` racing the post-run memory
+                    // append fails fast with `RunFinished` instead of queueing
+                    // into a channel that will never be drained.
+                    let _ = injection_rx.take();
+
                     if self.max_turns > 1 {
                         tracing::info!("Depth reached: {}/{}", run.turn(), self.max_turns);
                     }
@@ -3411,5 +3473,131 @@ mod tests {
             tool_result_text_in_history(&messages, "denied by policy: `subtract` not allowed"),
             "the policy denial reason must reach the model as the subtract tool result"
         );
+    }
+
+    // ---- Message injection ----
+
+    use crate::agent::MessageInjector;
+
+    /// Injects one message the first time a tool result is produced, simulating
+    /// an external event arriving while the agent is mid-tool-loop.
+    #[derive(Clone)]
+    struct InjectOnToolResult {
+        injector: MessageInjector,
+        fired: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for InjectOnToolResult {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if matches!(event, StepEvent::ToolResult { .. }) && !self.fired.swap(true, SeqCst) {
+                self.injector
+                    .inject("follow-up: also weigh operational cost")
+                    .expect("run is still in flight");
+            }
+            Flow::cont()
+        }
+    }
+
+    /// A message injected before `run()` starts reaches the model on the first
+    /// turn and is persisted in the final history.
+    #[tokio::test]
+    async fn run_delivers_a_message_injected_before_the_run_starts() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let mut runner = AgentBuilder::new(model.clone())
+            .build()
+            .runner("primary task")
+            .max_turns(2);
+        let injector = runner.message_injector();
+        injector
+            .inject("side note: be concise")
+            .expect("inject before the run starts");
+
+        let response = runner.run().await.expect("run should succeed");
+
+        let request = serde_json::to_string(&model.requests()[0]).expect("serialize request");
+        assert!(
+            request.contains("side note: be concise"),
+            "the injected message must reach the model: {request}"
+        );
+        let history =
+            serde_json::to_string(&response.messages.expect("messages")).expect("serialize");
+        assert!(history.contains("side note: be concise"));
+    }
+
+    /// A message injected while a tool is running is delivered on the very next
+    /// turn — and, crucially, reaches the model rather than being dropped (the
+    /// merge-into-tool-result-turn bug). Asserted at the request level.
+    #[tokio::test]
+    async fn run_delivers_a_message_injected_mid_tool_loop() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+            MockTurn::text("done"),
+        ]);
+        let mut runner = AgentBuilder::new(model.clone())
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(4);
+        let hook = InjectOnToolResult {
+            injector: runner.message_injector(),
+            fired: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        };
+
+        let response = runner
+            .add_hook(hook)
+            .run()
+            .await
+            .expect("run should succeed");
+
+        assert_eq!(response.output, "done");
+        assert_eq!(model.request_count(), 2, "the run took a second turn");
+        let turn2 = serde_json::to_string(&model.requests()[1]).expect("serialize");
+        assert!(
+            turn2.contains("follow-up: also weigh operational cost"),
+            "the mid-loop injection must reach the model on the next turn: {turn2}"
+        );
+        let history =
+            serde_json::to_string(&response.messages.expect("messages")).expect("serialize");
+        assert!(history.contains("follow-up: also weigh operational cost"));
+    }
+
+    /// Cloned injectors are independent producers for the same run; messages from
+    /// both are delivered.
+    #[tokio::test]
+    async fn injector_supports_multiple_cloned_producers() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let mut runner = AgentBuilder::new(model.clone())
+            .build()
+            .runner("primary task")
+            .max_turns(2);
+        let injector_a = runner.message_injector();
+        let injector_b = injector_a.clone();
+        injector_a.inject("note from producer A").expect("a");
+        injector_b.inject("note from producer B").expect("b");
+
+        runner.run().await.expect("run should succeed");
+
+        let request = serde_json::to_string(&model.requests()[0]).expect("serialize");
+        assert!(
+            request.contains("note from producer A") && request.contains("note from producer B"),
+            "both producers' messages must reach the model: {request}"
+        );
+    }
+
+    /// `inject` fails cleanly once the run is over: the receiver is dropped when
+    /// the driver returns, so a late producer learns the run has finished.
+    #[tokio::test]
+    async fn injecting_after_the_run_finishes_reports_run_finished() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let mut runner = AgentBuilder::new(model).build().runner("task").max_turns(1);
+        let injector = runner.message_injector();
+
+        runner.run().await.expect("run should succeed");
+
+        assert_eq!(
+            injector.inject("too late"),
+            Err(crate::agent::MessageInjectError::RunFinished)
+        );
+        assert!(!injector.is_active());
     }
 }

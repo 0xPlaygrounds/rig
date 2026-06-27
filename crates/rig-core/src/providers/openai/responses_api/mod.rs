@@ -277,6 +277,44 @@ impl From<Message> for InputItem {
     }
 }
 
+/// Merge consecutive user-input turns into one valid user message.
+///
+/// Rig's agent loop can place an injected user turn — or a hoisted RAG document
+/// turn (see the [`CompletionRequest`] conversion) — immediately next to another
+/// user turn, which the Responses API would otherwise receive as two separate user
+/// messages. Only `Message::User` items coalesce: tool results map to the
+/// distinct [`InputContent::FunctionCallOutput`] variant (and carry no role),
+/// and assistant / system / reasoning / function-call items are likewise
+/// distinct input variants, so a parallel-tool turn's results — each its own
+/// `FunctionCallOutput` with its own `call_id` — are never merged together.
+impl crate::providers::coalesce::CoalesceSameRole for InputItem {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        matches!(
+            (&self.input, &next.input),
+            (
+                InputContent::Message(Message::User { .. }),
+                InputContent::Message(Message::User { .. }),
+            )
+        )
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        if let (
+            InputContent::Message(Message::User { content: acc, .. }),
+            InputContent::Message(Message::User {
+                content: next_content,
+                ..
+            }),
+        ) = (&mut self.input, next.input)
+        {
+            // Keep the accumulator's `name`; append the next turn's content blocks.
+            for block in next_content {
+                acc.push(block);
+            }
+        }
+    }
+}
+
 impl TryFrom<crate::completion::Message> for Vec<InputItem> {
     type Error = CompletionError;
 
@@ -867,7 +905,12 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
                 full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
             }
 
-            full_history
+            // Merge any consecutive user-input turns (e.g. an injected user turn,
+            // or a hoisted RAG document turn that lands next to the prior user
+            // turn) into a single valid user message. Tool-result items are a
+            // distinct input variant and are left untouched. See
+            // `crate::providers::coalesce`.
+            crate::providers::coalesce::coalesce_same_role(full_history)
         };
 
         let input = OneOrMany::many(input).map_err(|_| {
@@ -2212,26 +2255,28 @@ mod tests {
             serde_json::to_value(&responses_request.input).expect("input should serialize");
         let input = serialized.as_array().expect("input should be an array");
 
-        assert_eq!(input.len(), 5);
+        // The hoisted document turn and the prior user turn are adjacent user
+        // messages, so the coalescing pass merges them into one valid user turn:
+        // system, merged(document + "Earlier user turn"), assistant, prompt.
+        assert_eq!(input.len(), 4);
         assert_eq!(input[0]["role"], "system");
         assert_eq!(input[1]["role"], "user");
         assert!(
             input[1].to_string().contains("<file id: doc1>"),
             "document input should follow system input: {input:?}"
         );
-        assert_eq!(input[2]["role"], "user");
         assert!(
-            input[2].to_string().contains("Earlier user turn"),
-            "prior user history should follow document input: {input:?}"
+            input[1].to_string().contains("Earlier user turn"),
+            "prior user history should coalesce into the document turn: {input:?}"
         );
-        assert_eq!(input[3]["role"], "assistant");
+        assert_eq!(input[2]["role"], "assistant");
         assert!(
-            input[3].to_string().contains("Earlier assistant turn"),
-            "prior assistant history should follow prior user history: {input:?}"
+            input[2].to_string().contains("Earlier assistant turn"),
+            "prior assistant history should follow the merged user turn: {input:?}"
         );
-        assert_eq!(input[4]["role"], "user");
+        assert_eq!(input[3]["role"], "user");
         assert!(
-            input[4].to_string().contains("Prompt"),
+            input[3].to_string().contains("Prompt"),
             "prompt should remain last: {input:?}"
         );
     }
@@ -2281,6 +2326,131 @@ mod tests {
                 .count(),
             1,
             "document input should appear exactly once: {input:?}"
+        );
+    }
+
+    #[test]
+    fn consecutive_user_inputs_coalesce_into_one_turn() {
+        // Two adjacent user turns (e.g. an injected user turn landing next to
+        // another user turn) must merge into a single valid user message carrying
+        // both turns' content, rather than serializing as two consecutive user
+        // messages.
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                completion::Message::user("first user turn"),
+                completion::Message::user("second user turn"),
+            ])
+            .unwrap(),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
+            .expect("request conversion should succeed");
+
+        assert_eq!(
+            responses_request.input.len(),
+            1,
+            "two consecutive user turns should coalesce into one item"
+        );
+        let merged = responses_request.input.first_ref();
+        let InputContent::Message(Message::User { content, .. }) = &merged.input else {
+            panic!("expected a merged user message, got {:?}", merged.input);
+        };
+        let texts = content
+            .iter()
+            .filter_map(|block| match block {
+                UserContent::InputText { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            texts,
+            vec!["first user turn", "second user turn"],
+            "merged user message should carry both turns' content"
+        );
+    }
+
+    #[test]
+    fn parallel_tool_results_are_not_coalesced() {
+        // A single assistant turn with two tool calls yields two tool-result
+        // items, each its own `FunctionCallOutput` with a distinct `call_id`.
+        // These are not user messages, so the coalescing pass must leave both in
+        // place — merging them would corrupt the request.
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                completion::Message::user("call two tools"),
+                completion::Message::Assistant {
+                    id: Some("msg_1".to_string()),
+                    content: OneOrMany::many(vec![
+                        message::AssistantContent::tool_call_with_call_id(
+                            "fc_1",
+                            "call_1".to_string(),
+                            "tool_a",
+                            json!({}),
+                        ),
+                        message::AssistantContent::tool_call_with_call_id(
+                            "fc_2",
+                            "call_2".to_string(),
+                            "tool_b",
+                            json!({}),
+                        ),
+                    ])
+                    .unwrap(),
+                },
+                completion::Message::User {
+                    content: OneOrMany::many(vec![
+                        message::UserContent::tool_result_with_call_id(
+                            "call_1",
+                            "call_1".to_string(),
+                            OneOrMany::one(message::ToolResultContent::text("result a")),
+                        ),
+                        message::UserContent::tool_result_with_call_id(
+                            "call_2",
+                            "call_2".to_string(),
+                            OneOrMany::one(message::ToolResultContent::text("result b")),
+                        ),
+                    ])
+                    .unwrap(),
+                },
+            ])
+            .unwrap(),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
+            .expect("request conversion should succeed");
+
+        let tool_results = responses_request
+            .input
+            .iter()
+            .filter_map(|item| match &item.input {
+                InputContent::FunctionCallOutput(ToolResult { call_id, .. }) => {
+                    Some(call_id.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            tool_results,
+            vec!["call_1", "call_2"],
+            "both parallel tool results must survive as distinct, un-merged items"
         );
     }
 

@@ -287,6 +287,18 @@ pub struct AgentRun {
     /// [`AgentRunStep::CallModel`] is emitted.
     #[serde(default)]
     streamed_completion_call_recorded: bool,
+    /// Messages enqueued by an external driver (via [`AgentRun::inject_message`])
+    /// to fold into the conversation immediately before the next model call. See
+    /// the [`inject`](crate::agent::inject) module.
+    #[serde(default)]
+    pending_injections: Vec<Message>,
+    /// Set when the next [`RunState::PreparingRequest`] is a *re-entry* that
+    /// already appended its own trailing message — an output-mode reprompt or an
+    /// invalid-tool-call retry — so injected messages are not folded in after
+    /// that feedback (which would derail it). Cleared when consumed; injections
+    /// wait for the next ordinary turn.
+    #[serde(default)]
+    skip_injection_fold: bool,
     state: RunState,
 }
 
@@ -311,6 +323,8 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
+            pending_injections: Vec::new(),
+            skip_injection_fold: false,
             state: RunState::PreparingRequest,
         }
     }
@@ -387,6 +401,8 @@ impl AgentRun {
     /// [`AgentRunStep::CallModel`].
     fn reprompt_for_output(&mut self) -> Result<AgentRunStep, PromptError> {
         self.output_retries += 1;
+        // The corrective feedback must remain the prompt for the reprompt turn.
+        self.skip_injection_fold = true;
         self.state = RunState::PreparingRequest;
         self.next_step()
     }
@@ -459,6 +475,50 @@ impl AgentRun {
         build_full_history(self.chat_history.as_deref(), self.new_messages.clone())
     }
 
+    /// Enqueue a message to fold into the conversation immediately before the
+    /// next model call.
+    ///
+    /// The message is buffered (not appended right away) and folded in at the
+    /// next [`AgentRunStep::CallModel`] boundary, so injecting mid-turn — while a
+    /// model response or tool results are still pending — never corrupts the
+    /// in-flight turn. It is folded in as its **own** message (never merged into
+    /// a preceding message): an injected user message becomes a distinct user
+    /// turn, which providers either combine with an adjacent user turn (Anthropic)
+    /// or accept as-is (OpenAI), and which — unlike merging into a tool-result
+    /// message — is never silently dropped. Injection delivers **user** turns:
+    /// a non-user message (the `&str`/`String` path always produces a user one)
+    /// is ignored with a warning rather than allowed to corrupt the request. See
+    /// the [`inject`](crate::agent::inject) module for the async, channel-driven
+    /// handle most callers use.
+    pub fn inject_message(&mut self, message: impl Into<Message>) {
+        let message = message.into();
+        // Injection delivers a *user* turn (the `&str`/`String` conversion
+        // produces one). A non-user message would become the next prompt and
+        // break the request's role structure, so drop it with a warning rather
+        // than corrupt the turn.
+        if !matches!(message, Message::User { .. }) {
+            tracing::warn!(
+                "inject_message ignored a non-user message; injection delivers user turns only"
+            );
+            return;
+        }
+        self.pending_injections.push(message);
+    }
+
+    /// Whether any injected messages are buffered but not yet folded in.
+    pub fn has_pending_injections(&self) -> bool {
+        !self.pending_injections.is_empty()
+    }
+
+    /// Fold every buffered injected message into the accumulated conversation as
+    /// its own message, in injection order. Called at the
+    /// [`RunState::PreparingRequest`] boundary so the messages become part of the
+    /// request the driver is about to build (the last one becomes this turn's
+    /// prompt; the rest precede it in history).
+    fn apply_pending_injections(&mut self) {
+        self.new_messages.append(&mut self.pending_injections);
+    }
+
     /// Whether the run reached [`AgentRunStep::Done`].
     pub fn is_done(&self) -> bool {
         matches!(self.state, RunState::Done(_))
@@ -524,6 +584,15 @@ impl AgentRun {
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::PreparingRequest => {
+                // Fold in any messages injected since the last model call before
+                // choosing this turn's prompt/history (see the `inject` module) —
+                // unless this is a reprompt/retry re-entry that already appended
+                // its own trailing feedback message, which an injection must not
+                // displace as the prompt.
+                if !std::mem::take(&mut self.skip_injection_fold) {
+                    self.apply_pending_injections();
+                }
+
                 let Some((prompt_ref, history_for_turn)) = self.new_messages.split_last() else {
                     return Err(PromptError::prompt_cancelled(
                         self.full_history(),
@@ -855,6 +924,8 @@ impl AgentRun {
                     ));
                 };
                 self.new_messages.push(user_message);
+                // The retry feedback must remain the prompt for the retry turn.
+                self.skip_injection_fold = true;
                 self.state = RunState::PreparingRequest;
                 Ok(ModelTurnOutcome::TurnRetried)
             }
@@ -2256,5 +2327,168 @@ mod tests {
         );
         let response = expect_done(&mut resumed);
         assert_eq!(response.output, "done");
+    }
+
+    // ---- Message injection ----
+
+    /// Whether a message is a user turn carrying a tool result (and no injected
+    /// text) — i.e. the injection was *not* merged into it.
+    fn is_tool_result_only_user(message: &Message) -> bool {
+        matches!(message, Message::User { content }
+            if content.iter().all(|c| matches!(c, UserContent::ToolResult(_))))
+    }
+
+    #[test]
+    fn injected_message_is_delivered_as_its_own_user_turn_after_tool_results() {
+        let mut run = AgentRun::new("start").max_turns(3);
+
+        // Turn 1: the model calls a tool, so the run keeps going.
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("c1", "add"))
+                .expect("model_response 1"),
+        );
+        expect_call_tools(&mut run);
+
+        // A message injected while tools execute is buffered, not folded mid-turn.
+        run.inject_message("heads up: prioritize correctness");
+        assert!(run.has_pending_injections());
+        run.tool_results(vec![tool_result("c1", "2")])
+            .expect("tool_results");
+
+        // Turn 2: the injection is delivered as its OWN user turn (the prompt),
+        // NOT merged into the trailing tool-result message — that mixed shape is
+        // what OpenAI's converter silently drops.
+        let (prompt, history, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 2);
+        assert!(!run.has_pending_injections());
+        assert_eq!(prompt, Message::user("heads up: prioritize correctness"));
+        assert!(
+            is_tool_result_only_user(history.last().expect("history has the tool-result turn")),
+            "the tool result stays its own message; the injection is not merged into it"
+        );
+    }
+
+    #[test]
+    fn injected_messages_fold_in_order_each_as_its_own_turn() {
+        let mut run = AgentRun::new("prompt");
+        run.inject_message("first");
+        run.inject_message("second");
+
+        let (prompt, history, _turn) = expect_call_model(&mut run);
+        // new_messages = [user(prompt), user(first), user(second)]; the last is
+        // this turn's prompt, the rest precede it in history, each distinct.
+        assert_eq!(prompt, Message::user("second"));
+        assert_eq!(
+            history,
+            vec![Message::user("prompt"), Message::user("first")]
+        );
+    }
+
+    #[test]
+    fn pending_injection_survives_serialization_mid_tool_loop() {
+        let mut run = AgentRun::new("pay invoice").max_turns(3);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("c1", "add"))
+                .expect("model_response"),
+        );
+        // Suspend in the ExecutingTools state with a buffered injection — the
+        // durable-interrupt scenario.
+        expect_call_tools(&mut run);
+        run.inject_message("urgent: also check the balance");
+        assert!(run.has_pending_injections());
+
+        let checkpoint = serde_json::to_string(&run).expect("serialize");
+        let mut resumed: AgentRun = serde_json::from_str(&checkpoint).expect("deserialize");
+        assert!(
+            resumed.has_pending_injections(),
+            "the buffered injection must survive an ExecutingTools round-trip"
+        );
+
+        // Re-emit the pending calls from state, answer them, and confirm the
+        // injected message is delivered on the next turn.
+        let calls = expect_call_tools(&mut resumed);
+        resumed
+            .tool_results(vec![tool_result(&calls[0].tool_call.id, "balance ok")])
+            .expect("tool_results");
+        let (prompt, _history, _turn) = expect_call_model(&mut resumed);
+        // Compare on text, not full-message equality: a serde round-trip
+        // normalizes `Text.additional_params` from `None` to `Some({})`.
+        let Message::User { content } = &prompt else {
+            panic!("expected a user prompt, got {prompt:?}");
+        };
+        assert!(
+            content.iter().any(|c| matches!(
+                c,
+                UserContent::Text(text) if text.text == "urgent: also check the balance"
+            )),
+            "the resumed turn must carry the injected text"
+        );
+    }
+
+    #[test]
+    fn injection_does_not_derail_an_invalid_tool_call_retry() {
+        let mut run = AgentRun::new("call something")
+            .max_turns(5)
+            .max_invalid_tool_call_retries(1);
+
+        expect_call_model(&mut run);
+        expect_needs_resolution(
+            run.model_response(tool_call_turn("call_1", "unknown"))
+                .expect("model_response"),
+        );
+
+        // Inject before the retry resolves: the retry's corrective feedback must
+        // remain the prompt, not be displaced by the injection.
+        run.inject_message("injected mid-retry");
+        let outcome = run
+            .resolve_invalid_tool_call(InvalidToolCallHookAction::retry("use add instead"))
+            .expect("retry accepted");
+        assert!(matches!(outcome, ModelTurnOutcome::TurnRetried));
+
+        // Turn 2 (the retry): the prompt is the feedback (a tool-result message),
+        // and the injection is still buffered for a later turn.
+        let (prompt, _history, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 2);
+        assert!(
+            matches!(prompt, Message::User { ref content }
+                if matches!(content.first(), UserContent::ToolResult(_))),
+            "the retry feedback, not the injection, must be the prompt"
+        );
+        assert!(
+            run.has_pending_injections(),
+            "the injection waits for the next ordinary turn"
+        );
+
+        // The model makes progress with a real tool, keeping the run going.
+        expect_continue(
+            run.model_response(tool_call_turn("call_2", "add"))
+                .expect("model_response"),
+        );
+        let calls = expect_call_tools(&mut run);
+        run.tool_results(vec![tool_result(&calls[0].tool_call.id, "5")])
+            .expect("tool_results");
+
+        // Turn 3 (ordinary): now the buffered injection is delivered as the prompt.
+        let (prompt, _history, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 3);
+        assert_eq!(prompt, Message::user("injected mid-retry"));
+        assert!(!run.has_pending_injections());
+    }
+
+    #[test]
+    fn non_user_injection_is_ignored() {
+        let mut run = AgentRun::new("hello");
+        run.inject_message(Message::assistant("I am an assistant message"));
+        assert!(
+            !run.has_pending_injections(),
+            "a non-user injected message is dropped, not buffered"
+        );
+
+        // The run proceeds with only the original prompt.
+        let (prompt, history, _turn) = expect_call_model(&mut run);
+        assert_eq!(prompt, Message::user("hello"));
+        assert!(history.is_empty());
     }
 }

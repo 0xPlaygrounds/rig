@@ -39,6 +39,50 @@ pub enum Message {
     },
 }
 
+impl crate::providers::coalesce::CoalesceSameRole for Message {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        // Only merge consecutive USER turns; tool results (`FunctionCallOutput`)
+        // and other variants are left untouched.
+        matches!(
+            (self, next),
+            (
+                Message::Message {
+                    role: Role::User,
+                    ..
+                },
+                Message::Message {
+                    role: Role::User,
+                    ..
+                }
+            )
+        )
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        let (
+            Message::Message { content: acc, .. },
+            Message::Message {
+                content: next_content,
+                ..
+            },
+        ) = (self, next)
+        else {
+            return;
+        };
+        let mut items = content_into_items(std::mem::replace(acc, Content::Array(Vec::new())));
+        items.extend(content_into_items(next_content));
+        *acc = Content::Array(items);
+    }
+}
+
+/// Normalize a `Content` into a list of items so two user turns can be merged.
+fn content_into_items(content: Content) -> Vec<ContentItem> {
+    match content {
+        Content::Text(text) => vec![ContentItem::Text { text }],
+        Content::Array(items) => items,
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -395,7 +439,40 @@ mod tests {
     use crate::OneOrMany;
     use crate::completion::CompletionError;
     use crate::message::{AssistantContent, Message as RigMessage, Reasoning, ReasoningContent};
+    use crate::providers::coalesce::coalesce_same_role;
     use crate::providers::openai::responses_api::ReasoningSummary;
+
+    #[test]
+    fn consecutive_user_turns_coalesce_but_tool_results_do_not() {
+        let input = vec![
+            Message::user("first user turn"),
+            Message::user("injected user turn"),
+            Message::function_call_output("call_1".into(), "result one".into()),
+            Message::function_call_output("call_2".into(), "result two".into()),
+        ];
+
+        let coalesced = coalesce_same_role(input);
+
+        // The two user turns merged; the two tool-result outputs stayed separate.
+        assert_eq!(coalesced.len(), 3);
+        assert!(matches!(
+            coalesced[0],
+            Message::Message {
+                role: super::Role::User,
+                ..
+            }
+        ));
+        let merged = serde_json::to_string(&coalesced[0]).expect("serialize");
+        assert!(merged.contains("first user turn") && merged.contains("injected user turn"));
+        assert!(matches!(
+            coalesced[1],
+            Message::FunctionCallOutput { ref call_id, .. } if call_id == "call_1"
+        ));
+        assert!(matches!(
+            coalesced[2],
+            Message::FunctionCallOutput { ref call_id, .. } if call_id == "call_2"
+        ));
+    }
 
     #[test]
     fn assistant_redacted_reasoning_is_serialized_as_encrypted_content() {

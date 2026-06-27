@@ -530,6 +530,30 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
+impl crate::providers::coalesce::CoalesceSameRole for Message {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        // ONLY merge two consecutive USER turns. Tool results route to the
+        // distinct `Tool` variant (each with its own `tool_call_id`), and
+        // assistant/system turns are left untouched — so parallel tool-call
+        // turns and adjacent assistant turns are never merged.
+        matches!((self, next), (Message::User { .. }, Message::User { .. }))
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        if let (
+            Message::User { content },
+            Message::User {
+                content: next_content,
+            },
+        ) = (self, next)
+        {
+            for block in next_content {
+                content.push(block);
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
@@ -577,6 +601,11 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                 .flatten()
                 .collect::<Vec<_>>(),
         );
+
+        // Merge any adjacent USER turns (e.g. an injected user turn, RAG
+        // documents, or a hoisted-system gap landing next to another user turn)
+        // into one valid turn. Tool-result and assistant turns are left as-is.
+        let full_history = crate::providers::coalesce::coalesce_same_role(full_history);
 
         let tool_choice = if let Some(tool_choice) = req.tool_choice {
             if !matches!(tool_choice, ToolChoice::Auto) {
@@ -868,5 +897,85 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[test]
+    fn coalesces_consecutive_user_messages() {
+        use crate::providers::coalesce::coalesce_same_role;
+
+        // Two adjacent user turns (the shape produced by an injected user turn
+        // landing next to a real user turn) collapse into one valid turn that
+        // carries both messages' content, in order.
+        let messages = vec![
+            Message::User {
+                content: OneOrMany::one(UserContent::Text {
+                    text: "first".to_string(),
+                }),
+            },
+            Message::User {
+                content: OneOrMany::one(UserContent::Text {
+                    text: "second".to_string(),
+                }),
+            },
+        ];
+
+        let coalesced = coalesce_same_role(messages);
+
+        assert_eq!(coalesced.len(), 1);
+        let Message::User { content } = &coalesced[0] else {
+            panic!("expected a single merged user message");
+        };
+        let texts = content
+            .iter()
+            .map(|c| match c {
+                UserContent::Text { text } => text.clone(),
+                other => panic!("expected text content, got {other:?}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(texts, vec!["first".to_string(), "second".to_string()]);
+    }
+
+    #[test]
+    fn does_not_coalesce_parallel_tool_results() {
+        use crate::providers::coalesce::coalesce_same_role;
+
+        // A single user turn carrying two tool results — the shape produced by a
+        // parallel multi-tool assistant turn — converts to two distinct
+        // `Tool`-role messages, each with its own `tool_call_id`. These must NOT
+        // be merged; coalescing only applies to the `User` variant.
+        let user_turn = completion::Message::User {
+            content: OneOrMany::many(vec![
+                completion::message::UserContent::tool_result(
+                    "call_1",
+                    OneOrMany::one(completion::message::ToolResultContent::text("result one")),
+                ),
+                completion::message::UserContent::tool_result(
+                    "call_2",
+                    OneOrMany::one(completion::message::ToolResultContent::text("result two")),
+                ),
+            ])
+            .unwrap(),
+        };
+
+        let messages: Vec<Message> = user_turn.try_into().unwrap();
+        assert_eq!(messages.len(), 2);
+        assert!(messages.iter().all(|m| matches!(m, Message::Tool { .. })));
+
+        let coalesced = coalesce_same_role(messages);
+
+        // Count preserved: both tool-result messages survive untouched.
+        assert_eq!(coalesced.len(), 2);
+        assert!(coalesced.iter().all(|m| matches!(m, Message::Tool { .. })));
+        let tool_call_ids = coalesced
+            .iter()
+            .filter_map(|m| match m {
+                Message::Tool { tool_call_id, .. } => Some(tool_call_id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            tool_call_ids,
+            vec!["call_1".to_string(), "call_2".to_string()]
+        );
     }
 }

@@ -107,6 +107,7 @@
 mod builder;
 mod completion;
 pub mod hook;
+pub mod inject;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
@@ -119,6 +120,7 @@ pub use hook::{
     AgentHook, Flow, HookStack, InvalidToolCallContext, InvalidToolCallHookAction, RequestOverride,
     StepEvent, StepEventKind,
 };
+pub use inject::{MessageInjectError, MessageInjector};
 pub use prompt_request::streaming::{
     FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
     stream_to_stdout,

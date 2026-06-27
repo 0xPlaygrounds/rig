@@ -224,6 +224,38 @@ impl Message {
     }
 }
 
+impl crate::providers::coalesce::CoalesceSameRole for Message {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        // ONLY merge two consecutive USER turns. Tool results are a distinct
+        // `ToolResult` (role "tool") variant — a single turn with parallel tool
+        // calls yields multiple adjacent tool-role messages, each with its own
+        // `tool_call_id`, and merging them would corrupt the request. Assistant
+        // and system turns are likewise left untouched.
+        matches!((self, next), (Message::User { .. }, Message::User { .. }))
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        if let (
+            Message::User { content, .. },
+            Message::User {
+                content: next_content,
+                ..
+            },
+        ) = (self, next)
+        {
+            // User content is a plain string here; join the merged turns with a
+            // newline, matching how multiple text items within a turn are joined
+            // during conversion. The accumulator's `name` is kept.
+            if !next_content.is_empty() {
+                if !content.is_empty() {
+                    content.push('\n');
+                }
+                content.push_str(&next_content);
+            }
+        }
+    }
+}
+
 impl From<message::ToolResult> for Message {
     fn from(tool_result: message::ToolResult) -> Self {
         let content = match tool_result.content.first() {
@@ -490,6 +522,12 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
             .collect();
 
         full_history.extend(chat_history);
+
+        // Merge any adjacent USER turns into one valid turn — e.g. an injected
+        // user turn, or hoisted RAG documents, that land next to another user
+        // turn. Tool-result (role "tool") and assistant turns are left untouched
+        // (see the `CoalesceSameRole` impl for `Message`).
+        let full_history = crate::providers::coalesce::coalesce_same_role(full_history);
 
         let tool_choice = req
             .tool_choice
@@ -1141,6 +1179,92 @@ mod tests {
             }
             _ => panic!("Expected assistant message"),
         }
+    }
+
+    #[test]
+    fn test_coalesce_consecutive_user_messages() {
+        use crate::providers::coalesce::coalesce_same_role;
+
+        // Two consecutive USER turns (e.g. an injected user turn landing next to
+        // another user turn) must collapse into a single valid turn.
+        let messages = vec![
+            Message::User {
+                content: "first".to_string(),
+                name: None,
+            },
+            Message::User {
+                content: "second".to_string(),
+                name: None,
+            },
+        ];
+
+        let coalesced = coalesce_same_role(messages);
+
+        assert_eq!(
+            coalesced.len(),
+            1,
+            "two consecutive user messages should merge into one"
+        );
+        match &coalesced[0] {
+            Message::User { content, .. } => {
+                assert_eq!(
+                    content, "first\nsecond",
+                    "merged turn should carry both messages' content"
+                );
+            }
+            other => panic!("expected a user message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_coalesce_preserves_parallel_tool_results() {
+        use crate::completion::message::{
+            AssistantContent, Message as RigMessage, ToolResultContent, UserContent,
+        };
+        use crate::providers::coalesce::coalesce_same_role;
+
+        // A single assistant turn that issues two parallel tool calls...
+        let assistant = RigMessage::Assistant {
+            id: None,
+            content: OneOrMany::many(vec![
+                AssistantContent::tool_call("call_1", "add", serde_json::json!({"a": 1, "b": 2})),
+                AssistantContent::tool_call("call_2", "sub", serde_json::json!({"x": 5, "y": 3})),
+            ])
+            .expect("content should not be empty"),
+        };
+
+        // ...followed by a user turn carrying both tool results.
+        let user = RigMessage::User {
+            content: OneOrMany::many(vec![
+                UserContent::tool_result("call_1", OneOrMany::one(ToolResultContent::text("3"))),
+                UserContent::tool_result("call_2", OneOrMany::one(ToolResultContent::text("2"))),
+            ])
+            .expect("content should not be empty"),
+        };
+
+        let mut native: Vec<Message> = Vec::new();
+        native.extend(Vec::<Message>::try_from(assistant).expect("conversion should succeed"));
+        native.extend(Vec::<Message>::try_from(user).expect("conversion should succeed"));
+
+        let before = native
+            .iter()
+            .filter(|m| matches!(m, Message::ToolResult { .. }))
+            .count();
+        assert_eq!(
+            before, 2,
+            "two parallel tool results expected before coalescing"
+        );
+
+        let coalesced = coalesce_same_role(native);
+
+        let after = coalesced
+            .iter()
+            .filter(|m| matches!(m, Message::ToolResult { .. }))
+            .count();
+        assert_eq!(
+            after, 2,
+            "parallel tool-result (role \"tool\") messages must not be coalesced"
+        );
     }
 
     #[test]

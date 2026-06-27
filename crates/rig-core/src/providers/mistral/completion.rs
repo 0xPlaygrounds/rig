@@ -109,6 +109,33 @@ impl Message {
     }
 }
 
+impl crate::providers::coalesce::CoalesceSameRole for Message {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        // ONLY merge consecutive USER turns. Mistral routes tool results to the
+        // distinct `Message::Tool` variant, so a turn with parallel tool calls
+        // produces multiple adjacent `Tool` messages (each with its own
+        // `tool_call_id`) that must NOT be merged. Assistant/System turns are
+        // likewise left untouched.
+        matches!((self, next), (Message::User { .. }, Message::User { .. }))
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        // Only called after `can_coalesce` returned true, so both are `User`.
+        if let (
+            Message::User { content },
+            Message::User {
+                content: next_content,
+            },
+        ) = (self, next)
+        {
+            if !content.is_empty() && !next_content.is_empty() {
+                content.push('\n');
+            }
+            content.push_str(&next_content);
+        }
+    }
+}
+
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
@@ -367,6 +394,12 @@ impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
             .collect();
 
         full_history.extend(chat_history);
+
+        // Merge any runs of adjacent same-role USER turns into one valid turn
+        // (e.g. an injected user turn or RAG/hoisted-system gap that lands next
+        // to another user turn). Tool-result turns route to `Message::Tool`, so
+        // parallel tool calls are unaffected.
+        let full_history = crate::providers::coalesce::coalesce_same_role(full_history);
 
         if full_history.is_empty() {
             return Err(CompletionError::RequestError(
@@ -913,5 +946,67 @@ mod tests {
 
         let result = MistralCompletionRequest::try_from((MISTRAL_SMALL, request));
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
+
+    #[test]
+    fn test_consecutive_user_messages_coalesce() {
+        // Two adjacent USER turns (e.g. a tool-result/RAG turn followed by an
+        // injected user prompt) must merge into a single valid user turn.
+        let messages = vec![
+            Message::User {
+                content: "first".to_string(),
+            },
+            Message::User {
+                content: "second".to_string(),
+            },
+        ];
+
+        let coalesced = crate::providers::coalesce::coalesce_same_role(messages);
+        assert_eq!(coalesced.len(), 1, "two user turns should merge into one");
+
+        match &coalesced[0] {
+            Message::User { content } => {
+                assert!(
+                    content.contains("first") && content.contains("second"),
+                    "merged user turn must carry both messages' content, got {content:?}"
+                );
+            }
+            other => panic!("expected a single merged user message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parallel_tool_results_are_not_coalesced() {
+        // A single rig user turn carrying two ToolResults (the shape produced by
+        // a multi-tool assistant turn) converts into two distinct `Message::Tool`
+        // entries. These must survive the coalescing pass unmerged so each keeps
+        // its own `tool_call_id`.
+        let user = message::Message::User {
+            content: OneOrMany::many(vec![
+                message::UserContent::tool_result(
+                    "call_1",
+                    OneOrMany::one(message::ToolResultContent::text("result one")),
+                ),
+                message::UserContent::tool_result(
+                    "call_2",
+                    OneOrMany::one(message::ToolResultContent::text("result two")),
+                ),
+            ])
+            .expect("non-empty user content"),
+        };
+
+        let converted: Vec<Message> = user.try_into().expect("conversion should work");
+        assert_eq!(converted.len(), 2, "two tool results -> two tool messages");
+        assert!(
+            converted.iter().all(|m| matches!(m, Message::Tool { .. })),
+            "both converted messages should be tool-role"
+        );
+
+        let coalesced = crate::providers::coalesce::coalesce_same_role(converted);
+        assert_eq!(
+            coalesced.len(),
+            2,
+            "parallel tool-result messages must NOT be coalesced"
+        );
     }
 }

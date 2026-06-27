@@ -193,6 +193,36 @@ impl AwsCompletionRequest {
             }
         });
 
+        // Bedrock's Converse API requires strictly alternating roles. Merge an
+        // injected user turn into the preceding tool-result user turn (rig keeps
+        // both as user messages, and the converter preserves mixed content) so
+        // the request never sends two consecutive user messages. See
+        // `rig_core::providers::coalesce`.
+        let full_history = rig_core::providers::coalesce::coalesce_same_role_with(
+            full_history,
+            |a, b| matches!((a, b), (Message::User { .. }, Message::User { .. })),
+            |acc, next| match (acc, next) {
+                (
+                    Message::User {
+                        content: mut acc_content,
+                    },
+                    Message::User {
+                        content: next_content,
+                    },
+                ) => {
+                    for item in next_content {
+                        acc_content.push(item);
+                    }
+                    Message::User {
+                        content: acc_content,
+                    }
+                }
+                // `same_role` gates this to two user messages; return the
+                // accumulator to keep the closure total.
+                (acc, _) => acc,
+            },
+        );
+
         let mut messages: Vec<aws_bedrock::Message> = full_history
             .into_iter()
             .map(|message| RigMessage(message).try_into())
@@ -573,6 +603,41 @@ mod tests {
         let messages = aws_request.messages().expect("messages should convert");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);
+    }
+
+    // Bedrock's Converse API requires strictly alternating roles, so an injected
+    // user turn landing next to a prior user turn must be merged into one (see
+    // `rig_core::providers::coalesce`) rather than sent as two consecutive user
+    // messages, which Bedrock rejects.
+    #[test]
+    fn test_consecutive_user_turns_are_coalesced() {
+        let request = CompletionRequest {
+            chat_history: OneOrMany::many(vec![
+                Message::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new("first".to_string()))),
+                },
+                Message::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new("injected".to_string()))),
+                },
+            ])
+            .expect("history should be non-empty"),
+            ..minimal_request()
+        };
+
+        let aws_request = aws_request(request, false);
+        let messages = aws_request.messages().expect("messages should convert");
+
+        assert_eq!(
+            messages.len(),
+            1,
+            "the two user turns must coalesce into one"
+        );
+        assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);
+        assert_eq!(
+            messages[0].content.len(),
+            2,
+            "both turns' content is preserved in the merged turn"
+        );
     }
 
     #[test]

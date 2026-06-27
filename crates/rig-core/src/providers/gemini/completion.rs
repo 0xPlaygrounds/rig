@@ -283,14 +283,20 @@ pub(crate) fn create_request_body(
         None
     };
 
+    let contents = full_history
+        .into_iter()
+        .map(|msg| {
+            msg.try_into()
+                .map_err(|e| CompletionError::RequestError(Box::new(e)))
+        })
+        .collect::<Result<Vec<Content>, _>>()?;
+    // Merge adjacent same-role turns (an injected user turn after a tool-result
+    // user turn, or a RAG/document user turn before the prompt) into one. See
+    // `crate::providers::coalesce`.
+    let contents = crate::providers::coalesce::coalesce_same_role(contents);
+
     let request = GenerateContentRequest {
-        contents: full_history
-            .into_iter()
-            .map(|msg| {
-                msg.try_into()
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))
-            })
-            .collect::<Result<Vec<_>, _>>()?,
+        contents,
         generation_config,
         safety_settings: None,
         tools,
@@ -680,6 +686,19 @@ pub mod gemini_api_types {
         /// The producer of the content. Must be either 'user' or 'model'.
         /// Useful to set for multi-turn conversations, otherwise can be left blank or unset.
         pub role: Option<Role>,
+    }
+
+    impl crate::providers::coalesce::CoalesceSameRole for Content {
+        fn can_coalesce(&self, next: &Self) -> bool {
+            // Only merge consecutive USER turns (Gemini keeps tool results in a
+            // user-role Content, so a tool-result turn followed by an injected
+            // user turn — or a RAG/document turn before the prompt — coalesces).
+            self.role == Some(Role::User) && next.role == Some(Role::User)
+        }
+
+        fn coalesce(&mut self, mut next: Self) {
+            self.parts.append(&mut next.parts);
+        }
     }
 
     impl TryFrom<message::Message> for Content {
@@ -3085,48 +3104,35 @@ mod tests {
 
         let request = create_request_body(completion_request).unwrap();
 
-        // Should have 2 contents: 1 for documents, 1 for user message
-        assert_eq!(
-            request.contents.len(),
-            2,
-            "Expected 2 contents (documents + user message)"
-        );
-
-        // First content should be documents with role User
+        // The documents user turn and the prompt user turn are adjacent same-role
+        // turns, so they coalesce into one (see `crate::providers::coalesce`).
+        assert_eq!(request.contents.len(), 1, "documents + prompt coalesce");
         assert_eq!(request.contents[0].role, Some(Role::User));
         assert_eq!(
             request.contents[0].parts.len(),
-            2,
-            "Expected 2 document parts"
+            3,
+            "Expected 2 document parts + the user message"
         );
 
-        // Check that documents are text parts
-        for part in &request.contents[0].parts {
-            if let Part {
-                part: PartKind::Text(text),
-                ..
-            } = part
-            {
-                assert!(
-                    text.contains("Note:") && text.contains("Content:"),
-                    "Document should contain note metadata"
-                );
-            } else {
-                panic!("Document parts should be text, not {:?}", part);
-            }
-        }
-
-        // Second content should be the user message
-        assert_eq!(request.contents[1].role, Some(Role::User));
-        if let Part {
-            part: PartKind::Text(text),
-            ..
-        } = &request.contents[1].parts[0]
-        {
-            assert_eq!(text, "What are my notes about?");
-        } else {
-            panic!("Expected user message to be text");
-        }
+        // All parts are text; the document metadata and the user message survive.
+        let texts: Vec<&str> = request.contents[0]
+            .parts
+            .iter()
+            .map(|part| match &part.part {
+                PartKind::Text(text) => text.as_str(),
+                other => panic!("Expected text parts, got {other:?}"),
+            })
+            .collect();
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.contains("Note:") && t.contains("Content:")),
+            "document metadata should be present"
+        );
+        assert!(
+            texts.contains(&"What are my notes about?"),
+            "the user message should be present"
+        );
     }
 
     #[test]

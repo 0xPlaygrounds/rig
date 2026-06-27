@@ -602,6 +602,10 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
             .collect();
 
         full_history.extend(chat_history);
+        // Merge adjacent same-role (user) turns so an injected user turn, RAG
+        // documents, or a hoisted-system gap never sends two consecutive user
+        // messages. See `crate::providers::coalesce`.
+        let full_history = crate::providers::coalesce::coalesce_same_role(full_history);
 
         let tool_choice = req
             .tool_choice

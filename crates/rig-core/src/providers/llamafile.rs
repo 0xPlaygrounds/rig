@@ -314,6 +314,10 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
             .collect();
 
         full_history.extend(chat_history);
+        // Merge adjacent same-role (user) turns so injection / RAG documents /
+        // hoisted-system gaps never send two consecutive user messages. See
+        // `crate::providers::coalesce`.
+        let full_history = crate::providers::coalesce::coalesce_same_role(full_history);
 
         Ok(Self {
             model,
@@ -824,13 +828,16 @@ mod tests {
         let request = LlamafileCompletionRequest::try_from((LLAMA_CPP, completion_request))
             .expect("Failed to create request");
 
-        assert_eq!(request.messages.len(), 2);
+        // The documents user turn and the prompt user turn are adjacent same-role
+        // turns, so they coalesce into one (see `crate::providers::coalesce`).
+        assert_eq!(request.messages.len(), 1);
         assert!(request.messages[0]["content"].is_string());
-        let documents = request.messages[0]["content"]
+        let content = request.messages[0]["content"]
             .as_str()
-            .expect("documents should serialize as a string");
-        assert!(documents.contains("Definition of flurbo"));
-        assert!(documents.contains("Definition of glarb-glarb"));
+            .expect("content should serialize as a string");
+        assert!(content.contains("Definition of flurbo"));
+        assert!(content.contains("Definition of glarb-glarb"));
+        assert!(content.contains("What does glarb-glarb mean?"));
     }
 
     #[test]

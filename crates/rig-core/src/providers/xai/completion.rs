@@ -67,6 +67,10 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             let msg: Vec<Message> = msg.try_into()?;
             input.extend(msg);
         }
+        // Merge adjacent same-role (user) turns so injection / RAG documents /
+        // hoisted-system gaps never send two consecutive user messages. See
+        // `crate::providers::coalesce`.
+        let input = crate::providers::coalesce::coalesce_same_role(input);
 
         let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
         let mut additional_tools =

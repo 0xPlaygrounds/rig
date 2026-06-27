@@ -450,6 +450,12 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                 .collect::<Vec<_>>(),
         );
 
+        // Coalesce any adjacent user turns (e.g. a RAG/document user turn or a
+        // hoisted-system gap landing next to an injected user turn) into one
+        // valid turn. Tool-result turns route to `Message::ToolResult` and are
+        // left untouched (see `CoalesceSameRole for Message`).
+        let full_history = crate::providers::coalesce::coalesce_same_role(full_history);
+
         let mut think = Think::Bool(false);
         let mut keep_alive: Option<String> = None;
 
@@ -976,6 +982,49 @@ pub enum Message {
         name: String,
         content: String,
     },
+}
+
+impl crate::providers::coalesce::CoalesceSameRole for Message {
+    fn can_coalesce(&self, next: &Self) -> bool {
+        // ONLY merge consecutive USER turns (e.g. a RAG/document user turn or a
+        // hoisted-system gap landing immediately before an injected user turn).
+        // Tool results route to the distinct `Message::ToolResult` variant — a
+        // turn with parallel tool calls produces several of them, each with its
+        // own `tool_name`, and merging would corrupt the request — so those,
+        // along with assistant and system turns, are left untouched.
+        matches!((self, next), (Message::User { .. }, Message::User { .. }))
+    }
+
+    fn coalesce(&mut self, next: Self) {
+        // Only ever called for two `Message::User` turns (see `can_coalesce`).
+        let Message::User {
+            content: next_content,
+            images: next_images,
+            ..
+        } = next
+        else {
+            return;
+        };
+        let Message::User {
+            content, images, ..
+        } = self
+        else {
+            return;
+        };
+        // Concatenate the merged-in turn's text, keeping the accumulator's `name`.
+        if !next_content.is_empty() {
+            if content.is_empty() {
+                *content = next_content;
+            } else {
+                content.push('\n');
+                content.push_str(&next_content);
+            }
+        }
+        // Carry over any images attached to the merged-in turn.
+        if let Some(mut next_images) = next_images {
+            images.get_or_insert_with(Vec::new).append(&mut next_images);
+        }
+    }
 }
 
 /// -----------------------------
@@ -2270,5 +2319,122 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    // Two consecutive USER turns (the shape produced when an injected user turn
+    // or RAG document lands next to another user turn) must collapse into one
+    // valid turn carrying both turns' content.
+    #[test]
+    fn test_coalesce_merges_consecutive_user_turns() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many([
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new("First question."))),
+                },
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new("Second question."))),
+                },
+            ])
+            .expect("non-empty history"),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
+            .expect("Failed to create Ollama request");
+
+        // The two user turns collapse into exactly one user message...
+        assert_eq!(ollama_request.messages.len(), 1);
+        match &ollama_request.messages[0] {
+            Message::User { content, .. } => {
+                // ...whose content carries BOTH turns' text, in order.
+                assert!(
+                    content.contains("First question.") && content.contains("Second question."),
+                    "merged user turn should carry both turns' content, got: {content:?}"
+                );
+            }
+            other => panic!("expected a single coalesced User message, got: {other:?}"),
+        }
+    }
+
+    // A single assistant turn with two parallel tool calls is answered by a user
+    // turn holding two ToolResults, which converts to two distinct
+    // `Message::ToolResult` turns. These must NOT be coalesced — each carries its
+    // own `tool_name`, so merging would corrupt the request.
+    #[test]
+    fn test_coalesce_preserves_parallel_tool_results() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{AssistantContent, ToolResultContent, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many([
+                CompletionMessage::Assistant {
+                    id: None,
+                    content: OneOrMany::many([
+                        AssistantContent::tool_call("call_1", "get_weather", json!({"city": "SF"})),
+                        AssistantContent::tool_call("call_2", "get_time", json!({"city": "NY"})),
+                    ])
+                    .expect("non-empty assistant content"),
+                },
+                CompletionMessage::User {
+                    content: OneOrMany::many([
+                        UserContent::tool_result(
+                            "call_1",
+                            OneOrMany::one(ToolResultContent::text("sunny")),
+                        ),
+                        UserContent::tool_result(
+                            "call_2",
+                            OneOrMany::one(ToolResultContent::text("noon")),
+                        ),
+                    ])
+                    .expect("non-empty user content"),
+                },
+            ])
+            .expect("non-empty history"),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
+            .expect("Failed to create Ollama request");
+
+        // Expect: one Assistant turn followed by two distinct ToolResult turns.
+        let tool_results: Vec<&Message> = ollama_request
+            .messages
+            .iter()
+            .filter(|m| matches!(m, Message::ToolResult { .. }))
+            .collect();
+        assert_eq!(
+            tool_results.len(),
+            2,
+            "parallel tool results must not be coalesced, got: {:?}",
+            ollama_request.messages
+        );
+        match (tool_results[0], tool_results[1]) {
+            (Message::ToolResult { name: n1, .. }, Message::ToolResult { name: n2, .. }) => {
+                assert_eq!(n1, "call_1");
+                assert_eq!(n2, "call_2");
+            }
+            _ => unreachable!(),
+        }
     }
 }

@@ -139,6 +139,17 @@ where
         self.runner = self.runner.max_invalid_tool_call_retries(retries);
         self
     }
+
+    /// Arm this request for message injection and return a cloneable
+    /// [`MessageInjector`](crate::agent::MessageInjector) bound to the run.
+    ///
+    /// Call before awaiting the request; see
+    /// [`AgentRunner::message_injector`](crate::agent::AgentRunner::message_injector)
+    /// for the full pattern. Awaiting consumes `self`, so take the injector
+    /// first, then drive the request from a task.
+    pub fn message_injector(&mut self) -> crate::agent::MessageInjector {
+        self.runner.message_injector()
+    }
 }
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
