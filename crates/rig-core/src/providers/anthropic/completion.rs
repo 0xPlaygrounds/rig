@@ -284,7 +284,11 @@ pub enum Content {
         text: String,
         /// Citations returned by Claude pointing back into the source documents.
         /// Empty (and skipped during serialization) on request-side blocks.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(
+            default,
+            deserialize_with = "null_as_empty_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
         citations: Vec<Citation>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
@@ -697,6 +701,20 @@ impl<'de> Deserialize<'de> for Citation {
             _ => Ok(Citation::Unknown(value)),
         }
     }
+}
+
+/// Deserialize a `Vec<T>`, treating an explicit JSON `null` as an empty vec.
+///
+/// `#[serde(default)]` only fills in a *missing* field, but the Anthropic
+/// Messages API emits an explicit `"citations": null` on text
+/// `content_block_start` events. Without this, `Vec` deserialization rejects the
+/// null and the whole stream fails before any text arrives.
+fn null_as_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 /// Decoded Anthropic document fields lifted out of [`message::Document::additional_params`]:

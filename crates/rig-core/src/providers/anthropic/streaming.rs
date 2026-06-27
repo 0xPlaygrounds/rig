@@ -1293,6 +1293,36 @@ mod tests {
     }
 
     #[test]
+    fn test_text_content_block_start_allows_null_citations() {
+        // The Anthropic Messages API emits an explicit `"citations": null` on the
+        // first text `content_block_start` event. `#[serde(default)]` alone covers
+        // a missing field but not an explicit null, so this must deserialize to an
+        // empty citation list rather than failing the whole stream (see #1971).
+        let json = r#"{
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {
+                "type": "text",
+                "text": "",
+                "citations": null
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+        let StreamingEvent::ContentBlockStart { content_block, .. } = event else {
+            panic!("expected ContentBlockStart");
+        };
+        let Content::Text {
+            text, citations, ..
+        } = content_block
+        else {
+            panic!("expected text content block");
+        };
+        assert_eq!(text, "");
+        assert!(citations.is_empty());
+    }
+
+    #[test]
     fn test_web_search_content_block_start_events_deserialize() {
         let server_tool_use = r#"{
             "type": "content_block_start",
