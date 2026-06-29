@@ -9,8 +9,8 @@ use crate::{
     },
     agent::runner::{
         AgentRunner, CompletionCallDecision, InvalidDecision, build_agent_run,
-        execute_tools_buffered, flow_into_completion_call, flow_into_invalid,
-        new_execute_tool_span, observe_flow, run_single_tool,
+        flow_into_completion_call, flow_into_invalid, new_execute_tool_span, observe_flow,
+        run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
@@ -18,7 +18,7 @@ use crate::{
     tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing::info_span;
@@ -328,7 +328,8 @@ where
     /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: the streamed
     /// message history is unchanged at any `concurrency`, but at `concurrency >
     /// 1` the stream emits all of a turn's `ToolCall` items (call order) and
-    /// then the `ToolResult` items, rather than strictly interleaving each pair.
+    /// then emits `ToolResult` items as each tool completes, which may be
+    /// completion order rather than call order.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.runner = self.runner.tool_concurrency(concurrency);
         self
@@ -980,29 +981,27 @@ where
                         } else {
                             // Concurrent path (`tool_concurrency(n)`, n > 1): emit
                             // every ToolCall stream item eagerly in call order,
-                            // then drive the shared buffered executor — which runs
-                            // up to `concurrency` tools at once but preserves call
-                            // order — and emit each ToolResult as it lands. The
-                            // persisted history is identical to the sequential
-                            // path; only the stream-item interleaving differs.
-                            let mut calls_with_spans: Vec<(PendingToolCall, tracing::Span)> =
-                                Vec::with_capacity(calls.len());
-                            // `None` marks a call with no eagerly-emitted ToolCall
-                            // (pre-resolved) so its result is not surfaced either,
-                            // matching the sequential path; otherwise the call's
-                            // correlation id, used to tag its ToolResult item.
-                            let mut yield_ids: Vec<Option<String>> =
-                                Vec::with_capacity(calls.len());
+                            // then run tools concurrently and surface each
+                            // ToolResult as soon as its tool finishes. Results are
+                            // still stored by original call index, so persisted
+                            // history remains deterministic and provider-facing
+                            // order stays unchanged.
+                            let call_count = calls.len();
+                            let mut indexed_calls: Vec<(
+                                usize,
+                                PendingToolCall,
+                                tracing::Span,
+                                Option<String>,
+                            )> = Vec::with_capacity(call_count);
 
-                            for mut pending in calls {
+                            for (index, mut pending) in calls.into_iter().enumerate() {
                                 let tool_span = new_execute_tool_span();
 
                                 if pending.preresolved_result.is_some() {
                                     // No ToolCall / ToolResult stream items, as in
                                     // the sequential path; the executor returns the
                                     // stored result so history stays consistent.
-                                    yield_ids.push(None);
-                                    calls_with_spans.push((pending, tool_span));
+                                    indexed_calls.push((index, pending, tool_span, None));
                                     continue;
                                 }
 
@@ -1019,44 +1018,63 @@ where
                                     },
                                 ));
 
-                                yield_ids.push(Some(internal_call_id));
-                                calls_with_spans.push((pending, tool_span));
+                                indexed_calls.push((index, pending, tool_span, Some(internal_call_id)));
                             }
 
-                            let buffered = execute_tools_buffered(
-                                &self.hooks,
-                                &tool_server_handle,
-                                &tool_extensions,
-                                calls_with_spans,
-                                &full_history_for_errors,
-                                self.concurrency,
-                            );
-                            futures::pin_mut!(buffered);
+                            let unordered = stream::iter(indexed_calls)
+                                .map(|(index, pending, tool_span, yield_id)| {
+                                    let hooks = &self.hooks;
+                                    let tool_server_handle = &tool_server_handle;
+                                    let tool_extensions = &tool_extensions;
+                                    let full_history_for_errors = &full_history_for_errors;
+                                    async move {
+                                        if let Some(result) = pending.preresolved_result {
+                                            return (index, yield_id, Ok(result));
+                                        }
 
-                            let mut results: Vec<UserContent> =
-                                Vec::with_capacity(yield_ids.len());
-                            // Hold the first error (in call order) but keep
-                            // draining `buffered` so sibling tools already in
-                            // flight run to completion and fire their hooks — the
-                            // blocking path collects the whole stream before
-                            // surfacing an error, so draining keeps the two
-                            // drivers' tool execution / side effects identical.
+                                        let internal_call_id = pending
+                                            .internal_call_id
+                                            .unwrap_or_else(crate::id::generate);
+                                        let result = run_single_tool(
+                                            hooks,
+                                            tool_server_handle,
+                                            tool_extensions,
+                                            &pending.tool_call,
+                                            &internal_call_id,
+                                            full_history_for_errors,
+                                        )
+                                        .await;
+                                        (index, yield_id, result)
+                                    }
+                                    .instrument(tool_span)
+                                })
+                                .buffer_unordered(self.concurrency);
+                            futures::pin_mut!(unordered);
+
+                            let mut results: Vec<Option<UserContent>> =
+                                Vec::with_capacity(call_count);
+                            results.resize_with(call_count, || None);
+                            // Hold the first error but keep draining so sibling
+                            // tools already in flight run to completion and fire
+                            // their hooks. Once terminating, drain without
+                            // surfacing further successful ToolResult items.
                             let mut first_error: Option<PromptError> = None;
-                            // `buffered` preserves call order, so advancing this
-                            // iterator in lockstep pairs each result with the
-                            // matching eagerly-emitted ToolCall's id (or `None`
-                            // for a pre-resolved call, which emits no items).
-                            let mut yield_ids = yield_ids.into_iter();
-                            while let Some(result) = buffered.next().await {
-                                let yield_id = yield_ids.next().flatten();
-                                // Once terminating, drain the rest without
-                                // surfacing further results.
+                            while let Some((index, yield_id, result)) = unordered.next().await {
                                 if first_error.is_some() {
                                     continue;
                                 }
                                 match result {
                                     Ok(content) => {
-                                        results.push(content.clone());
+                                        let Some(slot) = results.get_mut(index) else {
+                                            first_error = Some(PromptError::CompletionError(
+                                                CompletionError::ResponseError(
+                                                    "tool execution returned an invalid result index"
+                                                        .to_string(),
+                                                ),
+                                            ));
+                                            continue;
+                                        };
+                                        *slot = Some(content.clone());
                                         if let Some(internal_call_id) = yield_id
                                             && let UserContent::ToolResult(tool_result) = content
                                         {
@@ -1076,6 +1094,18 @@ where
                                 yield Err(StreamingError::Prompt(Box::new(err)));
                                 break 'outer;
                             }
+
+                            let results: Vec<UserContent> = results
+                                .into_iter()
+                                .collect::<Option<Vec<_>>>()
+                                .ok_or_else(|| {
+                                    StreamingError::Prompt(Box::new(PromptError::CompletionError(
+                                        CompletionError::ResponseError(
+                                            "tool execution finished without producing every result"
+                                                .to_string(),
+                                        ),
+                                    )))
+                                })?;
 
                             if let Err(err) = run.tool_results(results) {
                                 yield Err(Box::new(err).into());

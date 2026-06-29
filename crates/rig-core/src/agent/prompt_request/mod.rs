@@ -76,8 +76,11 @@ where
         self
     }
 
-    /// Add concurrency to the prompt request.
-    /// This will cause the agent to execute tools concurrently.
+    /// Execute up to `concurrency` of a turn's tool calls at once.
+    ///
+    /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: persisted
+    /// history remains in tool-call order, while streaming requests may surface
+    /// tool results in completion order.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.runner = self.runner.tool_concurrency(concurrency);
         self
@@ -527,9 +530,11 @@ where
         self
     }
 
-    /// Add concurrency to the prompt request.
+    /// Execute up to `concurrency` of a turn's tool calls at once.
     ///
-    /// This will cause the agent to execute tools concurrently.
+    /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: persisted
+    /// history remains in tool-call order, while streaming requests may surface
+    /// tool results in completion order.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.inner = self.inner.tool_concurrency(concurrency);
         self
