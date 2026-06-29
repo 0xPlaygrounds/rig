@@ -1284,14 +1284,19 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             })
             .collect();
 
+        let mut additional_params = additional_params;
+        let mut provider_tools = extract_tools_from_additional_params(&mut additional_params)?;
+        let has_tools = !tools.is_empty() || !provider_tools.is_empty();
+
         // Some OpenAI-compatible backends such as llama.cpp will skip tool execution
         // if `response_format` is sent on the first turn alongside tools. Delay the
-        // schema until after the conversation contains a tool result.
+        // schema until after the conversation contains a tool result. Provider-hosted
+        // tools count here too because they are merged into the same wire `tools` array.
         let should_apply_response_format =
-            output_schema.is_some() && (tools.is_empty() || history_has_tool_result);
+            output_schema.is_some() && (!has_tools || history_has_tool_result);
 
         // Map output_schema to OpenAI's response_format and merge into additional_params
-        let mut additional_params = if let Some(schema) = output_schema
+        let additional_params = if let Some(schema) = output_schema
             && should_apply_response_format
         {
             let name = schema
@@ -1324,9 +1329,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             .into_iter()
             .map(serde_json::to_value)
             .collect::<Result<Vec<_>, _>>()?;
-        tools.append(&mut extract_tools_from_additional_params(
-            &mut additional_params,
-        )?);
+        tools.append(&mut provider_tools);
 
         let res = Self {
             model: request_model.unwrap_or(model),
@@ -1652,6 +1655,50 @@ mod tests {
         assert_eq!(serialized["tools"][0]["type"], "function");
         assert_eq!(serialized["tools"][1]["type"], "web_search_preview");
         assert_eq!(serialized["metadata"]["source"], "test");
+    }
+
+    #[test]
+    fn provider_tools_delay_response_format_on_initial_tool_turn() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{"type": "web_search_preview"}]
+            })),
+            output_schema: Some(
+                serde_json::from_value(serde_json::json!({
+                    "title": "SearchAnswer",
+                    "type": "object",
+                    "properties": {
+                        "answer": { "type": "string" }
+                    },
+                    "required": ["answer"]
+                }))
+                .expect("schema should deserialize"),
+            ),
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["tools"][0]["type"], "web_search_preview");
+        assert!(
+            serialized.get("response_format").is_none(),
+            "initial provider-tool turn should omit response_format: {serialized:?}"
+        );
     }
 
     #[test]
