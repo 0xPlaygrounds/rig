@@ -6,7 +6,7 @@ use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
-        GetTokenUsage, Message, Prompt, PromptError, TypedPrompt,
+        GetTokenUsage, Message, Prompt, PromptError, ProviderToolDefinition, TypedPrompt,
     },
     message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
@@ -152,6 +152,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     additional_params: Option<&serde_json::Value>,
+    provider_tools: &[ProviderToolDefinition],
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
@@ -166,6 +167,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         temperature,
         max_tokens,
         additional_params,
+        provider_tools,
         tool_choice,
         tool_server_handle,
         dynamic_context,
@@ -191,6 +193,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     additional_params: Option<&serde_json::Value>,
+    provider_tools: &[ProviderToolDefinition],
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
@@ -377,6 +380,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         .temperature_opt(temperature)
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params.cloned())
+        .provider_tools(provider_tools.to_vec())
         .documents(static_context.to_vec())
         .tools(tooldefs);
 
@@ -461,6 +465,8 @@ where
     pub max_tokens: Option<u64>,
     /// Additional parameters to be passed to the model
     pub additional_params: Option<serde_json::Value>,
+    /// Provider-hosted tools executed by the model provider rather than Rig.
+    pub provider_tools: Vec<ProviderToolDefinition>,
     pub tool_server_handle: ToolServerHandle,
     /// List of vector store, with the sample number
     pub dynamic_context: DynamicContextStore,
@@ -523,6 +529,7 @@ where
             self.temperature,
             self.max_tokens,
             self.additional_params.as_ref(),
+            &self.provider_tools,
             self.tool_choice.as_ref(),
             &self.tool_server_handle,
             &self.dynamic_context,

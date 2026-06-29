@@ -428,6 +428,7 @@ where
         let temperature = self.temperature;
         let max_tokens = self.max_tokens;
         let additional_params = self.additional_params.clone();
+        let provider_tools = self.provider_tools.clone();
         let tool_server_handle = self.tool_server_handle.clone();
         let tool_extensions = self.tool_extensions.clone();
         let dynamic_context = self.dynamic_context.clone();
@@ -561,6 +562,7 @@ where
                             temperature,
                             max_tokens,
                             additional_params.as_ref(),
+                            &provider_tools,
                             tool_choice.as_ref(),
                             &tool_server_handle,
                             &dynamic_context,
