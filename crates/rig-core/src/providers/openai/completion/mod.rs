@@ -1178,7 +1178,7 @@ pub struct CompletionRequest {
     model: String,
     messages: Vec<Message>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
+    tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1194,6 +1194,23 @@ pub struct OpenAIRequestParams {
     pub request: CoreCompletionRequest,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
+}
+
+fn extract_tools_from_additional_params(
+    additional_params: &mut Option<serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
+    if let Some(params) = additional_params.as_mut()
+        && let Some(map) = params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid OpenAI `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
@@ -1274,7 +1291,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             output_schema.is_some() && (tools.is_empty() || history_has_tool_result);
 
         // Map output_schema to OpenAI's response_format and merge into additional_params
-        let additional_params = if let Some(schema) = output_schema
+        let mut additional_params = if let Some(schema) = output_schema
             && should_apply_response_format
         {
             let name = schema
@@ -1302,6 +1319,14 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         } else {
             additional_params
         };
+
+        let mut tools = tools
+            .into_iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut extract_tools_from_additional_params(
+            &mut additional_params,
+        )?);
 
         let res = Self {
             model: request_model.unwrap_or(model),
@@ -1583,6 +1608,50 @@ mod tests {
             serde_json::to_value(openai_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "gpt-4o-mini");
+    }
+
+    #[test]
+    fn openai_chat_request_merges_provider_tools_into_single_tools_array() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![crate::completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Lookup a value".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            }],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{"type": "web_search_preview"}],
+                "metadata": {"source": "test"}
+            })),
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert_eq!(
+            serialized["tools"].as_array().expect("tools array").len(),
+            2
+        );
+        assert_eq!(serialized["tools"][0]["type"], "function");
+        assert_eq!(serialized["tools"][1]["type"], "web_search_preview");
+        assert_eq!(serialized["metadata"]["source"], "test");
     }
 
     #[test]

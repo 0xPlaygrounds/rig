@@ -43,7 +43,7 @@ use super::{
     },
 };
 use crate::{
-    completion::{CompletionModel, Document, Message, PromptError},
+    completion::{CompletionModel, Document, Message, PromptError, ProviderToolDefinition},
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
@@ -233,6 +233,7 @@ where
     pub(crate) temperature: Option<f64>,
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
+    pub(crate) provider_tools: Vec<ProviderToolDefinition>,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Per-call runtime extensions made available to every tool executed during
     /// this run via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
@@ -268,6 +269,7 @@ where
             temperature: agent.temperature,
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
+            provider_tools: agent.provider_tools.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
@@ -759,6 +761,7 @@ where
                         self.temperature,
                         self.max_tokens,
                         self.additional_params.as_ref(),
+                        &self.provider_tools,
                         self.tool_choice.as_ref(),
                         &self.tool_server_handle,
                         &self.dynamic_context,

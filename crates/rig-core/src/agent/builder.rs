@@ -4,7 +4,7 @@ use schemars::{JsonSchema, Schema, schema_for};
 
 use crate::{
     agent::hook::{AgentHook, HookStack},
-    completion::{CompletionModel, Document},
+    completion::{CompletionModel, Document, ProviderToolDefinition},
     memory::ConversationMemory,
     message::ToolChoice,
     tool::{
@@ -109,6 +109,8 @@ where
     static_context: Vec<Document>,
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
+    /// Provider-hosted tools executed by the model provider rather than Rig's tool server.
+    provider_tools: Vec<ProviderToolDefinition>,
     /// Maximum number of tokens for the completion
     max_tokens: Option<u64>,
     /// List of vector store, with the sample number
@@ -219,6 +221,26 @@ where
         self
     }
 
+    /// Add a provider-hosted tool to the agent.
+    ///
+    /// Provider-hosted tools are serialized into the provider request but are
+    /// executed by the model provider, not by Rig's [`ToolServer`]. They may be
+    /// mixed with normal Rig tools; providers that support hosted tools merge
+    /// both kinds into the same wire `tools` array.
+    pub fn provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
+        self.provider_tools.push(tool);
+        self
+    }
+
+    /// Add provider-hosted tools to the agent.
+    pub fn provider_tools(
+        mut self,
+        tools: impl IntoIterator<Item = ProviderToolDefinition>,
+    ) -> Self {
+        self.provider_tools.extend(tools);
+        self
+    }
+
     /// Set the output schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub fn output_schema<T>(mut self) -> Self
@@ -296,6 +318,7 @@ where
             temperature: None,
             max_tokens: None,
             additional_params: None,
+            provider_tools: Vec::new(),
             dynamic_context: vec![],
             tool_choice: None,
             default_max_turns: None,
@@ -329,6 +352,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -356,6 +380,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -389,6 +414,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -490,6 +516,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -525,6 +552,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -558,6 +586,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
@@ -586,6 +615,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle: self.tool_state.handle,
@@ -696,6 +726,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            provider_tools: self.provider_tools,
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
@@ -712,6 +743,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::Completion;
     use crate::test_utils::{MockAddTool, MockCompletionModel};
 
     #[derive(Clone)]
@@ -725,6 +757,61 @@ mod tests {
             .tool(MockAddTool)
             .add_hook(BuilderHook)
             .build();
+    }
+
+    #[tokio::test]
+    async fn provider_tool_is_forwarded_to_completion_request() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+            .provider_tool(
+                ProviderToolDefinition::new("web_search")
+                    .with_config("search_context_size", serde_json::json!("low")),
+            )
+            .build();
+
+        let request = agent
+            .completion("search", Vec::<crate::completion::Message>::new())
+            .await
+            .expect("completion request should build")
+            .build();
+
+        assert!(request.tools.is_empty());
+        assert_eq!(
+            request.additional_params.as_ref().and_then(|params| {
+                params
+                    .get("tools")
+                    .and_then(|tools| tools.get(0))
+                    .and_then(|tool| tool.get("type"))
+                    .and_then(serde_json::Value::as_str)
+            }),
+            Some("web_search")
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_tools_do_not_enter_executable_tool_set() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+            .provider_tool(ProviderToolDefinition::new("web_search"))
+            .tool(MockAddTool)
+            .build();
+
+        let request = agent
+            .completion("search", Vec::<crate::completion::Message>::new())
+            .await
+            .expect("completion request should build")
+            .build();
+
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.tools[0].name, "add");
+        assert_eq!(
+            request.additional_params.as_ref().and_then(|params| {
+                params
+                    .get("tools")
+                    .and_then(|tools| tools.get(0))
+                    .and_then(|tool| tool.get("type"))
+                    .and_then(serde_json::Value::as_str)
+            }),
+            Some("web_search")
+        );
     }
 
     /// The builder's shared MCP helper threads the configured timeout (default,
