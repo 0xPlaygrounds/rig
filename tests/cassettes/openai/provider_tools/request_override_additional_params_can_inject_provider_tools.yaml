@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Reply concisely. Do not use tools unless explicitly asked.","type":"text"}],"role":"system"},{"content":"Reply exactly: ok","role":"user"}],"model":"gpt-5-nano","tools":[{"custom":{"description":"A provider-hosted lookup tool. Do not use it unless explicitly asked.","name":"hosted_lookup"},"type":"custom"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"ok","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-5-nano-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":74,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":150,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":224}}'

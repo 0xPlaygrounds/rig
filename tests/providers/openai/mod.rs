@@ -10,6 +10,7 @@ mod cassette {
     mod models;
     mod multi_extract;
     mod permission_control;
+    mod provider_tools;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod request_hook;
