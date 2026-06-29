@@ -28,11 +28,14 @@ use serde::{Deserialize, Serialize};
 #[non_exhaustive]
 pub enum OutputMode {
     /// Resolve at request time: [`OutputMode::Tool`] when the agent has an
-    /// `output_schema` **and** at least one function tool (and the tool choice
-    /// permits the output-tool call), otherwise [`OutputMode::Native`]. This is
-    /// the default and only changes behavior for the tool + schema case (which is
-    /// broken under `Native` on providers whose native constraint suppresses
-    /// tool calls).
+    /// `output_schema`, at least one Rig-executable or provider-hosted tool, the
+    /// tool choice permits the output-tool call, and the provider's native
+    /// structured output does **not** compose with tool calls. Otherwise resolves
+    /// to [`OutputMode::Native`], so provider-composing models (e.g. OpenAI,
+    /// Anthropic) keep guaranteed native structured output. This is the default
+    /// and only changes behavior for the tool + schema case (which is broken
+    /// under `Native` on providers whose native constraint suppresses tool
+    /// calls).
     #[default]
     Auto,
     /// Register the schema as a synthetic "output tool" the model calls to

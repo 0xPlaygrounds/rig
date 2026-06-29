@@ -58,19 +58,19 @@ fn tool_choice_permits_output_tool(tool_choice: Option<&ToolChoice>) -> bool {
 ///
 /// With no schema there is nothing to enforce, so the result is always `Native`
 /// (the synthetic tool and prompt injection only make sense with a schema).
-/// `Auto` becomes `Tool` only when a real executable tool is present, the tool
-/// choice permits the output-tool call, AND the provider does *not* compose
-/// native structured output with tools — i.e. only where the native constraint
-/// would actually suppress tool calls (#1928). On providers that compose them
-/// (OpenAI, Anthropic), `Auto` keeps guaranteed native structured output.
-/// `Tool` (explicit or via `Auto`) requires that the active [`ToolChoice`]
-/// permit the output-tool call; when it does not, it degrades to `Native` so
-/// structured output is still enforced rather than silently dropped. Explicit
-/// `Prompted`/`Native` are honored when a schema is present. The returned mode is
-/// never `Auto`.
+/// `Auto` becomes `Tool` only when any tool (Rig-executable or provider-hosted)
+/// is present, the tool choice permits the output-tool call, AND the provider
+/// does *not* compose native structured output with tools — i.e. only where the
+/// native constraint would actually suppress tool calls (#1928). On providers
+/// that compose them (OpenAI, Anthropic), `Auto` keeps guaranteed native
+/// structured output. `Tool` (explicit or via `Auto`) requires that the active
+/// [`ToolChoice`] permit the output-tool call; when it does not, it degrades to
+/// `Native` so structured output is still enforced rather than silently dropped.
+/// Explicit `Prompted`/`Native` are honored when a schema is present. The
+/// returned mode is never `Auto`.
 fn resolve_output_mode(
     has_schema: bool,
-    has_executable_tools: bool,
+    has_tools: bool,
     output_tool_callable: bool,
     provider_composes_native: bool,
     requested: &OutputMode,
@@ -83,9 +83,7 @@ fn resolve_output_mode(
         OutputMode::Prompted => OutputMode::Prompted,
         OutputMode::Tool if output_tool_callable => OutputMode::Tool,
         OutputMode::Tool => OutputMode::Native,
-        OutputMode::Auto
-            if has_executable_tools && output_tool_callable && !provider_composes_native =>
-        {
+        OutputMode::Auto if has_tools && output_tool_callable && !provider_composes_native => {
             OutputMode::Tool
         }
         OutputMode::Auto => OutputMode::Native,
@@ -102,6 +100,13 @@ fn pick_output_tool_name(executable_tool_names: &BTreeSet<String>) -> String {
         suffix += 1;
     }
     name
+}
+
+fn additional_params_has_provider_tools(additional_params: Option<&serde_json::Value>) -> bool {
+    additional_params
+        .and_then(|params| params.get("tools"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tools| !tools.is_empty())
 }
 
 pub(crate) fn allowed_tool_names_for_choice(
@@ -342,6 +347,9 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // synthetic output tool is appended.
     let executable_tool_names: BTreeSet<String> =
         tooldefs.iter().map(|tool| tool.name.clone()).collect();
+    let has_provider_hosted_tools = !provider_tools.is_empty()
+        || additional_params_has_provider_tools(additional_params.as_ref());
+    let has_tools_for_output_mode = !executable_tool_names.is_empty() || has_provider_hosted_tools;
 
     // Resolve the effective output mode (#1928). Once the run has committed to a
     // Tool-mode output tool on an earlier turn (signaled by `committed_output_
@@ -351,14 +359,15 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // constraint that suppressed tools in the first place. Only Tool mode is
     // pinned; Native/Prompted re-resolve, so a tool-less first turn can still
     // become Tool once tools appear. Otherwise resolve from the request, the
-    // schema, the tool set, whether the tool choice permits the output-tool call,
-    // and whether the provider composes native structured output with tools.
+    // schema, the Rig/provider-hosted tool set, whether the tool choice permits
+    // the output-tool call, and whether the provider composes native structured
+    // output with tools.
     let resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
         OutputMode::Tool
     } else {
         resolve_output_mode(
             output_schema.is_some(),
-            !executable_tool_names.is_empty(),
+            has_tools_for_output_mode,
             tool_choice_permits_output_tool(tool_choice),
             model.composes_native_output_with_tools(),
             output_mode,
@@ -1007,6 +1016,72 @@ mod tests {
     fn pick_output_tool_name_defaults_when_unused() {
         let executable = tool_names(&["add", "subtract"]);
         assert_eq!(pick_output_tool_name(&executable), DEFAULT_OUTPUT_TOOL_NAME);
+    }
+
+    #[tokio::test]
+    async fn auto_output_mode_counts_provider_hosted_tools_without_making_them_executable() {
+        let model = std::sync::Arc::new(crate::test_utils::MockCompletionModel::default());
+        let tool_server = crate::tool::server::ToolServer::new().run();
+        let dynamic_context: DynamicContextStore = std::sync::Arc::new(Vec::new());
+        let schema: schemars::Schema = serde_json::from_value(serde_json::json!({
+            "title": "SearchAnswer",
+            "type": "object",
+            "properties": {
+                "answer": { "type": "string" }
+            },
+            "required": ["answer"]
+        }))
+        .expect("schema should deserialize");
+
+        let prepared = build_prepared_completion_request(
+            &model,
+            Message::user("search then answer"),
+            &[],
+            None,
+            &[],
+            None,
+            None,
+            None,
+            &[ProviderToolDefinition::new("web_search")],
+            None,
+            &tool_server,
+            &dynamic_context,
+            Some(&schema),
+            &OutputMode::Auto,
+            None,
+            None,
+        )
+        .await
+        .expect("request should build");
+
+        assert!(prepared.executable_tool_names.is_empty());
+        assert_eq!(
+            prepared.output_tool_name.as_deref(),
+            Some(DEFAULT_OUTPUT_TOOL_NAME)
+        );
+        assert_eq!(
+            prepared.allowed_tool_names,
+            tool_names(&[DEFAULT_OUTPUT_TOOL_NAME])
+        );
+
+        let request = prepared.builder.build();
+        assert!(
+            request.output_schema.is_none(),
+            "Tool mode should not set native output_schema"
+        );
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.tools[0].name, DEFAULT_OUTPUT_TOOL_NAME);
+        assert_eq!(
+            request.additional_params.as_ref().and_then(|params| {
+                params
+                    .get("tools")
+                    .and_then(serde_json::Value::as_array)
+                    .and_then(|tools| tools.first())
+                    .and_then(|tool| tool.get("type"))
+                    .and_then(serde_json::Value::as_str)
+            }),
+            Some("web_search")
+        );
     }
 
     #[test]

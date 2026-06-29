@@ -1284,16 +1284,18 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             })
             .collect();
 
+        let has_executable_tools = !tools.is_empty();
         let mut additional_params = additional_params;
         let mut provider_tools = extract_tools_from_additional_params(&mut additional_params)?;
-        let has_tools = !tools.is_empty() || !provider_tools.is_empty();
 
-        // Some OpenAI-compatible backends such as llama.cpp will skip tool execution
-        // if `response_format` is sent on the first turn alongside tools. Delay the
-        // schema until after the conversation contains a tool result. Provider-hosted
-        // tools count here too because they are merged into the same wire `tools` array.
+        // Some OpenAI-compatible backends such as llama.cpp will skip Rig-executed
+        // function tool calls if `response_format` is sent on the first turn. Delay
+        // the schema only for executable Rig tools until after the conversation
+        // contains a Rig tool result. Provider-hosted tools are executed by the
+        // provider, so there may never be a Rig `ToolResult`; keep their schema
+        // enforcement active on hosted-only requests.
         let should_apply_response_format =
-            output_schema.is_some() && (!has_tools || history_has_tool_result);
+            output_schema.is_some() && (!has_executable_tools || history_has_tool_result);
 
         // Map output_schema to OpenAI's response_format and merge into additional_params
         let additional_params = if let Some(schema) = output_schema
@@ -1423,13 +1425,15 @@ where
         Self::new(client.clone(), model)
     }
 
-    // OpenAI Chat Completions *defers* `response_format` while tools are present
-    // and no tool result exists yet (see `should_apply_response_format`), then
-    // applies it once a tool result is in the history. So the native constraint
-    // does not suppress tool calls — they compose — which is what this flag
-    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
-    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
-    // See issue #1928.
+    // OpenAI Chat Completions *defers* `response_format` while executable Rig
+    // function tools are present and no tool result exists yet (see
+    // `should_apply_response_format`), then applies it once a tool result is in
+    // the history. So the native constraint does not suppress Rig tool calls —
+    // they compose — which is what this flag governs. Provider-hosted tools keep
+    // their native schema constraint because Rig does not execute them and may
+    // never observe a tool result. (Caveat: a turn-1 answer with no Rig tool call
+    // is therefore not schema-constrained; `Native` is "guaranteed" only once
+    // Rig tools have run.) See issue #1928.
     fn composes_native_output_with_tools(&self) -> bool {
         true
     }
@@ -1658,7 +1662,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_tools_delay_response_format_on_initial_tool_turn() {
+    fn provider_tools_keep_response_format_on_hosted_only_tool_turn() {
         let request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
@@ -1695,9 +1699,25 @@ mod tests {
             serde_json::to_value(openai_request).expect("serialization should succeed");
 
         assert_eq!(serialized["tools"][0]["type"], "web_search_preview");
-        assert!(
-            serialized.get("response_format").is_none(),
-            "initial provider-tool turn should omit response_format: {serialized:?}"
+        assert_eq!(
+            serialized["response_format"],
+            serde_json::json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "SearchAnswer",
+                    "strict": true,
+                    "schema": {
+                        "title": "SearchAnswer",
+                        "type": "object",
+                        "properties": {
+                            "answer": { "type": "string" }
+                        },
+                        "required": ["answer"],
+                        "additionalProperties": false
+                    }
+                }
+            }),
+            "hosted-only provider-tool turn should keep response_format: {serialized:?}"
         );
     }
 
