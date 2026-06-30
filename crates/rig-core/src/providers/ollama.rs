@@ -464,15 +464,17 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                             "low" => Level::Low,
                             "medium" => Level::Medium,
                             "high" => Level::High,
+                            "max" => Level::Max,
                             _ => {
                                 return Err(CompletionError::RequestError(
-                                    "`think` must be a 'low', 'medium', 'high', or bool".into(),
+                                    "`think` must be a 'low', 'medium', 'high', 'max' or bool"
+                                        .into(),
                                 ));
                             }
                         }),
                         _ => {
                             return Err(CompletionError::RequestError(
-                                "`think` must be a 'low', 'medium', 'high', or bool".into(),
+                                "`think` must be a 'low', 'medium', 'high', 'max' or bool".into(),
                             ));
                         }
                     };
@@ -546,6 +548,7 @@ enum Level {
     Low,
     Medium,
     High,
+    Max,
 }
 
 // ---------- CompletionModel Implementation ----------
