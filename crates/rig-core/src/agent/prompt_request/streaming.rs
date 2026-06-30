@@ -633,6 +633,204 @@ where
     }
 }
 
+/// Execute a turn's tool calls, shared by both surfaces.
+///
+/// Emits a `ToolCall` item before each tool runs and a `ToolResult` item as each
+/// finishes, feeding the (call-ordered) results back into the machine. The tool
+/// items carry no raw provider response, so this is generic over the surface's
+/// `R`. `chain_tool_span` lets the blocking surface chain spans into its linear
+/// `follows_from` sequence (the streaming surface returns the span unchanged).
+pub(crate) fn drive_tool_calls<'a, M, R, F>(
+    runner: &'a AgentRunner<M>,
+    run: &'a mut AgentRun,
+    calls: Vec<PendingToolCall>,
+    chain_tool_span: F,
+) -> DriveStream<'a, R>
+where
+    M: CompletionModel,
+    R: WasmCompatSend + 'a,
+    F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
+{
+    Box::pin(async_stream::stream! {
+        let full_history_for_errors = run.full_history();
+
+        if runner.concurrency <= 1 {
+            // Sequential default: one ToolCall/ToolResult pair per tool, strictly
+            // interleaved. Byte-identical to the pre-concurrency behavior.
+            let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
+
+            for pending in calls {
+                let tool_call = pending.tool_call;
+                if let Some(result) = pending.preresolved_result {
+                    results.push(result);
+                    continue;
+                }
+                let internal_call_id =
+                    pending.internal_call_id.unwrap_or_else(crate::id::generate);
+
+                let tool_span = chain_tool_span(new_execute_tool_span());
+
+                yield Ok(MultiTurnStreamItem::stream_item(
+                    StreamedAssistantContent::ToolCall {
+                        tool_call: tool_call.clone(),
+                        internal_call_id: internal_call_id.clone(),
+                    },
+                ));
+
+                let result = run_single_tool(
+                    &runner.hooks,
+                    &runner.tool_server_handle,
+                    &runner.tool_extensions,
+                    &tool_call,
+                    &internal_call_id,
+                    &full_history_for_errors,
+                )
+                .instrument(tool_span)
+                .await;
+
+                match result {
+                    Ok(content) => {
+                        results.push(content.clone());
+                        if let UserContent::ToolResult(tool_result) = content {
+                            yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                StreamedUserContent::ToolResult {
+                                    tool_result,
+                                    internal_call_id,
+                                },
+                            ));
+                        }
+                    }
+                    Err(err) => {
+                        yield Err(StreamingError::Prompt(Box::new(err)));
+                        return;
+                    }
+                }
+            }
+
+            if let Err(err) = run.tool_results(results) {
+                yield Err(Box::new(err).into());
+                return;
+            }
+        } else {
+            // Concurrent path: emit every ToolCall stream item eagerly in call
+            // order, then run tools concurrently and surface each ToolResult as
+            // soon as its tool finishes. Results are still stored by original
+            // call index, so persisted history remains deterministic.
+            let call_count = calls.len();
+            let mut indexed_calls: Vec<(usize, PendingToolCall, tracing::Span, Option<String>)> =
+                Vec::with_capacity(call_count);
+
+            for (index, mut pending) in calls.into_iter().enumerate() {
+                let tool_span = chain_tool_span(new_execute_tool_span());
+
+                if pending.preresolved_result.is_some() {
+                    indexed_calls.push((index, pending, tool_span, None));
+                    continue;
+                }
+
+                let internal_call_id = pending
+                    .internal_call_id
+                    .clone()
+                    .unwrap_or_else(crate::id::generate);
+                pending.internal_call_id = Some(internal_call_id.clone());
+
+                yield Ok(MultiTurnStreamItem::stream_item(
+                    StreamedAssistantContent::ToolCall {
+                        tool_call: pending.tool_call.clone(),
+                        internal_call_id: internal_call_id.clone(),
+                    },
+                ));
+
+                indexed_calls.push((index, pending, tool_span, Some(internal_call_id)));
+            }
+
+            let unordered = stream::iter(indexed_calls)
+                .map(|(index, pending, tool_span, yield_id)| {
+                    let hooks = &runner.hooks;
+                    let tool_server_handle = &runner.tool_server_handle;
+                    let tool_extensions = &runner.tool_extensions;
+                    let full_history_for_errors = &full_history_for_errors;
+                    async move {
+                        if let Some(result) = pending.preresolved_result {
+                            return (index, yield_id, Ok(result));
+                        }
+
+                        let internal_call_id =
+                            pending.internal_call_id.unwrap_or_else(crate::id::generate);
+                        let result = run_single_tool(
+                            hooks,
+                            tool_server_handle,
+                            tool_extensions,
+                            &pending.tool_call,
+                            &internal_call_id,
+                            full_history_for_errors,
+                        )
+                        .await;
+                        (index, yield_id, result)
+                    }
+                    .instrument(tool_span)
+                })
+                .buffer_unordered(runner.concurrency);
+            futures::pin_mut!(unordered);
+
+            let mut results: Vec<Option<UserContent>> = Vec::with_capacity(call_count);
+            results.resize_with(call_count, || None);
+            let mut first_error: Option<PromptError> = None;
+            while let Some((index, yield_id, result)) = unordered.next().await {
+                if first_error.is_some() {
+                    continue;
+                }
+                match result {
+                    Ok(content) => {
+                        let Some(slot) = results.get_mut(index) else {
+                            first_error = Some(PromptError::CompletionError(
+                                CompletionError::ResponseError(
+                                    "tool execution returned an invalid result index".to_string(),
+                                ),
+                            ));
+                            continue;
+                        };
+                        *slot = Some(content.clone());
+                        if let Some(internal_call_id) = yield_id
+                            && let UserContent::ToolResult(tool_result) = content
+                        {
+                            yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                StreamedUserContent::ToolResult {
+                                    tool_result,
+                                    internal_call_id,
+                                },
+                            ));
+                        }
+                    }
+                    Err(err) => first_error = Some(err),
+                }
+            }
+
+            if let Some(err) = first_error {
+                yield Err(StreamingError::Prompt(Box::new(err)));
+                return;
+            }
+
+            let results: Vec<UserContent> = match results.into_iter().collect::<Option<Vec<_>>>() {
+                Some(results) => results,
+                None => {
+                    yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
+                        CompletionError::ResponseError(
+                            "tool execution finished without producing every result".to_string(),
+                        ),
+                    ))));
+                    return;
+                }
+            };
+
+            if let Err(err) = run.tool_results(results) {
+                yield Err(Box::new(err).into());
+                return;
+            }
+        }
+    })
+}
+
 /// [`TurnSource`] for the streaming surface: each turn opens a provider stream,
 /// drives a [`StreamedTurnAssembler`], and yields assistant/tool deltas.
 pub(crate) struct StreamingTurnSource {
@@ -987,192 +1185,8 @@ where
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, M::StreamingResponse> {
-        Box::pin(async_stream::stream! {
-            let full_history_for_errors = run.full_history();
-
-            if runner.concurrency <= 1 {
-                // Sequential default: one ToolCall/ToolResult pair per tool,
-                // strictly interleaved. Byte-identical to the pre-concurrency
-                // behavior.
-                let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
-
-                for pending in calls {
-                    let tool_call = pending.tool_call;
-                    if let Some(result) = pending.preresolved_result {
-                        results.push(result);
-                        continue;
-                    }
-                    let internal_call_id =
-                        pending.internal_call_id.unwrap_or_else(crate::id::generate);
-
-                    let tool_span = new_execute_tool_span();
-
-                    yield Ok(MultiTurnStreamItem::stream_item(
-                        StreamedAssistantContent::ToolCall {
-                            tool_call: tool_call.clone(),
-                            internal_call_id: internal_call_id.clone(),
-                        },
-                    ));
-
-                    let result = run_single_tool(
-                        &runner.hooks,
-                        &runner.tool_server_handle,
-                        &runner.tool_extensions,
-                        &tool_call,
-                        &internal_call_id,
-                        &full_history_for_errors,
-                    )
-                    .instrument(tool_span)
-                    .await;
-
-                    match result {
-                        Ok(content) => {
-                            results.push(content.clone());
-                            if let UserContent::ToolResult(tool_result) = content {
-                                yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                    StreamedUserContent::ToolResult {
-                                        tool_result,
-                                        internal_call_id,
-                                    },
-                                ));
-                            }
-                        }
-                        Err(err) => {
-                            yield Err(StreamingError::Prompt(Box::new(err)));
-                            return;
-                        }
-                    }
-                }
-
-                if let Err(err) = run.tool_results(results) {
-                    yield Err(Box::new(err).into());
-                    return;
-                }
-            } else {
-                // Concurrent path: emit every ToolCall stream item eagerly in
-                // call order, then run tools concurrently and surface each
-                // ToolResult as soon as its tool finishes. Results are still
-                // stored by original call index, so persisted history remains
-                // deterministic.
-                let call_count = calls.len();
-                let mut indexed_calls: Vec<(
-                    usize,
-                    PendingToolCall,
-                    tracing::Span,
-                    Option<String>,
-                )> = Vec::with_capacity(call_count);
-
-                for (index, mut pending) in calls.into_iter().enumerate() {
-                    let tool_span = new_execute_tool_span();
-
-                    if pending.preresolved_result.is_some() {
-                        indexed_calls.push((index, pending, tool_span, None));
-                        continue;
-                    }
-
-                    let internal_call_id = pending
-                        .internal_call_id
-                        .clone()
-                        .unwrap_or_else(crate::id::generate);
-                    pending.internal_call_id = Some(internal_call_id.clone());
-
-                    yield Ok(MultiTurnStreamItem::stream_item(
-                        StreamedAssistantContent::ToolCall {
-                            tool_call: pending.tool_call.clone(),
-                            internal_call_id: internal_call_id.clone(),
-                        },
-                    ));
-
-                    indexed_calls.push((index, pending, tool_span, Some(internal_call_id)));
-                }
-
-                let unordered = stream::iter(indexed_calls)
-                    .map(|(index, pending, tool_span, yield_id)| {
-                        let hooks = &runner.hooks;
-                        let tool_server_handle = &runner.tool_server_handle;
-                        let tool_extensions = &runner.tool_extensions;
-                        let full_history_for_errors = &full_history_for_errors;
-                        async move {
-                            if let Some(result) = pending.preresolved_result {
-                                return (index, yield_id, Ok(result));
-                            }
-
-                            let internal_call_id =
-                                pending.internal_call_id.unwrap_or_else(crate::id::generate);
-                            let result = run_single_tool(
-                                hooks,
-                                tool_server_handle,
-                                tool_extensions,
-                                &pending.tool_call,
-                                &internal_call_id,
-                                full_history_for_errors,
-                            )
-                            .await;
-                            (index, yield_id, result)
-                        }
-                        .instrument(tool_span)
-                    })
-                    .buffer_unordered(runner.concurrency);
-                futures::pin_mut!(unordered);
-
-                let mut results: Vec<Option<UserContent>> = Vec::with_capacity(call_count);
-                results.resize_with(call_count, || None);
-                let mut first_error: Option<PromptError> = None;
-                while let Some((index, yield_id, result)) = unordered.next().await {
-                    if first_error.is_some() {
-                        continue;
-                    }
-                    match result {
-                        Ok(content) => {
-                            let Some(slot) = results.get_mut(index) else {
-                                first_error = Some(PromptError::CompletionError(
-                                    CompletionError::ResponseError(
-                                        "tool execution returned an invalid result index"
-                                            .to_string(),
-                                    ),
-                                ));
-                                continue;
-                            };
-                            *slot = Some(content.clone());
-                            if let Some(internal_call_id) = yield_id
-                                && let UserContent::ToolResult(tool_result) = content
-                            {
-                                yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                    StreamedUserContent::ToolResult {
-                                        tool_result,
-                                        internal_call_id,
-                                    },
-                                ));
-                            }
-                        }
-                        Err(err) => first_error = Some(err),
-                    }
-                }
-
-                if let Some(err) = first_error {
-                    yield Err(StreamingError::Prompt(Box::new(err)));
-                    return;
-                }
-
-                let results: Vec<UserContent> = match results.into_iter().collect::<Option<Vec<_>>>()
-                {
-                    Some(results) => results,
-                    None => {
-                        yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
-                            CompletionError::ResponseError(
-                                "tool execution finished without producing every result".to_string(),
-                            ),
-                        ))));
-                        return;
-                    }
-                };
-
-                if let Err(err) = run.tool_results(results) {
-                    yield Err(Box::new(err).into());
-                    return;
-                }
-            }
-        })
+        // The streaming surface chains nothing onto its tool spans.
+        drive_tool_calls(runner, run, calls, |span| span)
     }
 
     fn record_run_level_telemetry(
@@ -1204,7 +1218,8 @@ where
             });
         // Always surface the accumulated messages (parity with the blocking
         // `run()`), regardless of whether the caller supplied input history.
-        let final_messages: Option<Vec<Message>> = Some(response.messages.clone().unwrap_or_default());
+        let final_messages: Option<Vec<Message>> =
+            Some(response.messages.clone().unwrap_or_default());
         MultiTurnStreamItem::final_response_with_completion_calls(
             final_choice,
             response.usage,

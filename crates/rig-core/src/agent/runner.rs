@@ -30,18 +30,19 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use futures::{Stream, StreamExt, stream};
+use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
     hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, RequestOverride, StepEvent},
     prompt_request::{
-        PromptResponse, tool_result_message, tool_result_output,
+        PromptResponse,
         streaming::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
-            streaming_error_into_prompt,
+            drive_tool_calls, streaming_error_into_prompt,
         },
+        tool_result_message, tool_result_output,
     },
     run::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
@@ -430,7 +431,10 @@ pub(crate) fn build_agent_run(
 /// already inside a span we adopt it and report `false`, so the driver can avoid
 /// recording run-level usage onto a span it does not own (see the
 /// `created_agent_span` guard in both drivers' `Done` handling).
-pub(crate) fn acquire_agent_span(agent_name: &str, preamble: Option<&str>) -> (tracing::Span, bool) {
+pub(crate) fn acquire_agent_span(
+    agent_name: &str,
+    preamble: Option<&str>,
+) -> (tracing::Span, bool) {
     if tracing::Span::current().is_disabled() {
         let span = info_span!(
             "invoke_agent",
@@ -654,63 +658,6 @@ pub(crate) fn new_execute_tool_span() -> tracing::Span {
     )
 }
 
-/// Execute a turn's tool calls with up to `concurrency` running at once,
-/// yielding each result **in tool-call (emission) order**.
-///
-/// Uses `buffered` (not `buffer_unordered`), so results land in call order
-/// regardless of `concurrency` — keeping the blocking driver's message history
-/// deterministic. The streaming driver uses a completion-ordered stream for
-/// user-facing events, then reassembles the same call-ordered history before the
-/// next model turn. Each call runs inside its paired span; pre-resolved calls —
-/// those suppressed by invalid tool-call recovery — return their stored result
-/// without executing.
-pub(crate) fn execute_tools_buffered<'a, M>(
-    hooks: &'a HookStack<M>,
-    tool_server: &'a ToolServerHandle,
-    tool_extensions: &'a ToolCallExtensions,
-    calls: Vec<(PendingToolCall, tracing::Span)>,
-    error_history: &'a [Message],
-    concurrency: usize,
-) -> impl Stream<Item = Result<UserContent, PromptError>> + 'a
-where
-    M: CompletionModel,
-{
-    stream::iter(calls)
-        .map(move |(pending, tool_span)| {
-            async move {
-                let PendingToolCall {
-                    tool_call,
-                    preresolved_result,
-                    internal_call_id,
-                } = pending;
-                // Tool calls suppressed by invalid tool-call recovery come
-                // pre-resolved and must not execute.
-                if let Some(result) = preresolved_result {
-                    return Ok(result);
-                }
-                // Reuse the call's correlation id when it arrived via a streamed
-                // turn (so the blocking driver keeps the ids a consumer already
-                // saw), otherwise mint a fresh one — matching the prior
-                // always-fresh blocking behavior when none is present.
-                let internal_call_id = internal_call_id.unwrap_or_else(crate::id::generate);
-                run_single_tool(
-                    hooks,
-                    tool_server,
-                    tool_extensions,
-                    &tool_call,
-                    &internal_call_id,
-                    error_history,
-                )
-                .await
-            }
-            .instrument(tool_span)
-        })
-        // `buffered` (not `buffer_unordered`) so results land in tool-call
-        // emission order — matching the streaming driver's persisted history
-        // order, so both produce the same message history even at concurrency > 1.
-        .buffered(concurrency)
-}
-
 /// [`TurnSource`] for the blocking surface: each turn issues a unary
 /// `model.completion()` request and feeds the whole response into the machine.
 /// Emits no intermediate items (the blocking surface folds the engine to its
@@ -867,46 +814,9 @@ where
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, M::Response> {
-        Box::pin(async_stream::stream! {
-            // Materialize the diagnostic history once; tools only read it on a
-            // hook-terminate error path, so every tool future shares a single
-            // borrow instead of deep-cloning the conversation per call.
-            let full_history_for_errors = run.full_history();
-
-            // Build a `follows_from`-chained span per call, in call order, then
-            // hand the calls to the buffered executor.
-            let calls_with_spans: Vec<(PendingToolCall, tracing::Span)> = calls
-                .into_iter()
-                .map(|pending| (pending, self.chain_span(new_execute_tool_span())))
-                .collect();
-
-            let tool_results = execute_tools_buffered(
-                &runner.hooks,
-                &runner.tool_server_handle,
-                &runner.tool_extensions,
-                calls_with_spans,
-                &full_history_for_errors,
-                runner.concurrency,
-            )
-            .collect::<Vec<Result<UserContent, PromptError>>>()
-            .await;
-
-            let mut tool_content = Vec::with_capacity(tool_results.len());
-            for result in tool_results {
-                match result {
-                    Ok(content) => tool_content.push(content),
-                    Err(err) => {
-                        yield Err(StreamingError::Prompt(Box::new(err)));
-                        return;
-                    }
-                }
-            }
-
-            if let Err(err) = run.tool_results(tool_content) {
-                yield Err(Box::new(err).into());
-                return;
-            }
-        })
+        // The blocking surface chains tool spans into its linear `follows_from`
+        // sequence (chat -> tool -> chat).
+        drive_tool_calls(runner, run, calls, |span| self.chain_span(span))
     }
 
     fn record_run_level_telemetry(
@@ -1370,7 +1280,8 @@ mod tests {
             let spans = captured.snapshot();
 
             // The blocking chat span is named "chat" (NOT "chat_streaming").
-            let chat_spans: Vec<&CapturedSpan> = spans.iter().filter(|s| s.name == "chat").collect();
+            let chat_spans: Vec<&CapturedSpan> =
+                spans.iter().filter(|s| s.name == "chat").collect();
             assert_eq!(chat_spans.len(), 2, "two model turns -> two chat spans");
             assert!(
                 spans.iter().all(|s| s.name != "chat_streaming"),
