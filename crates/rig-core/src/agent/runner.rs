@@ -417,6 +417,88 @@ pub(crate) fn build_agent_run(
     run
 }
 
+/// Build (or adopt) the top-level `invoke_agent` span for a run, shared by the
+/// blocking and streaming drivers so the run-level span shape is defined once.
+///
+/// Returns the span plus whether it was newly created. When the caller is
+/// already inside a span we adopt it and report `false`, so the driver can avoid
+/// recording run-level usage onto a span it does not own (see the
+/// `created_agent_span` guard in both drivers' `Done` handling).
+pub(crate) fn acquire_agent_span(agent_name: &str, preamble: Option<&str>) -> (tracing::Span, bool) {
+    if tracing::Span::current().is_disabled() {
+        let span = info_span!(
+            "invoke_agent",
+            gen_ai.operation.name = "invoke_agent",
+            gen_ai.agent.name = agent_name,
+            gen_ai.system_instructions = preamble,
+            gen_ai.prompt = tracing::field::Empty,
+            gen_ai.completion = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+        );
+        (span, true)
+    } else {
+        (tracing::Span::current(), false)
+    }
+}
+
+/// Outcome of firing the `CompletionCall` hook for a turn.
+pub(crate) enum CompletionCallOutcome {
+    /// Proceed, optionally applying a per-turn request override.
+    Proceed(Option<RequestOverride>),
+    /// Terminate the run with this reason.
+    Terminate(String),
+}
+
+/// Fire the `CompletionCall` hook for a turn and resolve its [`Flow`]
+/// (fail-closed). Shared by the blocking and streaming drivers so this steering
+/// event fires identically on both; each driver surfaces `Terminate` in its own
+/// medium (a returned `Err` vs. a yielded error item).
+pub(crate) async fn resolve_completion_call<M>(
+    hooks: &HookStack<M>,
+    prompt: &Message,
+    history: &[Message],
+    turn: usize,
+) -> CompletionCallOutcome
+where
+    M: CompletionModel,
+{
+    match flow_into_completion_call(
+        hooks
+            .on_event(StepEvent::CompletionCall {
+                prompt,
+                history,
+                turn,
+            })
+            .await,
+    ) {
+        CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
+        CompletionCallDecision::Override(request) => CompletionCallOutcome::Proceed(Some(request)),
+        CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
+    }
+}
+
+/// Append a finished run's messages to conversation memory, logging and
+/// proceeding on failure. Shared `Done`-arm behavior for both drivers.
+pub(crate) async fn append_run_messages(
+    memory_handle: Option<&(Arc<dyn ConversationMemory>, String)>,
+    messages: Vec<Message>,
+) {
+    if let Some((memory, id)) = memory_handle
+        && let Err(err) = memory.append(id, messages).await
+    {
+        tracing::warn!(
+            error = %err,
+            conversation_id = %id,
+            "conversation memory append failed; surfacing final response anyway"
+        );
+    }
+}
+
 /// Execute a single tool call, firing the `ToolCall` and `ToolResult` hooks and
 /// shaping the result. **Shared by the blocking and streaming drivers** so a
 /// tool call behaves identically in both: same hook events, same fail-closed
@@ -631,24 +713,8 @@ where
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
     pub async fn run(self) -> Result<PromptResponse, PromptError> {
-        let agent_span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                "invoke_agent",
-                gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent_name_or_default(),
-                gen_ai.system_instructions = self.preamble,
-                gen_ai.prompt = tracing::field::Empty,
-                gen_ai.completion = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let (agent_span, created_agent_span) =
+            acquire_agent_span(self.agent_name_or_default(), self.preamble.as_deref());
 
         if let Some(text) = self.prompt.rag_text() {
             agent_span.record("gen_ai.prompt", text);
@@ -684,21 +750,13 @@ where
                         tracing::info!("Current conversation depth: {}/{}", turn, self.max_turns);
                     }
 
-                    let request_override = match flow_into_completion_call(
-                        self.hooks
-                            .on_event(StepEvent::CompletionCall {
-                                prompt: &prompt,
-                                history: &history,
-                                turn,
-                            })
-                            .await,
-                    ) {
-                        CompletionCallDecision::Terminate(reason) => {
-                            return Err(run.cancel_error(reason));
-                        }
-                        CompletionCallDecision::Override(request) => Some(request),
-                        CompletionCallDecision::Proceed => None,
-                    };
+                    let request_override =
+                        match resolve_completion_call(&self.hooks, &prompt, &history, turn).await {
+                            CompletionCallOutcome::Terminate(reason) => {
+                                return Err(run.cancel_error(reason));
+                            }
+                            CompletionCallOutcome::Proceed(request_override) => request_override,
+                        };
 
                     // Record this turn's base system prompt — the override-or-baseline
                     // preamble, before any output-mode augmentation the request
@@ -872,35 +930,34 @@ where
                         tracing::info!("Depth reached: {}/{}", run.turn(), self.max_turns);
                     }
 
-                    let usage = response.usage;
-                    agent_span.record("gen_ai.completion", &response.output);
-                    agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    agent_span.record(
-                        "gen_ai.usage.cache_read.input_tokens",
-                        usage.cached_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.cache_creation.input_tokens",
-                        usage.cache_creation_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.tool_use_prompt_tokens",
-                        usage.tool_use_prompt_tokens,
-                    );
-                    agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
-
-                    if let Some((memory, id)) = memory_handle.as_ref()
-                        && let Err(err) = memory
-                            .append(id, response.messages.clone().unwrap_or_default())
-                            .await
-                    {
-                        tracing::warn!(
-                            error = %err,
-                            conversation_id = %id,
-                            "conversation memory append failed; returning model response anyway"
+                    // Record run-level completion + usage onto the agent span, but
+                    // only when we created it — never pollute a caller-supplied
+                    // outer span (parity with the streaming driver's guard).
+                    if created_agent_span {
+                        let usage = response.usage;
+                        agent_span.record("gen_ai.completion", &response.output);
+                        agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                        agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                        agent_span.record(
+                            "gen_ai.usage.cache_read.input_tokens",
+                            usage.cached_input_tokens,
                         );
+                        agent_span.record(
+                            "gen_ai.usage.cache_creation.input_tokens",
+                            usage.cache_creation_input_tokens,
+                        );
+                        agent_span.record(
+                            "gen_ai.usage.tool_use_prompt_tokens",
+                            usage.tool_use_prompt_tokens,
+                        );
+                        agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
                     }
+
+                    append_run_messages(
+                        memory_handle.as_ref(),
+                        response.messages.clone().unwrap_or_default(),
+                    )
+                    .await;
 
                     return Ok(response);
                 }
@@ -1085,6 +1142,276 @@ mod tests {
             serde_json::to_value(&blocking_messages).expect("serialize blocking"),
             serde_json::to_value(&streaming_messages).expect("serialize streaming"),
         );
+    }
+
+    /// Safety net for the streaming/non-streaming unification: pins the blocking
+    /// driver's span topology (span name, `invoke_agent` creation, the
+    /// `follows_from` chain, and `created_agent_span`-gated run-level usage) so a
+    /// later refactor onto a shared engine cannot silently drift it. The
+    /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
+    mod span_safety_net {
+        use std::collections::{HashMap, HashSet};
+        use std::sync::{Arc, Mutex};
+
+        use tracing::Instrument;
+        use tracing::field::{Field, Visit};
+        use tracing::span::{Attributes, Record};
+        use tracing::{Id, Subscriber};
+        use tracing_subscriber::layer::{Context, SubscriberExt};
+        use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+        use crate::agent::AgentBuilder;
+        use crate::completion::Usage;
+        use crate::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
+
+        #[derive(Clone)]
+        struct CapturedSpan {
+            id: u64,
+            name: String,
+            field_names: HashSet<String>,
+            u64_fields: HashMap<String, u64>,
+        }
+
+        #[derive(Clone, Default)]
+        struct Captured {
+            spans: Arc<Mutex<Vec<CapturedSpan>>>,
+            /// `(span, follows_from)` pairs recorded via `Span::follows_from`.
+            follows: Arc<Mutex<Vec<(u64, u64)>>>,
+        }
+
+        impl Captured {
+            fn insert(&self, id: &Id, name: &str) {
+                self.spans.lock().expect("spans").push(CapturedSpan {
+                    id: id.into_u64(),
+                    name: name.to_string(),
+                    field_names: HashSet::new(),
+                    u64_fields: HashMap::new(),
+                });
+            }
+
+            fn record(&self, id: &Id, names: HashSet<String>, u64s: HashMap<String, u64>) {
+                let id = id.into_u64();
+                if let Ok(mut spans) = self.spans.lock()
+                    && let Some(span) = spans.iter_mut().find(|s| s.id == id)
+                {
+                    span.field_names.extend(names);
+                    span.u64_fields.extend(u64s);
+                }
+            }
+
+            fn follows_from(&self, span: &Id, follows: &Id) {
+                self.follows
+                    .lock()
+                    .expect("follows")
+                    .push((span.into_u64(), follows.into_u64()));
+            }
+
+            fn clear(&self) {
+                self.spans.lock().expect("spans").clear();
+                self.follows.lock().expect("follows").clear();
+            }
+
+            fn snapshot(&self) -> Vec<CapturedSpan> {
+                self.spans.lock().expect("spans").clone()
+            }
+
+            fn follows_edges(&self) -> Vec<(u64, u64)> {
+                self.follows.lock().expect("follows").clone()
+            }
+        }
+
+        struct CaptureLayer {
+            captured: Captured,
+        }
+
+        impl<S> Layer<S> for CaptureLayer
+        where
+            S: Subscriber + for<'l> LookupSpan<'l>,
+        {
+            fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
+                self.captured.insert(id, attrs.metadata().name());
+            }
+
+            fn on_record(&self, span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
+                let mut visitor = FieldVisitor::default();
+                values.record(&mut visitor);
+                self.captured.record(span, visitor.names, visitor.u64s);
+            }
+
+            fn on_follows_from(&self, span: &Id, follows: &Id, _ctx: Context<'_, S>) {
+                self.captured.follows_from(span, follows);
+            }
+        }
+
+        #[derive(Default)]
+        struct FieldVisitor {
+            names: HashSet<String>,
+            u64s: HashMap<String, u64>,
+        }
+
+        impl Visit for FieldVisitor {
+            fn record_u64(&mut self, field: &Field, value: u64) {
+                self.names.insert(field.name().to_string());
+                self.u64s.insert(field.name().to_string(), value);
+            }
+
+            fn record_str(&mut self, field: &Field, _value: &str) {
+                self.names.insert(field.name().to_string());
+            }
+
+            fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
+                self.names.insert(field.name().to_string());
+            }
+        }
+
+        fn usage(input: u64, output: u64) -> Usage {
+            Usage {
+                input_tokens: input,
+                output_tokens: output,
+                ..Usage::new()
+            }
+        }
+
+        /// Two-turn tool scenario: the blocking driver emits chat -> execute_tool
+        /// -> chat, exercising the `follows_from` chain.
+        fn tool_then_text_model() -> MockCompletionModel {
+            MockCompletionModel::from_turns([
+                MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 2, "y": 3}))
+                    .with_usage(usage(7, 11)),
+                MockTurn::text("the answer is 5").with_usage(usage(13, 17)),
+            ])
+        }
+
+        /// Register the blocking driver's span callsites against the scoped
+        /// subscriber before asserting, mirroring the streaming usage test's
+        /// interest-cache warm-up (a foreign thread without our subscriber can
+        /// otherwise cache `Interest::never` for these callsites).
+        async fn warm_blocking_callsites() {
+            let agent = AgentBuilder::new(tool_then_text_model())
+                .tool(MockAddTool)
+                .build();
+            let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
+        }
+
+        #[tokio::test]
+        async fn run_records_usage_and_chains_chat_spans_on_a_created_agent_span() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            let agent = AgentBuilder::new(tool_then_text_model())
+                .tool(MockAddTool)
+                .build();
+            let response = agent
+                .runner("add 2 and 3")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("blocking run should succeed");
+            assert_eq!(response.output, "the answer is 5");
+
+            let spans = captured.snapshot();
+
+            // The blocking chat span is named "chat" (NOT "chat_streaming").
+            let chat_spans: Vec<&CapturedSpan> = spans.iter().filter(|s| s.name == "chat").collect();
+            assert_eq!(chat_spans.len(), 2, "two model turns -> two chat spans");
+            assert!(
+                spans.iter().all(|s| s.name != "chat_streaming"),
+                "blocking driver must not emit chat_streaming spans"
+            );
+
+            // A run with no ambient span creates its own invoke_agent span...
+            let agent_span = spans
+                .iter()
+                .find(|s| s.name == "invoke_agent")
+                .expect("blocking run should create an invoke_agent span");
+
+            // ...and records aggregate usage + completion onto it (created_agent_span).
+            assert_eq!(
+                agent_span.u64_fields.get("gen_ai.usage.input_tokens"),
+                Some(&(7 + 13)),
+            );
+            assert_eq!(
+                agent_span.u64_fields.get("gen_ai.usage.output_tokens"),
+                Some(&(11 + 17)),
+            );
+            assert!(
+                agent_span.field_names.contains("gen_ai.completion"),
+                "the created agent span records the final completion text"
+            );
+
+            // The blocking driver links chat/tool spans into a linear
+            // follows_from chain (chat#1 -> execute_tool -> chat#2); the
+            // streaming driver does not, so this is a blocking-only invariant the
+            // unification must keep.
+            let tool_span = spans
+                .iter()
+                .find(|s| s.name == "execute_tool")
+                .expect("tool turn should emit an execute_tool span");
+            let edges = captured.follows_edges();
+            assert!(
+                edges.contains(&(tool_span.id, chat_spans[0].id)),
+                "execute_tool should follow_from the first chat span; edges={edges:?}"
+            );
+            assert!(
+                edges.contains(&(chat_spans[1].id, tool_span.id)),
+                "the second chat span should follow_from execute_tool; edges={edges:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn run_does_not_record_usage_onto_a_caller_supplied_outer_span() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            let outer = tracing::info_span!("outer");
+            async {
+                let agent = AgentBuilder::new(tool_then_text_model())
+                    .tool(MockAddTool)
+                    .build();
+                agent
+                    .runner("add 2 and 3")
+                    .max_turns(3)
+                    .run()
+                    .await
+                    .expect("blocking run should succeed");
+            }
+            .instrument(outer)
+            .await;
+
+            let spans = captured.snapshot();
+            // Under an ambient span the driver adopts it; no invoke_agent is created.
+            assert!(
+                spans.iter().all(|s| s.name != "invoke_agent"),
+                "an ambient outer span should be adopted, not wrapped in invoke_agent"
+            );
+            let outer_span = spans
+                .iter()
+                .find(|s| s.name == "outer")
+                .expect("outer span should be captured");
+            assert!(
+                outer_span
+                    .field_names
+                    .iter()
+                    .all(|name| !name.starts_with("gen_ai.usage.")),
+                "run-level usage must not be recorded onto a caller-supplied outer span"
+            );
+        }
     }
 
     fn tool_call_content(id: &str, args: serde_json::Value) -> AssistantContent {

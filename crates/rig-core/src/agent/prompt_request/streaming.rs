@@ -8,9 +8,9 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallDecision, InvalidDecision, build_agent_run,
-        flow_into_completion_call, flow_into_invalid, new_execute_tool_span, observe_flow,
-        run_single_tool,
+        AgentRunner, CompletionCallOutcome, InvalidDecision, acquire_agent_span,
+        append_run_messages, build_agent_run, flow_into_invalid, new_execute_tool_span,
+        observe_flow, resolve_completion_call, run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
@@ -406,27 +406,8 @@ where
     /// fail-closed hook handling with the blocking [`run`](AgentRunner::run), so
     /// the two behave identically apart from the streamed delta events.
     pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
-        let (agent_span, created_agent_span) = if tracing::Span::current().is_disabled() {
-            (
-                info_span!(
-                    "invoke_agent",
-                    gen_ai.operation.name = "invoke_agent",
-                    gen_ai.agent.name = self.agent_name_or_default(),
-                    gen_ai.system_instructions = self.preamble,
-                    gen_ai.prompt = tracing::field::Empty,
-                    gen_ai.completion = tracing::field::Empty,
-                    gen_ai.usage.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.output_tokens = tracing::field::Empty,
-                    gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                    gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                ),
-                true,
-            )
-        } else {
-            (tracing::Span::current(), false)
-        };
+        let (agent_span, created_agent_span) =
+            acquire_agent_span(self.agent_name_or_default(), self.preamble.as_deref());
 
         let prompt = self.prompt;
         if let Some(text) = prompt.rag_text() {
@@ -525,23 +506,21 @@ where
                             );
                         }
 
-                        let request_override = match flow_into_completion_call(
-                            self.hooks
-                                .on_event(StepEvent::CompletionCall {
-                                    prompt: &current_prompt,
-                                    history: &history,
-                                    turn,
-                                })
-                                .await,
-                        ) {
-                            CompletionCallDecision::Terminate(reason) => {
+                        let request_override = match resolve_completion_call(
+                            &self.hooks,
+                            &current_prompt,
+                            &history,
+                            turn,
+                        )
+                        .await
+                        {
+                            CompletionCallOutcome::Terminate(reason) => {
                                 yield Err(StreamingError::Prompt(Box::new(
                                     run.cancel_error(reason),
                                 )));
                                 break 'outer;
                             }
-                            CompletionCallDecision::Override(request) => Some(request),
-                            CompletionCallDecision::Proceed => None,
+                            CompletionCallOutcome::Proceed(request_override) => request_override,
                         };
 
                         // Record this turn's base system prompt — the override-or-baseline
@@ -1139,17 +1118,11 @@ where
                             record_usage_on_span(&current_span, response.usage);
                         }
                         tracing::info!("Agent multi-turn stream finished");
-                        if let Some((memory, id)) = memory_handle.as_ref()
-                            && let Err(err) = memory
-                                .append(id, response.messages.clone().unwrap_or_default())
-                                .await
-                        {
-                            tracing::warn!(
-                                error = %err,
-                                conversation_id = %id,
-                                "conversation memory append failed; yielding final response anyway"
-                            );
-                        }
+                        append_run_messages(
+                            memory_handle.as_ref(),
+                            response.messages.clone().unwrap_or_default(),
+                        )
+                        .await;
                         // Always surface the accumulated messages (parity with
                         // the blocking `run()`, whose `PromptResponse.messages`
                         // is always populated), regardless of whether the caller
