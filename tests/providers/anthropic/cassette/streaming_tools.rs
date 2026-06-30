@@ -122,7 +122,12 @@ async fn streaming_tool_concurrency_emits_results_as_completed_but_persists_call
             .multi_turn(8)
             .tool_concurrency(2)
             .await;
-        let observation = collect_concurrent_tool_observation(&mut stream).await;
+        let observation = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            collect_concurrent_tool_observation(&mut stream),
+        )
+        .await
+        .expect("streamed tools must run concurrently, not deadlock on the first tool");
 
         assert!(
             observation.errors.is_empty(),
