@@ -109,6 +109,22 @@ fn additional_params_has_provider_tools(additional_params: Option<&serde_json::V
         .is_some_and(|tools| !tools.is_empty())
 }
 
+fn suppress_provider_tools_from_additional_params(
+    additional_params: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    match additional_params {
+        Some(serde_json::Value::Object(mut params)) if params.contains_key("tools") => {
+            params.remove("tools");
+            if params.is_empty() {
+                None
+            } else {
+                Some(serde_json::Value::Object(params))
+            }
+        }
+        other => other,
+    }
+}
+
 pub(crate) fn allowed_tool_names_for_choice(
     executable_tool_names: &BTreeSet<String>,
     tool_choice: Option<&ToolChoice>,
@@ -238,6 +254,21 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         (base, patch) => patch.or(base).cloned(),
     };
     let active_tools = request_override.and_then(|o| o.active_tools.as_deref());
+    // `active_tools` is an allow-list for all tools advertised this turn. Since
+    // provider-hosted tools are not Rig-executable and cannot be named in the
+    // allow-list, suppress them (both builder-provided tools and passthrough
+    // `additional_params.tools`) whenever the allow-list is present. With no
+    // allow-list, preserve baseline/override provider-tool injection.
+    let provider_tools = if active_tools.is_some() {
+        &[]
+    } else {
+        provider_tools
+    };
+    let additional_params = if active_tools.is_some() {
+        suppress_provider_tools_from_additional_params(additional_params)
+    } else {
+        additional_params
+    };
 
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
@@ -1016,6 +1047,81 @@ mod tests {
     fn pick_output_tool_name_defaults_when_unused() {
         let executable = tool_names(&["add", "subtract"]);
         assert_eq!(pick_output_tool_name(&executable), DEFAULT_OUTPUT_TOOL_NAME);
+    }
+
+    #[tokio::test]
+    async fn active_tools_empty_suppresses_provider_hosted_tools_and_keeps_auto_native() {
+        let model = std::sync::Arc::new(crate::test_utils::MockCompletionModel::default());
+        let tool_server = crate::tool::server::ToolServer::new().run();
+        let dynamic_context: DynamicContextStore = std::sync::Arc::new(Vec::new());
+        let schema: schemars::Schema = serde_json::from_value(serde_json::json!({
+            "title": "SearchAnswer",
+            "type": "object",
+            "properties": {
+                "answer": { "type": "string" }
+            },
+            "required": ["answer"]
+        }))
+        .expect("schema should deserialize");
+        let provider_tools = vec![ProviderToolDefinition::new("web_search")];
+        let base_additional_params = serde_json::json!({
+            "metadata": { "source": "baseline" },
+            "tools": [ProviderToolDefinition::new("file_search")]
+        });
+        let request_override = RequestOverride::new()
+            .active_tools(Vec::<String>::new())
+            .additional_params(serde_json::json!({
+                "reasoning_effort": "low",
+                "tools": [ProviderToolDefinition::new("custom")]
+            }));
+
+        let prepared = build_prepared_completion_request(
+            &model,
+            Message::user("answer without tools"),
+            &[],
+            None,
+            &[],
+            None,
+            None,
+            Some(&base_additional_params),
+            &provider_tools,
+            None,
+            &tool_server,
+            &dynamic_context,
+            Some(&schema),
+            &OutputMode::Auto,
+            None,
+            Some(&request_override),
+        )
+        .await
+        .expect("request should build");
+
+        assert!(prepared.executable_tool_names.is_empty());
+        assert!(prepared.output_tool_name.is_none());
+        assert!(prepared.allowed_tool_names.is_empty());
+
+        let request = prepared.builder.build();
+        assert!(
+            request.output_schema.is_some(),
+            "Auto mode should stay Native when active_tools suppresses provider tools"
+        );
+        assert!(request.tools.is_empty());
+        let additional_params = request
+            .additional_params
+            .as_ref()
+            .expect("non-tool passthrough params should be preserved");
+        assert!(
+            additional_params.get("tools").is_none(),
+            "provider-hosted tools from builder, baseline params, and override params should be suppressed"
+        );
+        assert_eq!(
+            additional_params.get("metadata"),
+            Some(&serde_json::json!({ "source": "baseline" }))
+        );
+        assert_eq!(
+            additional_params.get("reasoning_effort"),
+            Some(&serde_json::json!("low"))
+        );
     }
 
     #[tokio::test]

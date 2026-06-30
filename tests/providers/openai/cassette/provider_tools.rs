@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result, bail, ensure};
 use rig::OneOrMany;
 use rig::agent::{AgentHook, Flow, RequestOverride, StepEvent};
 use rig::client::CompletionClient;
@@ -58,7 +58,7 @@ async fn streaming_agent_forwards_provider_tools() -> Result<()> {
             let mut stream = agent.stream_prompt("Reply exactly: ok").await;
             let response = collect_stream_final_response(&mut stream)
                 .await
-                .expect("streaming provider-tool prompt should succeed");
+                .context("streaming provider-tool prompt should succeed")?;
             assert_nonempty_response(&response);
 
             Ok::<(), anyhow::Error>(())
@@ -66,9 +66,12 @@ async fn streaming_agent_forwards_provider_tools() -> Result<()> {
     )
     .await?;
 
-    let body = recorded_request_body("provider_tools/streaming_agent_forwards_provider_tools");
-    assert_eq!(body["stream"], true, "expected streaming request: {body:#}");
-    assert_hosted_custom_tool_present(&body);
+    let body = recorded_request_body("provider_tools/streaming_agent_forwards_provider_tools")?;
+    ensure!(
+        body["stream"] == true,
+        "expected streaming request: {body:#}"
+    );
+    assert_hosted_custom_tool_present(&body)?;
 
     Ok(())
 }
@@ -87,7 +90,7 @@ async fn request_override_additional_params_can_inject_provider_tools() -> Resul
                 .prompt("Reply exactly: ok")
                 .add_hook(ProviderToolOverrideHook)
                 .await
-                .expect("hook-injected provider-tool prompt should succeed");
+                .context("hook-injected provider-tool prompt should succeed")?;
             assert_nonempty_response(&response);
 
             Ok::<(), anyhow::Error>(())
@@ -97,8 +100,8 @@ async fn request_override_additional_params_can_inject_provider_tools() -> Resul
 
     let body = recorded_request_body(
         "provider_tools/request_override_additional_params_can_inject_provider_tools",
-    );
-    assert_hosted_custom_tool_present(&body);
+    )?;
+    assert_hosted_custom_tool_present(&body)?;
 
     Ok(())
 }
@@ -145,14 +148,14 @@ async fn mixed_rig_and_provider_tools_with_schema_defers_response_format() -> Re
                         },
                         "required": ["answer"]
                     }))
-                    .expect("schema should deserialize"),
+                    .context("schema should deserialize")?,
                 ),
             };
 
             model
                 .completion(request)
                 .await
-                .expect("mixed provider/Rig tool completion request should succeed");
+                .context("mixed provider/Rig tool completion request should succeed")?;
 
             Ok::<(), anyhow::Error>(())
         },
@@ -161,19 +164,22 @@ async fn mixed_rig_and_provider_tools_with_schema_defers_response_format() -> Re
 
     let body = recorded_request_body(
         "provider_tools/mixed_rig_and_provider_tools_with_schema_defers_response_format",
-    );
+    )?;
     let tools = body["tools"]
         .as_array()
-        .unwrap_or_else(|| panic!("expected tools array in request: {body:#}"));
-    assert_eq!(tools.len(), 2, "expected Rig and provider tools: {body:#}");
-    assert!(
+        .with_context(|| format!("expected tools array in request: {body:#}"))?;
+    ensure!(
+        tools.len() == 2,
+        "expected Rig and provider tools: {body:#}"
+    );
+    ensure!(
         tools
             .iter()
             .any(|tool| tool["type"] == "function" && tool["function"]["name"] == "weather"),
         "expected Rig function tool in request: {body:#}"
     );
-    assert_hosted_custom_tool_present(&body);
-    assert!(
+    assert_hosted_custom_tool_present(&body)?;
+    ensure!(
         body.get("response_format").is_none(),
         "initial mixed executable-tool turn should defer response_format: {body:#}"
     );
@@ -222,35 +228,37 @@ struct RecordedRequest {
     body: Option<String>,
 }
 
-fn recorded_request_body(scenario: &str) -> Value {
+fn recorded_request_body(scenario: &str) -> Result<Value> {
     let cassette_path = crate::cassettes::cassette_path("openai", scenario);
-    let contents = std::fs::read_to_string(&cassette_path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording/replay: {error}",
+    let contents = std::fs::read_to_string(&cassette_path).with_context(|| {
+        format!(
+            "provider cassette {} should be readable after recording/replay",
             cassette_path.display()
         )
-    });
+    })?;
 
-    serde_yaml::Deserializer::from_str(&contents)
-        .find_map(|document| {
-            let interaction = RecordedInteraction::deserialize(document)
-                .expect("cassette interaction should deserialize");
-            interaction
-                .when
-                .body
-                .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-        })
-        .unwrap_or_else(|| panic!("expected cassette {scenario} to contain a JSON request body"))
+    for document in serde_yaml::Deserializer::from_str(&contents) {
+        let interaction = RecordedInteraction::deserialize(document)
+            .context("cassette interaction should deserialize")?;
+        if let Some(body) = interaction.when.body
+            && let Ok(body) = serde_json::from_str::<Value>(&body)
+        {
+            return Ok(body);
+        }
+    }
+
+    bail!("expected cassette {scenario} to contain a JSON request body")
 }
 
-fn assert_hosted_custom_tool_present(body: &Value) {
+fn assert_hosted_custom_tool_present(body: &Value) -> Result<()> {
     let tools = body["tools"]
         .as_array()
-        .unwrap_or_else(|| panic!("expected tools array in request: {body:#}"));
-    assert!(
+        .with_context(|| format!("expected tools array in request: {body:#}"))?;
+    ensure!(
         tools
             .iter()
             .any(|tool| tool["type"] == "custom" && tool["custom"]["name"] == HOSTED_TOOL_NAME),
         "expected provider-hosted custom tool in request: {body:#}"
     );
+    Ok(())
 }
