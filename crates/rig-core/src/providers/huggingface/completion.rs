@@ -6,7 +6,8 @@ use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{
-        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+        self, CompletionError, CompletionRequest,
+        take_function_provider_tools_from_additional_params,
     },
     json_utils,
     message::{self},
@@ -679,8 +680,10 @@ impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
             .transpose()?;
 
         let mut additional_params = req.additional_params;
-        let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "HuggingFace")?;
+        let mut provider_tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "HuggingFace",
+        )?;
         let mut tools = req
             .tools
             .clone()

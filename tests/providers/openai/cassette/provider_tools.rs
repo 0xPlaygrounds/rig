@@ -13,8 +13,6 @@ use serde_json::{Value, json};
 use super::super::support::with_openai_completions_cassette_result;
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
-const HOSTED_TOOL_NAME: &str = "hosted_lookup";
-
 #[derive(Clone)]
 struct ProviderToolOverrideHook;
 
@@ -26,7 +24,7 @@ where
         match event {
             StepEvent::CompletionCall { .. } => {
                 Flow::override_request(RequestOverride::new().additional_params(json!({
-                    "tools": [hosted_custom_tool()]
+                    "tools": [hosted_search_preview_tool()]
                 })))
             }
             _ => Flow::cont(),
@@ -34,14 +32,8 @@ where
     }
 }
 
-fn hosted_custom_tool() -> ProviderToolDefinition {
-    ProviderToolDefinition::new("custom").with_config(
-        "custom",
-        json!({
-            "name": HOSTED_TOOL_NAME,
-            "description": "A provider-hosted lookup tool. Do not use it unless explicitly asked."
-        }),
-    )
+fn hosted_search_preview_tool() -> ProviderToolDefinition {
+    ProviderToolDefinition::new("web_search_preview")
 }
 
 #[tokio::test]
@@ -52,7 +44,7 @@ async fn streaming_agent_forwards_provider_tools() -> Result<()> {
             let agent = client
                 .agent(openai::GPT_5_NANO)
                 .preamble("Reply concisely. Do not use tools unless explicitly asked.")
-                .provider_tool(hosted_custom_tool())
+                .provider_tool(hosted_search_preview_tool())
                 .build();
 
             let mut stream = agent.stream_prompt("Reply exactly: ok").await;
@@ -71,7 +63,7 @@ async fn streaming_agent_forwards_provider_tools() -> Result<()> {
         body["stream"] == true,
         "expected streaming request: {body:#}"
     );
-    assert_hosted_custom_tool_present(&body)?;
+    assert_hosted_search_preview_tool_present(&body)?;
 
     Ok(())
 }
@@ -101,7 +93,7 @@ async fn request_override_additional_params_can_inject_provider_tools() -> Resul
     let body = recorded_request_body(
         "provider_tools/request_override_additional_params_can_inject_provider_tools",
     )?;
-    assert_hosted_custom_tool_present(&body)?;
+    assert_hosted_search_preview_tool_present(&body)?;
 
     Ok(())
 }
@@ -137,7 +129,7 @@ async fn mixed_rig_and_provider_tools_with_schema_defers_response_format() -> Re
                 max_tokens: None,
                 tool_choice: None,
                 additional_params: Some(json!({
-                    "tools": [hosted_custom_tool()]
+                    "tools": [hosted_search_preview_tool()]
                 })),
                 output_schema: Some(
                     serde_json::from_value(json!({
@@ -178,7 +170,7 @@ async fn mixed_rig_and_provider_tools_with_schema_defers_response_format() -> Re
             .any(|tool| tool["type"] == "function" && tool["function"]["name"] == "weather"),
         "expected Rig function tool in request: {body:#}"
     );
-    assert_hosted_custom_tool_present(&body)?;
+    assert_hosted_search_preview_tool_present(&body)?;
     ensure!(
         body.get("response_format").is_none(),
         "initial mixed executable-tool turn should defer response_format: {body:#}"
@@ -250,15 +242,15 @@ fn recorded_request_body(scenario: &str) -> Result<Value> {
     bail!("expected cassette {scenario} to contain a JSON request body")
 }
 
-fn assert_hosted_custom_tool_present(body: &Value) -> Result<()> {
+fn assert_hosted_search_preview_tool_present(body: &Value) -> Result<()> {
     let tools = body["tools"]
         .as_array()
         .with_context(|| format!("expected tools array in request: {body:#}"))?;
     ensure!(
         tools
             .iter()
-            .any(|tool| tool["type"] == "custom" && tool["custom"]["name"] == HOSTED_TOOL_NAME),
-        "expected provider-hosted custom tool in request: {body:#}"
+            .any(|tool| tool["type"] == "web_search_preview"),
+        "expected provider-hosted web search preview tool in request: {body:#}"
     );
     Ok(())
 }

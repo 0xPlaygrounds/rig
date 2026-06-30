@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"Reply concisely. Do not call tools unless the user explicitly asks.","type":"text"}],"role":"system"},{"content":"Say a friendly one-sentence greeting without using tools.","role":"user"}],"model":"gpt-5-nano","tools":[{"function":{"description":"Get the current weather for a city.","name":"weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}},"type":"function"},{"custom":{"description":"A provider-hosted lookup tool. Do not use it unless explicitly asked.","name":"hosted_lookup"},"type":"custom"}]}'
+  body: '{"messages":[{"content":[{"text":"Reply concisely. Do not call tools unless the user explicitly asks.","type":"text"}],"role":"system"},{"content":"Say a friendly one-sentence greeting without using tools.","role":"user"}],"model":"gpt-5-nano","tools":[{"function":{"description":"Get the current weather for a city.","name":"weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}},"type":"function"},{"type":"web_search_preview"}]}'
 then:
   status: 200
   header:

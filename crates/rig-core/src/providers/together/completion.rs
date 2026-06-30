@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::client::{Client, together_ai_api_types::ApiResponse};
-use crate::completion::{CompletionRequest, take_provider_tools_from_additional_params};
+use crate::completion::{CompletionRequest, take_function_provider_tools_from_additional_params};
 use crate::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -184,8 +184,10 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
             .transpose()?;
 
         let mut additional_params = req.additional_params;
-        let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "TogetherAI")?;
+        let mut provider_tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "TogetherAI",
+        )?;
         let mut tools = req
             .tools
             .clone()
@@ -421,6 +423,34 @@ mod tests {
             }
             other => panic!("expected ProviderResponse, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn together_request_rejects_native_provider_tool() {
+        let request = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::user("Hello")),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{"type": "web_search_preview"}]
+            })),
+            model: None,
+            output_schema: None,
+        };
+
+        let result = TogetherAICompletionRequest::try_from(("meta-llama/test-model", request));
+
+        let error = result.expect_err("native provider tool should be rejected");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("only function tools are supported")
+        );
     }
 
     #[test]

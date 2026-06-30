@@ -34,7 +34,8 @@ use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
     completion::{
-        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+        self, CompletionError, CompletionRequest,
+        take_function_provider_tools_from_additional_params,
     },
     json_utils,
     providers::openai,
@@ -371,8 +372,10 @@ impl TryFrom<(&str, CompletionRequest)> for MoonshotCompletionRequest {
         }
 
         let mut additional_params = req.additional_params;
-        let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "Moonshot")?;
+        let mut provider_tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "Moonshot",
+        )?;
         let mut tools = req
             .tools
             .clone()

@@ -1203,14 +1203,44 @@ fn extract_tools_from_additional_params(
         && let Some(map) = params.as_object_mut()
         && let Some(raw_tools) = map.remove("tools")
     {
-        return serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
+        let tools = serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
             CompletionError::RequestError(
                 format!("Invalid OpenAI `additional_params.tools` payload: {err}").into(),
             )
-        });
+        })?;
+        validate_openai_chat_provider_tools(&tools)?;
+        return Ok(tools);
     }
 
     Ok(Vec::new())
+}
+
+fn validate_openai_chat_provider_tools(tools: &[serde_json::Value]) -> Result<(), CompletionError> {
+    for (idx, tool) in tools.iter().enumerate() {
+        let tool_type = tool
+            .as_object()
+            .and_then(|tool| tool.get("type"))
+            .and_then(|tool_type| tool_type.as_str())
+            .ok_or_else(|| {
+                CompletionError::RequestError(
+                    format!(
+                        "OpenAI Chat Completions additional_params.tools[{idx}] must be an object with a string `type`"
+                    )
+                    .into(),
+                )
+            })?;
+
+        if matches!(tool_type, "custom" | "function") {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "OpenAI Chat Completions additional_params.tools[{idx}] has unsupported app-dispatched tool type `{tool_type}`; use Rig executable tools or OpenAI Responses API support instead"
+                )
+                .into(),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
@@ -1659,6 +1689,108 @@ mod tests {
         assert_eq!(serialized["tools"][0]["type"], "function");
         assert_eq!(serialized["tools"][1]["type"], "web_search_preview");
         assert_eq!(serialized["metadata"]["source"], "test");
+    }
+
+    #[test]
+    fn openai_chat_request_rejects_custom_provider_tool() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{
+                    "type": "custom",
+                    "custom": {
+                        "name": "hosted_lookup",
+                        "description": "Lookup a value"
+                    }
+                }]
+            })),
+            output_schema: None,
+        };
+
+        let error = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect_err("custom provider tool should be rejected");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("custom"));
+        assert!(error.to_string().contains("app-dispatched"));
+    }
+
+    #[test]
+    fn openai_chat_request_rejects_raw_function_provider_tool() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{
+                    "type": "function",
+                    "function": {
+                        "name": "lookup",
+                        "description": "Lookup a value",
+                        "parameters": {"type": "object", "properties": {}}
+                    }
+                }]
+            })),
+            output_schema: None,
+        };
+
+        let error = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect_err("raw function provider tool should be rejected");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("function"));
+        assert!(error.to_string().contains("Rig executable tools"));
+    }
+
+    #[test]
+    fn openai_chat_request_rejects_provider_tool_without_string_type() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{"custom": {"name": "hosted_lookup"}}]
+            })),
+            output_schema: None,
+        };
+
+        let error = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect_err("provider tool without string type should be rejected");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("string `type`"));
     }
 
     #[test]

@@ -36,7 +36,8 @@ use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
     completion::{
-        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+        self, CompletionError, CompletionRequest,
+        take_function_provider_tools_from_additional_params,
     },
     embeddings::{self, EmbeddingError},
     json_utils,
@@ -639,8 +640,10 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
         };
 
         let mut additional_params = additional_params;
-        let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "Azure OpenAI")?;
+        let mut provider_tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "Azure OpenAI",
+        )?;
         let mut tools = req
             .tools
             .clone()
@@ -1117,7 +1120,14 @@ mod azure_tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: Some(serde_json::json!({
-                "tools": [{"type": "web_search_preview"}],
+                "tools": [{
+                    "type": "function",
+                    "function": {
+                        "name": "provider_lookup",
+                        "description": "Lookup a provider value",
+                        "parameters": {"type": "object", "properties": {}}
+                    }
+                }],
                 "metadata": {"source": "test"}
             })),
             output_schema: None,
@@ -1132,8 +1142,40 @@ mod azure_tests {
             2
         );
         assert_eq!(serialized["tools"][0]["type"], "function");
-        assert_eq!(serialized["tools"][1]["type"], "web_search_preview");
+        assert_eq!(serialized["tools"][1]["type"], "function");
+        assert_eq!(
+            serialized["tools"][1]["function"]["name"],
+            "provider_lookup"
+        );
         assert_eq!(serialized["metadata"]["source"], "test");
+    }
+
+    #[test]
+    fn azure_request_rejects_native_provider_tool() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{"type": "web_search_preview"}]
+            })),
+            output_schema: None,
+        };
+
+        let result = AzureOpenAICompletionRequest::try_from((GPT_4O_MINI, request));
+
+        let error = result.expect_err("native provider tool should be rejected");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("only function tools are supported")
+        );
     }
 
     #[cfg(any(feature = "image", feature = "audio"))]

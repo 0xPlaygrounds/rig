@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"Reply concisely. Do not use tools unless explicitly asked.","type":"text"}],"role":"system"},{"content":"Reply exactly: ok","role":"user"}],"model":"gpt-5-nano","tools":[{"custom":{"description":"A provider-hosted lookup tool. Do not use it unless explicitly asked.","name":"hosted_lookup"},"type":"custom"}]}'
+  body: '{"messages":[{"content":[{"text":"Reply concisely. Do not use tools unless explicitly asked.","type":"text"}],"role":"system"},{"content":"Reply exactly: ok","role":"user"}],"model":"gpt-5-nano","tools":[{"type":"web_search_preview"}]}'
 then:
   status: 200
   header:

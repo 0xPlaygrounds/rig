@@ -28,7 +28,8 @@ use crate::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     completion::{
-        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+        self, CompletionError, CompletionRequest,
+        take_function_provider_tools_from_additional_params,
     },
     json_utils, message,
 };
@@ -486,8 +487,10 @@ impl TryFrom<(&str, CompletionRequest)> for GaladrielCompletionRequest {
             .transpose()?;
 
         let mut additional_params = req.additional_params;
-        let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "Galadriel")?;
+        let mut provider_tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "Galadriel",
+        )?;
         let mut tools = req
             .tools
             .clone()

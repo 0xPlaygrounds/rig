@@ -10,7 +10,8 @@ use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{
-        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+        self, CompletionError, CompletionRequest,
+        take_function_provider_tools_from_additional_params,
     },
     http_client::HttpClientExt,
     json_utils,
@@ -1852,8 +1853,10 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         };
 
         let mut additional_params = additional_params;
-        let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "OpenRouter")?;
+        let mut provider_tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "OpenRouter",
+        )?;
         let mut tools = tools
             .into_iter()
             .map(serde_json::to_value)

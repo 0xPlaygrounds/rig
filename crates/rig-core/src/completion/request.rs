@@ -763,7 +763,7 @@ impl CompletionRequest {
     }
 }
 
-pub(crate) fn take_provider_tools_from_additional_params(
+pub(crate) fn take_function_provider_tools_from_additional_params(
     additional_params: &mut Option<serde_json::Value>,
     provider_name: &str,
 ) -> Result<Vec<serde_json::Value>, CompletionError> {
@@ -771,11 +771,37 @@ pub(crate) fn take_provider_tools_from_additional_params(
         && let Some(map) = params.as_object_mut()
         && let Some(raw_tools) = map.remove("tools")
     {
-        return serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
+        let tools = serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
             CompletionError::RequestError(
                 format!("Invalid {provider_name} `additional_params.tools` payload: {err}").into(),
             )
-        });
+        })?;
+
+        for (idx, tool) in tools.iter().enumerate() {
+            let Some(tool_object) = tool.as_object() else {
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "Unsupported {provider_name} provider tool at additional_params.tools[{idx}]: only function tools are supported because this provider does not handle native provider-tool outputs"
+                    )
+                    .into(),
+                ));
+            };
+
+            if tool_object.get("type").and_then(|kind| kind.as_str()) != Some("function")
+                || !tool_object
+                    .get("function")
+                    .is_some_and(serde_json::Value::is_object)
+            {
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "Unsupported {provider_name} provider tool at additional_params.tools[{idx}]: only function tools are supported because this provider does not handle native provider-tool outputs"
+                    )
+                    .into(),
+                ));
+            }
+        }
+
+        return Ok(tools);
     }
 
     Ok(Vec::new())
@@ -1124,6 +1150,73 @@ mod tests {
 
     use super::*;
     use crate::test_utils::MockCompletionModel;
+
+    #[test]
+    fn function_provider_tools_from_additional_params_rejects_non_array_payload() {
+        let mut additional_params = Some(serde_json::json!({
+            "tools": { "type": "function" }
+        }));
+
+        let result = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "TestProvider",
+        );
+
+        assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
+
+    #[test]
+    fn function_provider_tools_from_additional_params_rejects_native_tool() {
+        let mut additional_params = Some(serde_json::json!({
+            "tools": [{ "type": "web_search_preview" }]
+        }));
+
+        let result = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "TestProvider",
+        );
+
+        let error = result.expect_err("native provider tool should be rejected");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("only function tools are supported")
+        );
+    }
+
+    #[test]
+    fn function_provider_tools_from_additional_params_accepts_function_tool_and_keeps_other_params()
+    {
+        let mut additional_params = Some(serde_json::json!({
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "lookup",
+                    "description": "Lookup a value",
+                    "parameters": {"type": "object", "properties": {}}
+                },
+                "strict": true
+            }],
+            "metadata": {"source": "test"}
+        }));
+
+        let tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "TestProvider",
+        )
+        .expect("function provider tool should be accepted");
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["type"], "function");
+        assert_eq!(tools[0]["function"]["name"], "lookup");
+        assert_eq!(tools[0]["strict"], true);
+        assert_eq!(
+            additional_params.as_ref().unwrap()["metadata"]["source"],
+            "test"
+        );
+        assert!(additional_params.as_ref().unwrap().get("tools").is_none());
+    }
 
     fn test_document(id: &str, text: &str) -> Document {
         Document {

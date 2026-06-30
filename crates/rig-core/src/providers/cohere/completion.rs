@@ -1,7 +1,7 @@
 use crate::{
     OneOrMany,
     completion::{
-        self, CompletionError, GetTokenUsage, take_provider_tools_from_additional_params,
+        self, CompletionError, GetTokenUsage, take_function_provider_tools_from_additional_params,
     },
     http_client::{self, HttpClientExt},
     json_utils,
@@ -594,7 +594,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
 
         let mut additional_params = req.additional_params;
         let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "Cohere")?;
+            take_function_provider_tools_from_additional_params(&mut additional_params, "Cohere")?;
         let mut tools = req
             .tools
             .into_iter()
@@ -831,6 +831,34 @@ mod tests {
 
         let completion_message: completion::Message = message.clone().try_into().unwrap();
         let _converted_back: Vec<Message> = completion_message.try_into().unwrap();
+    }
+
+    #[test]
+    fn cohere_request_rejects_native_provider_tool() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{"type": "web_search_preview"}]
+            })),
+            output_schema: None,
+        };
+
+        let result = CohereCompletionRequest::try_from(("command-r", request));
+
+        let error = result.expect_err("native provider tool should be rejected");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("only function tools are supported")
+        );
     }
 
     #[test]

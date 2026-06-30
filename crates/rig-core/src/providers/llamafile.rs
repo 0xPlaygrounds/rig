@@ -34,7 +34,8 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 use crate::providers::openai::{self, StreamingToolCall};
 use crate::{
     completion::{
-        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+        self, CompletionError, CompletionRequest,
+        take_function_provider_tools_from_additional_params,
     },
     embeddings::{self, EmbeddingError},
     json_utils,
@@ -318,8 +319,10 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
         full_history.extend(chat_history);
 
         let mut additional_params = req.additional_params;
-        let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "llamafile")?;
+        let mut provider_tools = take_function_provider_tools_from_additional_params(
+            &mut additional_params,
+            "llamafile",
+        )?;
         let mut tools = req
             .tools
             .into_iter()

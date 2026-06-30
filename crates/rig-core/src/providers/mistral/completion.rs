@@ -10,7 +10,8 @@ use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingComple
 use crate::{
     OneOrMany,
     completion::{
-        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+        self, CompletionError, CompletionRequest,
+        take_function_provider_tools_from_additional_params,
     },
     json_utils, message,
     providers::mistral::client::ApiResponse,
@@ -388,7 +389,7 @@ impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
 
         let mut additional_params = req.additional_params;
         let mut provider_tools =
-            take_provider_tools_from_additional_params(&mut additional_params, "Mistral")?;
+            take_function_provider_tools_from_additional_params(&mut additional_params, "Mistral")?;
         let mut tools = req
             .tools
             .clone()
