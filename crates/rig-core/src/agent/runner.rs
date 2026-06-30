@@ -2047,6 +2047,75 @@ mod tests {
         );
     }
 
+    /// Terminates the run from the `ToolCall` event of the first tool only
+    /// (`x == 1`), letting any later tool through.
+    struct TerminateOnFirstToolHook;
+    impl<M: CompletionModel> AgentHook<M> for TerminateOnFirstToolHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { args, .. } = event
+                && serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                    == Some(1)
+            {
+                return Flow::Terminate {
+                    reason: "stop".to_string(),
+                };
+            }
+            Flow::cont()
+        }
+    }
+
+    /// At the default `tool_concurrency(1)`, run() and stream() are lock-step on
+    /// a terminating multi-tool turn: when an early tool's hook terminates the
+    /// run, neither driver dispatches the remaining tools (the second tool's
+    /// `call` never runs). The pre-refactor blocking driver drained the whole
+    /// `buffered(1)` batch (so the second tool DID run); unifying both surfaces
+    /// onto one sequential path makes them match — and makes the lock-step
+    /// `tool_concurrency` documents actually hold for this case.
+    #[tokio::test]
+    async fn default_concurrency_terminate_stops_remaining_tools_on_both_drivers() {
+        let blocking_calls = Arc::new(AtomicU32::new(0));
+        AgentBuilder::new(two_terminating_tools_blocking_model())
+            .tool(CountingAddTool {
+                calls: blocking_calls.clone(),
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .add_hook(TerminateOnFirstToolHook)
+            .run()
+            .await
+            .expect_err("the run terminates");
+        assert_eq!(
+            blocking_calls.load(SeqCst),
+            0,
+            "blocking run() must not dispatch the second tool after the first terminates"
+        );
+
+        let streaming_calls = Arc::new(AtomicU32::new(0));
+        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
+            .tool(CountingAddTool {
+                calls: streaming_calls.clone(),
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .add_hook(TerminateOnFirstToolHook)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            if item.is_err() {
+                break;
+            }
+        }
+        assert_eq!(
+            streaming_calls.load(SeqCst),
+            0,
+            "stream() must not dispatch the second tool after the first terminates"
+        );
+    }
+
     /// `tool_concurrency(0)` is clamped to 1. Without the clamp the blocking
     /// driver's `buffered(0)` never makes progress, so the run would hang the
     /// first time the model calls a tool. The timeout turns a regression

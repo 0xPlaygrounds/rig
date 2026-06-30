@@ -618,6 +618,14 @@ where
                     }
                 }
                 AgentRunStep::Done(response) => {
+                    // Run-completion marker, unifying the blocking driver's
+                    // "Depth reached" and the streaming driver's "multi-turn
+                    // stream finished" logs into one shared event.
+                    tracing::info!(
+                        turn = run.turn(),
+                        max_turns = runner.max_turns,
+                        "Agent run finished"
+                    );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
                     append_run_messages(
                         memory_handle.as_ref(),
@@ -859,6 +867,8 @@ pub(crate) struct StreamingTurnSource {
     /// surfaces it as-is, even when canonical reordering was recorded in history.
     last_final_choice: OneOrMany<AssistantContent>,
     last_message_id: Option<String>,
+    /// Resolved agent name, kept only for the empty-turn diagnostic warning.
+    agent_name: String,
     /// Hot-path interest gates, computed once: skip building/dispatching the
     /// high-frequency delta events when no hook observes them.
     observes_text_delta: bool,
@@ -869,10 +879,11 @@ pub(crate) struct StreamingTurnSource {
 }
 
 impl StreamingTurnSource {
-    pub(crate) fn new<M: CompletionModel>(hooks: &HookStack<M>) -> Self {
+    pub(crate) fn new<M: CompletionModel>(hooks: &HookStack<M>, agent_name: String) -> Self {
         Self {
             last_final_choice: OneOrMany::one(AssistantContent::text("")),
             last_message_id: None,
+            agent_name,
             observes_text_delta: hooks.observes(StepEventKind::TextDelta),
             observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
             has_hooks: !hooks.is_empty(),
@@ -1231,6 +1242,7 @@ where
             .unwrap_or_else(|| {
                 if is_empty_assistant_turn(&self.last_final_choice) {
                     tracing::warn!(
+                        agent_name = self.agent_name.as_str(),
                         message_id = ?self.last_message_id,
                         "Streaming turn completed without assistant text; final response will be empty"
                     );
@@ -1294,7 +1306,8 @@ where
         };
 
         let run = self.build_run(history_override);
-        let source = StreamingTurnSource::new(&self.hooks);
+        let source =
+            StreamingTurnSource::new(&self.hooks, self.agent_name_or_default().to_string());
 
         // The blocking surface folds this same engine; the streaming surface
         // forwards intermediate items (the final response item is the last one)
