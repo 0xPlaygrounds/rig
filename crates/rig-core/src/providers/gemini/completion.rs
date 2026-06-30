@@ -581,8 +581,10 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentResponse {
+        #[serde(default)]
         pub response_id: String,
         /// Candidate responses from the model.
+        #[serde(default)]
         pub candidates: Vec<ContentCandidate>,
         /// Returns the prompt's feedback related to the content filters.
         pub prompt_feedback: Option<PromptFeedback>,
@@ -1363,6 +1365,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct ModalityTokenCount {
         pub modality: Modality,
+        #[serde(default)]
         pub token_count: i32,
     }
 
@@ -1484,6 +1487,7 @@ pub mod gemini_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationMetadata {
+        #[serde(default)]
         pub citation_sources: Vec<CitationSource>,
     }
 
@@ -1503,12 +1507,15 @@ pub mod gemini_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogprobsResult {
+        #[serde(default)]
         pub top_candidate: Vec<TopCandidate>,
+        #[serde(default)]
         pub chosen_candidate: Vec<LogProbCandidate>,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TopCandidate {
+        #[serde(default)]
         pub candidates: Vec<LogProbCandidate>,
     }
 
@@ -2167,8 +2174,9 @@ mod tests {
     use crate::{
         message,
         providers::gemini::completion::gemini_api_types::{
-            ContentCandidate, FinishReason, FunctionCall, Schema, UsageMetadata, flatten_schema,
-            tool_parameters_to_schema,
+            CitationMetadata, ContentCandidate, FinishReason, FunctionCall,
+            GenerateContentResponse, LogprobsResult, ModalityTokenCount, Schema, TopCandidate,
+            UsageMetadata, flatten_schema, tool_parameters_to_schema,
         },
     };
 
@@ -2183,6 +2191,51 @@ mod tests {
             serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
         assert_eq!(usage.total_token_count, 0);
         assert_eq!(usage.prompt_token_count, 12);
+    }
+
+    #[test]
+    fn test_generate_content_response_deserializes_without_candidates_or_response_id() {
+        // Blocked prompt responses can omit default-valued proto fields, including
+        // empty repeated `candidates` and empty string `responseId`.
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "promptFeedback": {
+                "blockReason": "SAFETY"
+            }
+        }))
+        .expect("blocked prompt response should deserialize");
+
+        assert!(response.response_id.is_empty());
+        assert!(response.candidates.is_empty());
+
+        let error = completion::CompletionResponse::try_from(response)
+            .expect_err("empty candidates should become a response error");
+        assert!(error.to_string().contains("No response candidates"));
+    }
+
+    #[test]
+    fn test_modality_token_count_deserializes_without_zero_token_count() {
+        let count: ModalityTokenCount = serde_json::from_value(json!({
+            "modality": "TEXT"
+        }))
+        .expect("zero tokenCount may be omitted");
+
+        assert_eq!(count.token_count, 0);
+    }
+
+    #[test]
+    fn test_response_metadata_repeated_fields_deserialize_when_omitted() {
+        let citation_metadata: CitationMetadata =
+            serde_json::from_value(json!({})).expect("empty citation metadata should deserialize");
+        assert!(citation_metadata.citation_sources.is_empty());
+
+        let logprobs: LogprobsResult =
+            serde_json::from_value(json!({})).expect("empty logprobs result should deserialize");
+        assert!(logprobs.top_candidate.is_empty());
+        assert!(logprobs.chosen_candidate.is_empty());
+
+        let top_candidate: TopCandidate =
+            serde_json::from_value(json!({})).expect("empty top candidate should deserialize");
+        assert!(top_candidate.candidates.is_empty());
     }
 
     #[test]

@@ -13,6 +13,7 @@ const MAX_PAGE_SIZE: usize = 1000;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListModelsResponse {
+    #[serde(default)]
     models: Vec<ListModelEntry>,
     next_page_token: Option<String>,
 }
@@ -20,6 +21,7 @@ struct ListModelsResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListModelEntry {
+    #[serde(default)]
     name: String,
     base_model_id: Option<String>,
     display_name: Option<String>,
@@ -173,6 +175,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_models_page_accepts_omitted_empty_models_list() {
+        let (models, next_page_token) =
+            parse_models_page(br#"{}"#, "/v1beta/models?pageSize=1000").expect("page should parse");
+
+        assert!(models.is_empty());
+        assert_eq!(next_page_token, None);
+    }
+
+    #[test]
     fn parse_models_page_falls_back_to_name_when_base_model_id_is_missing() {
         let body = br#"{
             "models": [
@@ -216,6 +227,23 @@ mod tests {
 
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "gemini-2.0-flash");
+    }
+
+    #[test]
+    fn parse_models_page_reports_missing_model_id_when_name_is_omitted() {
+        let error = parse_models_page(br#"{"models":[{}]}"#, "/v1beta/models?pageSize=1000")
+            .expect_err("entry without name/baseModelId should fail with contextual error");
+
+        match error {
+            ModelListingError::ParseError { message } => {
+                assert!(message.contains("provider=Gemini"));
+                assert!(message.contains("path=/v1beta/models?pageSize=1000"));
+                assert!(message.contains(
+                    "parse_error=model entry missing usable `baseModelId` and `name` values"
+                ));
+            }
+            _ => panic!("expected parse error"),
+        }
     }
 
     #[test]
