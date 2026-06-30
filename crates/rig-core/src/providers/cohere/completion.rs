@@ -1,6 +1,8 @@
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{
+        self, CompletionError, GetTokenUsage, take_provider_tools_from_additional_params,
+    },
     http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
@@ -544,7 +546,7 @@ pub(super) struct CohereCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<Tool>,
+    tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -590,14 +592,25 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
             None
         };
 
+        let mut additional_params = req.additional_params;
+        let mut provider_tools =
+            take_provider_tools_from_additional_params(&mut additional_params, "Cohere")?;
+        let mut tools = req
+            .tools
+            .into_iter()
+            .map(Tool::from)
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut provider_tools);
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
             documents,
             temperature: req.temperature,
-            tools: req.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
+            tools,
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }

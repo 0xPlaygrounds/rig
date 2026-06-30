@@ -33,7 +33,9 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 };
 use crate::providers::openai::{self, StreamingToolCall};
 use crate::{
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{
+        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+    },
     embeddings::{self, EmbeddingError},
     json_utils,
 };
@@ -156,7 +158,7 @@ struct LlamafileCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<openai::ToolDefinition>,
+    tools: Vec<Value>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
 }
@@ -315,6 +317,17 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
 
         full_history.extend(chat_history);
 
+        let mut additional_params = req.additional_params;
+        let mut provider_tools =
+            take_provider_tools_from_additional_params(&mut additional_params, "llamafile")?;
+        let mut tools = req
+            .tools
+            .into_iter()
+            .map(openai::ToolDefinition::from)
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut provider_tools);
+
         Ok(Self {
             model,
             messages: full_history
@@ -323,12 +336,8 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
                 .collect::<Result<Vec<_>, _>>()?,
             temperature: req.temperature,
             max_tokens: req.max_tokens,
-            tools: req
-                .tools
-                .into_iter()
-                .map(openai::ToolDefinition::from)
-                .collect(),
-            additional_params: req.additional_params,
+            tools,
+            additional_params,
         })
     }
 }

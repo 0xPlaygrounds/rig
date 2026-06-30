@@ -763,6 +763,24 @@ impl CompletionRequest {
     }
 }
 
+pub(crate) fn take_provider_tools_from_additional_params(
+    additional_params: &mut Option<serde_json::Value>,
+    provider_name: &str,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
+    if let Some(params) = additional_params.as_mut()
+        && let Some(map) = params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid {provider_name} `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
+}
+
 fn merge_provider_tools_into_additional_params(
     additional_params: Option<serde_json::Value>,
     provider_tools: Vec<ProviderToolDefinition>,

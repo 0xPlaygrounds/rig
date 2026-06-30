@@ -9,7 +9,9 @@ use crate::message::{
 use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{
+        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+    },
     http_client::HttpClientExt,
     json_utils,
     one_or_many::string_or_one_or_many,
@@ -1765,7 +1767,7 @@ pub(super) struct OpenrouterCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<crate::providers::openai::completion::ToolDefinition>,
+    tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -1848,6 +1850,15 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         } else {
             req.additional_params
         };
+
+        let mut additional_params = additional_params;
+        let mut provider_tools =
+            take_provider_tools_from_additional_params(&mut additional_params, "OpenRouter")?;
+        let mut tools = tools
+            .into_iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut provider_tools);
 
         Ok(Self {
             model,

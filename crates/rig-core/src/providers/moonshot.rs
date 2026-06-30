@@ -33,7 +33,9 @@ use crate::providers::anthropic::client::{
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{
+        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+    },
     json_utils,
     providers::openai,
 };
@@ -315,7 +317,7 @@ pub(super) struct MoonshotCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<openai::ToolDefinition>,
+    tools: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -368,19 +370,26 @@ impl TryFrom<(&str, CompletionRequest)> for MoonshotCompletionRequest {
             }));
         }
 
+        let mut additional_params = req.additional_params;
+        let mut provider_tools =
+            take_provider_tools_from_additional_params(&mut additional_params, "Moonshot")?;
+        let mut tools = req
+            .tools
+            .clone()
+            .into_iter()
+            .map(openai::ToolDefinition::from)
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut provider_tools);
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
             temperature: req.temperature,
             max_tokens: req.max_tokens,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(openai::ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            tools,
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }

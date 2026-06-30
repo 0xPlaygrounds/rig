@@ -35,7 +35,9 @@ use crate::http_client::{self, HttpClientExt, MultipartForm, bearer_auth_header}
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{
+        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+    },
     embeddings::{self, EmbeddingError},
     json_utils,
     providers::openai,
@@ -44,7 +46,7 @@ use crate::{
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -571,7 +573,7 @@ pub(super) struct AzureOpenAICompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<openai::ToolDefinition>,
+    tools: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<crate::providers::openai::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -636,16 +638,23 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
             req.additional_params
         };
 
+        let mut additional_params = additional_params;
+        let mut provider_tools =
+            take_provider_tools_from_additional_params(&mut additional_params, "Azure OpenAI")?;
+        let mut tools = req
+            .tools
+            .clone()
+            .into_iter()
+            .map(openai::ToolDefinition::from)
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut provider_tools);
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
             temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(openai::ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            tools,
             tool_choice,
             additional_params,
         })
@@ -1088,6 +1097,44 @@ mod azure_tests {
     use crate::embeddings::EmbeddingModel;
     use crate::prelude::TypedPrompt;
     use crate::providers::openai::GPT_5_MINI;
+
+    #[test]
+    fn azure_request_merges_provider_tools_into_single_tools_array() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Lookup a value".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            }],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [{"type": "web_search_preview"}],
+                "metadata": {"source": "test"}
+            })),
+            output_schema: None,
+        };
+
+        let azure_request = AzureOpenAICompletionRequest::try_from((GPT_4O_MINI, request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(azure_request).expect("serialization should succeed");
+
+        assert_eq!(
+            serialized["tools"].as_array().expect("tools array").len(),
+            2
+        );
+        assert_eq!(serialized["tools"][0]["type"], "function");
+        assert_eq!(serialized["tools"][1]["type"], "web_search_preview");
+        assert_eq!(serialized["metadata"]["source"], "test");
+    }
 
     #[cfg(any(feature = "image", feature = "audio"))]
     fn test_client(

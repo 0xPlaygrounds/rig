@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::client::{Client, together_ai_api_types::ApiResponse};
-use crate::completion::CompletionRequest;
+use crate::completion::{CompletionRequest, take_provider_tools_from_additional_params};
 use crate::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -136,7 +136,7 @@ pub(super) struct TogetherAICompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<crate::providers::openai::completion::ToolDefinition>,
+    tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -183,18 +183,25 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
             .map(ToolChoice::try_from)
             .transpose()?;
 
+        let mut additional_params = req.additional_params;
+        let mut provider_tools =
+            take_provider_tools_from_additional_params(&mut additional_params, "TogetherAI")?;
+        let mut tools = req
+            .tools
+            .clone()
+            .into_iter()
+            .map(crate::providers::openai::completion::ToolDefinition::from)
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut provider_tools);
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
             temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(crate::providers::openai::completion::ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            tools,
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }

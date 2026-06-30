@@ -27,7 +27,9 @@ use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{
+        self, CompletionError, CompletionRequest, take_provider_tools_from_additional_params,
+    },
     json_utils, message,
 };
 use serde::{Deserialize, Serialize};
@@ -443,7 +445,7 @@ pub(super) struct GaladrielCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
+    tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -483,18 +485,25 @@ impl TryFrom<(&str, CompletionRequest)> for GaladrielCompletionRequest {
             .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
+        let mut additional_params = req.additional_params;
+        let mut provider_tools =
+            take_provider_tools_from_additional_params(&mut additional_params, "Galadriel")?;
+        let mut tools = req
+            .tools
+            .clone()
+            .into_iter()
+            .map(ToolDefinition::from)
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut provider_tools);
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
             temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            tools,
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }
