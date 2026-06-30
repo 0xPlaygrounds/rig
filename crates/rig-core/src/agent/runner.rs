@@ -40,7 +40,7 @@ use super::{
         PromptResponse,
         streaming::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
-            drive_tool_calls, streaming_error_into_prompt,
+            drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
         },
         tool_result_message, tool_result_output,
     },
@@ -49,11 +49,10 @@ use super::{
     },
 };
 use crate::{
-    OneOrMany,
     completion::{CompletionError, CompletionModel, Document, Message, PromptError},
     json_utils,
     memory::ConversationMemory,
-    message::{AssistantContent, ToolCall, ToolChoice, UserContent},
+    message::{ToolCall, ToolChoice, UserContent},
     tool::{ToolCallExtensions, server::ToolServerHandle},
 };
 
@@ -666,6 +665,12 @@ pub(crate) fn new_execute_tool_span() -> tracing::Span {
 pub(crate) struct UnaryTurnSource {
     /// Sequences chat and tool spans into a linear `follows_from` chain (the
     /// streaming surface parents into a tree instead and does not chain).
+    ///
+    /// Atomic rather than `Cell` despite being driven by a single sequential
+    /// task: `run_tool_calls` passes `chain_span` as a closure into
+    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That makes the
+    /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
+    /// `UnaryTurnSource: Sync` — which `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
 }
 
@@ -679,14 +684,12 @@ impl UnaryTurnSource {
     /// Chain `span` onto the previous step's span and record it as the new chain
     /// head, preserving the blocking driver's linear causal trace.
     fn chain_span(&self, span: tracing::Span) -> tracing::Span {
-        let span = if self.current_span_id.load(Ordering::SeqCst) != 0 {
-            let id = Id::from_u64(self.current_span_id.load(Ordering::SeqCst));
-            span.follows_from(id).to_owned()
-        } else {
-            span
+        let span = match self.current_span_id.load(Ordering::Relaxed) {
+            0 => span,
+            id => span.follows_from(Id::from_u64(id)).to_owned(),
         };
         if let Some(id) = span.id() {
-            self.current_span_id.store(id.into_u64(), Ordering::SeqCst);
+            self.current_span_id.store(id.into_u64(), Ordering::Relaxed);
         }
         span
     }
@@ -826,39 +829,19 @@ where
         created_agent_span: bool,
     ) {
         // Record run-level completion + usage onto the agent span, but only when
-        // we created it — never pollute a caller-supplied outer span.
+        // we created it — never pollute a caller-supplied outer span. The usage
+        // fields go through the same recorder the streaming surface uses; the
+        // blocking surface additionally records the final completion text.
         if created_agent_span {
-            let usage = response.usage;
             agent_span.record("gen_ai.completion", &response.output);
-            agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-            agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-            agent_span.record(
-                "gen_ai.usage.cache_read.input_tokens",
-                usage.cached_input_tokens,
-            );
-            agent_span.record(
-                "gen_ai.usage.cache_creation.input_tokens",
-                usage.cache_creation_input_tokens,
-            );
-            agent_span.record(
-                "gen_ai.usage.tool_use_prompt_tokens",
-                usage.tool_use_prompt_tokens,
-            );
-            agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
+            record_usage_on_span(agent_span, response.usage);
         }
     }
 
-    fn build_final_item(&self, response: &PromptResponse) -> MultiTurnStreamItem<M::Response> {
-        // The blocking surface ignores this; it is surfaced only when a caller
-        // streams agent events over a unary model. The canonical history is the
-        // machine's, so reuse the run's output as the final text.
-        let content = OneOrMany::one(AssistantContent::text(response.output.clone()));
-        MultiTurnStreamItem::final_response_with_completion_calls(
-            content,
-            response.usage,
-            response.completion_calls.clone(),
-            Some(response.messages.clone().unwrap_or_default()),
-        )
+    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem<M::Response>> {
+        // The blocking surface folds the engine and discards the final item, so
+        // building it (an extra full-response clone) is skipped entirely.
+        None
     }
 }
 
@@ -911,7 +894,7 @@ where
         let mut response = None;
         while let Some(item) = driver.next().await {
             match item {
-                Ok(DriveItem::Done { response: done, .. }) => response = Some(*done),
+                Ok(DriveItem::Done(done)) => response = Some(*done),
                 Ok(DriveItem::Item(_)) => {}
                 Err(err) => return Err(streaming_error_into_prompt(err)),
             }
@@ -1938,6 +1921,129 @@ mod tests {
             completed.load(SeqCst),
             2,
             "the in-flight sibling must be drained to completion, not cancelled"
+        );
+    }
+
+    /// A `Flow::Terminate` from the `ToolCall` event with a reason keyed by the
+    /// call's `x` arg, forcing the `x == 2` call (tc2) to terminate *before* the
+    /// `x == 1` call (tc1): tc2 opens the gate after terminating, tc1 awaits it
+    /// first. So completion order (tc2) differs from call order (tc1).
+    struct OrderedTerminateHook {
+        gate: Arc<tokio::sync::Notify>,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for OrderedTerminateHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { args, .. } = event {
+                let x = serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64));
+                match x {
+                    Some(2) => {
+                        self.gate.notify_one();
+                        return Flow::Terminate {
+                            reason: "terminated-by-tc2".to_string(),
+                        };
+                    }
+                    Some(1) => {
+                        self.gate.notified().await;
+                        return Flow::Terminate {
+                            reason: "terminated-by-tc1".to_string(),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+            Flow::cont()
+        }
+    }
+
+    fn two_terminating_tools_blocking_model() -> MockCompletionModel {
+        MockCompletionModel::from_turns([
+            MockTurn::from_contents([
+                tool_call_content("tc1", json!({"x": 1, "y": 1})),
+                tool_call_content("tc2", json!({"x": 2, "y": 2})),
+            ])
+            .expect("two tool calls is non-empty"),
+            MockTurn::text("unreachable"),
+        ])
+    }
+
+    fn two_terminating_tools_streaming_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("unreachable"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ])
+    }
+
+    /// When two tool calls in one turn both terminate the run under
+    /// `tool_concurrency > 1`, run() and stream() surface the **same** reason —
+    /// the first-called tool's (call order), not whichever finished first. tc2
+    /// terminates before tc1, so a completion-order pick would surface tc2's
+    /// reason and the two drivers would disagree.
+    #[tokio::test]
+    async fn concurrent_simultaneous_tool_terminations_pick_call_order_on_both_drivers() {
+        let run_err = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            AgentBuilder::new(two_terminating_tools_blocking_model())
+                .tool(MockAddTool)
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .tool_concurrency(2)
+                .add_hook(OrderedTerminateHook {
+                    gate: Arc::new(tokio::sync::Notify::new()),
+                })
+                .run(),
+        )
+        .await
+        .expect("blocking run must not hang")
+        .expect_err("the run must terminate");
+
+        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .add_hook(OrderedTerminateHook {
+                gate: Arc::new(tokio::sync::Notify::new()),
+            })
+            .stream()
+            .await;
+
+        let stream_err = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+            while let Some(item) = stream.next().await {
+                if let Err(err) = item {
+                    return Some(err);
+                }
+            }
+            None
+        })
+        .await
+        .expect("streamed run must not hang")
+        .expect("the stream must surface a terminate error");
+
+        let run_msg = run_err.to_string();
+        let stream_msg = stream_err.to_string();
+        assert!(
+            run_msg.contains("terminated-by-tc1"),
+            "blocking run should surface the first-called tool's reason, got: {run_msg}"
+        );
+        assert!(
+            stream_msg.contains("terminated-by-tc1"),
+            "stream should surface the first-called tool's reason, got: {stream_msg}"
+        );
+        assert!(
+            !run_msg.contains("terminated-by-tc2") && !stream_msg.contains("terminated-by-tc2"),
+            "neither driver should surface the later-completing tool's reason"
         );
     }
 

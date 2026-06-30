@@ -202,7 +202,7 @@ where
     Ok(crate::completion::Usage::new())
 }
 
-fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
+pub(crate) fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
     span.record(
@@ -407,17 +407,20 @@ pub(crate) type DriveStream<'a, R> =
 /// fold); `Done` carries both the canonical [`PromptResponse`] the blocking
 /// surface returns and the medium-specific final stream item the streaming
 /// surface yields.
+// The large `Item` variant is the per-delta hot path (one per streamed token);
+// boxing it to shrink the variant spread would add an allocation per delta,
+// which the streaming path is specifically tuned to avoid. `Done` is yielded
+// once per run, so the wasted space on that rare variant is irrelevant.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum DriveItem<R> {
-    /// An intermediate stream item (assistant delta, tool call/result, or a
-    /// per-call `CompletionCall`).
+    /// An intermediate stream item (assistant delta, tool call/result, a
+    /// per-call `CompletionCall`, or — last, for the streaming surface — the
+    /// final response item).
     Item(MultiTurnStreamItem<R>),
-    /// The run finished.
-    Done {
-        /// Read by the blocking fold (`AgentRunner::run`); the streaming surface
-        /// uses only `final_item`.
-        response: Box<PromptResponse>,
-        final_item: MultiTurnStreamItem<R>,
-    },
+    /// The run finished; carries the canonical response the blocking fold
+    /// returns. The streaming surface has already received the final item as the
+    /// preceding `Item` and ignores this.
+    Done(Box<PromptResponse>),
 }
 
 /// The per-medium half of the agent loop: how a turn is fetched from the model,
@@ -471,9 +474,9 @@ where
         created_agent_span: bool,
     );
 
-    /// Build the final stream item surfaced at `Done` (medium-specific final
-    /// content shaping).
-    fn build_final_item(&self, response: &PromptResponse) -> MultiTurnStreamItem<Self::Raw>;
+    /// Build the final stream item surfaced at `Done`, or `None` when the
+    /// surface discards it (the blocking fold) so the engine skips the work.
+    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem<Self::Raw>>;
 }
 
 /// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
@@ -621,11 +624,13 @@ where
                         response.messages.clone().unwrap_or_default(),
                     )
                     .await;
-                    let final_item = source.build_final_item(&response);
-                    yield Ok(DriveItem::Done {
-                        response: Box::new(response),
-                        final_item,
-                    });
+                    // Build the final item only when the surface forwards it
+                    // (streaming). The blocking fold discards it, so its source
+                    // returns `None` and the extra full-response clone is skipped.
+                    if let Some(final_item) = source.final_item(&response) {
+                        yield Ok(DriveItem::Item(final_item));
+                    }
+                    yield Ok(DriveItem::Done(Box::new(response)));
                     break 'outer;
                 }
             }
@@ -721,12 +726,15 @@ where
                 Vec::with_capacity(call_count);
 
             for (index, mut pending) in calls.into_iter().enumerate() {
-                let tool_span = chain_tool_span(new_execute_tool_span());
-
+                // Preresolved (invalid-tool-recovery) calls don't execute, so they
+                // emit and chain no tool span — matching the sequential branch,
+                // which `continue`s before span creation.
                 if pending.preresolved_result.is_some() {
-                    indexed_calls.push((index, pending, tool_span, None));
+                    indexed_calls.push((index, pending, tracing::Span::none(), None));
                     continue;
                 }
+
+                let tool_span = chain_tool_span(new_execute_tool_span());
 
                 let internal_call_id = pending
                     .internal_call_id
@@ -775,38 +783,51 @@ where
 
             let mut results: Vec<Option<UserContent>> = Vec::with_capacity(call_count);
             results.resize_with(call_count, || None);
-            let mut first_error: Option<PromptError> = None;
+            // Hold the *lowest-index* error (call order), not the first to
+            // complete, so the surfaced terminate reason is deterministic and
+            // matches the blocking buffered path; keep draining so in-flight
+            // siblings finish and fire their hooks.
+            let mut first_error: Option<(usize, PromptError)> = None;
             while let Some((index, yield_id, result)) = unordered.next().await {
-                if first_error.is_some() {
-                    continue;
-                }
                 match result {
-                    Ok(content) => {
-                        let Some(slot) = results.get_mut(index) else {
-                            first_error = Some(PromptError::CompletionError(
-                                CompletionError::ResponseError(
-                                    "tool execution returned an invalid result index".to_string(),
-                                ),
-                            ));
-                            continue;
-                        };
-                        *slot = Some(content.clone());
-                        if let Some(internal_call_id) = yield_id
-                            && let UserContent::ToolResult(tool_result) = content
-                        {
-                            yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                StreamedUserContent::ToolResult {
-                                    tool_result,
-                                    internal_call_id,
-                                },
-                            ));
+                    Ok(content) => match results.get_mut(index) {
+                        Some(slot) => {
+                            *slot = Some(content.clone());
+                            // Once any tool has errored the run will terminate, so
+                            // stop surfacing successful results (but keep draining).
+                            if first_error.is_none()
+                                && let Some(internal_call_id) = yield_id
+                                && let UserContent::ToolResult(tool_result) = content
+                            {
+                                yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                    StreamedUserContent::ToolResult {
+                                        tool_result,
+                                        internal_call_id,
+                                    },
+                                ));
+                            }
+                        }
+                        None => {
+                            if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
+                                first_error = Some((
+                                    index,
+                                    PromptError::CompletionError(CompletionError::ResponseError(
+                                        "tool execution returned an invalid result index"
+                                            .to_string(),
+                                    )),
+                                ));
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
+                            first_error = Some((index, err));
                         }
                     }
-                    Err(err) => first_error = Some(err),
                 }
             }
 
-            if let Some(err) = first_error {
+            if let Some((_, err)) = first_error {
                 yield Err(StreamingError::Prompt(Box::new(err)));
                 return;
             }
@@ -1200,10 +1221,10 @@ where
         }
     }
 
-    fn build_final_item(
+    fn final_item(
         &self,
         response: &PromptResponse,
-    ) -> MultiTurnStreamItem<M::StreamingResponse> {
+    ) -> Option<MultiTurnStreamItem<M::StreamingResponse>> {
         // Tool output mode (#1928): when the finishing turn made the output-tool
         // call, surface the run's structured output as the final content.
         let final_choice = finalize_streamed_choice(&self.last_final_choice, &response.output)
@@ -1220,12 +1241,12 @@ where
         // `run()`), regardless of whether the caller supplied input history.
         let final_messages: Option<Vec<Message>> =
             Some(response.messages.clone().unwrap_or_default());
-        MultiTurnStreamItem::final_response_with_completion_calls(
+        Some(MultiTurnStreamItem::final_response_with_completion_calls(
             final_choice,
             response.usage,
             response.completion_calls.clone(),
             final_messages,
-        )
+        ))
     }
 }
 
@@ -1276,7 +1297,8 @@ where
         let source = StreamingTurnSource::new(&self.hooks);
 
         // The blocking surface folds this same engine; the streaming surface
-        // forwards intermediate items and maps `Done` to the final item.
+        // forwards intermediate items (the final response item is the last one)
+        // and ends on `Done`.
         let driver = drive_agent(
             self,
             source,
@@ -1285,10 +1307,12 @@ where
             created_agent_span,
             memory_handle,
         )
-        .map(|item| match item {
-            Ok(DriveItem::Item(item)) => Ok(item),
-            Ok(DriveItem::Done { final_item, .. }) => Ok(final_item),
-            Err(err) => Err(err),
+        .filter_map(|item| {
+            std::future::ready(match item {
+                Ok(DriveItem::Item(item)) => Some(Ok(item)),
+                Ok(DriveItem::Done(_)) => None,
+                Err(err) => Some(Err(err)),
+            })
         });
 
         Box::pin(driver.instrument(agent_span))
