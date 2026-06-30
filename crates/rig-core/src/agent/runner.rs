@@ -34,19 +34,25 @@ use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, DynamicContextStore, build_prepared_completion_request},
+    completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
     hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, RequestOverride, StepEvent},
-    prompt_request::{PromptResponse, tool_result_message, tool_result_output},
+    prompt_request::{
+        PromptResponse, tool_result_message, tool_result_output,
+        streaming::{
+            DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
+            streaming_error_into_prompt,
+        },
+    },
     run::{
-        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
-        PendingToolCall,
+        AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
     },
 };
 use crate::{
-    completion::{CompletionModel, Document, Message, PromptError},
+    OneOrMany,
+    completion::{CompletionError, CompletionModel, Document, Message, PromptError},
     json_utils,
     memory::ConversationMemory,
-    message::{ToolCall, ToolChoice, UserContent},
+    message::{AssistantContent, ToolCall, ToolChoice, UserContent},
     tool::{ToolCallExtensions, server::ToolServerHandle},
 };
 
@@ -705,6 +711,247 @@ where
         .buffered(concurrency)
 }
 
+/// [`TurnSource`] for the blocking surface: each turn issues a unary
+/// `model.completion()` request and feeds the whole response into the machine.
+/// Emits no intermediate items (the blocking surface folds the engine to its
+/// final response), but keeps the blocking driver's linear `follows_from` span
+/// chain across chat and tool spans.
+pub(crate) struct UnaryTurnSource {
+    /// Sequences chat and tool spans into a linear `follows_from` chain (the
+    /// streaming surface parents into a tree instead and does not chain).
+    current_span_id: AtomicU64,
+}
+
+impl UnaryTurnSource {
+    pub(crate) fn new() -> Self {
+        Self {
+            current_span_id: AtomicU64::new(0),
+        }
+    }
+
+    /// Chain `span` onto the previous step's span and record it as the new chain
+    /// head, preserving the blocking driver's linear causal trace.
+    fn chain_span(&self, span: tracing::Span) -> tracing::Span {
+        let span = if self.current_span_id.load(Ordering::SeqCst) != 0 {
+            let id = Id::from_u64(self.current_span_id.load(Ordering::SeqCst));
+            span.follows_from(id).to_owned()
+        } else {
+            span
+        };
+        if let Some(id) = span.id() {
+            self.current_span_id.store(id.into_u64(), Ordering::SeqCst);
+        }
+        span
+    }
+}
+
+impl<M> TurnSource<M> for UnaryTurnSource
+where
+    M: CompletionModel,
+{
+    type Raw = M::Response;
+
+    fn open_chat_span(
+        &self,
+        runner: &AgentRunner<M>,
+        effective_preamble: Option<&str>,
+    ) -> tracing::Span {
+        let chat_span = info_span!(
+            target: "rig::agent_chat",
+            parent: tracing::Span::current(),
+            "chat",
+            gen_ai.operation.name = "chat",
+            gen_ai.agent.name = runner.agent_name_or_default(),
+            gen_ai.system_instructions = effective_preamble,
+            gen_ai.provider.name = tracing::field::Empty,
+            gen_ai.request.model = tracing::field::Empty,
+            gen_ai.response.id = tracing::field::Empty,
+            gen_ai.response.model = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+            gen_ai.input.messages = tracing::field::Empty,
+            gen_ai.output.messages = tracing::field::Empty,
+        );
+        self.chain_span(chat_span)
+    }
+
+    fn run_model_turn<'a>(
+        &'a mut self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        prepared: PreparedCompletionRequest<M>,
+        chat_span: tracing::Span,
+        _agent_span: &'a tracing::Span,
+        current_prompt: Message,
+    ) -> DriveStream<'a, M::Response> {
+        Box::pin(async_stream::stream! {
+            let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
+                Ok(resp) => resp,
+                Err(err) => {
+                    yield Err(StreamingError::from(err));
+                    return;
+                }
+            };
+
+            let mut outcome = match run.model_response(ModelTurn::new(
+                resp.message_id.clone(),
+                resp.choice.clone(),
+                resp.usage,
+                prepared.executable_tool_names,
+                prepared.allowed_tool_names,
+            )) {
+                Ok(outcome) => outcome,
+                Err(err) => {
+                    yield Err(Box::new(err).into());
+                    return;
+                }
+            };
+
+            loop {
+                match outcome {
+                    ModelTurnOutcome::NeedsResolution(context) => {
+                        let flow = runner
+                            .hooks
+                            .on_event(StepEvent::InvalidToolCall(&context))
+                            .await;
+                        match flow_into_invalid(flow) {
+                            InvalidDecision::Terminate(reason) => {
+                                yield Err(StreamingError::Prompt(Box::new(
+                                    run.cancel_error(reason),
+                                )));
+                                return;
+                            }
+                            InvalidDecision::Action(action) => {
+                                outcome = match run.resolve_invalid_tool_call(action) {
+                                    Ok(outcome) => outcome,
+                                    Err(err) => {
+                                        yield Err(Box::new(err).into());
+                                        return;
+                                    }
+                                };
+                            }
+                        }
+                    }
+                    ModelTurnOutcome::TurnRetried => break,
+                    ModelTurnOutcome::Continue {
+                        response_hook_suppressed,
+                    } => {
+                        if !response_hook_suppressed
+                            && let Some(reason) = observe_flow(
+                                runner
+                                    .hooks
+                                    .on_event(StepEvent::CompletionResponse {
+                                        prompt: &current_prompt,
+                                        response: &resp,
+                                    })
+                                    .await,
+                            )
+                        {
+                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                            return;
+                        }
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    fn run_tool_calls<'a>(
+        &'a self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        calls: Vec<PendingToolCall>,
+    ) -> DriveStream<'a, M::Response> {
+        Box::pin(async_stream::stream! {
+            // Materialize the diagnostic history once; tools only read it on a
+            // hook-terminate error path, so every tool future shares a single
+            // borrow instead of deep-cloning the conversation per call.
+            let full_history_for_errors = run.full_history();
+
+            // Build a `follows_from`-chained span per call, in call order, then
+            // hand the calls to the buffered executor.
+            let calls_with_spans: Vec<(PendingToolCall, tracing::Span)> = calls
+                .into_iter()
+                .map(|pending| (pending, self.chain_span(new_execute_tool_span())))
+                .collect();
+
+            let tool_results = execute_tools_buffered(
+                &runner.hooks,
+                &runner.tool_server_handle,
+                &runner.tool_extensions,
+                calls_with_spans,
+                &full_history_for_errors,
+                runner.concurrency,
+            )
+            .collect::<Vec<Result<UserContent, PromptError>>>()
+            .await;
+
+            let mut tool_content = Vec::with_capacity(tool_results.len());
+            for result in tool_results {
+                match result {
+                    Ok(content) => tool_content.push(content),
+                    Err(err) => {
+                        yield Err(StreamingError::Prompt(Box::new(err)));
+                        return;
+                    }
+                }
+            }
+
+            if let Err(err) = run.tool_results(tool_content) {
+                yield Err(Box::new(err).into());
+                return;
+            }
+        })
+    }
+
+    fn record_run_level_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        response: &PromptResponse,
+        created_agent_span: bool,
+    ) {
+        // Record run-level completion + usage onto the agent span, but only when
+        // we created it — never pollute a caller-supplied outer span.
+        if created_agent_span {
+            let usage = response.usage;
+            agent_span.record("gen_ai.completion", &response.output);
+            agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+            agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+            agent_span.record(
+                "gen_ai.usage.cache_read.input_tokens",
+                usage.cached_input_tokens,
+            );
+            agent_span.record(
+                "gen_ai.usage.cache_creation.input_tokens",
+                usage.cache_creation_input_tokens,
+            );
+            agent_span.record(
+                "gen_ai.usage.tool_use_prompt_tokens",
+                usage.tool_use_prompt_tokens,
+            );
+            agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
+        }
+    }
+
+    fn build_final_item(&self, response: &PromptResponse) -> MultiTurnStreamItem<M::Response> {
+        // The blocking surface ignores this; it is surfaced only when a caller
+        // streams agent events over a unary model. The canonical history is the
+        // machine's, so reuse the run's output as the final text.
+        let content = OneOrMany::one(AssistantContent::text(response.output.clone()));
+        MultiTurnStreamItem::final_response_with_completion_calls(
+            content,
+            response.usage,
+            response.completion_calls.clone(),
+            Some(response.messages.clone().unwrap_or_default()),
+        )
+    }
+}
+
 impl<M> AgentRunner<M>
 where
     M: CompletionModel,
@@ -720,8 +967,6 @@ where
             agent_span.record("gen_ai.prompt", text);
         }
 
-        let agent_name_for_span = self.agent_name.clone();
-
         // When the caller passes explicit history, memory is fully bypassed for
         // this run (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history.
@@ -736,233 +981,38 @@ where
             },
         };
 
-        let mut run = self.build_run(history_override);
-        let current_span_id: AtomicU64 = AtomicU64::new(0);
+        let run = self.build_run(history_override);
 
-        loop {
-            match run.next_step()? {
-                AgentRunStep::CallModel {
-                    prompt,
-                    history,
-                    turn,
-                } => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Current conversation depth: {}/{}", turn, self.max_turns);
-                    }
+        // Fold the shared engine to its final response. The blocking surface
+        // uses a unary model transport and ignores the intermediate items the
+        // engine yields; the engine is driven under the caller's ambient span
+        // (no `instrument`), keeping the agent span detached and the chat/tool
+        // spans on the blocking `follows_from` chain.
+        let driver = drive_agent(
+            self,
+            UnaryTurnSource::new(),
+            run,
+            agent_span,
+            created_agent_span,
+            memory_handle,
+        );
+        futures::pin_mut!(driver);
 
-                    let request_override =
-                        match resolve_completion_call(&self.hooks, &prompt, &history, turn).await {
-                            CompletionCallOutcome::Terminate(reason) => {
-                                return Err(run.cancel_error(reason));
-                            }
-                            CompletionCallOutcome::Proceed(request_override) => request_override,
-                        };
-
-                    // Record this turn's base system prompt — the override-or-baseline
-                    // preamble, before any output-mode augmentation the request
-                    // builder appends (the provider-level span records the final
-                    // value). A per-turn `RequestOverride` can replace it, and the
-                    // builder below resolves the same precedence; borrow rather than
-                    // clone since the value only needs to outlive span creation.
-                    let effective_preamble = request_override
-                        .as_ref()
-                        .and_then(|o| o.preamble.as_deref())
-                        .or(self.preamble.as_deref());
-
-                    let span = tracing::Span::current();
-                    let chat_span = info_span!(
-                        target: "rig::agent_chat",
-                        parent: &span,
-                        "chat",
-                        gen_ai.operation.name = "chat",
-                        gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                        gen_ai.system_instructions = effective_preamble,
-                        gen_ai.provider.name = tracing::field::Empty,
-                        gen_ai.request.model = tracing::field::Empty,
-                        gen_ai.response.id = tracing::field::Empty,
-                        gen_ai.response.model = tracing::field::Empty,
-                        gen_ai.usage.output_tokens = tracing::field::Empty,
-                        gen_ai.usage.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                        gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                        gen_ai.input.messages = tracing::field::Empty,
-                        gen_ai.output.messages = tracing::field::Empty,
-                    );
-
-                    let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                        let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                        chat_span.follows_from(id).to_owned()
-                    } else {
-                        chat_span
-                    };
-
-                    if let Some(id) = chat_span.id() {
-                        current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                    };
-
-                    // Pin Tool output mode once committed so later turns stay
-                    // consistent even if the per-turn tool set changes (#1928).
-                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let prepared_request = build_prepared_completion_request(
-                        &self.model,
-                        prompt.clone(),
-                        &history,
-                        self.preamble.as_deref(),
-                        &self.static_context,
-                        self.temperature,
-                        self.max_tokens,
-                        self.additional_params.as_ref(),
-                        self.tool_choice.as_ref(),
-                        &self.tool_server_handle,
-                        &self.dynamic_context,
-                        self.output_schema.as_ref(),
-                        &self.output_mode,
-                        committed_output_tool.as_deref(),
-                        request_override.as_ref(),
-                    )
-                    .await?;
-
-                    let resp = prepared_request
-                        .builder
-                        .send()
-                        .instrument(chat_span.clone())
-                        .await?;
-
-                    run.set_output_tool_name(prepared_request.output_tool_name.clone());
-
-                    let mut outcome = run.model_response(ModelTurn::new(
-                        resp.message_id.clone(),
-                        resp.choice.clone(),
-                        resp.usage,
-                        prepared_request.executable_tool_names,
-                        prepared_request.allowed_tool_names,
-                    ))?;
-
-                    loop {
-                        match outcome {
-                            ModelTurnOutcome::NeedsResolution(context) => {
-                                let flow = self
-                                    .hooks
-                                    .on_event(StepEvent::InvalidToolCall(&context))
-                                    .await;
-                                match flow_into_invalid(flow) {
-                                    InvalidDecision::Terminate(reason) => {
-                                        return Err(run.cancel_error(reason));
-                                    }
-                                    InvalidDecision::Action(action) => {
-                                        outcome = run.resolve_invalid_tool_call(action)?;
-                                    }
-                                }
-                            }
-                            ModelTurnOutcome::TurnRetried => break,
-                            ModelTurnOutcome::Continue {
-                                response_hook_suppressed,
-                            } => {
-                                if !response_hook_suppressed
-                                    && let Some(reason) = observe_flow(
-                                        self.hooks
-                                            .on_event(StepEvent::CompletionResponse {
-                                                prompt: &prompt,
-                                                response: &resp,
-                                            })
-                                            .await,
-                                    )
-                                {
-                                    return Err(run.cancel_error(reason));
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-                AgentRunStep::CallTools { calls } => {
-                    let hooks = &self.hooks;
-                    let tool_server = &self.tool_server_handle;
-                    let tool_extensions = &self.tool_extensions;
-                    // Materialize the diagnostic history once; tools only read it
-                    // (verbatim, on a hook-terminate error path), so every tool
-                    // future shares a single borrow instead of deep-cloning the
-                    // whole conversation per call on the common success path.
-                    let full_history_for_errors = run.full_history();
-                    let error_history: &[Message] = &full_history_for_errors;
-
-                    // Build a `follows_from`-chained span per call, in call order,
-                    // then hand the calls to the blocking driver's buffered executor.
-                    let calls_with_spans: Vec<(PendingToolCall, tracing::Span)> = calls
-                        .into_iter()
-                        .map(|pending| {
-                            let tool_span = new_execute_tool_span();
-
-                            let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                                tool_span.follows_from(id).to_owned()
-                            } else {
-                                tool_span
-                            };
-
-                            if let Some(id) = tool_span.id() {
-                                current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                            };
-
-                            (pending, tool_span)
-                        })
-                        .collect();
-
-                    let tool_content = execute_tools_buffered(
-                        hooks,
-                        tool_server,
-                        tool_extensions,
-                        calls_with_spans,
-                        error_history,
-                        self.concurrency,
-                    )
-                    .collect::<Vec<Result<UserContent, PromptError>>>()
-                    .await
-                    .into_iter()
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                    run.tool_results(tool_content)?;
-                }
-                AgentRunStep::Done(response) => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Depth reached: {}/{}", run.turn(), self.max_turns);
-                    }
-
-                    // Record run-level completion + usage onto the agent span, but
-                    // only when we created it — never pollute a caller-supplied
-                    // outer span (parity with the streaming driver's guard).
-                    if created_agent_span {
-                        let usage = response.usage;
-                        agent_span.record("gen_ai.completion", &response.output);
-                        agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                        agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                        agent_span.record(
-                            "gen_ai.usage.cache_read.input_tokens",
-                            usage.cached_input_tokens,
-                        );
-                        agent_span.record(
-                            "gen_ai.usage.cache_creation.input_tokens",
-                            usage.cache_creation_input_tokens,
-                        );
-                        agent_span.record(
-                            "gen_ai.usage.tool_use_prompt_tokens",
-                            usage.tool_use_prompt_tokens,
-                        );
-                        agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
-                    }
-
-                    append_run_messages(
-                        memory_handle.as_ref(),
-                        response.messages.clone().unwrap_or_default(),
-                    )
-                    .await;
-
-                    return Ok(response);
-                }
+        let mut response = None;
+        while let Some(item) = driver.next().await {
+            match item {
+                Ok(DriveItem::Done { response: done, .. }) => response = Some(*done),
+                Ok(DriveItem::Item(_)) => {}
+                Err(err) => return Err(streaming_error_into_prompt(err)),
             }
         }
+
+        // The engine yields `Done` unless it errored (handled above).
+        response.ok_or_else(|| {
+            PromptError::CompletionError(CompletionError::ResponseError(
+                "agent run ended without producing a final response".to_string(),
+            ))
+        })
     }
 }
 

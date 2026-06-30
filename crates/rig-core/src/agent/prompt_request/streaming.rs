@@ -413,9 +413,8 @@ pub(crate) enum DriveItem<R> {
     Item(MultiTurnStreamItem<R>),
     /// The run finished.
     Done {
-        // Read by the blocking fold (`AgentRunner::run`); the streaming surface
-        // uses only `final_item`.
-        #[allow(dead_code)]
+        /// Read by the blocking fold (`AgentRunner::run`); the streaming surface
+        /// uses only `final_item`.
         response: Box<PromptResponse>,
         final_item: MultiTurnStreamItem<R>,
     },
@@ -478,10 +477,8 @@ where
 }
 
 /// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
-/// surface, which folds the shared engine. Lossless: every streaming error
-/// originates as one of these.
-// Used by `AgentRunner::run`'s fold over `drive_agent`.
-#[allow(dead_code)]
+/// surface ([`AgentRunner::run`]), which folds the shared engine. Lossless:
+/// every streaming error originates as one of these.
 pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     match err {
         StreamingError::Completion(err) => PromptError::CompletionError(err),
