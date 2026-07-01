@@ -23,12 +23,13 @@ use std::collections::HashMap;
 /// Build the Anthropic streaming request body.
 ///
 /// Derives it from the *same* typed [`AnthropicCompletionRequest`] the blocking
-/// path builds (in `completion.rs`), then flips `stream: true` on the serialized
-/// object. Previously this was a second, hand-assembled `json!` body that had to
-/// be kept in sync by hand — and had drifted: it silently dropped `output_schema`
-/// (structured-output config) and defaulted `tool_choice` differently from the
-/// blocking path. Going through the typed struct makes the two wire formats
-/// identical apart from the `stream` flag.
+/// path builds (in `completion.rs`), rather than re-assembling the body by hand.
+/// The previous hand-rolled `json!` body had drifted from the blocking one and
+/// silently dropped `output_schema` (structured-output config); reaching for the
+/// typed request fixes that and keeps the two in lockstep. The one intentional
+/// streaming-only difference — an explicit `tool_choice: auto` when tools are
+/// advertised but the caller left the choice unset — is re-applied below so the
+/// streaming request bytes stay stable.
 fn create_streaming_request_body(
     request_model: String,
     mut completion_request: CompletionRequest,
@@ -50,10 +51,20 @@ fn create_streaming_request_body(
     })?;
 
     let mut body = serde_json::to_value(&request)?;
-    // `AnthropicCompletionRequest` has no `stream` field (the blocking path omits
-    // it, defaulting to non-streaming); set it here for the streaming endpoint.
     if let Some(map) = body.as_object_mut() {
+        // `AnthropicCompletionRequest` has no `stream` field (the blocking path
+        // omits it, defaulting to non-streaming); set it for the streaming endpoint.
         map.insert("stream".to_string(), Value::Bool(true));
+
+        // The streaming path has always sent an explicit `tool_choice: auto`
+        // whenever tools are advertised but the caller left the choice unset. This
+        // is equivalent to Anthropic's default (auto, when tools are present), but
+        // the blocking typed request omits it — so re-apply the explicit form here
+        // to keep the streaming request bytes stable rather than silently changing
+        // them out from under recorded fixtures and downstream expectations.
+        if map.contains_key("tools") && !map.contains_key("tool_choice") {
+            map.insert("tool_choice".to_string(), json!({ "type": "auto" }));
+        }
     }
 
     Ok(body)
@@ -542,8 +553,8 @@ fn handle_event(
 #[cfg(test)]
 mod tests {
     use super::super::completion::{
-        CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent, apply_prompt_cache_control,
-        build_tool_definitions, resolve_top_level_cache_control,
+        CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
+        apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
     };
     use super::*;
     use crate::OneOrMany;
@@ -723,6 +734,45 @@ mod tests {
             .insert("stream".to_string(), serde_json::Value::Bool(true));
 
         assert_eq!(streaming_body, expected);
+    }
+
+    #[test]
+    fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(RigMessage::user("Add 2 and 3")),
+            documents: vec![],
+            tools: vec![crate::completion::ToolDefinition {
+                name: "add".to_string(),
+                description: "Add x and y".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": { "x": { "type": "integer" } }
+                }),
+            }],
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_streaming_request_body(
+            CLAUDE_OPUS_4_8.to_string(),
+            request,
+            64,
+            false,
+            false,
+            None,
+        )
+        .expect("streaming request body should build");
+
+        // Tools advertised + `tool_choice` unset must still carry the explicit
+        // `auto` the streaming wire format has always sent (parity with recorded
+        // fixtures), even though the blocking typed request omits it.
+        assert_eq!(body["tool_choice"], json!({ "type": "auto" }));
+        assert!(body["tools"].is_array());
     }
 
     #[test]
