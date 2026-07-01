@@ -56,14 +56,20 @@ fn create_streaming_request_body(
         // omits it, defaulting to non-streaming); set it for the streaming endpoint.
         map.insert("stream".to_string(), Value::Bool(true));
 
-        // The streaming path has always sent an explicit `tool_choice: auto`
-        // whenever tools are advertised but the caller left the choice unset. This
-        // is equivalent to Anthropic's default (auto, when tools are present), but
-        // the blocking typed request omits it — so re-apply the explicit form here
-        // to keep the streaming request bytes stable rather than silently changing
-        // them out from under recorded fixtures and downstream expectations.
-        if map.contains_key("tools") && !map.contains_key("tool_choice") {
-            map.insert("tool_choice".to_string(), json!({ "type": "auto" }));
+        // Preserve the streaming path's long-standing `tool_choice` shape, which
+        // emitted `tool_choice` *iff* a non-empty tool set was advertised (Anthropic
+        // rejects `tool_choice` without `tools`). The blocking typed request instead
+        // serializes any caller-set `tool_choice` regardless of tools and omits it
+        // when unset, so reconcile here:
+        //   - tools present, choice unset -> add the explicit `auto` the streaming
+        //     wire has always carried (equivalent to Anthropic's default);
+        //   - tools absent -> drop a caller-set `tool_choice` that would otherwise
+        //     be sent without `tools` and rejected.
+        if map.contains_key("tools") {
+            map.entry("tool_choice")
+                .or_insert_with(|| json!({ "type": "auto" }));
+        } else {
+            map.remove("tool_choice");
         }
     }
 
@@ -773,6 +779,42 @@ mod tests {
         // fixtures), even though the blocking typed request omits it.
         assert_eq!(body["tool_choice"], json!({ "type": "auto" }));
         assert!(body["tools"].is_array());
+    }
+
+    #[test]
+    fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
+        // The typed request serializes a caller-set `tool_choice` regardless of
+        // whether tools are present, but the streaming path has always emitted
+        // `tool_choice` *only* alongside a non-empty tool set (Anthropic rejects it
+        // otherwise). A `tool_choice` set with no tools must not reach the wire.
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(RigMessage::user("Hi")),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: Some(crate::message::ToolChoice::Auto),
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_streaming_request_body(
+            CLAUDE_OPUS_4_8.to_string(),
+            request,
+            64,
+            false,
+            false,
+            None,
+        )
+        .expect("streaming request body should build");
+
+        assert!(
+            body.get("tool_choice").is_none(),
+            "tool_choice must be omitted when no tools are advertised: {body}"
+        );
+        assert!(body.get("tools").is_none());
     }
 
     #[test]
