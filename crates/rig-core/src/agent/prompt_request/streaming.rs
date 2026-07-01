@@ -669,10 +669,16 @@ where
 
         if runner.concurrency <= 1 {
             // Sequential default: one ToolCall/ToolResult pair per tool, strictly
-            // interleaved. Byte-identical to the pre-concurrency behavior.
+            // interleaved. Run-all-then-decide (matching the concurrent branch and
+            // the pre-refactor blocking driver's collect-all): every tool in the
+            // turn executes and fires its hooks, then the lowest-call-index
+            // terminate error is surfaced. Once the run is known to terminate we
+            // stop *surfacing* further stream items, but keep running the
+            // remaining tools so both surfaces are lock-step at any concurrency.
             let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
+            let mut first_error: Option<(usize, PromptError)> = None;
 
-            for pending in calls {
+            for (index, pending) in calls.into_iter().enumerate() {
                 let tool_call = pending.tool_call;
                 if let Some(result) = pending.preresolved_result {
                     results.push(result);
@@ -683,12 +689,14 @@ where
 
                 let tool_span = chain_tool_span(new_execute_tool_span());
 
-                yield Ok(MultiTurnStreamItem::stream_item(
-                    StreamedAssistantContent::ToolCall {
-                        tool_call: tool_call.clone(),
-                        internal_call_id: internal_call_id.clone(),
-                    },
-                ));
+                if first_error.is_none() {
+                    yield Ok(MultiTurnStreamItem::stream_item(
+                        StreamedAssistantContent::ToolCall {
+                            tool_call: tool_call.clone(),
+                            internal_call_id: internal_call_id.clone(),
+                        },
+                    ));
+                }
 
                 let result = run_single_tool(
                     &runner.hooks,
@@ -704,7 +712,9 @@ where
                 match result {
                     Ok(content) => {
                         results.push(content.clone());
-                        if let UserContent::ToolResult(tool_result) = content {
+                        if first_error.is_none()
+                            && let UserContent::ToolResult(tool_result) = content
+                        {
                             yield Ok(MultiTurnStreamItem::StreamUserItem(
                                 StreamedUserContent::ToolResult {
                                     tool_result,
@@ -714,10 +724,16 @@ where
                         }
                     }
                     Err(err) => {
-                        yield Err(StreamingError::Prompt(Box::new(err)));
-                        return;
+                        if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
+                            first_error = Some((index, err));
+                        }
                     }
                 }
+            }
+
+            if let Some((_, err)) = first_error {
+                yield Err(StreamingError::Prompt(Box::new(err)));
+                return;
             }
 
             if let Err(err) = run.tool_results(results) {

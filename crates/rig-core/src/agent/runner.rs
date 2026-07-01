@@ -2066,15 +2066,16 @@ mod tests {
         }
     }
 
-    /// At the default `tool_concurrency(1)`, run() and stream() are lock-step on
-    /// a terminating multi-tool turn: when an early tool's hook terminates the
-    /// run, neither driver dispatches the remaining tools (the second tool's
-    /// `call` never runs). The pre-refactor blocking driver drained the whole
-    /// `buffered(1)` batch (so the second tool DID run); unifying both surfaces
-    /// onto one sequential path makes them match — and makes the lock-step
-    /// `tool_concurrency` documents actually hold for this case.
+    /// Run-all-then-decide, lock-step across surfaces: on a multi-tool turn whose
+    /// first tool's hook terminates the run, both run() and stream() still
+    /// execute the remaining tools (each tool is independently hook-gated), then
+    /// surface the first-called terminate reason. The terminating tool's own body
+    /// never runs (its `ToolCall` hook fired first), so only the second tool's
+    /// `call` increments — identically on both surfaces and at any concurrency.
+    /// This restores the pre-refactor blocking `collect`-all semantics and
+    /// matches the dominant agent-framework behavior.
     #[tokio::test]
-    async fn default_concurrency_terminate_stops_remaining_tools_on_both_drivers() {
+    async fn default_concurrency_terminate_runs_remaining_tools_on_both_drivers() {
         let blocking_calls = Arc::new(AtomicU32::new(0));
         AgentBuilder::new(two_terminating_tools_blocking_model())
             .tool(CountingAddTool {
@@ -2089,8 +2090,8 @@ mod tests {
             .expect_err("the run terminates");
         assert_eq!(
             blocking_calls.load(SeqCst),
-            0,
-            "blocking run() must not dispatch the second tool after the first terminates"
+            1,
+            "blocking run() must still run the second tool before surfacing the terminate"
         );
 
         let streaming_calls = Arc::new(AtomicU32::new(0));
@@ -2111,8 +2112,8 @@ mod tests {
         }
         assert_eq!(
             streaming_calls.load(SeqCst),
-            0,
-            "stream() must not dispatch the second tool after the first terminates"
+            1,
+            "stream() must still run the second tool before surfacing the terminate"
         );
     }
 
