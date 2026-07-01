@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: 1.91.0
+  RUST_VERSION: 1.95.0
 
 # ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
 # and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
