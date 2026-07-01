@@ -58,6 +58,40 @@ use crate::{
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
+/// Build the per-turn `chat` span shared by both turn sources.
+///
+/// The span *name* must be a string literal — `tracing` bakes it into static
+/// metadata — so this is a macro parameterized by the name rather than a
+/// function (the two surfaces keep distinct names, `chat` vs `chat_streaming`,
+/// which dashboards split on). Every other field is identical across the
+/// blocking and streaming surfaces, so it lives here once instead of being
+/// copy-pasted into each `TurnSource::open_chat_span`.
+macro_rules! build_chat_span {
+    ($runner:expr, $effective_preamble:expr, $name:literal) => {
+        ::tracing::info_span!(
+            target: "rig::agent_chat",
+            parent: ::tracing::Span::current(),
+            $name,
+            gen_ai.operation.name = "chat",
+            gen_ai.agent.name = $runner.agent_name_or_default(),
+            gen_ai.system_instructions = $effective_preamble,
+            gen_ai.provider.name = ::tracing::field::Empty,
+            gen_ai.request.model = ::tracing::field::Empty,
+            gen_ai.response.id = ::tracing::field::Empty,
+            gen_ai.response.model = ::tracing::field::Empty,
+            gen_ai.usage.output_tokens = ::tracing::field::Empty,
+            gen_ai.usage.input_tokens = ::tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = ::tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = ::tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = ::tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = ::tracing::field::Empty,
+            gen_ai.input.messages = ::tracing::field::Empty,
+            gen_ai.output.messages = ::tracing::field::Empty,
+        )
+    };
+}
+pub(crate) use build_chat_span;
+
 /// Human-readable name of a [`Flow`] variant, for fail-closed diagnostics.
 fn flow_name(flow: &Flow) -> &'static str {
     match flow {
@@ -708,26 +742,7 @@ where
         runner: &AgentRunner<M>,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
-        let chat_span = info_span!(
-            target: "rig::agent_chat",
-            parent: tracing::Span::current(),
-            "chat",
-            gen_ai.operation.name = "chat",
-            gen_ai.agent.name = runner.agent_name_or_default(),
-            gen_ai.system_instructions = effective_preamble,
-            gen_ai.provider.name = tracing::field::Empty,
-            gen_ai.request.model = tracing::field::Empty,
-            gen_ai.response.id = tracing::field::Empty,
-            gen_ai.response.model = tracing::field::Empty,
-            gen_ai.usage.output_tokens = tracing::field::Empty,
-            gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            gen_ai.input.messages = tracing::field::Empty,
-            gen_ai.output.messages = tracing::field::Empty,
-        );
+        let chat_span = build_chat_span!(runner, effective_preamble, "chat");
         self.chain_span(chat_span)
     }
 

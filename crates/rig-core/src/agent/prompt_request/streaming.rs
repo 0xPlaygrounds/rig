@@ -9,8 +9,8 @@ use crate::{
     },
     agent::runner::{
         AgentRunner, CompletionCallOutcome, InvalidDecision, acquire_agent_span,
-        append_run_messages, flow_into_invalid, new_execute_tool_span, observe_flow,
-        resolve_completion_call, run_single_tool,
+        append_run_messages, build_chat_span, flow_into_invalid, new_execute_tool_span,
+        observe_flow, resolve_completion_call, run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
@@ -21,7 +21,6 @@ use crate::{
 use futures::{Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
-use tracing::info_span;
 use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse};
@@ -318,6 +317,17 @@ where
     /// Set the maximum Turns for multi-turn conversations (the maximum number of
     /// turns an LLM can take calling tools before writing a text response).
     pub fn multi_turn(mut self, turns: usize) -> Self {
+        self.runner = self.runner.max_turns(turns);
+        self
+    }
+
+    /// Set the maximum number of turns for multi-turn tool-calling.
+    ///
+    /// Alias for [`Self::multi_turn`], named to match the blocking
+    /// [`PromptRequest::max_turns`](super::PromptRequest::max_turns) and
+    /// [`TypedPromptRequest::max_turns`](super::TypedPromptRequest::max_turns)
+    /// builders so the same call reads identically on either surface.
+    pub fn max_turns(mut self, turns: usize) -> Self {
         self.runner = self.runner.max_turns(turns);
         self
     }
@@ -944,26 +954,7 @@ where
         runner: &AgentRunner<M>,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
-        info_span!(
-            target: "rig::agent_chat",
-            parent: tracing::Span::current(),
-            "chat_streaming",
-            gen_ai.operation.name = "chat",
-            gen_ai.agent.name = runner.agent_name_or_default(),
-            gen_ai.system_instructions = effective_preamble,
-            gen_ai.provider.name = tracing::field::Empty,
-            gen_ai.request.model = tracing::field::Empty,
-            gen_ai.response.id = tracing::field::Empty,
-            gen_ai.response.model = tracing::field::Empty,
-            gen_ai.usage.output_tokens = tracing::field::Empty,
-            gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            gen_ai.input.messages = tracing::field::Empty,
-            gen_ai.output.messages = tracing::field::Empty,
-        )
+        build_chat_span!(runner, effective_preamble, "chat_streaming")
     }
 
     fn run_model_turn<'a>(
@@ -999,6 +990,33 @@ where
             // whose invalid tool call was repaired is a recovered turn, so its
             // response-finish hook is suppressed.
             let mut turn_recovered = false;
+
+            // Emit the turn's single `CompletionCall` exactly once, recording its
+            // usage onto the chat span and into the run. Defined here (not a free
+            // fn) so it captures `completion_call_emitted`/`chat_span`/`run`; the
+            // `yield` stays at each call site because `async_stream::stream!`
+            // cannot see a `yield` produced inside a nested macro expansion.
+            // Returns the item to yield (`Some` the first time, `None` after), or
+            // the terminal error to surface.
+            macro_rules! emit_completion_call {
+                ($usage:expr) => {{
+                    let usage = $usage;
+                    if !completion_call_emitted {
+                        if usage.has_values() {
+                            record_usage_on_span(&chat_span, usage);
+                        }
+                        match run.record_streamed_completion_call(usage) {
+                            Ok(call) => {
+                                completion_call_emitted = true;
+                                Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
+                            }
+                            Err(err) => Err(Box::new(err).into()),
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                }};
+            }
 
             'turn: while let Some(item) = stream.next().await {
                 let item = match item {
@@ -1080,20 +1098,13 @@ where
                             ));
                         }
                         StreamedTurnEvent::Completed { usage, emit_final } => {
-                            if !completion_call_emitted {
-                                if usage.has_values() {
-                                    record_usage_on_span(&chat_span, usage);
+                            match emit_completion_call!(usage) {
+                                Ok(Some(item)) => yield Ok(item),
+                                Ok(None) => {}
+                                Err(err) => {
+                                    yield Err(err);
+                                    return;
                                 }
-                                let completion_call =
-                                    match run.record_streamed_completion_call(usage) {
-                                        Ok(call) => call,
-                                        Err(err) => {
-                                            yield Err(Box::new(err).into());
-                                            return;
-                                        }
-                                    };
-                                completion_call_emitted = true;
-                                yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
                             }
 
                             if emit_final
@@ -1181,22 +1192,13 @@ where
                                             return;
                                         }
                                     };
-                                    if !completion_call_emitted {
-                                        if drained_usage.has_values() {
-                                            record_usage_on_span(&chat_span, drained_usage);
+                                    match emit_completion_call!(drained_usage) {
+                                        Ok(Some(item)) => yield Ok(item),
+                                        Ok(None) => {}
+                                        Err(err) => {
+                                            yield Err(err);
+                                            return;
                                         }
-                                        let completion_call =
-                                            match run.record_streamed_completion_call(drained_usage) {
-                                                Ok(call) => call,
-                                                Err(err) => {
-                                                    yield Err(Box::new(err).into());
-                                                    return;
-                                                }
-                                            };
-                                        completion_call_emitted = true;
-                                        yield Ok(MultiTurnStreamItem::CompletionCall(
-                                            completion_call,
-                                        ));
                                     }
                                     if let Some(tool_result) = skipped_tool_result {
                                         yield Ok(MultiTurnStreamItem::StreamUserItem(
@@ -1224,16 +1226,18 @@ where
                 return;
             }
 
+            // Final fallback: no usage was ever learned, so there is nothing to
+            // record onto the span and this is the last read of the flag — kept
+            // inline (not `emit_completion_call!`) so it doesn't emit a dead
+            // `completion_call_emitted = true` write.
             if !completion_call_emitted {
-                let completion_call =
-                    match run.record_streamed_completion_call(crate::completion::Usage::new()) {
-                        Ok(call) => call,
-                        Err(err) => {
-                            yield Err(Box::new(err).into());
-                            return;
-                        }
-                    };
-                yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
+                match run.record_streamed_completion_call(crate::completion::Usage::new()) {
+                    Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
+                    Err(err) => {
+                        yield Err(Box::new(err).into());
+                        return;
+                    }
+                }
             }
 
             let final_turn_content = stream.choice.clone();

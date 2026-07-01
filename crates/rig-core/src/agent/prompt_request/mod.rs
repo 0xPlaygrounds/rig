@@ -11,6 +11,72 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{future::IntoFuture, marker::PhantomData};
 
+/// Generate the request-builder setters that forward verbatim to an inner
+/// receiver — `AgentRunner` for the blocking builder, the wrapped
+/// `PromptRequest` for the typed builder. Only the setters whose signature *and*
+/// documentation are identical across builders live here; `max_turns` and
+/// `add_hook`, whose docs are builder-specific, stay hand-written. `$recv` is
+/// the field name to delegate through (`runner` or `inner`).
+macro_rules! forward_prompt_setters {
+    ($recv:ident) => {
+        /// Execute up to `concurrency` of a turn's tool calls at once.
+        ///
+        /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: persisted
+        /// history remains in tool-call order, while streaming requests may surface
+        /// tool results in completion order.
+        pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
+            self.$recv = self.$recv.tool_concurrency(concurrency);
+            self
+        }
+
+        /// Attach a per-call [`ToolCallExtensions`] for this request.
+        ///
+        /// Every tool the agent executes during this request can read the
+        /// caller-provided values (auth tokens, session IDs, conversation state, …)
+        /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
+        /// without the model ever seeing them.
+        pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+            self.$recv = self.$recv.tool_extensions(extensions);
+            self
+        }
+
+        /// Add chat history to the prompt request.
+        pub fn history<H, Item>(mut self, history: H) -> Self
+        where
+            H: IntoIterator<Item = Item>,
+            Item: Into<Message>,
+        {
+            self.$recv = self.$recv.history(history);
+            self
+        }
+
+        /// Set the conversation id used to load and persist memory for this request.
+        ///
+        /// Overrides any default conversation id set on the agent. If memory is not
+        /// configured on the agent, this has no effect.
+        pub fn conversation(mut self, id: impl Into<String>) -> Self {
+            self.$recv = self.$recv.conversation(id);
+            self
+        }
+
+        /// Disable conversation memory for this request.
+        ///
+        /// History will neither be loaded from nor saved to the agent's memory backend.
+        pub fn without_memory(mut self) -> Self {
+            self.$recv = self.$recv.without_memory();
+            self
+        }
+
+        /// Set the retry budget for invalid tool-call recovery.
+        ///
+        /// Invalid tool-call retries also consume normal multi-turn depth.
+        pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
+            self.$recv = self.$recv.max_invalid_tool_call_retries(retries);
+            self
+        }
+    };
+}
+
 pub trait PromptType {}
 pub struct Standard;
 pub struct Extended;
@@ -76,54 +142,6 @@ where
         self
     }
 
-    /// Execute up to `concurrency` of a turn's tool calls at once.
-    ///
-    /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: persisted
-    /// history remains in tool-call order, while streaming requests may surface
-    /// tool results in completion order.
-    pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.runner = self.runner.tool_concurrency(concurrency);
-        self
-    }
-
-    /// Attach a per-call [`ToolCallExtensions`] for this request.
-    ///
-    /// Every tool the agent executes during this request can read the
-    /// caller-provided values (auth tokens, session IDs, conversation state, …)
-    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
-    /// without the model ever seeing them.
-    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
-        self.runner = self.runner.tool_extensions(extensions);
-        self
-    }
-
-    /// Add chat history to the prompt request.
-    pub fn history<H, T>(mut self, history: H) -> Self
-    where
-        H: IntoIterator<Item = T>,
-        T: Into<Message>,
-    {
-        self.runner = self.runner.history(history);
-        self
-    }
-
-    /// Set the conversation id used to load and persist memory for this request.
-    ///
-    /// Overrides any default conversation id set on the agent. If memory is not
-    /// configured on the agent, this has no effect.
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.runner = self.runner.conversation(id);
-        self
-    }
-
-    /// Disable conversation memory for this request.
-    ///
-    /// History will neither be loaded from nor saved to the agent's memory backend.
-    pub fn without_memory(mut self) -> Self {
-        self.runner = self.runner.without_memory();
-        self
-    }
-
     /// Append a hook for this request (on top of any the agent already carries).
     /// Hooks run in registration order; the first to return a non-`Continue`
     /// result short-circuits the rest.
@@ -135,13 +153,7 @@ where
         self
     }
 
-    /// Set the retry budget for invalid tool-call recovery.
-    ///
-    /// Invalid tool-call retries also consume normal multi-turn depth.
-    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.runner = self.runner.max_invalid_tool_call_retries(retries);
-        self
-    }
+    forward_prompt_setters!(runner);
 }
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
@@ -522,62 +534,6 @@ where
         self
     }
 
-    /// Set the retry budget for invalid tool-call recovery.
-    ///
-    /// Invalid tool-call retries also consume normal multi-turn depth.
-    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.inner = self.inner.max_invalid_tool_call_retries(retries);
-        self
-    }
-
-    /// Execute up to `concurrency` of a turn's tool calls at once.
-    ///
-    /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: persisted
-    /// history remains in tool-call order, while streaming requests may surface
-    /// tool results in completion order.
-    pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.inner = self.inner.tool_concurrency(concurrency);
-        self
-    }
-
-    /// Attach a per-call [`ToolCallExtensions`] for this request.
-    ///
-    /// Every tool the agent executes during this request can read the
-    /// caller-provided values (auth tokens, session IDs, conversation state, …)
-    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
-    /// without the model ever seeing them.
-    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
-        self.inner = self.inner.tool_extensions(extensions);
-        self
-    }
-
-    /// Add chat history to the prompt request.
-    pub fn history<H, U>(mut self, history: H) -> Self
-    where
-        H: IntoIterator<Item = U>,
-        U: Into<Message>,
-    {
-        self.inner = self.inner.history(history);
-        self
-    }
-
-    /// Set the conversation id used to load and persist memory for this request.
-    ///
-    /// Overrides any default conversation id set on the agent. If memory is not
-    /// configured on the agent, this has no effect.
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.inner = self.inner.conversation(id);
-        self
-    }
-
-    /// Disable conversation memory for this request.
-    ///
-    /// History will neither be loaded from nor saved to the agent's memory backend.
-    pub fn without_memory(mut self) -> Self {
-        self.inner = self.inner.without_memory();
-        self
-    }
-
     /// Append a hook to this request's hook stack (on top of any the agent
     /// already carries).
     pub fn add_hook<H>(mut self, hook: H) -> Self
@@ -587,6 +543,8 @@ where
         self.inner = self.inner.add_hook(hook);
         self
     }
+
+    forward_prompt_setters!(inner);
 }
 
 /// Deserialize a typed structured response from the model's final text.

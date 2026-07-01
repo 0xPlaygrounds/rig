@@ -6,15 +6,12 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    AnthropicCompatibleProvider, CacheTtl, Content, GenericCompletionModel, Message, SystemContent,
-    ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
-    resolve_top_level_cache_control, split_system_messages_from_history,
-    supports_mid_conversation_system_messages,
+    AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
+    Content, GenericCompletionModel, Usage,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::merge_inplace;
 use crate::message::ReasoningContent;
 use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
@@ -23,118 +20,57 @@ use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
 
+/// Build the Anthropic streaming request body.
+///
+/// Derives it from the *same* typed [`AnthropicCompletionRequest`] the blocking
+/// path builds (in `completion.rs`), rather than re-assembling the body by hand.
+/// The previous hand-rolled `json!` body had drifted from the blocking one and
+/// silently dropped `output_schema` (structured-output config); reaching for the
+/// typed request fixes that and keeps the two in lockstep. The one intentional
+/// streaming-only difference — an explicit `tool_choice: auto` when tools are
+/// advertised but the caller left the choice unset — is re-applied below so the
+/// streaming request bytes stay stable.
 fn create_streaming_request_body(
     request_model: String,
-    completion_request: &mut CompletionRequest,
+    mut completion_request: CompletionRequest,
     max_tokens: u64,
     prompt_caching: bool,
     automatic_caching: bool,
     automatic_caching_ttl: Option<CacheTtl>,
 ) -> Result<Value, CompletionError> {
-    let chat_history = completion_request.chat_history_with_documents();
-    let (history_system, chat_history) = split_system_messages_from_history(
-        chat_history,
-        supports_mid_conversation_system_messages(&request_model),
-    );
-    let mut full_history = vec![];
-    full_history.extend(chat_history);
+    // The typed request's `TryFrom` requires `max_tokens`; feed it the value the
+    // caller already resolved (the request's own value, else the model default).
+    completion_request.max_tokens = Some(max_tokens);
 
-    let mut messages = full_history
-        .into_iter()
-        .map(Message::try_from)
-        .collect::<Result<Vec<Message>, _>>()?;
-
-    // Convert system prompt to array format for cache_control support.
-    let mut system: Vec<SystemContent> =
-        if let Some(preamble) = completion_request.preamble.as_ref() {
-            if preamble.is_empty() {
-                vec![]
-            } else {
-                vec![SystemContent::Text {
-                    text: preamble.clone(),
-                    cache_control: None,
-                }]
-            }
-        } else {
-            vec![]
-        };
-    system.extend(history_system);
-
-    let mut additional_params_payload = completion_request
-        .additional_params
-        .take()
-        .unwrap_or(Value::Null);
-    let top_level_cache_control = resolve_top_level_cache_control(
+    let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        model: &request_model,
+        request: completion_request,
+        prompt_caching,
         automatic_caching,
         automatic_caching_ttl,
-        &mut additional_params_payload,
-    )?;
-    let mut tools = build_tool_definitions(
-        std::mem::take(&mut completion_request.tools),
-        &mut additional_params_payload,
-    )?;
+    })?;
 
-    apply_prompt_cache_control(
-        &mut system,
-        &mut messages,
-        &mut tools,
-        prompt_caching,
-        top_level_cache_control.as_ref(),
-    )?;
+    let mut body = serde_json::to_value(&request)?;
+    if let Some(map) = body.as_object_mut() {
+        // `AnthropicCompletionRequest` has no `stream` field (the blocking path
+        // omits it, defaulting to non-streaming); set it for the streaming endpoint.
+        map.insert("stream".to_string(), Value::Bool(true));
 
-    let mut body = json!({
-        "model": request_model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "stream": true,
-    });
-
-    // Automatic caching: one top-level field; the API moves the breakpoint automatically.
-    // No beta header is required.
-    if let Some(cache_control) = top_level_cache_control {
-        merge_inplace(
-            &mut body,
-            json!({ "cache_control": serde_json::to_value(&cache_control)? }),
-        );
-    }
-
-    // Add system prompt if non-empty.
-    if !system.is_empty() {
-        merge_inplace(&mut body, json!({ "system": system }));
-    }
-
-    if let Some(temperature) = completion_request.temperature {
-        merge_inplace(&mut body, json!({ "temperature": temperature }));
-    }
-
-    // Convert the request's tool choice unconditionally so a choice Anthropic
-    // cannot represent (e.g. a multi-name `Specific`) fails closed with a request
-    // error exactly like the blocking path (completion.rs), even when no tools are
-    // advertised this turn — rather than being silently dropped on streaming only.
-    let tool_choice = completion_request
-        .tool_choice
-        .take()
-        .map(ToolChoice::try_from)
-        .transpose()?;
-
-    if !tools.is_empty() {
-        // Carry the request's tool choice (defaulting to Auto when unset) rather
-        // than hardcoding Auto — otherwise a caller's `tool_choice` (including one
-        // set per-turn via a `RequestOverride`) is silently dropped on the
-        // streaming path, unlike the non-streaming path which honors it. Anthropic
-        // only accepts `tool_choice` alongside a non-empty tool set, so it is sent
-        // only here.
-        merge_inplace(
-            &mut body,
-            json!({
-                "tools": tools,
-                "tool_choice": tool_choice.unwrap_or(ToolChoice::Auto),
-            }),
-        );
-    }
-
-    if !additional_params_payload.is_null() {
-        merge_inplace(&mut body, additional_params_payload)
+        // Preserve the streaming path's long-standing `tool_choice` shape, which
+        // emitted `tool_choice` *iff* a non-empty tool set was advertised (Anthropic
+        // rejects `tool_choice` without `tools`). The blocking typed request instead
+        // serializes any caller-set `tool_choice` regardless of tools and omits it
+        // when unset, so reconcile here:
+        //   - tools present, choice unset -> add the explicit `auto` the streaming
+        //     wire has always carried (equivalent to Anthropic's default);
+        //   - tools absent -> drop a caller-set `tool_choice` that would otherwise
+        //     be sent without `tools` and rejected.
+        if map.contains_key("tools") {
+            map.entry("tool_choice")
+                .or_insert_with(|| json!({ "type": "auto" }));
+        } else {
+            map.remove("tool_choice");
+        }
     }
 
     Ok(body)
@@ -285,7 +221,7 @@ where
 {
     pub(crate) async fn stream(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request_model = completion_request
@@ -324,7 +260,7 @@ where
 
         let body = create_streaming_request_body(
             request_model,
-            &mut completion_request,
+            completion_request,
             max_tokens,
             self.prompt_caching,
             self.automatic_caching,
@@ -622,7 +558,10 @@ fn handle_event(
 
 #[cfg(test)]
 mod tests {
-    use super::super::completion::{CLAUDE_OPUS_4_8, CacheControl, CacheTtl};
+    use super::super::completion::{
+        CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
+        apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
+    };
     use super::*;
     use crate::OneOrMany;
     use crate::completion::Message as RigMessage;
@@ -680,7 +619,7 @@ mod tests {
 
     #[test]
     fn streaming_request_keeps_documents_after_leading_system_messages() {
-        let mut request = CompletionRequest {
+        let request = CompletionRequest {
             model: None,
             preamble: None,
             chat_history: OneOrMany::many(vec![
@@ -705,7 +644,7 @@ mod tests {
 
         let body = create_streaming_request_body(
             CLAUDE_OPUS_4_8.to_string(),
-            &mut request,
+            request,
             64,
             false,
             false,
@@ -734,6 +673,148 @@ mod tests {
             1,
             "document message should appear exactly once: {messages:?}"
         );
+    }
+
+    #[test]
+    fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() {
+        let schema: schemars::Schema = serde_json::from_value(json!({
+            "title": "WeatherResponse",
+            "type": "object",
+            "properties": { "city": { "type": "string" } }
+        }))
+        .expect("schema should deserialize");
+
+        let request = CompletionRequest {
+            model: None,
+            preamble: Some("You are helpful".to_string()),
+            chat_history: OneOrMany::one(RigMessage::user("What's the weather?")),
+            documents: vec![],
+            tools: vec![],
+            temperature: Some(0.5),
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: Some(schema),
+        };
+
+        let streaming_body = create_streaming_request_body(
+            CLAUDE_OPUS_4_8.to_string(),
+            request.clone(),
+            64,
+            false,
+            false,
+            None,
+        )
+        .expect("streaming request body should build");
+
+        // The streaming endpoint flag is set.
+        assert_eq!(streaming_body["stream"], serde_json::Value::Bool(true));
+
+        // Regression: `output_schema` now reaches the streaming wire as
+        // `output_config` (the hand-rolled body dropped it entirely, so this
+        // assertion would have failed before the typed-request unification).
+        assert_eq!(
+            streaming_body["output_config"]["format"]["type"],
+            "json_schema"
+        );
+        assert!(
+            streaming_body["output_config"]["format"]["schema"].is_object(),
+            "streaming body must carry the structured-output schema: {streaming_body}"
+        );
+
+        // Unification invariant: the streaming body is exactly the blocking body
+        // (built via the same typed request) plus `stream: true`. Pins the two
+        // wire formats together so a future edit can't reintroduce drift.
+        let blocking = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .expect("blocking request body should build");
+        let mut expected = serde_json::to_value(&blocking).expect("serialize blocking body");
+        expected
+            .as_object_mut()
+            .expect("body is an object")
+            .insert("stream".to_string(), serde_json::Value::Bool(true));
+
+        assert_eq!(streaming_body, expected);
+    }
+
+    #[test]
+    fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(RigMessage::user("Add 2 and 3")),
+            documents: vec![],
+            tools: vec![crate::completion::ToolDefinition {
+                name: "add".to_string(),
+                description: "Add x and y".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": { "x": { "type": "integer" } }
+                }),
+            }],
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_streaming_request_body(
+            CLAUDE_OPUS_4_8.to_string(),
+            request,
+            64,
+            false,
+            false,
+            None,
+        )
+        .expect("streaming request body should build");
+
+        // Tools advertised + `tool_choice` unset must still carry the explicit
+        // `auto` the streaming wire format has always sent (parity with recorded
+        // fixtures), even though the blocking typed request omits it.
+        assert_eq!(body["tool_choice"], json!({ "type": "auto" }));
+        assert!(body["tools"].is_array());
+    }
+
+    #[test]
+    fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
+        // The typed request serializes a caller-set `tool_choice` regardless of
+        // whether tools are present, but the streaming path has always emitted
+        // `tool_choice` *only* alongside a non-empty tool set (Anthropic rejects it
+        // otherwise). A `tool_choice` set with no tools must not reach the wire.
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(RigMessage::user("Hi")),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: Some(crate::message::ToolChoice::Auto),
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_streaming_request_body(
+            CLAUDE_OPUS_4_8.to_string(),
+            request,
+            64,
+            false,
+            false,
+            None,
+        )
+        .expect("streaming request body should build");
+
+        assert!(
+            body.get("tool_choice").is_none(),
+            "tool_choice must be omitted when no tools are advertised: {body}"
+        );
+        assert!(body.get("tools").is_none());
     }
 
     #[test]
