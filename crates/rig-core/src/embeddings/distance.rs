@@ -26,70 +26,18 @@ pub trait VectorDistance {
     fn chebyshev_distance(&self, other: &Self) -> f64;
 }
 
-#[cfg(not(feature = "rayon"))]
-impl VectorDistance for crate::embeddings::Embedding {
-    fn dot_product(&self, other: &Self) -> f64 {
-        self.vec
-            .iter()
-            .zip(other.vec.iter())
-            .map(|(x, y)| x * y)
-            .sum()
-    }
-
-    fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64 {
-        let dot_product = self.dot_product(other);
-
-        if normalized {
-            dot_product
-        } else {
-            let magnitude1: f64 = self.vec.iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
-            let magnitude2: f64 = other.vec.iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
-
-            dot_product / (magnitude1 * magnitude2)
-        }
-    }
-
-    fn angular_distance(&self, other: &Self, normalized: bool) -> f64 {
-        let cosine_sim = self.cosine_similarity(other, normalized);
-        cosine_sim.acos() / std::f64::consts::PI
-    }
-
-    fn euclidean_distance(&self, other: &Self) -> f64 {
-        self.vec
-            .iter()
-            .zip(other.vec.iter())
-            .map(|(x, y)| (x - y).powi(2))
-            .sum::<f64>()
-            .sqrt()
-    }
-
-    fn manhattan_distance(&self, other: &Self) -> f64 {
-        self.vec
-            .iter()
-            .zip(other.vec.iter())
-            .map(|(x, y)| (x - y).abs())
-            .sum()
-    }
-
-    fn chebyshev_distance(&self, other: &Self) -> f64 {
-        self.vec
-            .iter()
-            .zip(other.vec.iter())
-            .map(|(x, y)| (x - y).abs())
-            .fold(0.0, f64::max)
-    }
-}
-
-#[cfg(feature = "rayon")]
-mod rayon {
-    use crate::embeddings::{Embedding, distance::VectorDistance};
-    use rayon::prelude::*;
-
-    impl VectorDistance for Embedding {
+/// Generates the [`VectorDistance`] method bodies for [`Embedding`](crate::embeddings::Embedding).
+///
+/// The math is identical between the sequential and Rayon-backed implementations;
+/// only the iterator constructor (`iter` vs `par_iter`) and the max-reduction
+/// differ (`Iterator::fold` vs `ParallelIterator::reduce`), so both are supplied
+/// by the caller. Keeping one source prevents the two copies from drifting.
+macro_rules! impl_vector_distance {
+    ($iter:ident, $($max_reduce:tt)+) => {
         fn dot_product(&self, other: &Self) -> f64 {
             self.vec
-                .par_iter()
-                .zip(other.vec.par_iter())
+                .$iter()
+                .zip(other.vec.$iter())
                 .map(|(x, y)| x * y)
                 .sum()
         }
@@ -100,8 +48,8 @@ mod rayon {
             if normalized {
                 dot_product
             } else {
-                let magnitude1: f64 = self.vec.par_iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
-                let magnitude2: f64 = other.vec.par_iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
+                let magnitude1: f64 = self.vec.$iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
+                let magnitude2: f64 = other.vec.$iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
 
                 dot_product / (magnitude1 * magnitude2)
             }
@@ -114,8 +62,8 @@ mod rayon {
 
         fn euclidean_distance(&self, other: &Self) -> f64 {
             self.vec
-                .par_iter()
-                .zip(other.vec.par_iter())
+                .$iter()
+                .zip(other.vec.$iter())
                 .map(|(x, y)| (x - y).powi(2))
                 .sum::<f64>()
                 .sqrt()
@@ -123,19 +71,36 @@ mod rayon {
 
         fn manhattan_distance(&self, other: &Self) -> f64 {
             self.vec
-                .par_iter()
-                .zip(other.vec.par_iter())
+                .$iter()
+                .zip(other.vec.$iter())
                 .map(|(x, y)| (x - y).abs())
                 .sum()
         }
 
         fn chebyshev_distance(&self, other: &Self) -> f64 {
             self.vec
-                .iter()
-                .zip(other.vec.iter())
+                .$iter()
+                .zip(other.vec.$iter())
                 .map(|(x, y)| (x - y).abs())
-                .fold(0.0, f64::max)
+                .$($max_reduce)+
         }
+    };
+}
+
+#[cfg(not(feature = "rayon"))]
+impl VectorDistance for crate::embeddings::Embedding {
+    impl_vector_distance!(iter, fold(0.0, f64::max));
+}
+
+#[cfg(feature = "rayon")]
+mod rayon {
+    use crate::embeddings::{Embedding, distance::VectorDistance};
+    use rayon::prelude::*;
+
+    impl VectorDistance for Embedding {
+        // `ParallelIterator` has no scalar `fold`; use `reduce` (0.0 is a valid
+        // identity for `max` since every mapped value is a non-negative abs diff).
+        impl_vector_distance!(par_iter, reduce(|| 0.0, f64::max));
     }
 }
 
