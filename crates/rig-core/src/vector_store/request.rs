@@ -204,23 +204,36 @@ impl Filter<serde_json::Value> {
         use serde_json::{Value, Value::*};
         use std::cmp::Ordering;
 
-        fn compare_pair(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
+        fn compare_pair(l: &Value, r: &Value) -> Option<Ordering> {
             match (l, r) {
-                (Number(l), Number(r)) => l
-                    .as_f64()
-                    .zip(r.as_f64())
-                    .and_then(|(l, r)| l.partial_cmp(&r))
-                    .or(l.as_i64().zip(r.as_i64()).map(|(l, r)| l.cmp(&r)))
-                    .or(l.as_u64().zip(r.as_u64()).map(|(l, r)| l.cmp(&r))),
+                // Compare integers exactly; fall back to f64 only for floats or
+                // mixed int/float operands. Trying `as_f64` first (as the old
+                // code did) would lose precision for integers beyond 2^53.
+                (Number(l), Number(r)) => {
+                    if let (Some(l), Some(r)) = (l.as_i64(), r.as_i64()) {
+                        Some(l.cmp(&r))
+                    } else if let (Some(l), Some(r)) = (l.as_u64(), r.as_u64()) {
+                        Some(l.cmp(&r))
+                    } else {
+                        l.as_f64()
+                            .zip(r.as_f64())
+                            .and_then(|(l, r)| l.partial_cmp(&r))
+                    }
+                }
                 (String(l), String(r)) => Some(l.cmp(r)),
-                (Null, Null) => Some(std::cmp::Ordering::Equal),
+                (Null, Null) => Some(Ordering::Equal),
                 (Bool(l), Bool(r)) => Some(l.cmp(r)),
                 _ => None,
             }
         }
 
         match self {
-            Eq(k, v) => value.get(k) == Some(v),
+            // Numbers compare numerically so `5` matches `5.0`, consistent with
+            // `Gt`/`Lt`; other JSON types fall back to structural equality so
+            // strings/bools/arrays/objects still match exactly.
+            Eq(k, v) => value
+                .get(k)
+                .is_some_and(|field| compare_pair(field, v) == Some(Ordering::Equal) || field == v),
             Gt(k, v) => value
                 .get(k)
                 .and_then(|field| compare_pair(field, v))
@@ -348,6 +361,28 @@ mod tests {
         // Missing / non-comparable fields never satisfy an ordering filter.
         assert!(!F::gt("missing", json!(1)).satisfies(&doc));
         assert!(!F::gt("text", json!(1)).satisfies(&doc));
+    }
+
+    #[test]
+    fn eq_matches_integer_and_float_representations() {
+        // A field stored as a float still matches an integer operand and vice
+        // versa, consistent with Gt/Lt numeric coercion.
+        assert!(F::eq("score", json!(5)).satisfies(&json!({ "score": 5.0 })));
+        assert!(F::eq("score", json!(5.0)).satisfies(&json!({ "score": 5 })));
+        assert!(!F::eq("score", json!(6)).satisfies(&json!({ "score": 5.0 })));
+        // Non-numeric fields still use structural equality.
+        assert!(F::eq("tag", json!("a")).satisfies(&json!({ "tag": "a" })));
+        assert!(F::eq("tags", json!(["a", "b"])).satisfies(&json!({ "tags": ["a", "b"] })));
+        assert!(!F::eq("tags", json!(["a"])).satisfies(&json!({ "tags": ["a", "b"] })));
+    }
+
+    #[test]
+    fn ordering_compares_large_integers_exactly() {
+        // Integers beyond 2^53 must not collapse to the same f64.
+        let doc = json!({ "id": 9007199254740993_u64 }); // 2^53 + 1
+        assert!(F::gt("id", json!(9007199254740992_u64)).satisfies(&doc)); // > 2^53
+        assert!(!F::gt("id", json!(9007199254740993_u64)).satisfies(&doc));
+        assert!(F::lt("id", json!(9007199254740994_u64)).satisfies(&doc));
     }
 
     #[test]

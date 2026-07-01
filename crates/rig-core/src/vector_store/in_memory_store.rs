@@ -149,6 +149,53 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         }
     }
 
+    /// Scores one candidate document against the query prompt.
+    ///
+    /// Returns the best similarity across the document's embeddings together with
+    /// the matching embedding text, or `None` when the document is filtered out,
+    /// has no embeddings, produces a non-finite similarity, or scores below the
+    /// threshold. Shared by the brute-force and LSH scans so the filter,
+    /// threshold, and NaN handling live in exactly one place.
+    fn score_candidate<'a>(
+        doc: &D,
+        embeddings: &'a OneOrMany<Embedding>,
+        prompt_embedding: &Embedding,
+        filter: Option<&Filter<serde_json::Value>>,
+        threshold: Option<f64>,
+    ) -> Result<Option<(OrderedFloat<f64>, &'a String)>, VectorStoreError> {
+        if !Self::satisfies_filter(doc, filter)? {
+            return Ok(None);
+        }
+
+        // Best (highest-similarity) embedding for this document.
+        let Some((distance, embed_doc)) = embeddings
+            .iter()
+            .map(|embedding| {
+                (
+                    OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
+                    &embedding.document,
+                )
+            })
+            .max_by(|a, b| a.0.cmp(&b.0))
+        else {
+            return Ok(None);
+        };
+
+        // A zero-magnitude embedding yields a NaN similarity; NaN sorts as the
+        // maximum under `OrderedFloat` and slips past `distance < threshold`
+        // (every comparison with NaN is false), so it must be excluded here.
+        if !distance.0.is_finite() {
+            return Ok(None);
+        }
+
+        // Skip documents below the similarity threshold.
+        if threshold.is_some_and(|t| distance.0 < t) {
+            return Ok(None);
+        }
+
+        Ok(Some((distance, embed_doc)))
+    }
+
     /// Implement vector search on [InMemoryVectorStore].
     /// To be used by implementations of [VectorStoreIndex::top_n] and [VectorStoreIndex::top_n_ids] methods.
     ///
@@ -192,28 +239,13 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         let mut docs = BinaryHeap::new();
 
         for (id, (doc, embeddings)) in self.embeddings.iter() {
-            // Skip documents that don't satisfy the metadata filter.
-            if !Self::satisfies_filter(doc, filter)? {
+            let Some((distance, embed_doc)) =
+                Self::score_candidate(doc, embeddings, prompt_embedding, filter, threshold)?
+            else {
                 continue;
-            }
-
-            // Get the best context for the document given the prompt
-            if let Some((distance, embed_doc)) = embeddings
-                .iter()
-                .map(|embedding| {
-                    (
-                        OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
-                        &embedding.document,
-                    )
-                })
-                .max_by(|a, b| a.0.cmp(&b.0))
-            {
-                // Skip documents below the similarity threshold.
-                if threshold.is_some_and(|t| distance.0 < t) {
-                    continue;
-                }
-                docs.push(Reverse(RankingItem(distance, id, doc, embed_doc)));
             };
+
+            docs.push(Reverse(RankingItem(distance, id, doc, embed_doc)));
 
             // If the heap size exceeds n, pop the least old element.
             if docs.len() > n {
@@ -257,29 +289,11 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         let mut scored_docs = Vec::new();
 
         for candidate_id in candidates {
-            if let Some((doc, embeddings)) = self.embeddings.get(&candidate_id) {
-                // Skip documents that don't satisfy the metadata filter.
-                if !Self::satisfies_filter(doc, filter)? {
-                    continue;
-                }
-
-                // Get the best context for the document given the prompt
-                if let Some((distance, embed_doc)) = embeddings
-                    .iter()
-                    .map(|embedding| {
-                        (
-                            OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)),
-                            &embedding.document,
-                        )
-                    })
-                    .max_by(|a, b| a.0.cmp(&b.0))
-                {
-                    // Skip documents below the similarity threshold.
-                    if threshold.is_some_and(|t| distance.0 < t) {
-                        continue;
-                    }
-                    scored_docs.push((distance, candidate_id, doc, embed_doc));
-                }
+            if let Some((doc, embeddings)) = self.embeddings.get(&candidate_id)
+                && let Some((distance, embed_doc)) =
+                    Self::score_candidate(doc, embeddings, prompt_embedding, filter, threshold)?
+            {
+                scored_docs.push((distance, candidate_id, doc, embed_doc));
             }
         }
 
@@ -883,5 +897,53 @@ mod tests {
             .build())
         .await;
         assert_eq!(kept, vec!["a", "b", "c"]);
+    }
+
+    #[tokio::test]
+    async fn top_n_excludes_non_finite_similarity() {
+        use crate::test_utils::MockEmbeddingModel;
+        use crate::vector_store::VectorStoreIndex;
+        use crate::vector_store::request::VectorSearchRequest;
+
+        let embedding = |doc: &str, vec: Vec<f64>| {
+            OneOrMany::one(Embedding {
+                document: doc.to_string(),
+                vec,
+            })
+        };
+
+        // The zero-magnitude embedding produces a NaN cosine similarity, which
+        // sorts as the maximum under OrderedFloat. It must not rank first (or
+        // appear at all), even with no threshold set.
+        let index = InMemoryVectorStore::from_documents_with_ids(vec![
+            (
+                "good",
+                "good".to_string(),
+                embedding(
+                    "good",
+                    vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                ),
+            ),
+            (
+                "degenerate",
+                "degenerate".to_string(),
+                embedding("degenerate", vec![0.0; 10]),
+            ),
+        ])
+        .index(MockEmbeddingModel);
+
+        let ids: Vec<String> = index
+            .top_n_ids(
+                VectorSearchRequest::builder()
+                    .query("q")
+                    .samples(10)
+                    .build(),
+            )
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(_, id)| id)
+            .collect();
+        assert_eq!(ids, vec!["good".to_string()]);
     }
 }
