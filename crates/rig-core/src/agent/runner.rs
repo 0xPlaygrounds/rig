@@ -30,20 +30,26 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use futures::{Stream, StreamExt, stream};
+use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, DynamicContextStore, build_prepared_completion_request},
+    completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
     hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, RequestOverride, StepEvent},
-    prompt_request::{PromptResponse, tool_result_message, tool_result_output},
+    prompt_request::{
+        PromptResponse,
+        streaming::{
+            DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
+            drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
+        },
+        tool_result_message, tool_result_output,
+    },
     run::{
-        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
-        PendingToolCall,
+        AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
     },
 };
 use crate::{
-    completion::{CompletionModel, Document, Message, PromptError},
+    completion::{CompletionError, CompletionModel, Document, Message, PromptError},
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
@@ -343,8 +349,8 @@ where
     /// finishes, which may be completion order rather than call order. The
     /// persisted message history is unchanged.
     ///
-    /// A `concurrency` of 0 is clamped to 1: `buffered(0)` never makes progress,
-    /// so it would otherwise hang the run the first time the model calls a tool.
+    /// A `concurrency` of 0 is clamped to 1; `0` and `1` both run a turn's tools
+    /// sequentially (the `buffer_unordered` path is used only at `concurrency > 1`).
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
         self
@@ -415,6 +421,93 @@ pub(crate) fn build_agent_run(
         run = run.with_tool_choice(tool_choice);
     }
     run
+}
+
+/// Build (or adopt) the top-level `invoke_agent` span for a run, shared by the
+/// blocking and streaming drivers so the run-level span shape is defined once.
+///
+/// Returns the span plus whether it was newly created. When the caller is
+/// already inside a span we adopt it and report `false`, so the driver can avoid
+/// recording run-level usage onto a span it does not own (see the
+/// `created_agent_span` guard in both drivers' `Done` handling).
+pub(crate) fn acquire_agent_span(
+    agent_name: &str,
+    preamble: Option<&str>,
+) -> (tracing::Span, bool) {
+    if tracing::Span::current().is_disabled() {
+        let span = info_span!(
+            "invoke_agent",
+            gen_ai.operation.name = "invoke_agent",
+            gen_ai.agent.name = agent_name,
+            gen_ai.system_instructions = preamble,
+            gen_ai.prompt = tracing::field::Empty,
+            gen_ai.completion = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+        );
+        (span, true)
+    } else {
+        (tracing::Span::current(), false)
+    }
+}
+
+/// Outcome of firing the `CompletionCall` hook for a turn.
+pub(crate) enum CompletionCallOutcome {
+    /// Proceed, optionally applying a per-turn request override.
+    Proceed(Option<RequestOverride>),
+    /// Terminate the run with this reason.
+    Terminate(String),
+}
+
+/// Fire the `CompletionCall` hook for a turn and resolve its [`Flow`]
+/// (fail-closed). Shared by the blocking and streaming drivers so this steering
+/// event fires identically on both; each driver surfaces `Terminate` in its own
+/// medium (a returned `Err` vs. a yielded error item).
+pub(crate) async fn resolve_completion_call<M>(
+    hooks: &HookStack<M>,
+    prompt: &Message,
+    history: &[Message],
+    turn: usize,
+) -> CompletionCallOutcome
+where
+    M: CompletionModel,
+{
+    match flow_into_completion_call(
+        hooks
+            .on_event(StepEvent::CompletionCall {
+                prompt,
+                history,
+                turn,
+            })
+            .await,
+    ) {
+        CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
+        CompletionCallDecision::Override(request) => CompletionCallOutcome::Proceed(Some(request)),
+        CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
+    }
+}
+
+/// Append a finished run's messages to conversation memory, logging and
+/// proceeding on failure. Shared `Done`-arm behavior for both drivers.
+pub(crate) async fn append_run_messages(
+    memory_handle: Option<&(Arc<dyn ConversationMemory>, String)>,
+    messages: &[Message],
+) {
+    // Clone into an owned vec only when there is a backend to append to — the
+    // common no-memory path pays nothing.
+    if let Some((memory, id)) = memory_handle
+        && let Err(err) = memory.append(id, messages.to_vec()).await
+    {
+        tracing::warn!(
+            error = %err,
+            conversation_id = %id,
+            "conversation memory append failed; surfacing final response anyway"
+        );
+    }
 }
 
 /// Execute a single tool call, firing the `ToolCall` and `ToolResult` hooks and
@@ -566,61 +659,193 @@ pub(crate) fn new_execute_tool_span() -> tracing::Span {
     )
 }
 
-/// Execute a turn's tool calls with up to `concurrency` running at once,
-/// yielding each result **in tool-call (emission) order**.
-///
-/// Uses `buffered` (not `buffer_unordered`), so results land in call order
-/// regardless of `concurrency` — keeping the blocking driver's message history
-/// deterministic. The streaming driver uses a completion-ordered stream for
-/// user-facing events, then reassembles the same call-ordered history before the
-/// next model turn. Each call runs inside its paired span; pre-resolved calls —
-/// those suppressed by invalid tool-call recovery — return their stored result
-/// without executing.
-pub(crate) fn execute_tools_buffered<'a, M>(
-    hooks: &'a HookStack<M>,
-    tool_server: &'a ToolServerHandle,
-    tool_extensions: &'a ToolCallExtensions,
-    calls: Vec<(PendingToolCall, tracing::Span)>,
-    error_history: &'a [Message],
-    concurrency: usize,
-) -> impl Stream<Item = Result<UserContent, PromptError>> + 'a
+/// [`TurnSource`] for the blocking surface: each turn issues a unary
+/// `model.completion()` request and feeds the whole response into the machine.
+/// Emits no intermediate items (the blocking surface folds the engine to its
+/// final response), but keeps the blocking driver's linear `follows_from` span
+/// chain across chat and tool spans.
+pub(crate) struct UnaryTurnSource {
+    /// Sequences chat and tool spans into a linear `follows_from` chain (the
+    /// streaming surface parents into a tree instead and does not chain).
+    ///
+    /// Atomic rather than `Cell` despite being driven by a single sequential
+    /// task: `run_tool_calls` passes `chain_span` as a closure into
+    /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That makes the
+    /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
+    /// `UnaryTurnSource: Sync` — which `AtomicU64` provides and `Cell` does not.
+    current_span_id: AtomicU64,
+}
+
+impl UnaryTurnSource {
+    pub(crate) fn new() -> Self {
+        Self {
+            current_span_id: AtomicU64::new(0),
+        }
+    }
+
+    /// Chain `span` onto the previous step's span and record it as the new chain
+    /// head, preserving the blocking driver's linear causal trace.
+    fn chain_span(&self, span: tracing::Span) -> tracing::Span {
+        let span = match self.current_span_id.load(Ordering::Relaxed) {
+            0 => span,
+            id => span.follows_from(Id::from_u64(id)).to_owned(),
+        };
+        if let Some(id) = span.id() {
+            self.current_span_id.store(id.into_u64(), Ordering::Relaxed);
+        }
+        span
+    }
+}
+
+impl<M> TurnSource<M> for UnaryTurnSource
 where
     M: CompletionModel,
 {
-    stream::iter(calls)
-        .map(move |(pending, tool_span)| {
-            async move {
-                let PendingToolCall {
-                    tool_call,
-                    preresolved_result,
-                    internal_call_id,
-                } = pending;
-                // Tool calls suppressed by invalid tool-call recovery come
-                // pre-resolved and must not execute.
-                if let Some(result) = preresolved_result {
-                    return Ok(result);
+    type Raw = M::Response;
+
+    fn open_chat_span(
+        &self,
+        runner: &AgentRunner<M>,
+        effective_preamble: Option<&str>,
+    ) -> tracing::Span {
+        let chat_span = info_span!(
+            target: "rig::agent_chat",
+            parent: tracing::Span::current(),
+            "chat",
+            gen_ai.operation.name = "chat",
+            gen_ai.agent.name = runner.agent_name_or_default(),
+            gen_ai.system_instructions = effective_preamble,
+            gen_ai.provider.name = tracing::field::Empty,
+            gen_ai.request.model = tracing::field::Empty,
+            gen_ai.response.id = tracing::field::Empty,
+            gen_ai.response.model = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+            gen_ai.input.messages = tracing::field::Empty,
+            gen_ai.output.messages = tracing::field::Empty,
+        );
+        self.chain_span(chat_span)
+    }
+
+    fn run_model_turn<'a>(
+        &'a mut self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        prepared: PreparedCompletionRequest<M>,
+        chat_span: tracing::Span,
+        _agent_span: &'a tracing::Span,
+        current_prompt: Message,
+    ) -> DriveStream<'a, M::Response> {
+        Box::pin(async_stream::stream! {
+            let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
+                Ok(resp) => resp,
+                Err(err) => {
+                    yield Err(StreamingError::from(err));
+                    return;
                 }
-                // Reuse the call's correlation id when it arrived via a streamed
-                // turn (so the blocking driver keeps the ids a consumer already
-                // saw), otherwise mint a fresh one — matching the prior
-                // always-fresh blocking behavior when none is present.
-                let internal_call_id = internal_call_id.unwrap_or_else(crate::id::generate);
-                run_single_tool(
-                    hooks,
-                    tool_server,
-                    tool_extensions,
-                    &tool_call,
-                    &internal_call_id,
-                    error_history,
-                )
-                .await
+            };
+
+            let mut outcome = match run.model_response(ModelTurn::new(
+                resp.message_id.clone(),
+                resp.choice.clone(),
+                resp.usage,
+                prepared.executable_tool_names,
+                prepared.allowed_tool_names,
+            )) {
+                Ok(outcome) => outcome,
+                Err(err) => {
+                    yield Err(Box::new(err).into());
+                    return;
+                }
+            };
+
+            loop {
+                match outcome {
+                    ModelTurnOutcome::NeedsResolution(context) => {
+                        let flow = runner
+                            .hooks
+                            .on_event(StepEvent::InvalidToolCall(&context))
+                            .await;
+                        match flow_into_invalid(flow) {
+                            InvalidDecision::Terminate(reason) => {
+                                yield Err(StreamingError::Prompt(Box::new(
+                                    run.cancel_error(reason),
+                                )));
+                                return;
+                            }
+                            InvalidDecision::Action(action) => {
+                                outcome = match run.resolve_invalid_tool_call(action) {
+                                    Ok(outcome) => outcome,
+                                    Err(err) => {
+                                        yield Err(Box::new(err).into());
+                                        return;
+                                    }
+                                };
+                            }
+                        }
+                    }
+                    ModelTurnOutcome::TurnRetried => break,
+                    ModelTurnOutcome::Continue {
+                        response_hook_suppressed,
+                    } => {
+                        if !response_hook_suppressed
+                            && let Some(reason) = observe_flow(
+                                runner
+                                    .hooks
+                                    .on_event(StepEvent::CompletionResponse {
+                                        prompt: &current_prompt,
+                                        response: &resp,
+                                    })
+                                    .await,
+                            )
+                        {
+                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                            return;
+                        }
+                        break;
+                    }
+                }
             }
-            .instrument(tool_span)
         })
-        // `buffered` (not `buffer_unordered`) so results land in tool-call
-        // emission order — matching the streaming driver's persisted history
-        // order, so both produce the same message history even at concurrency > 1.
-        .buffered(concurrency)
+    }
+
+    fn run_tool_calls<'a>(
+        &'a self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        calls: Vec<PendingToolCall>,
+    ) -> DriveStream<'a, M::Response> {
+        // The blocking surface chains tool spans into its linear `follows_from`
+        // sequence (chat -> tool -> chat), and discards the yielded items, so it
+        // skips building them.
+        drive_tool_calls(runner, run, calls, |span| self.chain_span(span), false)
+    }
+
+    fn record_run_level_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        response: &PromptResponse,
+        created_agent_span: bool,
+    ) {
+        // Record run-level completion + usage onto the agent span, but only when
+        // we created it — never pollute a caller-supplied outer span. The usage
+        // fields go through the same recorder the streaming surface uses; the
+        // blocking surface additionally records the final completion text.
+        if created_agent_span {
+            agent_span.record("gen_ai.completion", &response.output);
+            record_usage_on_span(agent_span, response.usage);
+        }
+    }
+
+    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem<M::Response>> {
+        // The blocking surface folds the engine and discards the final item, so
+        // building it (an extra full-response clone) is skipped entirely.
+        None
+    }
 }
 
 impl<M> AgentRunner<M>
@@ -631,30 +856,12 @@ where
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
     pub async fn run(self) -> Result<PromptResponse, PromptError> {
-        let agent_span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                "invoke_agent",
-                gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent_name_or_default(),
-                gen_ai.system_instructions = self.preamble,
-                gen_ai.prompt = tracing::field::Empty,
-                gen_ai.completion = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let (agent_span, created_agent_span) =
+            acquire_agent_span(self.agent_name_or_default(), self.preamble.as_deref());
 
         if let Some(text) = self.prompt.rag_text() {
             agent_span.record("gen_ai.prompt", text);
         }
-
-        let agent_name_for_span = self.agent_name.clone();
 
         // When the caller passes explicit history, memory is fully bypassed for
         // this run (no load AND no save). Otherwise, if a memory backend and
@@ -670,242 +877,38 @@ where
             },
         };
 
-        let mut run = self.build_run(history_override);
-        let current_span_id: AtomicU64 = AtomicU64::new(0);
+        let run = self.build_run(history_override);
 
-        loop {
-            match run.next_step()? {
-                AgentRunStep::CallModel {
-                    prompt,
-                    history,
-                    turn,
-                } => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Current conversation depth: {}/{}", turn, self.max_turns);
-                    }
+        // Fold the shared engine to its final response. The blocking surface
+        // uses a unary model transport and ignores the intermediate items the
+        // engine yields; the engine is driven under the caller's ambient span
+        // (no `instrument`), keeping the agent span detached and the chat/tool
+        // spans on the blocking `follows_from` chain.
+        let driver = drive_agent(
+            self,
+            UnaryTurnSource::new(),
+            run,
+            agent_span,
+            created_agent_span,
+            memory_handle,
+        );
+        futures::pin_mut!(driver);
 
-                    let request_override = match flow_into_completion_call(
-                        self.hooks
-                            .on_event(StepEvent::CompletionCall {
-                                prompt: &prompt,
-                                history: &history,
-                                turn,
-                            })
-                            .await,
-                    ) {
-                        CompletionCallDecision::Terminate(reason) => {
-                            return Err(run.cancel_error(reason));
-                        }
-                        CompletionCallDecision::Override(request) => Some(request),
-                        CompletionCallDecision::Proceed => None,
-                    };
-
-                    // Record this turn's base system prompt — the override-or-baseline
-                    // preamble, before any output-mode augmentation the request
-                    // builder appends (the provider-level span records the final
-                    // value). A per-turn `RequestOverride` can replace it, and the
-                    // builder below resolves the same precedence; borrow rather than
-                    // clone since the value only needs to outlive span creation.
-                    let effective_preamble = request_override
-                        .as_ref()
-                        .and_then(|o| o.preamble.as_deref())
-                        .or(self.preamble.as_deref());
-
-                    let span = tracing::Span::current();
-                    let chat_span = info_span!(
-                        target: "rig::agent_chat",
-                        parent: &span,
-                        "chat",
-                        gen_ai.operation.name = "chat",
-                        gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                        gen_ai.system_instructions = effective_preamble,
-                        gen_ai.provider.name = tracing::field::Empty,
-                        gen_ai.request.model = tracing::field::Empty,
-                        gen_ai.response.id = tracing::field::Empty,
-                        gen_ai.response.model = tracing::field::Empty,
-                        gen_ai.usage.output_tokens = tracing::field::Empty,
-                        gen_ai.usage.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                        gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                        gen_ai.input.messages = tracing::field::Empty,
-                        gen_ai.output.messages = tracing::field::Empty,
-                    );
-
-                    let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                        let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                        chat_span.follows_from(id).to_owned()
-                    } else {
-                        chat_span
-                    };
-
-                    if let Some(id) = chat_span.id() {
-                        current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                    };
-
-                    // Pin Tool output mode once committed so later turns stay
-                    // consistent even if the per-turn tool set changes (#1928).
-                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let prepared_request = build_prepared_completion_request(
-                        &self.model,
-                        prompt.clone(),
-                        &history,
-                        self.preamble.as_deref(),
-                        &self.static_context,
-                        self.temperature,
-                        self.max_tokens,
-                        self.additional_params.as_ref(),
-                        self.tool_choice.as_ref(),
-                        &self.tool_server_handle,
-                        &self.dynamic_context,
-                        self.output_schema.as_ref(),
-                        &self.output_mode,
-                        committed_output_tool.as_deref(),
-                        request_override.as_ref(),
-                    )
-                    .await?;
-
-                    let resp = prepared_request
-                        .builder
-                        .send()
-                        .instrument(chat_span.clone())
-                        .await?;
-
-                    run.set_output_tool_name(prepared_request.output_tool_name.clone());
-
-                    let mut outcome = run.model_response(ModelTurn::new(
-                        resp.message_id.clone(),
-                        resp.choice.clone(),
-                        resp.usage,
-                        prepared_request.executable_tool_names,
-                        prepared_request.allowed_tool_names,
-                    ))?;
-
-                    loop {
-                        match outcome {
-                            ModelTurnOutcome::NeedsResolution(context) => {
-                                let flow = self
-                                    .hooks
-                                    .on_event(StepEvent::InvalidToolCall(&context))
-                                    .await;
-                                match flow_into_invalid(flow) {
-                                    InvalidDecision::Terminate(reason) => {
-                                        return Err(run.cancel_error(reason));
-                                    }
-                                    InvalidDecision::Action(action) => {
-                                        outcome = run.resolve_invalid_tool_call(action)?;
-                                    }
-                                }
-                            }
-                            ModelTurnOutcome::TurnRetried => break,
-                            ModelTurnOutcome::Continue {
-                                response_hook_suppressed,
-                            } => {
-                                if !response_hook_suppressed
-                                    && let Some(reason) = observe_flow(
-                                        self.hooks
-                                            .on_event(StepEvent::CompletionResponse {
-                                                prompt: &prompt,
-                                                response: &resp,
-                                            })
-                                            .await,
-                                    )
-                                {
-                                    return Err(run.cancel_error(reason));
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-                AgentRunStep::CallTools { calls } => {
-                    let hooks = &self.hooks;
-                    let tool_server = &self.tool_server_handle;
-                    let tool_extensions = &self.tool_extensions;
-                    // Materialize the diagnostic history once; tools only read it
-                    // (verbatim, on a hook-terminate error path), so every tool
-                    // future shares a single borrow instead of deep-cloning the
-                    // whole conversation per call on the common success path.
-                    let full_history_for_errors = run.full_history();
-                    let error_history: &[Message] = &full_history_for_errors;
-
-                    // Build a `follows_from`-chained span per call, in call order,
-                    // then hand the calls to the blocking driver's buffered executor.
-                    let calls_with_spans: Vec<(PendingToolCall, tracing::Span)> = calls
-                        .into_iter()
-                        .map(|pending| {
-                            let tool_span = new_execute_tool_span();
-
-                            let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                                tool_span.follows_from(id).to_owned()
-                            } else {
-                                tool_span
-                            };
-
-                            if let Some(id) = tool_span.id() {
-                                current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                            };
-
-                            (pending, tool_span)
-                        })
-                        .collect();
-
-                    let tool_content = execute_tools_buffered(
-                        hooks,
-                        tool_server,
-                        tool_extensions,
-                        calls_with_spans,
-                        error_history,
-                        self.concurrency,
-                    )
-                    .collect::<Vec<Result<UserContent, PromptError>>>()
-                    .await
-                    .into_iter()
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                    run.tool_results(tool_content)?;
-                }
-                AgentRunStep::Done(response) => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Depth reached: {}/{}", run.turn(), self.max_turns);
-                    }
-
-                    let usage = response.usage;
-                    agent_span.record("gen_ai.completion", &response.output);
-                    agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    agent_span.record(
-                        "gen_ai.usage.cache_read.input_tokens",
-                        usage.cached_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.cache_creation.input_tokens",
-                        usage.cache_creation_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.tool_use_prompt_tokens",
-                        usage.tool_use_prompt_tokens,
-                    );
-                    agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
-
-                    if let Some((memory, id)) = memory_handle.as_ref()
-                        && let Err(err) = memory
-                            .append(id, response.messages.clone().unwrap_or_default())
-                            .await
-                    {
-                        tracing::warn!(
-                            error = %err,
-                            conversation_id = %id,
-                            "conversation memory append failed; returning model response anyway"
-                        );
-                    }
-
-                    return Ok(response);
-                }
+        let mut response = None;
+        while let Some(item) = driver.next().await {
+            match item {
+                Ok(DriveItem::Done(done)) => response = Some(*done),
+                Ok(DriveItem::Item(_)) => {}
+                Err(err) => return Err(streaming_error_into_prompt(err)),
             }
         }
+
+        // The engine yields `Done` unless it errored (handled above).
+        response.ok_or_else(|| {
+            PromptError::CompletionError(CompletionError::ResponseError(
+                "agent run ended without producing a final response".to_string(),
+            ))
+        })
     }
 }
 
@@ -1087,6 +1090,289 @@ mod tests {
         );
     }
 
+    /// Safety net for the streaming/non-streaming unification: pins the blocking
+    /// driver's span topology (span name, `invoke_agent` creation, the
+    /// `follows_from` chain, and `created_agent_span`-gated run-level usage) so a
+    /// later refactor onto a shared engine cannot silently drift it. The
+    /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
+    mod span_safety_net {
+        use std::collections::{HashMap, HashSet};
+        use std::sync::{Arc, Mutex};
+
+        use tracing::Instrument;
+        use tracing::field::{Field, Visit};
+        use tracing::span::{Attributes, Record};
+        use tracing::{Id, Subscriber};
+        use tracing_subscriber::layer::{Context, SubscriberExt};
+        use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+        use crate::agent::AgentBuilder;
+        use crate::completion::Usage;
+        use crate::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
+
+        #[derive(Clone)]
+        struct CapturedSpan {
+            id: u64,
+            name: String,
+            field_names: HashSet<String>,
+            u64_fields: HashMap<String, u64>,
+        }
+
+        #[derive(Clone, Default)]
+        struct Captured {
+            spans: Arc<Mutex<Vec<CapturedSpan>>>,
+            /// `(span, follows_from)` pairs recorded via `Span::follows_from`.
+            follows: Arc<Mutex<Vec<(u64, u64)>>>,
+        }
+
+        impl Captured {
+            fn insert(&self, id: &Id, name: &str) {
+                self.spans.lock().expect("spans").push(CapturedSpan {
+                    id: id.into_u64(),
+                    name: name.to_string(),
+                    field_names: HashSet::new(),
+                    u64_fields: HashMap::new(),
+                });
+            }
+
+            fn record(&self, id: &Id, names: HashSet<String>, u64s: HashMap<String, u64>) {
+                let id = id.into_u64();
+                if let Ok(mut spans) = self.spans.lock()
+                    && let Some(span) = spans.iter_mut().find(|s| s.id == id)
+                {
+                    span.field_names.extend(names);
+                    span.u64_fields.extend(u64s);
+                }
+            }
+
+            fn follows_from(&self, span: &Id, follows: &Id) {
+                self.follows
+                    .lock()
+                    .expect("follows")
+                    .push((span.into_u64(), follows.into_u64()));
+            }
+
+            fn clear(&self) {
+                self.spans.lock().expect("spans").clear();
+                self.follows.lock().expect("follows").clear();
+            }
+
+            fn snapshot(&self) -> Vec<CapturedSpan> {
+                self.spans.lock().expect("spans").clone()
+            }
+
+            fn follows_edges(&self) -> Vec<(u64, u64)> {
+                self.follows.lock().expect("follows").clone()
+            }
+        }
+
+        struct CaptureLayer {
+            captured: Captured,
+        }
+
+        impl<S> Layer<S> for CaptureLayer
+        where
+            S: Subscriber + for<'l> LookupSpan<'l>,
+        {
+            fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
+                self.captured.insert(id, attrs.metadata().name());
+            }
+
+            fn on_record(&self, span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
+                let mut visitor = FieldVisitor::default();
+                values.record(&mut visitor);
+                self.captured.record(span, visitor.names, visitor.u64s);
+            }
+
+            fn on_follows_from(&self, span: &Id, follows: &Id, _ctx: Context<'_, S>) {
+                self.captured.follows_from(span, follows);
+            }
+        }
+
+        #[derive(Default)]
+        struct FieldVisitor {
+            names: HashSet<String>,
+            u64s: HashMap<String, u64>,
+        }
+
+        impl Visit for FieldVisitor {
+            fn record_u64(&mut self, field: &Field, value: u64) {
+                self.names.insert(field.name().to_string());
+                self.u64s.insert(field.name().to_string(), value);
+            }
+
+            fn record_str(&mut self, field: &Field, _value: &str) {
+                self.names.insert(field.name().to_string());
+            }
+
+            fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
+                self.names.insert(field.name().to_string());
+            }
+        }
+
+        fn usage(input: u64, output: u64) -> Usage {
+            Usage {
+                input_tokens: input,
+                output_tokens: output,
+                ..Usage::new()
+            }
+        }
+
+        /// Two-turn tool scenario: the blocking driver emits chat -> execute_tool
+        /// -> chat, exercising the `follows_from` chain.
+        fn tool_then_text_model() -> MockCompletionModel {
+            MockCompletionModel::from_turns([
+                MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 2, "y": 3}))
+                    .with_usage(usage(7, 11)),
+                MockTurn::text("the answer is 5").with_usage(usage(13, 17)),
+            ])
+        }
+
+        /// Register the blocking driver's span callsites against the scoped
+        /// subscriber before asserting, mirroring the streaming usage test's
+        /// interest-cache warm-up (a foreign thread without our subscriber can
+        /// otherwise cache `Interest::never` for these callsites).
+        async fn warm_blocking_callsites() {
+            let agent = AgentBuilder::new(tool_then_text_model())
+                .tool(MockAddTool)
+                .build();
+            let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
+        }
+
+        #[tokio::test]
+        async fn run_records_usage_and_chains_chat_spans_on_a_created_agent_span() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            let agent = AgentBuilder::new(tool_then_text_model())
+                .tool(MockAddTool)
+                .build();
+            let response = agent
+                .runner("add 2 and 3")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("blocking run should succeed");
+            assert_eq!(response.output, "the answer is 5");
+
+            let spans = captured.snapshot();
+
+            // The blocking chat span is named "chat" (NOT "chat_streaming").
+            let chat_spans: Vec<&CapturedSpan> =
+                spans.iter().filter(|s| s.name == "chat").collect();
+            assert_eq!(chat_spans.len(), 2, "two model turns -> two chat spans");
+            assert!(
+                spans.iter().all(|s| s.name != "chat_streaming"),
+                "blocking driver must not emit chat_streaming spans"
+            );
+
+            // A run with no ambient span creates its own invoke_agent span...
+            let agent_span = spans
+                .iter()
+                .find(|s| s.name == "invoke_agent")
+                .expect("blocking run should create an invoke_agent span");
+
+            // ...and records aggregate usage + completion onto it (created_agent_span).
+            assert_eq!(
+                agent_span.u64_fields.get("gen_ai.usage.input_tokens"),
+                Some(&(7 + 13)),
+            );
+            assert_eq!(
+                agent_span.u64_fields.get("gen_ai.usage.output_tokens"),
+                Some(&(11 + 17)),
+            );
+            assert!(
+                agent_span.field_names.contains("gen_ai.completion"),
+                "the created agent span records the final completion text"
+            );
+
+            // The blocking driver links chat/tool spans into a linear
+            // follows_from chain (chat#1 -> execute_tool -> chat#2); the
+            // streaming driver does not, so this is a blocking-only invariant the
+            // unification must keep.
+            let tool_span = spans
+                .iter()
+                .find(|s| s.name == "execute_tool")
+                .expect("tool turn should emit an execute_tool span");
+            let edges = captured.follows_edges();
+            assert!(
+                edges.contains(&(tool_span.id, chat_spans[0].id)),
+                "execute_tool should follow_from the first chat span; edges={edges:?}"
+            );
+            assert!(
+                edges.contains(&(chat_spans[1].id, tool_span.id)),
+                "the second chat span should follow_from execute_tool; edges={edges:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn run_does_not_record_usage_onto_a_caller_supplied_outer_span() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            // Declare the fields the guard protects so a regression (recording
+            // onto a caller span) is actually observable rather than a silent
+            // no-op on an undeclared field.
+            let outer = tracing::info_span!(
+                "outer",
+                gen_ai.completion = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+            );
+            async {
+                let agent = AgentBuilder::new(tool_then_text_model())
+                    .tool(MockAddTool)
+                    .build();
+                agent
+                    .runner("add 2 and 3")
+                    .max_turns(3)
+                    .run()
+                    .await
+                    .expect("blocking run should succeed");
+            }
+            .instrument(outer)
+            .await;
+
+            let spans = captured.snapshot();
+            // Under an ambient span the driver adopts it; no invoke_agent is created.
+            assert!(
+                spans.iter().all(|s| s.name != "invoke_agent"),
+                "an ambient outer span should be adopted, not wrapped in invoke_agent"
+            );
+            let outer_span = spans
+                .iter()
+                .find(|s| s.name == "outer")
+                .expect("outer span should be captured");
+            assert!(
+                outer_span
+                    .field_names
+                    .iter()
+                    .all(|name| !name.starts_with("gen_ai.usage.")),
+                "run-level usage must not be recorded onto a caller-supplied outer span"
+            );
+            assert!(
+                !outer_span.field_names.contains("gen_ai.completion"),
+                "run-level completion must not be recorded onto a caller-supplied outer span"
+            );
+        }
+    }
+
     fn tool_call_content(id: &str, args: serde_json::Value) -> AssistantContent {
         AssistantContent::ToolCall(ToolCall::new(
             id.to_string(),
@@ -1117,7 +1403,8 @@ mod tests {
 
     /// Even with `run()` executing tools concurrently, the tool-result order —
     /// and so the whole message history — matches the sequential streaming
-    /// driver. (`run()` uses `buffered`, which preserves call order.)
+    /// driver. (`run()` runs tools with `buffer_unordered` but writes each result
+    /// into its original call-index slot, so results still land in call order.)
     #[tokio::test]
     async fn run_and_stream_same_message_history_for_parallel_tool_calls() {
         let blocking_model = MockCompletionModel::from_turns([
@@ -1177,10 +1464,11 @@ mod tests {
         );
     }
 
-    /// A tool whose first-*called* invocation completes *after* the second, so a
-    /// completion-ordered combinator (`buffer_unordered`) would reorder results
-    /// while call-ordered `buffered` does not. The first call (in poll/call
-    /// order) waits on a gate the second call releases.
+    /// A tool whose first-*called* invocation completes *after* the second, so
+    /// `buffer_unordered` yields the results in completion order — yet the
+    /// persisted history stays in call order because each result is written into
+    /// its original call-index slot. The first call (in poll/call order) waits on
+    /// a gate the second call releases.
     #[derive(Clone)]
     struct OutOfOrderTool {
         gate: Arc<tokio::sync::Notify>,
@@ -1210,10 +1498,11 @@ mod tests {
         }
     }
 
-    /// `run()` must surface tool results in tool-call (emission) order even when
-    /// tools complete out of order under concurrency — i.e. it uses `buffered`,
-    /// not `buffer_unordered`. (This is what keeps its message history identical
-    /// to the sequential streaming driver.)
+    /// `run()` must persist tool results in tool-call (emission) order even when
+    /// tools complete out of order under concurrency — it runs them with
+    /// `buffer_unordered` but reindexes each result into its original call-index
+    /// slot. (This is what keeps its message history identical to the sequential
+    /// streaming driver.)
     #[tokio::test]
     async fn run_preserves_tool_call_order_under_out_of_order_completion() {
         let model = MockCompletionModel::from_turns([
@@ -1653,10 +1942,210 @@ mod tests {
         );
     }
 
-    /// `tool_concurrency(0)` is clamped to 1. Without the clamp the blocking
-    /// driver's `buffered(0)` never makes progress, so the run would hang the
-    /// first time the model calls a tool. The timeout turns a regression
-    /// (dropping the `.max(1)`) into a clean failure rather than a silent hang.
+    /// A `Flow::Terminate` from the `ToolCall` event with a reason keyed by the
+    /// call's `x` arg, forcing the `x == 2` call (tc2) to terminate *before* the
+    /// `x == 1` call (tc1): tc2 opens the gate after terminating, tc1 awaits it
+    /// first. So completion order (tc2) differs from call order (tc1).
+    struct OrderedTerminateHook {
+        gate: Arc<tokio::sync::Notify>,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for OrderedTerminateHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { args, .. } = event {
+                let x = serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64));
+                match x {
+                    Some(2) => {
+                        self.gate.notify_one();
+                        return Flow::Terminate {
+                            reason: "terminated-by-tc2".to_string(),
+                        };
+                    }
+                    Some(1) => {
+                        self.gate.notified().await;
+                        return Flow::Terminate {
+                            reason: "terminated-by-tc1".to_string(),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+            Flow::cont()
+        }
+    }
+
+    fn two_terminating_tools_blocking_model() -> MockCompletionModel {
+        MockCompletionModel::from_turns([
+            MockTurn::from_contents([
+                tool_call_content("tc1", json!({"x": 1, "y": 1})),
+                tool_call_content("tc2", json!({"x": 2, "y": 2})),
+            ])
+            .expect("two tool calls is non-empty"),
+            MockTurn::text("unreachable"),
+        ])
+    }
+
+    fn two_terminating_tools_streaming_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("unreachable"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ])
+    }
+
+    /// When two tool calls in one turn both terminate the run under
+    /// `tool_concurrency > 1`, run() and stream() surface the **same** reason —
+    /// the first-called tool's (call order), not whichever finished first. tc2
+    /// terminates before tc1, so a completion-order pick would surface tc2's
+    /// reason and the two drivers would disagree.
+    #[tokio::test]
+    async fn concurrent_simultaneous_tool_terminations_pick_call_order_on_both_drivers() {
+        let run_err = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            AgentBuilder::new(two_terminating_tools_blocking_model())
+                .tool(MockAddTool)
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .tool_concurrency(2)
+                .add_hook(OrderedTerminateHook {
+                    gate: Arc::new(tokio::sync::Notify::new()),
+                })
+                .run(),
+        )
+        .await
+        .expect("blocking run must not hang")
+        .expect_err("the run must terminate");
+
+        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .add_hook(OrderedTerminateHook {
+                gate: Arc::new(tokio::sync::Notify::new()),
+            })
+            .stream()
+            .await;
+
+        let stream_err = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+            while let Some(item) = stream.next().await {
+                if let Err(err) = item {
+                    return Some(err);
+                }
+            }
+            None
+        })
+        .await
+        .expect("streamed run must not hang")
+        .expect("the stream must surface a terminate error");
+
+        let run_msg = run_err.to_string();
+        let stream_msg = stream_err.to_string();
+        assert!(
+            run_msg.contains("terminated-by-tc1"),
+            "blocking run should surface the first-called tool's reason, got: {run_msg}"
+        );
+        assert!(
+            stream_msg.contains("terminated-by-tc1"),
+            "stream should surface the first-called tool's reason, got: {stream_msg}"
+        );
+        assert!(
+            !run_msg.contains("terminated-by-tc2") && !stream_msg.contains("terminated-by-tc2"),
+            "neither driver should surface the later-completing tool's reason"
+        );
+    }
+
+    /// Terminates the run from the `ToolCall` event of the first tool only
+    /// (`x == 1`), letting any later tool through.
+    struct TerminateOnFirstToolHook;
+    impl<M: CompletionModel> AgentHook<M> for TerminateOnFirstToolHook {
+        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { args, .. } = event
+                && serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                    == Some(1)
+            {
+                return Flow::Terminate {
+                    reason: "stop".to_string(),
+                };
+            }
+            Flow::cont()
+        }
+    }
+
+    /// Run-all-then-decide, lock-step across surfaces: on a multi-tool turn whose
+    /// first tool's hook terminates the run, both run() and stream() still
+    /// execute the remaining tools (each tool is independently hook-gated), then
+    /// surface the first-called terminate reason. The terminating tool's own body
+    /// never runs (its `ToolCall` hook fired first), so only the second tool's
+    /// `call` increments — identically on both surfaces and at any concurrency.
+    /// This restores the pre-refactor blocking `collect`-all semantics and
+    /// matches the dominant agent-framework behavior.
+    #[tokio::test]
+    async fn default_concurrency_terminate_runs_remaining_tools_on_both_drivers() {
+        let blocking_calls = Arc::new(AtomicU32::new(0));
+        AgentBuilder::new(two_terminating_tools_blocking_model())
+            .tool(CountingAddTool {
+                calls: blocking_calls.clone(),
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .add_hook(TerminateOnFirstToolHook)
+            .run()
+            .await
+            .expect_err("the run terminates");
+        assert_eq!(
+            blocking_calls.load(SeqCst),
+            1,
+            "blocking run() must still run the second tool before surfacing the terminate"
+        );
+
+        let streaming_calls = Arc::new(AtomicU32::new(0));
+        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
+            .tool(CountingAddTool {
+                calls: streaming_calls.clone(),
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .add_hook(TerminateOnFirstToolHook)
+            .stream()
+            .await;
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                saw_error = true;
+                assert!(
+                    err.to_string().contains("stop"),
+                    "stream() should surface the terminate reason, got: {err}"
+                );
+                break;
+            }
+        }
+        assert!(saw_error, "stream() must surface the terminate error");
+        assert_eq!(
+            streaming_calls.load(SeqCst),
+            1,
+            "stream() must still run the second tool before surfacing the terminate"
+        );
+    }
+
+    /// `tool_concurrency(0)` is clamped to 1 and runs to completion. The timeout
+    /// guards against a regression that lets `concurrency == 0` reach a
+    /// `buffer_unordered(0)` (which never makes progress) instead of the
+    /// sequential `concurrency <= 1` path.
     #[tokio::test]
     async fn tool_concurrency_zero_is_clamped_and_does_not_hang() {
         let model = MockCompletionModel::from_turns([
@@ -1673,7 +2162,7 @@ mod tests {
 
         let response = tokio::time::timeout(std::time::Duration::from_secs(5), run)
             .await
-            .expect("tool_concurrency(0) must clamp to 1, not hang on buffered(0)")
+            .expect("tool_concurrency(0) must clamp to 1, not hang on buffer_unordered(0)")
             .expect("run should succeed");
         assert_eq!(response.output, "done");
     }
