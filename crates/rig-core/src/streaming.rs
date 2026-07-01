@@ -305,6 +305,16 @@ where
         self.pause_control.is_paused()
     }
 
+    /// Token usage reported by the provider for this response.
+    ///
+    /// Returns the usage carried by the final response once the stream has
+    /// produced it. Until then — or when the provider does not report streamed
+    /// usage — this returns [`Usage::new`], the zero-valued sentinel for missing
+    /// usage metrics.
+    pub fn usage(&self) -> Usage {
+        self.response.token_usage()
+    }
+
     fn append_text_chunk(&mut self, text: &str) {
         if let Some(index) = self.text_item_index
             && let Some(AssistantContent::Text(existing_text)) = self.assistant_items.get_mut(index)
@@ -406,7 +416,10 @@ where
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
         CompletionResponse {
             choice: value.choice,
-            usage: Usage::new(), // Usage is not tracked in streaming responses
+            // Derive usage from the final response. `Option<R>: GetTokenUsage`
+            // yields the provider's usage when present and the zero sentinel
+            // (`Usage::new`) when the stream produced no final response.
+            usage: value.response.token_usage(),
             raw_response: value.response,
             message_id: value.message_id,
         }
@@ -834,6 +847,30 @@ mod tests {
         };
 
         StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
+
+    #[tokio::test]
+    async fn into_completion_response_derives_usage_from_final_response() {
+        let mut stream = create_mock_stream();
+
+        // Drain the stream so the final response (and its usage) is captured.
+        while stream.next().await.is_some() {}
+
+        // usage() surfaces the final response's token usage...
+        assert_eq!(stream.usage().total_tokens, 15);
+
+        // ...and the From conversion carries it instead of a zero sentinel.
+        let response: CompletionResponse<Option<MockResponse>> = stream.into();
+        assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn usage_is_zero_sentinel_before_final_response() {
+        // A stream that never yields a FinalResponse reports the zero sentinel.
+        let stream = StreamingCompletionResponse::stream(to_stream_result(stream! {
+            yield Ok(RawStreamingChoice::Message("no final response".to_string()));
+        }));
+        assert_eq!(stream.usage().total_tokens, 0);
     }
 
     #[tokio::test]

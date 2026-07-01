@@ -112,6 +112,10 @@ pub mod run;
 pub mod runner;
 mod tool;
 
+/// Fallback display name used in telemetry spans and logs when an agent has no
+/// configured name.
+pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
+
 pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;

@@ -20,7 +20,7 @@ use std::{
     sync::Arc,
 };
 
-const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
+use super::UNKNOWN_AGENT_NAME;
 
 pub type DynamicContextStore = Arc<
     Vec<(

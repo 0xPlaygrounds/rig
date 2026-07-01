@@ -233,8 +233,6 @@ pub enum Transport {
     Http,
     /// Server-sent events streaming transport.
     Sse,
-    /// Newline-delimited JSON streaming transport.
-    NdJson,
 }
 
 /// An API provider extension, this abstracts over extensions which may be used in conjunction with
