@@ -193,10 +193,15 @@ where
 }
 
 impl Filter<serde_json::Value> {
-    /// Tests whether a JSON value satisfies this filter.
+    /// Tests whether a JSON document satisfies this filter.
+    ///
+    /// Leaf filters (`Eq`/`Gt`/`Lt`) look their key up in `value` (expected to be
+    /// a JSON object) and compare the resulting field against the filter operand.
+    /// A missing field, or an operand that is not order-comparable with the field,
+    /// never satisfies the leaf. `And`/`Or` combine leaf results.
     pub fn satisfies(&self, value: &serde_json::Value) -> bool {
         use Filter::*;
-        use serde_json::{Value, Value::*, json};
+        use serde_json::{Value, Value::*};
         use std::cmp::Ordering;
 
         fn compare_pair(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
@@ -215,13 +220,15 @@ impl Filter<serde_json::Value> {
         }
 
         match self {
-            Eq(k, v) => &json!({ k: v }) == value,
-            Gt(k, v) => {
-                compare_pair(&json!({k: v}), value).is_some_and(|ord| ord == Ordering::Greater)
-            }
-            Lt(k, v) => {
-                compare_pair(&json!({k: v}), value).is_some_and(|ord| ord == Ordering::Less)
-            }
+            Eq(k, v) => value.get(k) == Some(v),
+            Gt(k, v) => value
+                .get(k)
+                .and_then(|field| compare_pair(field, v))
+                .is_some_and(|ord| ord == Ordering::Greater),
+            Lt(k, v) => value
+                .get(k)
+                .and_then(|field| compare_pair(field, v))
+                .is_some_and(|ord| ord == Ordering::Less),
             And(l, r) => l.satisfies(value) && r.satisfies(value),
             Or(l, r) => l.satisfies(value) || r.satisfies(value),
         }
@@ -312,5 +319,47 @@ impl<F> VectorSearchRequestBuilder<F, Provided<String>, Provided<u64>> {
             additional_params: self.additional_params,
             filter: self.filter,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Filter, SearchFilter};
+    use serde_json::json;
+
+    type F = Filter<serde_json::Value>;
+
+    #[test]
+    fn eq_matches_field_within_multi_field_document() {
+        let doc = json!({ "category": "fruit", "text": "banana" });
+        assert!(F::eq("category", json!("fruit")).satisfies(&doc));
+        assert!(!F::eq("category", json!("veg")).satisfies(&doc));
+        // A field that does not exist never matches.
+        assert!(!F::eq("missing", json!("fruit")).satisfies(&doc));
+    }
+
+    #[test]
+    fn gt_and_lt_compare_the_named_field() {
+        let doc = json!({ "price": 10, "text": "banana" });
+        assert!(F::gt("price", json!(5)).satisfies(&doc));
+        assert!(!F::gt("price", json!(10)).satisfies(&doc));
+        assert!(F::lt("price", json!(20)).satisfies(&doc));
+        assert!(!F::lt("price", json!(10)).satisfies(&doc));
+        // Missing / non-comparable fields never satisfy an ordering filter.
+        assert!(!F::gt("missing", json!(1)).satisfies(&doc));
+        assert!(!F::gt("text", json!(1)).satisfies(&doc));
+    }
+
+    #[test]
+    fn and_or_combine_leaf_filters() {
+        let doc = json!({ "category": "fruit", "price": 10 });
+        let both = F::eq("category", json!("fruit")).and(F::gt("price", json!(5)));
+        assert!(both.satisfies(&doc));
+
+        let missing_branch = F::eq("category", json!("fruit")).and(F::gt("price", json!(50)));
+        assert!(!missing_branch.satisfies(&doc));
+
+        let either = F::eq("category", json!("veg")).or(F::lt("price", json!(50)));
+        assert!(either.satisfies(&doc));
     }
 }

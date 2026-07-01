@@ -131,15 +131,52 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         }
     }
 
+    /// Tests whether a document satisfies the (optional) metadata filter.
+    ///
+    /// Documents are serialized to JSON on demand and matched with
+    /// [`Filter::satisfies`]. Returns `Ok(true)` when no filter is set so the
+    /// serialization cost is only paid for filtered queries.
+    fn satisfies_filter(
+        doc: &D,
+        filter: Option<&Filter<serde_json::Value>>,
+    ) -> Result<bool, VectorStoreError> {
+        match filter {
+            None => Ok(true),
+            Some(filter) => {
+                let value = serde_json::to_value(doc).map_err(VectorStoreError::JsonError)?;
+                Ok(filter.satisfies(&value))
+            }
+        }
+    }
+
     /// Implement vector search on [InMemoryVectorStore].
     /// To be used by implementations of [VectorStoreIndex::top_n] and [VectorStoreIndex::top_n_ids] methods.
-    fn vector_search(&self, prompt_embedding: &Embedding, n: usize) -> EmbeddingRanking<'_, D> {
+    ///
+    /// The metadata `filter` and similarity `threshold` are applied *during* the
+    /// scan, before the top-`n` selection, so results match backends that filter
+    /// server-side rather than returning the unfiltered top-`n`.
+    fn vector_search(
+        &self,
+        prompt_embedding: &Embedding,
+        n: usize,
+        filter: Option<&Filter<serde_json::Value>>,
+        threshold: Option<f64>,
+    ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
         match &self.index_strategy {
-            IndexStrategy::BruteForce => self.vector_search_brute_force(prompt_embedding, n),
+            IndexStrategy::BruteForce => {
+                self.vector_search_brute_force(prompt_embedding, n, filter, threshold)
+            }
             IndexStrategy::LSH {
                 num_tables,
                 num_hyperplanes,
-            } => self.vector_search_lsh(prompt_embedding, n, *num_tables, *num_hyperplanes),
+            } => self.vector_search_lsh(
+                prompt_embedding,
+                n,
+                *num_tables,
+                *num_hyperplanes,
+                filter,
+                threshold,
+            ),
         }
     }
 
@@ -148,11 +185,18 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         &self,
         prompt_embedding: &Embedding,
         n: usize,
-    ) -> EmbeddingRanking<'_, D> {
+        filter: Option<&Filter<serde_json::Value>>,
+        threshold: Option<f64>,
+    ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
         // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
 
         for (id, (doc, embeddings)) in self.embeddings.iter() {
+            // Skip documents that don't satisfy the metadata filter.
+            if !Self::satisfies_filter(doc, filter)? {
+                continue;
+            }
+
             // Get the best context for the document given the prompt
             if let Some((distance, embed_doc)) = embeddings
                 .iter()
@@ -164,6 +208,10 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 })
                 .max_by(|a, b| a.0.cmp(&b.0))
             {
+                // Skip documents below the similarity threshold.
+                if threshold.is_some_and(|t| distance.0 < t) {
+                    continue;
+                }
                 docs.push(Reverse(RankingItem(distance, id, doc, embed_doc)));
             };
 
@@ -182,7 +230,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 .join(", ")
         );
 
-        docs
+        Ok(docs)
     }
 
     /// LSH-based vector search - uses LSH to find candidates then computes exact distances
@@ -192,11 +240,13 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         n: usize,
         _num_tables: usize,
         _num_hyperplanes: usize,
-    ) -> EmbeddingRanking<'_, D> {
+        filter: Option<&Filter<serde_json::Value>>,
+        threshold: Option<f64>,
+    ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
         // If we don't have an LSH index yet, fall back to brute force
         let Some(lsh_index) = self.lsh_index.as_ref() else {
             tracing::warn!("LSH index not initialized, falling back to brute force search");
-            return self.vector_search_brute_force(prompt_embedding, n);
+            return self.vector_search_brute_force(prompt_embedding, n, filter, threshold);
         };
         let candidates = lsh_index.query(&prompt_embedding.vec);
 
@@ -208,6 +258,11 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
         for candidate_id in candidates {
             if let Some((doc, embeddings)) = self.embeddings.get(&candidate_id) {
+                // Skip documents that don't satisfy the metadata filter.
+                if !Self::satisfies_filter(doc, filter)? {
+                    continue;
+                }
+
                 // Get the best context for the document given the prompt
                 if let Some((distance, embed_doc)) = embeddings
                     .iter()
@@ -219,6 +274,10 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                     })
                     .max_by(|a, b| a.0.cmp(&b.0))
                 {
+                    // Skip documents below the similarity threshold.
+                    if threshold.is_some_and(|t| distance.0 < t) {
+                        continue;
+                    }
                     scored_docs.push((distance, candidate_id, doc, embed_doc));
                 }
             }
@@ -244,7 +303,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 .join(", ")
         );
 
-        docs
+        Ok(docs)
     }
 
     /// Initialize LSH index from existing embeddings
@@ -426,9 +485,12 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
         let prompt_embedding = &self.model.embed_text(req.query()).await?;
 
-        let docs = self
-            .store
-            .vector_search(prompt_embedding, req.samples() as usize);
+        let docs = self.store.vector_search(
+            prompt_embedding,
+            req.samples() as usize,
+            req.filter().as_ref(),
+            req.threshold(),
+        )?;
 
         // Return n best
         docs.into_iter()
@@ -452,9 +514,12 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         let prompt_embedding = &self.model.embed_text(req.query()).await?;
 
-        let docs = self
-            .store
-            .vector_search(prompt_embedding, req.samples() as usize);
+        let docs = self.store.vector_search(
+            prompt_embedding,
+            req.samples() as usize,
+            req.filter().as_ref(),
+            req.threshold(),
+        )?;
 
         docs.into_iter()
             .map(|Reverse(RankingItem(distance, id, _, _))| Ok((distance.0, id.clone())))
@@ -614,13 +679,17 @@ mod tests {
             ])
             .build();
 
-        let ranking = vector_store.vector_search(
-            &Embedding {
-                document: "glarby-glarble".to_string(),
-                vec: vec![0.0, 0.1, 0.6],
-            },
-            1,
-        );
+        let ranking = vector_store
+            .vector_search(
+                &Embedding {
+                    document: "glarby-glarble".to_string(),
+                    vec: vec![0.0, 0.1, 0.6],
+                },
+                1,
+                None,
+                None,
+            )
+            .unwrap();
 
         assert_eq!(
             ranking
@@ -697,13 +766,17 @@ mod tests {
             ])
             .build();
 
-        let ranking = vector_store.vector_search(
-            &Embedding {
-                document: "glarby-glarble".to_string(),
-                vec: vec![0.0, 0.1, 0.6],
-            },
-            1,
-        );
+        let ranking = vector_store
+            .vector_search(
+                &Embedding {
+                    document: "glarby-glarble".to_string(),
+                    vec: vec![0.0, 0.1, 0.6],
+                },
+                1,
+                None,
+                None,
+            )
+            .unwrap();
 
         assert_eq!(
             ranking
@@ -722,5 +795,93 @@ mod tests {
                 "glarb-garb".to_string()
             )]
         )
+    }
+
+    #[tokio::test]
+    async fn top_n_honors_filter_and_threshold() {
+        use crate::test_utils::MockEmbeddingModel;
+        use crate::vector_store::VectorStoreIndex;
+        use crate::vector_store::request::{Filter, SearchFilter, VectorSearchRequest};
+        use serde::Serialize;
+        use serde_json::json;
+
+        // Document payloads carry metadata alongside content, like real backends.
+        #[derive(Clone, Serialize, PartialEq, Eq)]
+        struct Item {
+            category: String,
+            text: String,
+        }
+
+        fn item(category: &str, text: &str) -> Item {
+            Item {
+                category: category.to_string(),
+                text: text.to_string(),
+            }
+        }
+
+        // `MockEmbeddingModel` embeds every query as this fixed 10-dim vector; give
+        // every document the same embedding so all cosine similarities are 1.0 and
+        // only the filter/threshold decide the result set.
+        let vec = vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+        let embedding = |doc: &str| {
+            OneOrMany::one(Embedding {
+                document: doc.to_string(),
+                vec: vec.clone(),
+            })
+        };
+
+        let index = InMemoryVectorStore::from_documents_with_ids(vec![
+            ("a", item("fruit", "banana"), embedding("banana")),
+            ("b", item("veg", "carrot"), embedding("carrot")),
+            ("c", item("fruit", "apple"), embedding("apple")),
+        ])
+        .index(MockEmbeddingModel);
+
+        let ids = |req| async {
+            let mut out: Vec<String> = index
+                .top_n_ids(req)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect();
+            out.sort();
+            out
+        };
+
+        // No filter: every document is returned.
+        let all = ids(VectorSearchRequest::builder()
+            .query("q")
+            .samples(10)
+            .build())
+        .await;
+        assert_eq!(all, vec!["a", "b", "c"]);
+
+        // Metadata filter: only documents whose `category` field is `fruit`.
+        let fruit = ids(VectorSearchRequest::builder()
+            .query("q")
+            .samples(10)
+            .filter(Filter::eq("category", json!("fruit")))
+            .build())
+        .await;
+        assert_eq!(fruit, vec!["a", "c"]);
+
+        // Threshold above the maximum similarity (1.0): nothing qualifies.
+        let none = ids(VectorSearchRequest::builder()
+            .query("q")
+            .samples(10)
+            .threshold(2.0)
+            .build())
+        .await;
+        assert!(none.is_empty());
+
+        // Threshold at or below the similarity keeps all matches.
+        let kept = ids(VectorSearchRequest::builder()
+            .query("q")
+            .samples(10)
+            .threshold(0.5)
+            .build())
+        .await;
+        assert_eq!(kept, vec!["a", "b", "c"]);
     }
 }
