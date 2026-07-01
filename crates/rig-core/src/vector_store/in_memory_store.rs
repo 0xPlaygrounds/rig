@@ -153,9 +153,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ///
     /// Returns the best similarity across the document's embeddings together with
     /// the matching embedding text, or `None` when the document is filtered out,
-    /// has no embeddings, produces a non-finite similarity, or scores below the
-    /// threshold. Shared by the brute-force and LSH scans so the filter,
-    /// threshold, and NaN handling live in exactly one place.
+    /// has no finite-similarity embedding, or scores below the threshold. Shared
+    /// by the brute-force and LSH scans so the filter, threshold, and NaN
+    /// handling live in exactly one place.
     fn score_candidate<'a>(
         doc: &D,
         embeddings: &'a OneOrMany<Embedding>,
@@ -168,6 +168,13 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         }
 
         // Best (highest-similarity) embedding for this document.
+        //
+        // A zero-magnitude embedding yields a NaN similarity, which sorts as the
+        // maximum under `OrderedFloat` and slips past `distance < threshold`
+        // (every comparison with NaN is false). Drop non-finite similarities
+        // *before* selecting the max so a document still ranks by its best
+        // finite embedding; the document is skipped only when it has no finite
+        // similarity at all.
         let Some((distance, embed_doc)) = embeddings
             .iter()
             .map(|embedding| {
@@ -176,17 +183,11 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                     &embedding.document,
                 )
             })
+            .filter(|(distance, _)| distance.0.is_finite())
             .max_by(|a, b| a.0.cmp(&b.0))
         else {
             return Ok(None);
         };
-
-        // A zero-magnitude embedding yields a NaN similarity; NaN sorts as the
-        // maximum under `OrderedFloat` and slips past `distance < threshold`
-        // (every comparison with NaN is false), so it must be excluded here.
-        if !distance.0.is_finite() {
-            return Ok(None);
-        }
 
         // Skip documents below the similarity threshold.
         if threshold.is_some_and(|t| distance.0 < t) {
@@ -945,5 +946,45 @@ mod tests {
             .map(|(_, id)| id)
             .collect();
         assert_eq!(ids, vec!["good".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn top_n_ranks_document_by_best_finite_embedding() {
+        use crate::test_utils::MockEmbeddingModel;
+        use crate::vector_store::VectorStoreIndex;
+        use crate::vector_store::request::VectorSearchRequest;
+
+        // A document that owns both a strong finite embedding and a degenerate
+        // zero-magnitude (NaN) one must still be returned, ranked by the finite
+        // embedding — not dropped because NaN sorts as the OrderedFloat maximum.
+        let index = InMemoryVectorStore::from_documents_with_ids(vec![(
+            "mixed",
+            "mixed".to_string(),
+            OneOrMany::many(vec![
+                Embedding {
+                    document: "good-chunk".to_string(),
+                    vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                },
+                Embedding {
+                    document: "empty-chunk".to_string(),
+                    vec: vec![0.0; 10],
+                },
+            ])
+            .unwrap(),
+        )])
+        .index(MockEmbeddingModel);
+
+        let results = index
+            .top_n_ids(
+                VectorSearchRequest::builder()
+                    .query("q")
+                    .samples(10)
+                    .build(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].1, "mixed");
+        assert!(results[0].0.is_finite());
     }
 }
