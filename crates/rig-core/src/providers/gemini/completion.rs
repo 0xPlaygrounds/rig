@@ -1508,9 +1508,11 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct LogprobsResult {
         #[serde(default)]
-        pub top_candidate: Vec<TopCandidate>,
+        pub top_candidates: Vec<TopCandidate>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub log_probability_sum: Option<f64>,
         #[serde(default)]
-        pub chosen_candidate: Vec<LogProbCandidate>,
+        pub chosen_candidates: Vec<LogProbCandidate>,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1522,9 +1524,12 @@ pub mod gemini_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogProbCandidate {
-        pub token: String,
-        pub token_id: String,
-        pub log_probability: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub token: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub token_id: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub log_probability: Option<f64>,
     }
 
     /// Gemini API Configuration options for model generation and outputs. Not all parameters are
@@ -2230,12 +2235,64 @@ mod tests {
 
         let logprobs: LogprobsResult =
             serde_json::from_value(json!({})).expect("empty logprobs result should deserialize");
-        assert!(logprobs.top_candidate.is_empty());
-        assert!(logprobs.chosen_candidate.is_empty());
+        assert!(logprobs.top_candidates.is_empty());
+        assert_eq!(logprobs.log_probability_sum, None);
+        assert!(logprobs.chosen_candidates.is_empty());
 
         let top_candidate: TopCandidate =
             serde_json::from_value(json!({})).expect("empty top candidate should deserialize");
         assert!(top_candidate.candidates.is_empty());
+    }
+
+    #[test]
+    fn test_logprobs_result_deserializes_official_json_field_names() {
+        let logprobs: LogprobsResult = serde_json::from_value(json!({
+            "topCandidates": [
+                {
+                    "candidates": [
+                        {
+                            "token": "Hello",
+                            "tokenId": 123,
+                            "logProbability": -0.1
+                        },
+                        {
+                            "token": "Hi",
+                            "tokenId": 124,
+                            "logProbability": -1.25
+                        }
+                    ]
+                }
+            ],
+            "logProbabilitySum": -0.1,
+            "chosenCandidates": [
+                {
+                    "token": "Hello",
+                    "tokenId": 123,
+                    "logProbability": -0.1
+                }
+            ]
+        }))
+        .expect("official Gemini logprobs result should deserialize");
+
+        assert_eq!(logprobs.top_candidates.len(), 1);
+        assert_eq!(logprobs.top_candidates[0].candidates.len(), 2);
+        assert_eq!(
+            logprobs.top_candidates[0].candidates[0].token.as_deref(),
+            Some("Hello")
+        );
+        assert_eq!(logprobs.top_candidates[0].candidates[0].token_id, Some(123));
+        assert_eq!(
+            logprobs.top_candidates[0].candidates[0].log_probability,
+            Some(-0.1)
+        );
+        assert_eq!(logprobs.log_probability_sum, Some(-0.1));
+        assert_eq!(logprobs.chosen_candidates.len(), 1);
+        assert_eq!(
+            logprobs.chosen_candidates[0].token.as_deref(),
+            Some("Hello")
+        );
+        assert_eq!(logprobs.chosen_candidates[0].token_id, Some(123));
+        assert_eq!(logprobs.chosen_candidates[0].log_probability, Some(-0.1));
     }
 
     #[test]
