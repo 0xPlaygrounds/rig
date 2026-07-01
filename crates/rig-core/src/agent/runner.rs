@@ -495,10 +495,12 @@ where
 /// proceeding on failure. Shared `Done`-arm behavior for both drivers.
 pub(crate) async fn append_run_messages(
     memory_handle: Option<&(Arc<dyn ConversationMemory>, String)>,
-    messages: Vec<Message>,
+    messages: &[Message],
 ) {
+    // Clone into an owned vec only when there is a backend to append to — the
+    // common no-memory path pays nothing.
     if let Some((memory, id)) = memory_handle
-        && let Err(err) = memory.append(id, messages).await
+        && let Err(err) = memory.append(id, messages.to_vec()).await
     {
         tracing::warn!(
             error = %err,
@@ -818,8 +820,9 @@ where
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, M::Response> {
         // The blocking surface chains tool spans into its linear `follows_from`
-        // sequence (chat -> tool -> chat).
-        drive_tool_calls(runner, run, calls, |span| self.chain_span(span))
+        // sequence (chat -> tool -> chat), and discards the yielded items, so it
+        // skips building them.
+        drive_tool_calls(runner, run, calls, |span| self.chain_span(span), false)
     }
 
     fn record_run_level_telemetry(
@@ -1323,7 +1326,15 @@ mod tests {
             tracing::callsite::rebuild_interest_cache();
             captured.clear();
 
-            let outer = tracing::info_span!("outer");
+            // Declare the fields the guard protects so a regression (recording
+            // onto a caller span) is actually observable rather than a silent
+            // no-op on an undeclared field.
+            let outer = tracing::info_span!(
+                "outer",
+                gen_ai.completion = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+            );
             async {
                 let agent = AgentBuilder::new(tool_then_text_model())
                     .tool(MockAddTool)
@@ -1354,6 +1365,10 @@ mod tests {
                     .iter()
                     .all(|name| !name.starts_with("gen_ai.usage.")),
                 "run-level usage must not be recorded onto a caller-supplied outer span"
+            );
+            assert!(
+                !outer_span.field_names.contains("gen_ai.completion"),
+                "run-level completion must not be recorded onto a caller-supplied outer span"
             );
         }
     }

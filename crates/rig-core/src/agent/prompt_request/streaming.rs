@@ -426,8 +426,10 @@ pub(crate) enum DriveItem<R> {
 /// The per-medium half of the agent loop: how a turn is fetched from the model,
 /// how its tools are executed, and how the run's spans/usage/final item are
 /// shaped. The medium-independent outer loop (turn counting, the `CompletionCall`
-/// hook, request preparation, invalid-tool resolution wiring, memory) lives once
-/// in [`drive_agent`]; only the genuinely divergent pieces are behind this trait.
+/// hook, request preparation, memory) lives once in [`drive_agent`]; only the
+/// genuinely divergent pieces are behind this trait. Invalid-tool-call recovery
+/// is one of them — it lives inside each source's `run_model_turn` (end-of-turn
+/// for blocking, mid-stream for streaming), not in `drive_agent`.
 pub(crate) trait TurnSource<M>: WasmCompatSend
 where
     M: CompletionModel,
@@ -629,7 +631,7 @@ where
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
                     append_run_messages(
                         memory_handle.as_ref(),
-                        response.messages.clone().unwrap_or_default(),
+                        response.messages.as_deref().unwrap_or_default(),
                     )
                     .await;
                     // Build the final item only when the surface forwards it
@@ -648,16 +650,22 @@ where
 
 /// Execute a turn's tool calls, shared by both surfaces.
 ///
-/// Emits a `ToolCall` item before each tool runs and a `ToolResult` item as each
-/// finishes, feeding the (call-ordered) results back into the machine. The tool
-/// items carry no raw provider response, so this is generic over the surface's
-/// `R`. `chain_tool_span` lets the blocking surface chain spans into its linear
-/// `follows_from` sequence (the streaming surface returns the span unchanged).
+/// Feeds the (call-ordered) results back into the machine. When `forward_items`
+/// is set (streaming), a `ToolCall` item is emitted before each tool runs and a
+/// `ToolResult` item as each finishes; the blocking fold passes `false` to skip
+/// building those items — and the per-tool `tool_call`/result clones they need —
+/// since it discards them (the same "blocking opts out" gating as
+/// `TurnSource::final_item`). Tool execution and hook firing are identical either
+/// way. The tool items carry no raw provider response, so this is generic over
+/// the surface's `R`. `chain_tool_span` lets the blocking surface chain spans into
+/// its linear `follows_from` sequence (the streaming surface returns the span
+/// unchanged).
 pub(crate) fn drive_tool_calls<'a, M, R, F>(
     runner: &'a AgentRunner<M>,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
     chain_tool_span: F,
+    forward_items: bool,
 ) -> DriveStream<'a, R>
 where
     M: CompletionModel,
@@ -689,7 +697,7 @@ where
 
                 let tool_span = chain_tool_span(new_execute_tool_span());
 
-                if first_error.is_none() {
+                if forward_items && first_error.is_none() {
                     yield Ok(MultiTurnStreamItem::stream_item(
                         StreamedAssistantContent::ToolCall {
                             tool_call: tool_call.clone(),
@@ -711,17 +719,18 @@ where
 
                 match result {
                     Ok(content) => {
-                        results.push(content.clone());
-                        if first_error.is_none()
-                            && let UserContent::ToolResult(tool_result) = content
+                        if forward_items
+                            && first_error.is_none()
+                            && let UserContent::ToolResult(tool_result) = &content
                         {
                             yield Ok(MultiTurnStreamItem::StreamUserItem(
                                 StreamedUserContent::ToolResult {
-                                    tool_result,
+                                    tool_result: tool_result.clone(),
                                     internal_call_id,
                                 },
                             ));
                         }
+                        results.push(content);
                     }
                     Err(err) => {
                         if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
@@ -766,14 +775,19 @@ where
                     .unwrap_or_else(crate::id::generate);
                 pending.internal_call_id = Some(internal_call_id.clone());
 
-                yield Ok(MultiTurnStreamItem::stream_item(
-                    StreamedAssistantContent::ToolCall {
-                        tool_call: pending.tool_call.clone(),
-                        internal_call_id: internal_call_id.clone(),
-                    },
-                ));
+                let yield_id = if forward_items {
+                    yield Ok(MultiTurnStreamItem::stream_item(
+                        StreamedAssistantContent::ToolCall {
+                            tool_call: pending.tool_call.clone(),
+                            internal_call_id: internal_call_id.clone(),
+                        },
+                    ));
+                    Some(internal_call_id)
+                } else {
+                    None
+                };
 
-                indexed_calls.push((index, pending, tool_span, Some(internal_call_id)));
+                indexed_calls.push((index, pending, tool_span, yield_id));
             }
 
             let unordered = stream::iter(indexed_calls)
@@ -816,20 +830,22 @@ where
                 match result {
                     Ok(content) => match results.get_mut(index) {
                         Some(slot) => {
-                            *slot = Some(content.clone());
                             // Once any tool has errored the run will terminate, so
                             // stop surfacing successful results (but keep draining).
+                            // `yield_id` is `None` when items aren't forwarded (the
+                            // blocking fold), so no clone happens there.
                             if first_error.is_none()
                                 && let Some(internal_call_id) = yield_id
-                                && let UserContent::ToolResult(tool_result) = content
+                                && let UserContent::ToolResult(tool_result) = &content
                             {
                                 yield Ok(MultiTurnStreamItem::StreamUserItem(
                                     StreamedUserContent::ToolResult {
-                                        tool_result,
+                                        tool_result: tool_result.clone(),
                                         internal_call_id,
                                     },
                                 ));
                             }
+                            *slot = Some(content);
                         }
                         None => {
                             if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
@@ -885,6 +901,10 @@ pub(crate) struct StreamingTurnSource {
     last_message_id: Option<String>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
+    /// Whether we created the agent span (vs. adopting a caller's ambient span);
+    /// gates recording `gen_ai.completion` onto it, matching the blocking source
+    /// so neither surface pollutes a caller-supplied span.
+    created_agent_span: bool,
     /// Hot-path interest gates, computed once: skip building/dispatching the
     /// high-frequency delta events when no hook observes them.
     observes_text_delta: bool,
@@ -895,11 +915,16 @@ pub(crate) struct StreamingTurnSource {
 }
 
 impl StreamingTurnSource {
-    pub(crate) fn new<M: CompletionModel>(hooks: &HookStack<M>, agent_name: String) -> Self {
+    pub(crate) fn new<M: CompletionModel>(
+        hooks: &HookStack<M>,
+        agent_name: String,
+        created_agent_span: bool,
+    ) -> Self {
         Self {
             last_final_choice: OneOrMany::one(AssistantContent::text("")),
             last_message_id: None,
             agent_name,
+            created_agent_span,
             observes_text_delta: hooks.observes(StepEventKind::TextDelta),
             observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
             has_hooks: !hooks.is_empty(),
@@ -1212,10 +1237,14 @@ where
             }
 
             let final_turn_content = stream.choice.clone();
-            agent_span.record(
-                "gen_ai.completion",
-                assistant_text_from_choice(&final_turn_content),
-            );
+            // Only record onto the agent span when we own it — never pollute a
+            // caller-supplied span (parity with the blocking source).
+            if self.created_agent_span {
+                agent_span.record(
+                    "gen_ai.completion",
+                    assistant_text_from_choice(&final_turn_content),
+                );
+            }
 
             self.last_message_id = stream.message_id.clone();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
@@ -1233,8 +1262,9 @@ where
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, M::StreamingResponse> {
-        // The streaming surface chains nothing onto its tool spans.
-        drive_tool_calls(runner, run, calls, |span| span)
+        // The streaming surface chains nothing onto its tool spans, and forwards
+        // the ToolCall/ToolResult items to the consumer.
+        drive_tool_calls(runner, run, calls, |span| span, true)
     }
 
     fn record_run_level_telemetry(
@@ -1322,8 +1352,11 @@ where
         };
 
         let run = self.build_run(history_override);
-        let source =
-            StreamingTurnSource::new(&self.hooks, self.agent_name_or_default().to_string());
+        let source = StreamingTurnSource::new(
+            &self.hooks,
+            self.agent_name_or_default().to_string(),
+            created_agent_span,
+        );
 
         // The blocking surface folds this same engine; the streaming surface
         // forwards intermediate items (the final response item is the last one)
@@ -1994,7 +2027,15 @@ mod tests {
             self.fields.push((field.name().to_string(), value));
         }
 
-        fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
+        // Capture the *presence* of non-numeric fields (e.g. `gen_ai.completion`)
+        // with a placeholder value so tests can assert whether they were recorded.
+        fn record_str(&mut self, field: &Field, _value: &str) {
+            self.fields.push((field.name().to_string(), 0));
+        }
+
+        fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
+            self.fields.push((field.name().to_string(), 0));
+        }
     }
 
     async fn assert_stream_usage_recorded_on_chat_spans(
@@ -2041,7 +2082,9 @@ mod tests {
         spans.clear();
 
         let empty_history: &[Message] = &[];
-        let outer_span = tracing::info_span!("outer");
+        // Declare the fields the guard protects so a regression (recording onto
+        // a caller span) is actually observable, not silently a no-op.
+        let outer_span = tracing::info_span!("outer", gen_ai.completion = tracing::field::Empty);
 
         async {
             let mut stream = agent
@@ -2116,6 +2159,11 @@ mod tests {
                 .keys()
                 .all(|field| !field.starts_with("gen_ai.usage.")),
             "usage should not be recorded onto the caller's outer span"
+        );
+        assert!(
+            !outer_span.fields.contains_key("gen_ai.completion"),
+            "gen_ai.completion should not be recorded onto the caller's outer span \
+             (parity with the blocking driver)"
         );
     }
 
