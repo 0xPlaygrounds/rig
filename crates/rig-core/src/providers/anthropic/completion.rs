@@ -1826,7 +1826,7 @@ struct OutputConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct AnthropicCompletionRequest {
+pub(super) struct AnthropicCompletionRequest {
     model: String,
     messages: Vec<Message>,
     max_tokens: u64,

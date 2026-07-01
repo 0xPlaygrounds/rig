@@ -80,6 +80,25 @@ pub use streamed::{
     StreamedTurnAssembler, StreamedTurnEvent,
 };
 
+/// Build the canonical "the model called a tool that isn't available" error.
+/// The identical shape is raised from every recovery-rejection path
+/// (`resolve_invalid_tool_call`, `resolve_streamed_invalid_tool_call`) and the
+/// streamed fail-fast in `streamed_turn`; this collapses the copied struct
+/// literal to one place while leaving each caller's control flow untouched.
+fn unknown_tool_call_error(
+    tool_name: String,
+    available_tools: Vec<String>,
+    allowed_tools: Vec<String>,
+    chat_history: Vec<Message>,
+) -> PromptError {
+    PromptError::UnknownToolCall {
+        tool_name,
+        available_tools,
+        allowed_tools,
+        chat_history: Box::new(chat_history),
+    }
+}
+
 /// Default number of times Tool output mode re-prompts the model for valid
 /// structured output before finalizing best-effort (see #1928). Mirrors
 /// pydantic-ai's default output-retry budget of 1.
@@ -747,10 +766,7 @@ impl AgentRun {
             ));
         }
 
-        self.completion_calls
-            .push(CompletionCall::new(self.completion_call_index, turn.usage));
-        self.completion_call_index += 1;
-        self.usage += turn.usage;
+        self.record_completion_call(turn.usage);
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -771,6 +787,41 @@ impl AgentRun {
         }));
 
         self.advance_resolution()
+    }
+
+    /// Record one provider completion call: assign it the next call index,
+    /// push it, and aggregate its usage into the run total. The single home for
+    /// this accounting arithmetic, shared by the non-streamed and streamed
+    /// ingestion paths. Callers own the once-per-turn `streamed_completion_call_recorded`
+    /// guard/flag; this helper never touches it, so it cannot be mistaken for
+    /// "a completion call happened" and re-introduce a double count.
+    fn record_completion_call(&mut self, usage: Usage) -> CompletionCall {
+        let call = CompletionCall::new(self.completion_call_index, usage);
+        self.completion_call_index += 1;
+        self.completion_calls.push(call);
+        self.usage += usage;
+        call
+    }
+
+    /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
+    /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
+    /// ingestion paths converge here, differing only in the `skipped` map and
+    /// the streamed `internal_call_ids`.
+    fn finalize_turn(
+        &mut self,
+        message_id: Option<String>,
+        items: Vec<AssistantContent>,
+        has_tool_calls: bool,
+        skipped: BTreeMap<String, UserContent>,
+        internal_call_ids: Vec<(String, String)>,
+    ) {
+        self.state = RunState::AwaitingAdvance(Box::new(TurnState {
+            message_id,
+            items,
+            has_tool_calls,
+            skipped,
+            internal_call_ids,
+        }));
     }
 
     /// Answer a pending [`ModelTurnOutcome::NeedsResolution`].
@@ -823,20 +874,20 @@ impl AgentRun {
             resolving.allowed_tool_names.iter().cloned().collect();
 
         match action {
-            InvalidToolCallHookAction::Fail => Err(PromptError::UnknownToolCall {
-                tool_name: tool_call.function.name,
-                available_tools: executable_tool_names,
-                allowed_tools: allowed_tool_names,
-                chat_history: Box::new(diagnostic_history),
-            }),
+            InvalidToolCallHookAction::Fail => Err(unknown_tool_call_error(
+                tool_call.function.name,
+                executable_tool_names,
+                allowed_tool_names,
+                diagnostic_history,
+            )),
             InvalidToolCallHookAction::Retry { feedback } => {
                 if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                    return Err(PromptError::UnknownToolCall {
-                        tool_name: tool_call.function.name,
-                        available_tools: executable_tool_names,
-                        allowed_tools: allowed_tool_names,
-                        chat_history: Box::new(diagnostic_history),
-                    });
+                    return Err(unknown_tool_call_error(
+                        tool_call.function.name,
+                        executable_tool_names,
+                        allowed_tool_names,
+                        diagnostic_history,
+                    ));
                 }
                 self.invalid_tool_call_retries += 1;
 
@@ -860,12 +911,12 @@ impl AgentRun {
             }
             InvalidToolCallHookAction::Repair { tool_name } => {
                 if !allowed_tool_names.contains(&tool_name) {
-                    return Err(PromptError::UnknownToolCall {
+                    return Err(unknown_tool_call_error(
                         tool_name,
-                        available_tools: executable_tool_names,
-                        allowed_tools: allowed_tool_names,
-                        chat_history: Box::new(diagnostic_history),
-                    });
+                        executable_tool_names,
+                        allowed_tool_names,
+                        diagnostic_history,
+                    ));
                 }
                 if let Some(AssistantContent::ToolCall(tool_call)) =
                     resolving.items.get_mut(resolving.next_index)
@@ -878,12 +929,12 @@ impl AgentRun {
             }
             InvalidToolCallHookAction::Skip { reason } => {
                 if matches!(self.tool_choice, Some(ToolChoice::None)) {
-                    return Err(PromptError::UnknownToolCall {
-                        tool_name: tool_call.function.name,
-                        available_tools: executable_tool_names,
-                        allowed_tools: allowed_tool_names,
-                        chat_history: Box::new(diagnostic_history),
-                    });
+                    return Err(unknown_tool_call_error(
+                        tool_call.function.name,
+                        executable_tool_names,
+                        allowed_tool_names,
+                        diagnostic_history,
+                    ));
                 }
                 let user_content = if let Some(call_id) = tool_call.call_id.clone() {
                     UserContent::tool_result_with_call_id(
@@ -1024,13 +1075,7 @@ impl AgentRun {
             }
         }
 
-        self.state = RunState::AwaitingAdvance(Box::new(TurnState {
-            message_id,
-            items,
-            has_tool_calls,
-            skipped,
-            internal_call_ids: Vec::new(),
-        }));
+        self.finalize_turn(message_id, items, has_tool_calls, skipped, Vec::new());
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1067,11 +1112,7 @@ impl AgentRun {
         }
         self.streamed_completion_call_recorded = true;
 
-        let call = CompletionCall::new(self.completion_call_index, usage);
-        self.completion_call_index += 1;
-        self.completion_calls.push(call);
-        self.usage += usage;
-        Ok(call)
+        Ok(self.record_completion_call(usage))
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
@@ -1123,22 +1164,22 @@ impl AgentRun {
         match action {
             InvalidToolCallHookAction::Fail => {
                 self.state = RunState::Failed;
-                Err(PromptError::UnknownToolCall {
-                    tool_name: invalid.tool_call.function.name.clone(),
-                    available_tools: executable_tool_names,
-                    allowed_tools: allowed_tool_names,
-                    chat_history: Box::new(diagnostic_history),
-                })
+                Err(unknown_tool_call_error(
+                    invalid.tool_call.function.name.clone(),
+                    executable_tool_names,
+                    allowed_tool_names,
+                    diagnostic_history,
+                ))
             }
             InvalidToolCallHookAction::Retry { feedback } => {
                 if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
                     self.state = RunState::Failed;
-                    return Err(PromptError::UnknownToolCall {
-                        tool_name: invalid.tool_call.function.name.clone(),
-                        available_tools: executable_tool_names,
-                        allowed_tools: allowed_tool_names,
-                        chat_history: Box::new(diagnostic_history),
-                    });
+                    return Err(unknown_tool_call_error(
+                        invalid.tool_call.function.name.clone(),
+                        executable_tool_names,
+                        allowed_tool_names,
+                        diagnostic_history,
+                    ));
                 }
                 self.invalid_tool_call_retries += 1;
 
@@ -1162,24 +1203,24 @@ impl AgentRun {
             InvalidToolCallHookAction::Repair { tool_name } => {
                 if !invalid.allowed_tool_names.contains(&tool_name) {
                     self.state = RunState::Failed;
-                    return Err(PromptError::UnknownToolCall {
+                    return Err(unknown_tool_call_error(
                         tool_name,
-                        available_tools: executable_tool_names,
-                        allowed_tools: allowed_tool_names,
-                        chat_history: Box::new(diagnostic_history),
-                    });
+                        executable_tool_names,
+                        allowed_tool_names,
+                        diagnostic_history,
+                    ));
                 }
                 Ok(StreamedResolution::Repaired { tool_name })
             }
             InvalidToolCallHookAction::Skip { reason } => {
                 if matches!(self.tool_choice, Some(ToolChoice::None)) {
                     self.state = RunState::Failed;
-                    return Err(PromptError::UnknownToolCall {
-                        tool_name: invalid.tool_call.function.name.clone(),
-                        available_tools: executable_tool_names,
-                        allowed_tools: allowed_tool_names,
-                        chat_history: Box::new(diagnostic_history),
-                    });
+                    return Err(unknown_tool_call_error(
+                        invalid.tool_call.function.name.clone(),
+                        executable_tool_names,
+                        allowed_tool_names,
+                        diagnostic_history,
+                    ));
                 }
 
                 // Synthetic skip reason: emit verbatim text, matching the
@@ -1227,11 +1268,10 @@ impl AgentRun {
         // never learned usage (no record before the turn completed) still get
         // the call recorded, with no reported usage.
         if !self.streamed_completion_call_recorded {
-            self.completion_calls.push(CompletionCall::new(
-                self.completion_call_index,
-                Usage::new(),
-            ));
-            self.completion_call_index += 1;
+            // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
+            // so routing the no-usage fallback through `record_completion_call`
+            // leaves the run total unchanged while unifying the accounting.
+            self.record_completion_call(Usage::new());
             self.streamed_completion_call_recorded = true;
         }
 
@@ -1255,22 +1295,22 @@ impl AgentRun {
                 let diagnostic_history =
                     build_full_history(self.chat_history.as_deref(), diagnostic_messages);
                 self.state = RunState::Failed;
-                return Err(PromptError::UnknownToolCall {
-                    tool_name: tool_call.function.name.clone(),
-                    available_tools: turn.executable_tool_names.iter().cloned().collect(),
-                    allowed_tools: turn.allowed_tool_names.iter().cloned().collect(),
-                    chat_history: Box::new(diagnostic_history),
-                });
+                return Err(unknown_tool_call_error(
+                    tool_call.function.name.clone(),
+                    turn.executable_tool_names.iter().cloned().collect(),
+                    turn.allowed_tool_names.iter().cloned().collect(),
+                    diagnostic_history,
+                ));
             }
         }
 
-        self.state = RunState::AwaitingAdvance(Box::new(TurnState {
-            message_id: turn.message_id,
+        self.finalize_turn(
+            turn.message_id,
             items,
             has_tool_calls,
-            skipped: BTreeMap::new(),
-            internal_call_ids: turn.internal_call_ids,
-        }));
+            BTreeMap::new(),
+            turn.internal_call_ids,
+        );
         Ok(())
     }
 
