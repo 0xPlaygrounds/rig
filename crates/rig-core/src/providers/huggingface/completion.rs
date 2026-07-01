@@ -802,11 +802,9 @@ where
                             message = %err,
                             "provider returned an error response"
                         );
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&bytes).into_owned(),
-                            },
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&bytes).into_owned(),
                         ))
                     }
                 }
@@ -814,9 +812,7 @@ where
                 let text: Vec<u8> = response.into_body().await?;
                 let text: String = String::from_utf8_lossy(&text).into();
 
-                Err(CompletionError::HttpError(
-                    crate::http_client::Error::InvalidStatusCodeWithMessage(status, text),
-                ))
+                Err(CompletionError::from_http_response(status, text))
             }
         }
         .instrument(span)

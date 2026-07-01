@@ -1114,6 +1114,12 @@ pub struct AdditionalParameters {
     /// The username of the user (that you want to use).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    /// A stable cache routing key for prompt caching.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
+    /// Prompt cache retention policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_retention: Option<String>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
     #[serde(skip_serializing_if = "Map::is_empty", default)]
     pub metadata: serde_json::Map<String, serde_json::Value>,
@@ -1320,28 +1326,136 @@ pub enum Include {
     CodeInterpreterCallOutputs,
 }
 
-/// A currently non-exhaustive list of output types.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(tag = "type")]
-#[serde(rename_all = "snake_case")]
+/// A modeled output item from the OpenAI Responses API.
+///
+/// Unrecognized output items — notably provider-native hosted tools such as
+/// `web_search_call`, `file_search_call`, `computer_call`, and
+/// `code_interpreter_call` — decode to [`Output::Unknown`], which preserves
+/// the verbatim item object so callers can inspect or forward it. This keeps
+/// unknown item types from breaking deserialization of the entire
+/// `CompletionResponse` (the invariant that previously caused streaming token
+/// usage to be silently dropped) without discarding the payload along the way.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Output {
     Message(OutputMessage),
-    #[serde(alias = "function_call")]
     FunctionCall(OutputFunctionCall),
     Reasoning {
         id: String,
         summary: Vec<ReasoningSummary>,
-        #[serde(default)]
         encrypted_content: Option<String>,
-        #[serde(default)]
         status: Option<ToolStatus>,
     },
-    /// Catch-all variant for unknown output types (e.g., `web_search_call`,
-    /// `file_search_call`, `computer_use_call`). This prevents unknown types
-    /// from breaking deserialization of the entire `CompletionResponse`,
-    /// which previously caused streaming token usage to be silently dropped.
-    #[serde(other)]
-    Unknown,
+    /// Catch-all for output item types this version does not model. Holds the
+    /// raw item object exactly as it appeared in the provider's `output[]`
+    /// array, so hosted-tool payloads survive the typed decode.
+    Unknown(Value),
+}
+
+/// Deserialize helper for the inline-field [`Output::Reasoning`] variant.
+///
+/// `Output`'s (de)serialization is hand-written so [`Output::Unknown`] can carry
+/// a raw [`Value`] (`#[serde(other)]` only applies to a unit variant, which
+/// would force the payload to be dropped). The modeled `Message`/`FunctionCall`
+/// variants deserialize straight into their payload structs; `Reasoning` has no
+/// payload struct of its own, so this mirrors its fields. Same approach as
+/// Anthropic's `Citation`.
+#[derive(Deserialize)]
+struct ReasoningFields {
+    id: String,
+    summary: Vec<ReasoningSummary>,
+    #[serde(default)]
+    encrypted_content: Option<String>,
+    #[serde(default)]
+    status: Option<ToolStatus>,
+}
+
+impl From<ReasoningFields> for Output {
+    fn from(fields: ReasoningFields) -> Self {
+        Output::Reasoning {
+            id: fields.id,
+            summary: fields.summary,
+            encrypted_content: fields.encrypted_content,
+            status: fields.status,
+        }
+    }
+}
+
+/// Serialize a modeled payload as its tagged wire object — the payload's own
+/// fields plus the internally tagged `"type"`. The key is appended, so the
+/// result is value-equal (not byte-for-byte ordered) to the original item.
+fn tagged_output_object<T>(tag: &str, payload: &T) -> Result<Value, serde_json::Error>
+where
+    T: Serialize,
+{
+    let mut value = serde_json::to_value(payload)?;
+    let map = value.as_object_mut().ok_or_else(|| {
+        <serde_json::Error as serde::ser::Error>::custom(
+            "output payload must serialize to a JSON object",
+        )
+    })?;
+    map.insert("type".to_string(), Value::String(tag.to_string()));
+    Ok(value)
+}
+
+impl Serialize for Output {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Hand-written to keep `Unknown` verbatim (mirrors Anthropic's
+        // `Citation`). Known variants emit their modeled fields plus the
+        // internally tagged `type`; `Unknown` re-emits its raw value. The result
+        // is value-equal — not byte-for-byte — to the wire item, since `type` is
+        // appended rather than threaded in declaration order.
+        let value = match self {
+            Output::Message(message) => tagged_output_object("message", message),
+            Output::FunctionCall(call) => tagged_output_object("function_call", call),
+            Output::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+                status,
+            } => Ok(serde_json::json!({
+                "type": "reasoning",
+                "id": id,
+                "summary": summary,
+                "encrypted_content": encrypted_content,
+                "status": status,
+            })),
+            Output::Unknown(value) => return value.serialize(serializer),
+        };
+        value
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Output {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Decode to a `Value` first so an unmodeled item is captured verbatim as
+        // `Unknown`. A modeled `type` with a malformed body still errors (rather
+        // than silently degrading to `Unknown`); an absent or non-string `type`
+        // is itself unmodeled and is captured as `Unknown`. Mirrors `Citation`.
+        let value = Value::deserialize(deserializer)?;
+        let Some(tag) = value.get("type").and_then(Value::as_str) else {
+            return Ok(Output::Unknown(value));
+        };
+        match tag {
+            "message" => serde_json::from_value(value)
+                .map(Output::Message)
+                .map_err(serde::de::Error::custom),
+            "function_call" => serde_json::from_value(value)
+                .map(Output::FunctionCall)
+                .map_err(serde::de::Error::custom),
+            "reasoning" => serde_json::from_value::<ReasoningFields>(value)
+                .map(Output::from)
+                .map_err(serde::de::Error::custom),
+            _ => Ok(Output::Unknown(value)),
+        }
+    }
 }
 
 impl From<Output> for Vec<completion::AssistantContent> {
@@ -1384,7 +1498,7 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     },
                 )]
             }
-            Output::Unknown => Vec::new(),
+            Output::Unknown(_) => Vec::new(),
         };
 
         res
@@ -1538,9 +1652,7 @@ where
             } else {
                 let status = response.status();
                 let text = http_client::text(response).await?;
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
-                ))
+                Err(CompletionError::from_http_response(status, text))
             }
         }
         .instrument(span)
@@ -2852,5 +2964,222 @@ mod tests {
             .expect("raw body should be valid JSON")
             .expect("parsed JSON should be present");
         assert_eq!(json["error"]["code"], "invalid_value");
+    }
+
+    #[test]
+    fn output_unknown_preserves_hosted_tool_payload() {
+        let item = json!({
+            "type": "web_search_call",
+            "id": "ws_001",
+            "status": "completed",
+            "action": { "type": "search", "queries": ["rig framework"] },
+        });
+
+        let output: Output =
+            serde_json::from_value(item.clone()).expect("unknown output should deserialize");
+
+        let Output::Unknown(value) = output else {
+            panic!("expected Output::Unknown for an unmodeled item type");
+        };
+        assert_eq!(value, item);
+    }
+
+    #[test]
+    fn output_unknown_round_trips_value_equal() {
+        let item = json!({
+            "type": "file_search_call",
+            "id": "fs_007",
+            "status": "in_progress",
+            "queries": ["lifecycle"],
+        });
+
+        let output: Output =
+            serde_json::from_value(item.clone()).expect("unknown output should deserialize");
+        let serialized = serde_json::to_value(&output).expect("unknown output should serialize");
+
+        assert_eq!(serialized, item);
+    }
+
+    #[test]
+    fn output_known_variant_with_bad_body_errors() {
+        // A recognized `type` tag with a malformed body must still error rather
+        // than silently degrading to `Output::Unknown`.
+        let malformed = json!({
+            "type": "function_call",
+            "id": "call_1",
+            // missing `arguments`, `call_id`, `name`
+        });
+
+        let result: Result<Output, _> = serde_json::from_value(malformed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn completion_response_with_unknown_output_keeps_usage() {
+        // Guards the original reason the catch-all exists: an unknown item must
+        // not break decoding of the whole response or drop token usage.
+        let response = json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [
+                {
+                    "type": "web_search_call",
+                    "id": "ws_001",
+                    "status": "completed",
+                },
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [ { "type": "output_text", "text": "hi", "annotations": [] } ],
+                },
+            ],
+            "usage": {
+                "input_tokens": 100,
+                "input_tokens_details": { "cached_tokens": 25 },
+                "output_tokens": 50,
+                "output_tokens_details": { "reasoning_tokens": 15 },
+                "total_tokens": 150,
+            },
+        });
+
+        let response: CompletionResponse =
+            serde_json::from_value(response).expect("response should deserialize");
+
+        assert!(matches!(response.output.first(), Some(Output::Unknown(_))));
+        let usage = response.usage.expect("usage should be present");
+        assert_eq!(usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn output_known_variant_round_trips_value_equal() {
+        // The hand-written Serialize must reproduce the modeled wire shape, so a
+        // decoded known item re-serializes value-equal to what it came from
+        // (guards the `function_call` arm, including its stringified `arguments`).
+        let item = json!({
+            "type": "function_call",
+            "id": "call_1",
+            "arguments": "{}",
+            "call_id": "c1",
+            "name": "search",
+            "status": "completed",
+        });
+
+        let output: Output =
+            serde_json::from_value(item.clone()).expect("known output should deserialize");
+        assert!(matches!(output, Output::FunctionCall(_)));
+
+        let serialized = serde_json::to_value(&output).expect("known output should serialize");
+        assert_eq!(serialized, item);
+    }
+
+    #[test]
+    fn output_reasoning_round_trips_value_equal() {
+        // Highest-value parity guard: the `Reasoning` struct variant threads four
+        // fields by hand in *both* directions. Populated `encrypted_content` /
+        // `status` (the `#[serde(default)]` optionals) must survive
+        // serialize -> deserialize unchanged — catching a dropped field or a
+        // forgotten `reasoning` dispatch arm (which would degrade to `Unknown`).
+        let original = Output::Reasoning {
+            id: "reasoning_1".to_string(),
+            summary: vec![ReasoningSummary::SummaryText {
+                text: "weighing options".to_string(),
+            }],
+            encrypted_content: Some("ENCRYPTED".to_string()),
+            status: Some(ToolStatus::Completed),
+        };
+
+        let value = serde_json::to_value(&original).expect("reasoning should serialize");
+        let round_tripped: Output =
+            serde_json::from_value(value).expect("reasoning should deserialize");
+
+        assert_eq!(round_tripped, original);
+    }
+
+    #[test]
+    fn output_reasoning_none_optionals_serialize_as_explicit_null() {
+        // Wire-anchored complement to the round-trip test: with `None`
+        // optionals, the keys must still be emitted as explicit `null` (the
+        // derived behavior this hand-written serde replaced has no
+        // `skip_serializing_if`). Guards against a future refactor silently
+        // dropping the keys and changing the wire shape.
+        let value = serde_json::to_value(Output::Reasoning {
+            id: "reasoning_1".to_string(),
+            summary: vec![],
+            encrypted_content: None,
+            status: None,
+        })
+        .expect("reasoning should serialize");
+
+        assert_eq!(value["type"], "reasoning");
+        assert_eq!(value["encrypted_content"], Value::Null);
+        assert_eq!(value["status"], Value::Null);
+        assert!(value.get("encrypted_content").is_some());
+        assert!(value.get("status").is_some());
+    }
+
+    #[test]
+    fn output_message_round_trips_value_equal() {
+        // Wire-anchored serialize check for the `message` arm (only
+        // `function_call` was anchored): a decoded message item re-serializes
+        // value-equal to the input, tag included.
+        let item = json!({
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "status": "completed",
+            "content": [ { "type": "output_text", "text": "hello", "annotations": [] } ],
+        });
+
+        let output: Output =
+            serde_json::from_value(item.clone()).expect("message item should deserialize");
+        assert!(matches!(output, Output::Message(_)));
+
+        let serialized = serde_json::to_value(&output).expect("message should serialize");
+        assert_eq!(serialized, item);
+    }
+
+    #[test]
+    fn each_known_tag_decodes_to_its_modeled_variant() {
+        // Guards every modeled dispatch arm: a well-formed item for each known
+        // `type` must decode to its specific variant, never to `Unknown`. Adding
+        // an `Output` variant without a matching deserialize arm fails here
+        // instead of silently routing real items to `Unknown`.
+        let message: Output = serde_json::from_value(json!({
+            "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+            "content": [ { "type": "output_text", "text": "hi", "annotations": [] } ],
+        }))
+        .expect("message item should decode");
+        assert!(matches!(message, Output::Message(_)));
+
+        let function_call: Output = serde_json::from_value(json!({
+            "type": "function_call", "id": "call_1", "arguments": "{}",
+            "call_id": "c1", "name": "f", "status": "completed",
+        }))
+        .expect("function_call item should decode");
+        assert!(matches!(function_call, Output::FunctionCall(_)));
+
+        let reasoning: Output =
+            serde_json::from_value(json!({ "type": "reasoning", "id": "r1", "summary": [] }))
+                .expect("reasoning item should decode");
+        assert!(matches!(reasoning, Output::Reasoning { .. }));
+    }
+
+    #[test]
+    fn output_without_usable_type_tag_decodes_to_unknown() {
+        // An absent or non-string `type` is itself unmodeled, so it is captured
+        // verbatim as `Unknown` rather than erroring.
+        for item in [
+            json!({ "id": "x", "note": "no type field" }),
+            json!({ "type": 7, "id": "x" }),
+        ] {
+            let output: Output =
+                serde_json::from_value(item.clone()).expect("should decode to Unknown");
+            assert_eq!(output, Output::Unknown(item));
+        }
     }
 }

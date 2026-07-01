@@ -6,21 +6,6 @@
 use crate::completion::GetTokenUsage;
 use serde::Serialize;
 
-/// Provider request metadata used to populate GenAI telemetry spans.
-pub trait ProviderRequestExt {
-    /// Provider-native message type used for serialized input messages.
-    type InputMessage: Serialize;
-
-    /// Returns serialized input messages sent to the provider.
-    fn get_input_messages(&self) -> Vec<Self::InputMessage>;
-    /// Returns the system prompt, if represented separately by the provider.
-    fn get_system_prompt(&self) -> Option<String>;
-    /// Returns the model name requested from the provider.
-    fn get_model_name(&self) -> String;
-    /// Returns the primary prompt text, when available.
-    fn get_prompt(&self) -> Option<String>;
-}
-
 /// Provider response metadata used to populate GenAI telemetry spans.
 pub trait ProviderResponseExt {
     /// Provider-native output message type.
@@ -56,11 +41,6 @@ pub trait SpanCombinator {
     fn record_response_metadata<R>(&self, response: &R)
     where
         R: ProviderResponseExt;
-
-    /// Record serialized model input messages.
-    fn record_model_input<T>(&self, messages: &T)
-    where
-        T: Serialize;
 
     /// Record serialized model output messages.
     fn record_model_output<T>(&self, messages: &T)
@@ -113,19 +93,6 @@ impl SpanCombinator for tracing::Span {
 
         if let Some(model_name) = response.get_response_model_name() {
             self.record("gen_ai.response.model", model_name);
-        }
-    }
-
-    fn record_model_input<T>(&self, input: &T)
-    where
-        T: Serialize,
-    {
-        if self.is_disabled() {
-            return;
-        }
-
-        if let Ok(input_as_json_string) = serde_json::to_string(input) {
-            self.record("gen_ai.input.messages", input_as_json_string);
         }
     }
 

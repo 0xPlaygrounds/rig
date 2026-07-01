@@ -7,7 +7,6 @@ mod http;
 pub(crate) mod internal_streaming_profiles;
 mod memory;
 mod model_listing;
-mod pipeline;
 mod streaming;
 mod tools;
 mod tracing_isolation;
@@ -20,12 +19,12 @@ pub use http::{
 };
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use model_listing::MockModelLister;
-pub use pipeline::{Foo, MockPromptModel, MockVectorStoreIndex};
 pub use streaming::{MockResponse, MockStreamEvent};
 pub use tools::{
     BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockControlledTool, MockExampleTool,
-    MockImageGeneratorTool, MockImageOutputTool, MockObjectOutputTool, MockOperationArgs,
-    MockStringOutputTool, MockSubtractTool, MockToolError, MockToolIndex, mock_math_toolset,
+    MockExtensionsProbeTool, MockImageGeneratorTool, MockImageOutputTool, MockObjectOutputTool,
+    MockOperationArgs, MockStringOutputTool, MockSubtractTool, MockToolError, MockToolIndex,
+    SessionId, mock_math_toolset,
 };
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,

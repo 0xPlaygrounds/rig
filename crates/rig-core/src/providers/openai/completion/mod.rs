@@ -1330,44 +1330,6 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
     }
 }
 
-impl crate::telemetry::ProviderRequestExt for CompletionRequest {
-    type InputMessage = Message;
-
-    fn get_input_messages(&self) -> Vec<Self::InputMessage> {
-        self.messages.clone()
-    }
-
-    fn get_system_prompt(&self) -> Option<String> {
-        let first_message = self.messages.first()?;
-
-        let Message::System { ref content, .. } = first_message.clone() else {
-            return None;
-        };
-
-        let SystemContent { text, .. } = content.first();
-
-        Some(text)
-    }
-
-    fn get_prompt(&self) -> Option<String> {
-        let last_message = self.messages.last()?;
-
-        let Message::User { ref content, .. } = last_message.clone() else {
-            return None;
-        };
-
-        let UserContent::Text { text, .. } = content.first() else {
-            return None;
-        };
-
-        Some(text)
-    }
-
-    fn get_model_name(&self) -> String {
-        self.model.clone()
-    }
-}
-
 impl GenericCompletionModel<super::OpenAICompletionsExt, reqwest::Client> {
     pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
         crate::agent::AgentBuilder::new(self)
@@ -1476,19 +1438,12 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: text,
-                            },
-                        ))
+                        Err(CompletionError::from_http_response(status, text))
                     }
                 }
             } else {
                 let text = http_client::text(response).await?;
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
-                ))
+                Err(CompletionError::from_http_response(status, text))
             }
         }
         .instrument(span)

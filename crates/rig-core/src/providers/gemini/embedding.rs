@@ -112,10 +112,22 @@ where
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        let response: ApiResponse<gemini_api_types::EmbeddingResponse> =
-            serde_json::from_slice(&response.into_body().await?)?;
+        let status = response.status();
+        let body = response.into_body().await?;
 
-        match response {
+        // A non-success status may carry an error body that does not match the
+        // `ApiResponse` shape (Gemini nests its error under `error`, with no
+        // top-level `message`), so preserve it verbatim before trying to
+        // deserialize the success envelope — otherwise it would surface as a
+        // `JsonError` and the provider_response_* helpers would lose it.
+        if !status.is_success() {
+            return Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body),
+            ));
+        }
+
+        match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {
             ApiResponse::Ok(response) => {
                 let docs = documents
                     .into_iter()
@@ -132,7 +144,13 @@ where
 
                 Ok(docs)
             }
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+            ApiResponse::Err(err) => {
+                tracing::warn!(message = %err.message, "provider returned an error response");
+                Err(EmbeddingError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ))
+            }
         }
     }
 }
@@ -306,5 +324,71 @@ mod tests {
 
         let model = EmbeddingModel::new(client, EMBEDDING_001, 512);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 512);
+    }
+
+    #[tokio::test]
+    async fn embedding_non_success_preserves_status_and_body() {
+        use crate::client::embeddings::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        // A realistic Gemini error body: the error is nested under `error` with no
+        // top-level `message`, so it does NOT match the `ApiResponse` envelope. The
+        // non-success status guard must preserve it verbatim (otherwise it would
+        // surface as a `JsonError`).
+        let body =
+            r#"{"error":{"code":503,"message":"service unavailable","status":"UNAVAILABLE"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(EMBEDDING_001);
+
+        let error = model
+            .embed_texts(vec!["hello".to_string()])
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn embedding_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::embeddings::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        // 200 OK whose body deserializes to `ApiResponse::Err` (requires a top-level
+        // `message`; absence of `embeddings` keeps it off the success variant).
+        let body =
+            r#"{"message":"boom","error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(EMBEDDING_001);
+
+        let error = model
+            .embed_texts(vec!["hello".to_string()])
+            .await
+            .expect_err("should fail with provider error envelope");
+
+        match &error {
+            EmbeddingError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }

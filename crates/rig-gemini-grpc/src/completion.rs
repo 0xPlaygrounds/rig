@@ -64,7 +64,7 @@ impl completion::CompletionModel for CompletionModel {
         let response = grpc_client
             .generate_content(request)
             .await
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?
+            .map_err(rpc_error)?
             .into_inner();
 
         response.try_into()
@@ -79,6 +79,17 @@ impl completion::CompletionModel for CompletionModel {
     > {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
+}
+
+// Map a failed gRPC call into a `CompletionError` that preserves the provider's
+// error payload verbatim. gRPC is a non-HTTP transport, so there is no
+// `http::StatusCode`; the body is preserved via `from_provider_body` (status:
+// None) rather than a Rig-prefixed `ProviderError` diagnostic. Note: tonic does
+// not distinguish a server-returned gRPC error from a transport/connection
+// failure, so a pure connection error is also preserved here rather than gated
+// out as a Rig diagnostic the way Bedrock's typed service errors are.
+pub(crate) fn rpc_error(status: tonic::Status) -> CompletionError {
+    CompletionError::from_provider_body(status.to_string())
 }
 
 // Helper function to create gRPC request from Rig's CompletionRequest
@@ -709,6 +720,23 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    // ============================================================
+    // rpc_error — pins the from_provider_body usage on the RPC error path
+    // ============================================================
+
+    #[test]
+    fn rpc_error_preserves_status_text_without_http_status() {
+        let status = tonic::Status::unavailable("boom");
+        let expected = status.to_string();
+
+        let err = rpc_error(status);
+
+        // The raw provider error text is preserved verbatim, and there is no
+        // HTTP status because gRPC is a non-HTTP transport.
+        assert_eq!(err.provider_response_body(), Some(expected.as_str()));
+        assert_eq!(err.provider_response_status(), None);
+    }
 
     #[test]
     fn test_decode_base64_bytes_accepts_url_safe_with_padding() {

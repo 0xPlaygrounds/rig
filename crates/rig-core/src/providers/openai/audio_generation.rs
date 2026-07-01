@@ -3,7 +3,7 @@ use crate::audio_generation::{
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::Client;
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
 use serde_json::json;
 
 pub const TTS_1: &str = "tts-1";
@@ -57,16 +57,12 @@ where
 
         if !response.status().is_success() {
             let status = response.status();
-            let mut bytes: Bytes = response.into_body().await?;
-            let mut as_slice = Vec::new();
-            bytes.copy_to_slice(&mut as_slice);
+            let bytes: Bytes = response.into_body().await?;
 
-            let text: String = String::from_utf8_lossy(&as_slice).into();
-
-            return Err(AudioGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text
-            )));
+            return Err(AudioGenerationError::from_http_response(
+                status,
+                String::from_utf8_lossy(&bytes),
+            ));
         }
 
         let bytes: Bytes = response.into_body().await?;
@@ -75,5 +71,45 @@ where
             audio: bytes.to_vec(),
             response: bytes,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio_generation::AudioGenerationModel as _;
+    use crate::client::audio_generation::AudioGenerationClient;
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn audio_generation_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.audio_generation_model(TTS_1);
+
+        let request = model
+            .audio_generation_request()
+            .text("hello")
+            .voice("alloy")
+            .build();
+
+        let error = model
+            .audio_generation(request)
+            .await
+            .err()
+            .expect("should fail with non-success status");
+
+        assert!(matches!(error, AudioGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

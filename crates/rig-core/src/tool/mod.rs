@@ -9,7 +9,10 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
+mod extensions;
 pub mod server;
+
+pub use extensions::{MissingExtension, ToolCallExtensions};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -141,6 +144,29 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         &self,
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
+
+    /// Tool execution with per-call runtime extensions.
+    ///
+    /// Override this to access runtime values (auth, session IDs, etc.)
+    /// injected by the caller via [`ToolCallExtensions`]. The default ignores
+    /// the extensions and delegates to [`Tool::call`].
+    ///
+    /// **Override contract:** when you override this method it becomes the
+    /// single entry point for the tool under *dynamic dispatch* — every
+    /// [`ToolDyn`] path (the extension-free [`ToolDyn::call`] and the agent
+    /// loop) routes here, with an empty [`ToolCallExtensions`] when no caller
+    /// supplied one. So put your logic here and treat a missing value as the
+    /// no-extensions case (e.g. via [`ToolCallExtensions::get`] returning
+    /// `None`); do not split behavior between `call` and `call_with_extensions`,
+    /// as `call`'s body is then unreachable through dynamic dispatch (a direct
+    /// `Tool::call` call still runs its own body).
+    fn call_with_extensions(
+        &self,
+        args: Self::Args,
+        _extensions: &ToolCallExtensions,
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend {
+        self.call(args)
+    }
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
@@ -181,6 +207,19 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
 
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
+
+    /// Dynamic dispatch variant of tool execution with per-call runtime extensions.
+    ///
+    /// The default ignores the extensions and delegates to [`ToolDyn::call`].
+    /// The blanket impl for [`Tool`] types overrides this to thread the
+    /// extensions through to [`Tool::call_with_extensions`].
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        _extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.call(args)
+    }
 }
 
 fn serialize_tool_output(output: impl Serialize) -> serde_json::Result<String> {
@@ -200,6 +239,14 @@ impl<T: Tool> ToolDyn for T {
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        ToolDyn::call_with_extensions(self, args, &ToolCallExtensions::EMPTY)
+    }
+
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
             // LLMs frequently send `null` for tools whose arguments are all optional.
             // `serde_json::from_str::<T>("null")` fails for struct types even when
@@ -213,7 +260,7 @@ impl<T: Tool> ToolDyn for T {
                 Err(err) => Err(err),
             };
             match args {
-                Ok(args) => <Self as Tool>::call(self, args)
+                Ok(args) => <Self as Tool>::call_with_extensions(self, args, extensions)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| serialize_tool_output(output).map_err(ToolError::JsonError)),
@@ -270,10 +317,14 @@ impl ToolType {
         }
     }
 
-    pub async fn call(&self, args: String) -> Result<String, ToolError> {
+    pub async fn call_with_extensions(
+        &self,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> Result<String, ToolError> {
         match self {
-            ToolType::Simple(tool) => tool.call(args).await,
-            ToolType::Embedding(tool) => tool.call(args).await,
+            ToolType::Simple(tool) => tool.call_with_extensions(args, extensions).await,
+            ToolType::Embedding(tool) => tool.call_with_extensions(args, extensions).await,
         }
     }
 }
@@ -402,12 +453,27 @@ impl ToolSet {
 
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
+        self.call_with_extensions(toolname, args, &ToolCallExtensions::EMPTY)
+            .await
+    }
+
+    /// Call a tool with the given name, arguments, and per-call runtime extensions.
+    ///
+    /// The extensions are threaded through to [`Tool::call_with_extensions`],
+    /// allowing tools to access caller-provided values (auth tokens, session
+    /// IDs, etc.).
+    pub async fn call_with_extensions(
+        &self,
+        toolname: &str,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::debug!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
                 args
             );
-            Ok(tool.call(args).await?)
+            Ok(tool.call_with_extensions(args, extensions).await?)
         } else {
             Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
         }

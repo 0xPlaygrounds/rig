@@ -111,19 +111,15 @@ where
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => {
                     tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::ProviderResponse(
-                        crate::provider_response::ProviderResponseError {
-                            status: Some(status),
-                            body: String::from_utf8_lossy(&response_body).into_owned(),
-                        },
+                    Err(TranscriptionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
                     ))
                 }
             }
         } else {
             let str = String::from_utf8_lossy(&response_body).to_string();
-            Err(TranscriptionError::HttpError(
-                crate::http_client::Error::InvalidStatusCodeWithMessage(status, str),
-            ))
+            Err(TranscriptionError::from_http_response(status, str))
         }
     }
 }

@@ -495,19 +495,15 @@ where
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(EmbeddingError::ProviderResponse(
-                        crate::provider_response::ProviderResponseError {
-                            status: Some(status),
-                            body: String::from_utf8_lossy(&response_body).into_owned(),
-                        },
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
                     ))
                 }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::HttpError(
-                http_client::Error::InvalidStatusCodeWithMessage(status, text),
-            ))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }
@@ -748,20 +744,16 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&response_body).into_owned(),
-                            },
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
                         ))
                     }
                 }
             } else {
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).to_string(),
-                    ),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }
@@ -904,20 +896,16 @@ where
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => {
                     tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::ProviderResponse(
-                        crate::provider_response::ProviderResponseError {
-                            status: Some(status),
-                            body: String::from_utf8_lossy(&response_body).into_owned(),
-                        },
+                    Err(TranscriptionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
                     ))
                 }
             }
         } else {
-            Err(TranscriptionError::HttpError(
-                http_client::Error::InvalidStatusCodeWithMessage(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ),
+            Err(TranscriptionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
     }
@@ -986,11 +974,9 @@ mod image_generation {
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(ImageGenerationError::HttpError(
-                    crate::http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ),
+                return Err(ImageGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).into_owned(),
                 ));
             }
 
@@ -998,11 +984,9 @@ mod image_generation {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(ImageGenerationError::ProviderResponse(
-                        crate::provider_response::ProviderResponseError {
-                            status: Some(status),
-                            body: String::from_utf8_lossy(&response_body).into_owned(),
-                        },
+                    Err(ImageGenerationError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
                     ))
                 }
             }
@@ -1078,11 +1062,9 @@ mod audio_generation {
             let response_body = response.into_body().into_future().await?;
 
             if !status.is_success() {
-                return Err(AudioGenerationError::HttpError(
-                    crate::http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ),
+                return Err(AudioGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).into_owned(),
                 ));
             }
 
@@ -1212,6 +1194,78 @@ mod azure_tests {
         };
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn embedding_http_non_success_preserves_status_and_body() {
+        use crate::embeddings::EmbeddingModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"bad embedding","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = super::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, None);
+
+        let error = match model.embed_texts(vec!["Hello, world!".to_string()]).await {
+            Err(error) => error,
+            Ok(_) => panic!("embedding should fail with non-success status"),
+        };
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"bad completion","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = super::CompletionModel::new(client, GPT_4O_MINI);
+
+        let error = match model
+            .completion(CompletionRequest {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: OneOrMany::one("Hello!".into()),
+                documents: vec![],
+                max_tokens: Some(100),
+                temperature: Some(0.0),
+                tools: vec![],
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("completion should fail with non-success status"),
+        };
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::BAD_REQUEST)

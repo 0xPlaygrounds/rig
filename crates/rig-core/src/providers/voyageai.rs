@@ -148,26 +148,11 @@ pub struct ApiErrorResponse {
     pub(crate) message: String,
 }
 
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -274,20 +259,16 @@ where
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(EmbeddingError::ProviderResponse(
-                        crate::provider_response::ProviderResponseError {
-                            status: Some(status),
-                            body: String::from_utf8_lossy(&response_body).into_owned(),
-                        },
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
                     ))
                 }
             }
         } else {
-            Err(EmbeddingError::HttpError(
-                crate::http_client::Error::InvalidStatusCodeWithMessage(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ),
+            Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body),
             ))
         }
     }
@@ -328,12 +309,6 @@ pub struct RerankApiData {
     pub relevance_score: f64,
     #[serde(default)]
     pub document: Option<String>,
-}
-
-impl From<ApiErrorResponse> for RerankError {
-    fn from(err: ApiErrorResponse) -> Self {
-        RerankError::ProviderError(err.message)
-    }
 }
 
 #[derive(Clone)]
@@ -455,11 +430,18 @@ where
                         usage,
                     })
                 }
-                ApiResponse::Err(err) => Err(RerankError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(RerankError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
             }
         } else {
-            Err(RerankError::ProviderError(
-                String::from_utf8_lossy(&response_body).to_string(),
+            Err(RerankError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body),
             ))
         }
     }
@@ -475,5 +457,63 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn rerank_non_success_preserves_status_and_body() {
+        use crate::client::RerankingClient;
+        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.rerank_model(super::RERANK_2_5);
+
+        let error = model
+            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
+            .await
+            .expect_err("rerank should fail with non-success status");
+
+        assert!(matches!(error, RerankError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn rerank_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::RerankingClient;
+        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"boom"}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.rerank_model(super::RERANK_2_5);
+
+        let error = model
+            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
+            .await
+            .expect_err("rerank should fail with provider error envelope");
+
+        match &error {
+            RerankError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }

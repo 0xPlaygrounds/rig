@@ -4,9 +4,9 @@ use anyhow::{Result, anyhow};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{HookAction, PromptHook};
+use rig::agent::{AgentHook, Flow, StepEvent};
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
+use rig::completion::{CompletionModel, Message, Prompt};
 use rig::message::UserContent;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
@@ -21,46 +21,46 @@ struct SessionIdHook<'a> {
     seen_response: Arc<Mutex<Option<String>>>,
 }
 
-impl<'a, M> PromptHook<M> for SessionIdHook<'a>
+impl<'a, M> AgentHook<M> for SessionIdHook<'a>
 where
     M: CompletionModel,
 {
-    async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) -> HookAction {
-        let Message::User { content } = prompt else {
-            return HookAction::terminate("expected a user message");
-        };
+    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        match event {
+            StepEvent::CompletionCall { prompt, .. } => {
+                let Message::User { content } = prompt else {
+                    return Flow::terminate("expected a user message");
+                };
 
-        let prompt_text = content
-            .iter()
-            .filter_map(|content| match content {
-                UserContent::Text(text) => Some(text.text.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+                let prompt_text = content
+                    .iter()
+                    .filter_map(|content| match content {
+                        UserContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
 
-        self.prompt_calls.fetch_add(1, Ordering::SeqCst);
-        match self.seen_prompt.lock() {
-            Ok(mut seen_prompt) => {
-                *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
-                HookAction::cont()
+                self.prompt_calls.fetch_add(1, Ordering::SeqCst);
+                match self.seen_prompt.lock() {
+                    Ok(mut seen_prompt) => {
+                        *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
+                        Flow::cont()
+                    }
+                    Err(_) => Flow::terminate("prompt hook state unavailable"),
+                }
             }
-            Err(_) => HookAction::terminate("prompt hook state unavailable"),
-        }
-    }
-
-    async fn on_completion_response(
-        &self,
-        _prompt: &Message,
-        response: &CompletionResponse<M::Response>,
-    ) -> HookAction {
-        self.response_calls.fetch_add(1, Ordering::SeqCst);
-        match self.seen_response.lock() {
-            Ok(mut seen_response) => {
-                *seen_response = Some(format!("{:?}", response.choice));
-                HookAction::cont()
+            StepEvent::CompletionResponse { response, .. } => {
+                self.response_calls.fetch_add(1, Ordering::SeqCst);
+                match self.seen_response.lock() {
+                    Ok(mut seen_response) => {
+                        *seen_response = Some(format!("{:?}", response.choice));
+                        Flow::cont()
+                    }
+                    Err(_) => Flow::terminate("response hook state unavailable"),
+                }
             }
-            Err(_) => HookAction::terminate("response hook state unavailable"),
+            _ => Flow::cont(),
         }
     }
 }
@@ -81,10 +81,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         seen_response: Arc::new(Mutex::new(None)),
     };
 
-    let response = agent
-        .prompt("Entertain me!")
-        .with_hook(hook.clone())
-        .await?;
+    let response = agent.prompt("Entertain me!").add_hook(hook.clone()).await?;
 
     assert_nonempty_response(&response);
     anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);

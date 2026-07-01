@@ -87,7 +87,7 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
         .stream_prompt(
             "Use the tool once, then answer with the dominant color in the returned image.",
         )
-        .with_history(empty_history)
+        .history(empty_history)
         .multi_turn(4)
         .await;
 

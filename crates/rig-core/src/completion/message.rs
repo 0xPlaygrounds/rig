@@ -10,17 +10,6 @@ use super::CompletionError;
 // Message models
 // ================================================================
 
-/// A useful trait to help convert `rig_core::completion::Message` to your own message type.
-///
-/// Particularly useful if you don't want to create a free-standing function as
-/// when trying to use `TryFrom<T>`, you would normally run into the orphan rule as Vec is
-/// technically considered a foreign type (it's owned by stdlib).
-pub trait ConvertMessage: Sized + Send + Sync {
-    type Error: std::error::Error + Send;
-
-    fn convert_from_message(message: Message) -> Result<Vec<Self>, Self::Error>;
-}
-
 /// A provider-agnostic chat message.
 ///
 /// Messages are role-tagged and may contain one or many content items, including
@@ -738,6 +727,33 @@ impl UserContent {
     /// Helper to create an audio resource from a URL
     pub fn audio_url(url: impl Into<String>, media_type: Option<AudioMediaType>) -> Self {
         UserContent::Audio(Audio {
+            data: DocumentSourceKind::Url(url.into()),
+            media_type,
+            ..Default::default()
+        })
+    }
+
+    /// Helper constructor to make creating user video content easier.
+    pub fn video(data: impl Into<String>, media_type: Option<VideoMediaType>) -> Self {
+        UserContent::Video(Video {
+            data: DocumentSourceKind::Base64(data.into()),
+            media_type,
+            additional_params: None,
+        })
+    }
+
+    /// Helper constructor to make creating user video content from raw unencoded bytes easier.
+    pub fn video_raw(data: impl Into<Vec<u8>>, media_type: Option<VideoMediaType>) -> Self {
+        UserContent::Video(Video {
+            data: DocumentSourceKind::Raw(data.into()),
+            media_type,
+            ..Default::default()
+        })
+    }
+
+    /// Helper to create a video resource from a URL
+    pub fn video_url(url: impl Into<String>, media_type: Option<VideoMediaType>) -> Self {
+        UserContent::Video(Video {
             data: DocumentSourceKind::Url(url.into()),
             media_type,
             ..Default::default()

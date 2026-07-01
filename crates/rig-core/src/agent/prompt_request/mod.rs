@@ -1,36 +1,81 @@
-pub mod hooks;
 pub mod streaming;
 
-use super::{
-    Agent,
-    completion::{DynamicContextStore, build_prepared_completion_request},
-    run::{
-        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
-        PendingToolCall,
-    },
-};
+use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use crate::{
     OneOrMany,
-    completion::{CompletionModel, Document, Message, PromptError, Usage},
-    json_utils,
-    memory::ConversationMemory,
-    message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
-    tool::server::ToolServerHandle,
+    completion::{CompletionModel, Message, PromptError, Usage},
+    message::{AssistantContent, ToolResultContent, UserContent},
+    tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
-use futures::{StreamExt, stream};
-use hooks::{HookAction, InvalidToolCallHookAction, PromptHook, ToolCallHookAction};
 use serde::{Deserialize, Serialize};
-use std::{
-    future::IntoFuture,
-    marker::PhantomData,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
-};
-use tracing::info_span;
-use tracing::{Instrument, span::Id};
+use std::{future::IntoFuture, marker::PhantomData};
+
+/// Generate the request-builder setters that forward verbatim to an inner
+/// receiver — `AgentRunner` for the blocking builder, the wrapped
+/// `PromptRequest` for the typed builder. Only the setters whose signature *and*
+/// documentation are identical across builders live here; `max_turns` and
+/// `add_hook`, whose docs are builder-specific, stay hand-written. `$recv` is
+/// the field name to delegate through (`runner` or `inner`).
+macro_rules! forward_prompt_setters {
+    ($recv:ident) => {
+        /// Execute up to `concurrency` of a turn's tool calls at once.
+        ///
+        /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: persisted
+        /// history remains in tool-call order, while streaming requests may surface
+        /// tool results in completion order.
+        pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
+            self.$recv = self.$recv.tool_concurrency(concurrency);
+            self
+        }
+
+        /// Attach a per-call [`ToolCallExtensions`] for this request.
+        ///
+        /// Every tool the agent executes during this request can read the
+        /// caller-provided values (auth tokens, session IDs, conversation state, …)
+        /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
+        /// without the model ever seeing them.
+        pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+            self.$recv = self.$recv.tool_extensions(extensions);
+            self
+        }
+
+        /// Add chat history to the prompt request.
+        pub fn history<H, Item>(mut self, history: H) -> Self
+        where
+            H: IntoIterator<Item = Item>,
+            Item: Into<Message>,
+        {
+            self.$recv = self.$recv.history(history);
+            self
+        }
+
+        /// Set the conversation id used to load and persist memory for this request.
+        ///
+        /// Overrides any default conversation id set on the agent. If memory is not
+        /// configured on the agent, this has no effect.
+        pub fn conversation(mut self, id: impl Into<String>) -> Self {
+            self.$recv = self.$recv.conversation(id);
+            self
+        }
+
+        /// Disable conversation memory for this request.
+        ///
+        /// History will neither be loaded from nor saved to the agent's memory backend.
+        pub fn without_memory(mut self) -> Self {
+            self.$recv = self.$recv.without_memory();
+            self
+        }
+
+        /// Set the retry budget for invalid tool-call recovery.
+        ///
+        /// Invalid tool-call retries also consume normal multi-turn depth.
+        pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
+            self.$recv = self.$recv.max_invalid_tool_call_retries(retries);
+            self
+        }
+    };
+}
 
 pub trait PromptType {}
 pub struct Standard;
@@ -47,96 +92,35 @@ impl PromptType for Extended {}
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct PromptRequest<S, M, P>
+pub struct PromptRequest<S, M>
 where
     S: PromptType,
     M: CompletionModel,
-    P: PromptHook<M>,
 {
-    /// The prompt message to send to the model
-    prompt: Message,
-    /// Optional chat history provided by the caller.
-    chat_history: Option<Vec<Message>>,
-    /// Maximum depth for multi-turn conversations (0 means no multi-turn)
-    max_turns: usize,
-
-    // Agent data (cloned from agent to allow hook type transitions):
-    /// The completion model
-    model: Arc<M>,
-    /// Agent name for logging
-    agent_name: Option<String>,
-    /// System prompt
-    preamble: Option<String>,
-    /// Static context documents
-    static_context: Vec<Document>,
-    /// Temperature setting
-    temperature: Option<f64>,
-    /// Max tokens setting
-    max_tokens: Option<u64>,
-    /// Additional model parameters
-    additional_params: Option<serde_json::Value>,
-    /// Tool server handle for tool execution
-    tool_server_handle: ToolServerHandle,
-    /// Dynamic context store
-    dynamic_context: DynamicContextStore,
-    /// Tool choice setting
-    tool_choice: Option<ToolChoice>,
-
-    /// Phantom data to track the type of the request
+    /// The hook-aware driver this request configures and runs.
+    pub(crate) runner: AgentRunner<M>,
+    /// Phantom data to track the type of the request (Standard vs Extended).
     state: PhantomData<S>,
-    /// Optional per-request hook for events
-    hook: Option<P>,
-    /// Maximum number of invalid tool-call retries for this request.
-    max_invalid_tool_call_retries: usize,
-    /// How many tools should be executed at the same time (1 by default).
-    concurrency: usize,
-    /// Optional JSON Schema for structured output
-    output_schema: Option<schemars::Schema>,
-    output_mode: OutputMode,
-    /// Optional conversation memory backend cloned from the agent.
-    memory: Option<Arc<dyn ConversationMemory>>,
-    /// Optional conversation id used for loading and saving memory.
-    conversation_id: Option<String>,
 }
 
-impl<M, P> PromptRequest<Standard, M, P>
+impl<M> PromptRequest<Standard, M>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
-    /// Create a new PromptRequest from an agent, cloning the agent's data and default hook.
-    pub fn from_agent(agent: &Agent<M, P>, prompt: impl Into<Message>) -> Self {
+    /// Create a new PromptRequest from an agent, cloning the agent's data and
+    /// default hook stack.
+    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
         PromptRequest {
-            prompt: prompt.into(),
-            chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or_default(),
-            model: agent.model.clone(),
-            agent_name: agent.name.clone(),
-            preamble: agent.preamble.clone(),
-            static_context: agent.static_context.clone(),
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            additional_params: agent.additional_params.clone(),
-            tool_server_handle: agent.tool_server_handle.clone(),
-            dynamic_context: agent.dynamic_context.clone(),
-            tool_choice: agent.tool_choice.clone(),
+            runner: AgentRunner::from_agent(agent, prompt),
             state: PhantomData,
-            hook: agent.hook.clone(),
-            max_invalid_tool_call_retries: 0,
-            concurrency: 1,
-            output_schema: agent.output_schema.clone(),
-            output_mode: agent.output_mode.clone(),
-            memory: agent.memory.clone(),
-            conversation_id: agent.default_conversation_id.clone(),
         }
     }
 }
 
-impl<S, M, P> PromptRequest<S, M, P>
+impl<S, M> PromptRequest<S, M>
 where
     S: PromptType,
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Enable returning extended details for responses (includes aggregated token usage
     /// and the full message history accumulated during the agent loop).
@@ -144,121 +128,40 @@ where
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<Extended, M, P> {
+    pub fn extended_details(self) -> PromptRequest<Extended, M> {
         PromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_turns: self.max_turns,
-            model: self.model,
-            agent_name: self.agent_name,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            tool_server_handle: self.tool_server_handle,
-            dynamic_context: self.dynamic_context,
-            tool_choice: self.tool_choice,
+            runner: self.runner,
             state: PhantomData,
-            hook: self.hook,
-            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            concurrency: self.concurrency,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            conversation_id: self.conversation_id,
         }
     }
 
     /// Set the maximum number of turns for multi-turn conversations. A given agent may require multiple turns for tool-calling before giving an answer.
     /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, depth: usize) -> Self {
-        self.max_turns = depth;
+        self.runner = self.runner.max_turns(depth);
         self
     }
 
-    /// Add concurrency to the prompt request.
-    /// This will cause the agent to execute tools concurrently.
-    pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.concurrency = concurrency;
-        self
-    }
-
-    /// Add chat history to the prompt request.
-    pub fn with_history<H, T>(mut self, history: H) -> Self
+    /// Append a hook for this request (on top of any the agent already carries).
+    /// Hooks run in registration order; the first to return a non-`Continue`
+    /// result short-circuits the rest.
+    pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: IntoIterator<Item = T>,
-        T: Into<Message>,
+        H: AgentHook<M> + 'static,
     {
-        self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self.runner = self.runner.add_hook(hook);
         self
     }
 
-    /// Set the conversation id used to load and persist memory for this request.
-    ///
-    /// Overrides any default conversation id set on the agent. If memory is not
-    /// configured on the agent, this has no effect.
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.conversation_id = Some(id.into());
-        self
-    }
-
-    /// Disable conversation memory for this request.
-    ///
-    /// History will neither be loaded from nor saved to the agent's memory backend.
-    pub fn without_memory(mut self) -> Self {
-        self.memory = None;
-        self.conversation_id = None;
-        self
-    }
-
-    /// Attach a per-request hook for tool call events.
-    /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<S, M, P2>
-    where
-        P2: PromptHook<M>,
-    {
-        PromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_turns: self.max_turns,
-            model: self.model,
-            agent_name: self.agent_name,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            tool_server_handle: self.tool_server_handle,
-            dynamic_context: self.dynamic_context,
-            tool_choice: self.tool_choice,
-            state: PhantomData,
-            hook: Some(hook),
-            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            concurrency: self.concurrency,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            conversation_id: self.conversation_id,
-        }
-    }
-
-    /// Set the retry budget for [`InvalidToolCallHookAction::Retry`].
-    ///
-    /// Invalid tool-call retries also consume normal multi-turn depth.
-    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_invalid_tool_call_retries = retries;
-        self
-    }
+    forward_prompt_setters!(runner);
 }
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<M, P> IntoFuture for PromptRequest<Standard, M, P>
+impl<M> IntoFuture for PromptRequest<Standard, M>
 where
     M: CompletionModel + 'static,
-    P: PromptHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -268,10 +171,9 @@ where
     }
 }
 
-impl<M, P> IntoFuture for PromptRequest<Extended, M, P>
+impl<M> IntoFuture for PromptRequest<Extended, M>
 where
     M: CompletionModel + 'static,
-    P: PromptHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -281,10 +183,9 @@ where
     }
 }
 
-impl<M, P> PromptRequest<Standard, M, P>
+impl<M> PromptRequest<Standard, M>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
@@ -427,8 +328,6 @@ impl<T> TypedPromptResponse<T> {
     }
 }
 
-const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
-
 pub(crate) const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
     "Tool not executed because another tool call in the same assistant turn was invalid.";
 
@@ -450,16 +349,45 @@ pub(crate) fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
-pub(crate) fn tool_result_user_content(
+/// Wrap already-shaped tool-result content for the model (see
+/// [`tool_result_output`] / [`tool_result_message`]).
+fn tool_result_with(
     id: String,
     call_id: Option<String>,
-    tool_result: String,
+    content: OneOrMany<ToolResultContent>,
 ) -> UserContent {
-    let content = ToolResultContent::from_tool_output(tool_result);
     match call_id {
         Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
         None => UserContent::tool_result(id, content),
     }
+}
+
+/// Shape a **real tool output** as a tool result. Routes through
+/// [`ToolResultContent::from_tool_output`], which parses structured/multimodal
+/// payloads (text, images, …). Use this only for actual tool-server output.
+pub(crate) fn tool_result_output(
+    id: String,
+    call_id: Option<String>,
+    output: String,
+) -> UserContent {
+    tool_result_with(id, call_id, ToolResultContent::from_tool_output(output))
+}
+
+/// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
+/// "not executed" notice) as a tool result. Emitted **verbatim as text** and
+/// never re-parsed as structured tool output, so a JSON-shaped message is not
+/// silently reinterpreted as an image/multimodal result. Used identically by the
+/// blocking and streaming drivers so synthetic results match across both.
+pub(crate) fn tool_result_message(
+    id: String,
+    call_id: Option<String>,
+    message: String,
+) -> UserContent {
+    tool_result_with(
+        id,
+        call_id,
+        OneOrMany::one(ToolResultContent::text(message)),
+    )
 }
 
 pub(crate) fn invalid_tool_retry_user_message(
@@ -471,13 +399,13 @@ pub(crate) fn invalid_tool_retry_user_message(
         .iter()
         .filter_map(|content| match content {
             AssistantContent::ToolCall(tool_call) if tool_call.id == invalid_tool_call_id => {
-                Some(tool_result_user_content(
+                Some(tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     feedback.clone(),
                 ))
             }
-            AssistantContent::ToolCall(tool_call) => Some(tool_result_user_content(
+            AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
                 tool_call.id.clone(),
                 tool_call.call_id.clone(),
                 TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
@@ -509,371 +437,12 @@ pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -
         .collect()
 }
 
-impl<M, P> PromptRequest<Extended, M, P>
+impl<M> PromptRequest<Extended, M>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
-    fn agent_name(&self) -> &str {
-        self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
-    }
-
     async fn send(self) -> Result<PromptResponse, PromptError> {
-        let agent_span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                "invoke_agent",
-                gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent_name(),
-                gen_ai.system_instructions = self.preamble,
-                gen_ai.prompt = tracing::field::Empty,
-                gen_ai.completion = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        if let Some(text) = self.prompt.rag_text() {
-            agent_span.record("gen_ai.prompt", text);
-        }
-
-        let agent_name_for_span = self.agent_name.clone();
-        // When the caller passes explicit history, memory is fully bypassed for this
-        // request (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history; if either is
-        // missing, behave as if no memory is configured.
-        let (chat_history, memory_handle) = match self.chat_history {
-            Some(history) => (Some(history), None),
-            None => match (self.memory, self.conversation_id) {
-                (Some(memory), Some(id)) => {
-                    let loaded = memory.load(&id).await?;
-                    (Some(loaded), Some((memory, id)))
-                }
-                _ => (None, None),
-            },
-        };
-
-        let mut run = AgentRun::new(self.prompt.clone())
-            .max_turns(self.max_turns)
-            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries)
-            .with_output_validation(
-                self.output_schema
-                    .as_ref()
-                    .map(|schema| schema.as_value().clone()),
-                DEFAULT_OUTPUT_RETRIES,
-            );
-        if let Some(history) = chat_history {
-            run = run.with_history(history);
-        }
-        if let Some(tool_choice) = self.tool_choice.clone() {
-            run = run.with_tool_choice(tool_choice);
-        }
-
-        let current_span_id: AtomicU64 = AtomicU64::new(0);
-
-        loop {
-            match run.next_step()? {
-                AgentRunStep::CallModel {
-                    prompt,
-                    history,
-                    turn,
-                } => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Current conversation depth: {}/{}", turn, self.max_turns);
-                    }
-
-                    if let Some(ref hook) = self.hook
-                        && let HookAction::Terminate { reason } =
-                            hook.on_completion_call(&prompt, &history).await
-                    {
-                        return Err(run.cancel_error(reason));
-                    }
-
-                    let span = tracing::Span::current();
-                    let chat_span = info_span!(
-                        target: "rig::agent_chat",
-                        parent: &span,
-                        "chat",
-                        gen_ai.operation.name = "chat",
-                        gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                        gen_ai.system_instructions = self.preamble,
-                        gen_ai.provider.name = tracing::field::Empty,
-                        gen_ai.request.model = tracing::field::Empty,
-                        gen_ai.response.id = tracing::field::Empty,
-                        gen_ai.response.model = tracing::field::Empty,
-                        gen_ai.usage.output_tokens = tracing::field::Empty,
-                        gen_ai.usage.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                        gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                        gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                        gen_ai.input.messages = tracing::field::Empty,
-                        gen_ai.output.messages = tracing::field::Empty,
-                    );
-
-                    let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                        let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                        chat_span.follows_from(id).to_owned()
-                    } else {
-                        chat_span
-                    };
-
-                    if let Some(id) = chat_span.id() {
-                        current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                    };
-
-                    // Pin Tool output mode once committed so later turns stay
-                    // consistent even if the per-turn tool set changes (#1928).
-                    // The pin rides on `output_tool_name`, which is persisted on
-                    // the run, so it also survives a serialize/resume.
-                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let prepared_request = build_prepared_completion_request(
-                        &self.model,
-                        prompt.clone(),
-                        &history,
-                        self.preamble.as_deref(),
-                        &self.static_context,
-                        self.temperature,
-                        self.max_tokens,
-                        self.additional_params.as_ref(),
-                        self.tool_choice.as_ref(),
-                        &self.tool_server_handle,
-                        &self.dynamic_context,
-                        self.output_schema.as_ref(),
-                        &self.output_mode,
-                        committed_output_tool.as_deref(),
-                    )
-                    .await?;
-
-                    let resp = prepared_request
-                        .builder
-                        .send()
-                        .instrument(chat_span.clone())
-                        .await?;
-
-                    run.set_output_tool_name(prepared_request.output_tool_name.clone());
-
-                    let mut outcome = run.model_response(ModelTurn::new(
-                        resp.message_id.clone(),
-                        resp.choice.clone(),
-                        resp.usage,
-                        prepared_request.executable_tool_names,
-                        prepared_request.allowed_tool_names,
-                    ))?;
-
-                    loop {
-                        match outcome {
-                            ModelTurnOutcome::NeedsResolution(context) => {
-                                let action = match self.hook.as_ref() {
-                                    Some(hook) => hook.on_invalid_tool_call(&context).await,
-                                    None => InvalidToolCallHookAction::fail(),
-                                };
-                                outcome = run.resolve_invalid_tool_call(action)?;
-                            }
-                            ModelTurnOutcome::TurnRetried => break,
-                            ModelTurnOutcome::Continue {
-                                response_hook_suppressed,
-                            } => {
-                                if !response_hook_suppressed
-                                    && let Some(ref hook) = self.hook
-                                    && let HookAction::Terminate { reason } =
-                                        hook.on_completion_response(&prompt, &resp).await
-                                {
-                                    return Err(run.cancel_error(reason));
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-                AgentRunStep::CallTools { calls } => {
-                    let hook = self.hook.clone();
-                    let tool_server_handle = self.tool_server_handle.clone();
-
-                    // For error handling in concurrent tool execution, we need to build full history
-                    let full_history_for_errors = run.full_history();
-
-                    let tool_content = stream::iter(calls)
-                        .map(|pending| {
-                            let hook1 = hook.clone();
-                            let hook2 = hook.clone();
-                            let tool_server_handle = tool_server_handle.clone();
-
-                            let tool_span = info_span!(
-                                "execute_tool",
-                                gen_ai.operation.name = "execute_tool",
-                                gen_ai.tool.type = "function",
-                                gen_ai.tool.name = tracing::field::Empty,
-                                gen_ai.tool.call.id = tracing::field::Empty,
-                                gen_ai.tool.call.arguments = tracing::field::Empty,
-                                gen_ai.tool.call.result = tracing::field::Empty
-                            );
-
-                            let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                                tool_span.follows_from(id).to_owned()
-                            } else {
-                                tool_span
-                            };
-
-                            if let Some(id) = tool_span.id() {
-                                current_span_id.store(id.into_u64(), Ordering::SeqCst);
-                            };
-
-                            // Clone full history for error reporting in concurrent tool execution
-                            let cloned_history_for_error = full_history_for_errors.clone();
-
-                            async move {
-                                let PendingToolCall {
-                                    tool_call,
-                                    preresolved_result,
-                                    ..
-                                } = pending;
-                                let tool_name = &tool_call.function.name;
-                                let args =
-                                    json_utils::value_to_json_string(&tool_call.function.arguments);
-                                let internal_call_id = nanoid::nanoid!();
-                                if let Some(result) = preresolved_result {
-                                    return Ok(result);
-                                }
-                                let tool_span = tracing::Span::current();
-                                tool_span.record("gen_ai.tool.name", tool_name);
-                                tool_span.record("gen_ai.tool.call.id", &tool_call.id);
-                                tool_span.record("gen_ai.tool.call.arguments", &args);
-                                if let Some(hook) = hook1 {
-                                    let action = hook
-                                        .on_tool_call(
-                                            tool_name,
-                                            tool_call.call_id.clone(),
-                                            &internal_call_id,
-                                            &args,
-                                        )
-                                        .await;
-
-                                    if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(PromptError::prompt_cancelled(
-                                            cloned_history_for_error,
-                                            reason,
-                                        ));
-                                    }
-
-                                    if let ToolCallHookAction::Skip { reason } = action {
-                                        // Tool execution rejected, return rejection message as tool result
-                                        tracing::info!(
-                                            tool_name = tool_name,
-                                            reason = reason,
-                                            "Tool call rejected"
-                                        );
-                                        if let Some(call_id) = tool_call.call_id.clone() {
-                                            return Ok(UserContent::tool_result_with_call_id(
-                                                tool_call.id.clone(),
-                                                call_id,
-                                                OneOrMany::one(reason.into()),
-                                            ));
-                                        } else {
-                                            return Ok(UserContent::tool_result(
-                                                tool_call.id.clone(),
-                                                OneOrMany::one(reason.into()),
-                                            ));
-                                        }
-                                    }
-                                }
-                                let output =
-                                    match tool_server_handle.call_tool(tool_name, &args).await {
-                                        Ok(res) => res,
-                                        Err(e) => {
-                                            tracing::warn!("Error while executing tool: {e}");
-                                            e.to_string()
-                                        }
-                                    };
-                                if let Some(hook) = hook2
-                                    && let HookAction::Terminate { reason } = hook
-                                        .on_tool_result(
-                                            tool_name,
-                                            tool_call.call_id.clone(),
-                                            &internal_call_id,
-                                            &args,
-                                            &output.to_string(),
-                                        )
-                                        .await
-                                {
-                                    return Err(PromptError::prompt_cancelled(
-                                        cloned_history_for_error,
-                                        reason,
-                                    ));
-                                }
-
-                                tool_span.record("gen_ai.tool.call.result", &output);
-                                tracing::info!(
-                                    "executed tool {tool_name} with args {args}. result: {output}"
-                                );
-                                if let Some(call_id) = tool_call.call_id.clone() {
-                                    Ok(UserContent::tool_result_with_call_id(
-                                        tool_call.id.clone(),
-                                        call_id,
-                                        ToolResultContent::from_tool_output(output),
-                                    ))
-                                } else {
-                                    Ok(UserContent::tool_result(
-                                        tool_call.id.clone(),
-                                        ToolResultContent::from_tool_output(output),
-                                    ))
-                                }
-                            }
-                            .instrument(tool_span)
-                        })
-                        .buffer_unordered(self.concurrency)
-                        .collect::<Vec<Result<UserContent, PromptError>>>()
-                        .await
-                        .into_iter()
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    run.tool_results(tool_content)?;
-                }
-                AgentRunStep::Done(response) => {
-                    if self.max_turns > 1 {
-                        tracing::info!("Depth reached: {}/{}", run.turn(), self.max_turns);
-                    }
-
-                    let usage = response.usage;
-                    agent_span.record("gen_ai.completion", &response.output);
-                    agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    agent_span.record(
-                        "gen_ai.usage.cache_read.input_tokens",
-                        usage.cached_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.cache_creation.input_tokens",
-                        usage.cache_creation_input_tokens,
-                    );
-                    agent_span.record(
-                        "gen_ai.usage.tool_use_prompt_tokens",
-                        usage.tool_use_prompt_tokens,
-                    );
-                    agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
-
-                    if let Some((memory, id)) = memory_handle.as_ref()
-                        && let Err(err) = memory
-                            .append(id, response.messages.clone().unwrap_or_default())
-                            .await
-                    {
-                        tracing::warn!(
-                            error = %err,
-                            conversation_id = %id,
-                            "conversation memory append failed; returning model response anyway"
-                        );
-                    }
-
-                    return Ok(response);
-                }
-            }
-        }
+        self.runner.run().await
     }
 }
 
@@ -901,37 +470,35 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<T, S, M, P>
+pub struct TypedPromptRequest<T, S, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
     M: CompletionModel,
-    P: PromptHook<M>,
 {
-    inner: PromptRequest<S, M, P>,
+    inner: PromptRequest<S, M>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
+impl<T, M> TypedPromptRequest<T, Standard, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Create a new TypedPromptRequest from an agent.
     ///
     /// This automatically sets the output schema based on the type parameter `T`.
-    pub fn from_agent(agent: &Agent<M, P>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
-        inner.output_schema = Some(schema_for!(T));
+        inner.runner.output_schema = Some(schema_for!(T));
         // Typed prompts deserialize the model's final string, so they pin
         // `Native` structured output to keep the typed API's behavior unchanged
         // across all providers (#1928). Routing the typed path through `Tool`
         // output mode for tool-using agents on non-composing providers is a
         // follow-up; use the untyped `output_schema`/`output_mode` API for
         // tool-composing structured output today.
-        inner.output_mode = OutputMode::Native;
+        inner.runner.output_mode = OutputMode::Native;
         Self {
             inner,
             _phantom: std::marker::PhantomData,
@@ -939,19 +506,18 @@ where
     }
 }
 
-impl<T, S, M, P> TypedPromptRequest<T, S, M, P>
+impl<T, S, M> TypedPromptRequest<T, S, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Enable returning extended details for responses (includes aggregated token usage).
     ///
     /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
     /// instead of just `T`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M, P> {
+    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M> {
         TypedPromptRequest {
             inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
@@ -968,61 +534,17 @@ where
         self
     }
 
-    /// Set the retry budget for invalid tool-call recovery.
-    ///
-    /// Invalid tool-call retries also consume normal multi-turn depth.
-    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.inner = self.inner.max_invalid_tool_call_retries(retries);
-        self
-    }
-
-    /// Add concurrency to the prompt request.
-    ///
-    /// This will cause the agent to execute tools concurrently.
-    pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.inner = self.inner.with_tool_concurrency(concurrency);
-        self
-    }
-
-    /// Add chat history to the prompt request.
-    pub fn with_history<H, U>(mut self, history: H) -> Self
+    /// Append a hook to this request's hook stack (on top of any the agent
+    /// already carries).
+    pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: IntoIterator<Item = U>,
-        U: Into<Message>,
+        H: AgentHook<M> + 'static,
     {
-        self.inner = self.inner.with_history(history);
+        self.inner = self.inner.add_hook(hook);
         self
     }
 
-    /// Set the conversation id used to load and persist memory for this request.
-    ///
-    /// Overrides any default conversation id set on the agent. If memory is not
-    /// configured on the agent, this has no effect.
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.inner = self.inner.conversation(id);
-        self
-    }
-
-    /// Disable conversation memory for this request.
-    ///
-    /// History will neither be loaded from nor saved to the agent's memory backend.
-    pub fn without_memory(mut self) -> Self {
-        self.inner = self.inner.without_memory();
-        self
-    }
-
-    /// Attach a per-request hook for tool call events.
-    ///
-    /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<T, S, M, P2>
-    where
-        P2: PromptHook<M>,
-    {
-        TypedPromptRequest {
-            inner: self.inner.with_hook(hook),
-            _phantom: std::marker::PhantomData,
-        }
-    }
+    forward_prompt_setters!(inner);
 }
 
 /// Deserialize a typed structured response from the model's final text.
@@ -1047,11 +569,10 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
     }
 }
 
-impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
+impl<T, M> TypedPromptRequest<T, Standard, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -1066,11 +587,10 @@ where
     }
 }
 
-impl<T, M, P> TypedPromptRequest<T, Extended, M, P>
+impl<T, M> TypedPromptRequest<T, Extended, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
@@ -1086,11 +606,10 @@ where
     }
 }
 
-impl<T, M, P> IntoFuture for TypedPromptRequest<T, Standard, M, P>
+impl<T, M> IntoFuture for TypedPromptRequest<T, Standard, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
     M: CompletionModel + 'static,
-    P: PromptHook<M> + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1100,11 +619,10 @@ where
     }
 }
 
-impl<T, M, P> IntoFuture for TypedPromptRequest<T, Extended, M, P>
+impl<T, M> IntoFuture for TypedPromptRequest<T, Extended, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
     M: CompletionModel + 'static,
-    P: PromptHook<M> + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1120,21 +638,19 @@ mod tests {
     use crate::{
         agent::{
             AgentBuilder,
-            prompt_request::hooks::{
-                HookAction, InvalidToolCallContext, InvalidToolCallHookAction, PromptHook,
-                ToolCallHookAction,
-            },
+            hook::{AgentHook, Flow, InvalidToolCallContext, StepEvent},
         },
         completion::{
-            AssistantContent, CompletionError, CompletionModel, CompletionRequest, Message, Prompt,
-            PromptError, StructuredOutputError, ToolDefinition, TypedPrompt, Usage,
+            AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
+            StructuredOutputError, ToolDefinition, TypedPrompt, Usage,
         },
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
+            MockExtensionsProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
+            SessionId,
         },
-        tool::Tool,
+        tool::{Tool, ToolCallExtensions},
     };
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -1187,79 +703,62 @@ mod tests {
     #[derive(Clone)]
     struct PanicOnUnknownToolHook;
 
-    impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_completion_response(
-            &self,
-            _prompt: &Message,
-            _response: &crate::completion::CompletionResponse<
-                <MockCompletionModel as CompletionModel>::Response,
-            >,
-        ) -> HookAction {
-            panic!("unknown tool response should fail before response hooks run")
-        }
-
-        async fn on_tool_call(
-            &self,
-            _tool_name: &str,
-            _tool_call_id: Option<String>,
-            _internal_call_id: &str,
-            _args: &str,
-        ) -> ToolCallHookAction {
-            panic!("unknown tool call should fail before tool hooks run")
+    impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::CompletionResponse { .. } => {
+                    panic!("unknown tool response should fail before response hooks run")
+                }
+                StepEvent::ToolCall { .. } => {
+                    panic!("unknown tool call should fail before tool hooks run")
+                }
+                _ => Flow::cont(),
+            }
         }
     }
 
     #[derive(Clone)]
     struct PanicOnToolCallHook;
 
-    impl PromptHook<MockCompletionModel> for PanicOnToolCallHook {
-        async fn on_tool_call(
-            &self,
-            _tool_name: &str,
-            _tool_call_id: Option<String>,
-            _internal_call_id: &str,
-            _args: &str,
-        ) -> ToolCallHookAction {
-            panic!("recovered invalid turn should not invoke normal tool hooks")
+    impl AgentHook<MockCompletionModel> for PanicOnToolCallHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::ToolCall { .. } => {
+                    panic!("recovered invalid turn should not invoke normal tool hooks")
+                }
+                _ => Flow::cont(),
+            }
         }
     }
 
     #[derive(Clone)]
     struct SkipDefaultApiAndPanicOnToolCallHook;
 
-    impl PromptHook<MockCompletionModel> for SkipDefaultApiAndPanicOnToolCallHook {
-        async fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> InvalidToolCallHookAction {
-            SkipDefaultApiHook.on_invalid_tool_call(context).await
-        }
-
-        async fn on_tool_call(
-            &self,
-            tool_name: &str,
-            tool_call_id: Option<String>,
-            internal_call_id: &str,
-            args: &str,
-        ) -> ToolCallHookAction {
-            PanicOnToolCallHook
-                .on_tool_call(tool_name, tool_call_id, internal_call_id, args)
-                .await
+    impl AgentHook<MockCompletionModel> for SkipDefaultApiAndPanicOnToolCallHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    SkipDefaultApiHook
+                        .on_event(StepEvent::InvalidToolCall(context))
+                        .await
+                }
+                event @ StepEvent::ToolCall { .. } => PanicOnToolCallHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
     #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for RepairDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl std::future::Future<Output = InvalidToolCallHookAction> + Send {
-            let tool_name = context.tool_name.clone();
-            async move {
-                assert_eq!(tool_name, "default_api");
-                InvalidToolCallHookAction::repair("add")
+    impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    Flow::repair("add")
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -1267,28 +766,26 @@ mod tests {
     #[derive(Clone)]
     struct RepairToSubtractHook;
 
-    impl PromptHook<MockCompletionModel> for RepairToSubtractHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _context: &InvalidToolCallContext,
-        ) -> InvalidToolCallHookAction {
-            InvalidToolCallHookAction::repair("subtract")
+    impl AgentHook<MockCompletionModel> for RepairToSubtractHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(_) => Flow::repair("subtract"),
+                _ => Flow::cont(),
+            }
         }
     }
 
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for RetryDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl std::future::Future<Output = InvalidToolCallHookAction> + Send {
-            let allowed_tools = context.allowed_tools.clone();
-            async move {
-                InvalidToolCallHookAction::retry(format!(
-                    "Use one of these tools instead: {allowed_tools:?}"
-                ))
+    impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    let allowed_tools = &context.allowed_tools;
+                    Flow::retry(format!("Use one of these tools instead: {allowed_tools:?}"))
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -1296,12 +793,12 @@ mod tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for SkipDefaultApiHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _context: &InvalidToolCallContext,
-        ) -> InvalidToolCallHookAction {
-            InvalidToolCallHookAction::skip("default_api is not available")
+    impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(_) => Flow::skip("default_api is not available"),
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -1319,16 +816,18 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        async fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> InvalidToolCallHookAction {
-            self.contexts
-                .lock()
-                .expect("invalid tool context records mutex was poisoned")
-                .push(context.clone());
-            InvalidToolCallHookAction::fail()
+    impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    self.contexts
+                        .lock()
+                        .expect("invalid tool context records mutex was poisoned")
+                        .push(context.clone());
+                    Flow::fail()
+                }
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -1588,7 +1087,7 @@ mod tests {
 
         let err = agent
             .prompt("use the tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .max_turns(3)
             .await
             .expect_err("unknown model-emitted tool should fail");
@@ -1610,6 +1109,97 @@ mod tests {
         assert_eq!(recorded.request_count(), 1);
     }
 
+    /// The motivating use-case: a `ToolCallExtensions` set on the prompt request is
+    /// threaded all the way to the tool the agent loop executes.
+    #[tokio::test]
+    async fn tool_extensions_reach_tool_through_agent_loop() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
+
+        let out = agent
+            .prompt("use the tool")
+            .tool_extensions(extensions)
+            .max_turns(3)
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(out, "done");
+        assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
+    }
+
+    /// Extensions persist for the whole run, across *multiple* tool-call rounds
+    /// (the headline value prop). The model calls the probe in two consecutive
+    /// rounds; both must observe the same injected value, not just the first.
+    #[tokio::test]
+    async fn tool_extensions_persist_across_multiple_rounds() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("c1", "context_probe", json!({})),
+            MockTurn::tool_call("c2", "context_probe", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
+
+        let out = agent
+            .prompt("use the tool twice")
+            .tool_extensions(extensions)
+            .max_turns(5)
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(out, "done");
+        assert_eq!(
+            probe.observations(),
+            vec!["session:abc-123".to_string(), "session:abc-123".to_string()],
+        );
+    }
+
+    /// Without a context, the same tool runs with an empty one (no panic, no
+    /// stale value) — the backward-compatible default path.
+    #[tokio::test]
+    async fn tool_runs_with_empty_context_when_none_supplied() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
+            MockTurn::text("done"),
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+
+        let out = agent
+            .prompt("use the tool")
+            .max_turns(3)
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(out, "done");
+        // Reaches `call_with_extensions` with an empty context (the override is the
+        // single entry point), so it observes "no-session" rather than the
+        // plain-`call` "call-no-context".
+        assert_eq!(probe.observed().as_deref(), Some("no-session"));
+    }
+
+    /// Pins the probe's sentinel: its plain `call` body records
+    /// `"call-no-context"`. The dispatched-run tests above assert `"no-session"`
+    /// instead, which is what proves dispatch routes through `call_with_extensions`
+    /// rather than `call`.
+    #[tokio::test]
+    async fn probe_plain_call_records_sentinel() {
+        let probe = MockExtensionsProbeTool::default();
+        let out = probe.call(json!({})).await.expect("call succeeds");
+        assert_eq!(out, "call-no-context");
+        assert_eq!(probe.observed().as_deref(), Some("call-no-context"));
+    }
+
     #[tokio::test]
     async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
         let invalid_hook = RecordingInvalidToolCallHook::default();
@@ -1623,7 +1213,7 @@ mod tests {
 
         let err = agent
             .prompt("use the tool")
-            .with_hook(invalid_hook.clone())
+            .add_hook(invalid_hook.clone())
             .max_turns(3)
             .await
             .expect_err("invalid tool should fail");
@@ -1656,7 +1246,7 @@ mod tests {
 
         let err = agent
             .prompt("use the allowed tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .max_turns(3)
             .await
             .expect_err("disallowed model-emitted tool should fail");
@@ -1695,7 +1285,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject returned tool calls");
@@ -1727,7 +1317,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_hook(RepairDefaultApiHook)
+            .add_hook(RepairDefaultApiHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -1769,7 +1359,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .extended_details()
@@ -1831,7 +1421,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .extended_details()
@@ -1918,7 +1508,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_hook(SkipDefaultApiAndPanicOnToolCallHook)
+            .add_hook(SkipDefaultApiAndPanicOnToolCallHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -1969,7 +1559,7 @@ mod tests {
 
         let err = agent
             .prompt("add")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
             .await
@@ -1999,7 +1589,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -2044,7 +1634,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -2092,7 +1682,7 @@ mod tests {
 
         let err = agent
             .prompt("add")
-            .with_hook(RepairToSubtractHook)
+            .add_hook(RepairToSubtractHook)
             .max_turns(3)
             .await
             .expect_err("repair to a disallowed tool should fail");
@@ -2120,7 +1710,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .with_hook(RepairDefaultApiHook)
+            .add_hook(RepairDefaultApiHook)
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject repaired tool calls");
@@ -2148,7 +1738,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject skipped tool calls");
@@ -2173,7 +1763,7 @@ mod tests {
 
         let err = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .max_turns(3)
             .await
             .expect_err("typed prompt should preserve fail-fast default");
@@ -2200,7 +1790,7 @@ mod tests {
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .with_hook(RepairDefaultApiHook)
+            .add_hook(RepairDefaultApiHook)
             .max_turns(3)
             .await
             .expect("typed prompt should repair invalid tool call");
@@ -2224,7 +1814,7 @@ mod tests {
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .await
@@ -2250,7 +1840,7 @@ mod tests {
 
         let err = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
             .await
@@ -2550,7 +2140,7 @@ mod tests {
         let _ = agent
             .prompt("hello")
             .conversation("t1")
-            .with_history(vec![Message::user("from-caller")])
+            .history(vec![Message::user("from-caller")])
             .await
             .expect("prompt should succeed");
 
@@ -2602,7 +2192,7 @@ mod tests {
         let model = MockCompletionModel::text("ack");
         let agent = AgentBuilder::new(model)
             .memory(memory.clone())
-            .conversation_id("default-thread")
+            .conversation("default-thread")
             .build();
 
         let _ = agent.prompt("hello").await.expect("prompt should succeed");
@@ -2655,7 +2245,7 @@ mod tests {
         let model = MockCompletionModel::text("ack");
         let agent = AgentBuilder::new(model)
             .memory(memory.clone())
-            .conversation_id("t1")
+            .conversation("t1")
             .build();
 
         let _ = agent

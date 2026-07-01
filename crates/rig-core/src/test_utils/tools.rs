@@ -1,13 +1,13 @@
 //! Tool helpers for deterministic tests.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
     completion::ToolDefinition,
-    tool::{Tool, ToolSet},
+    tool::{Tool, ToolCallExtensions, ToolSet},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
 };
@@ -57,6 +57,84 @@ impl Tool for MockAddTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
+    }
+}
+
+/// A caller-injected context value, like a session id or auth token carried in
+/// a [`ToolCallExtensions`](crate::tool::ToolCallExtensions).
+#[derive(Clone)]
+pub struct SessionId(pub String);
+
+/// A mock tool that records whatever it observed in its per-call
+/// [`ToolCallExtensions`], so tests can assert the context reached tool execution.
+///
+/// `call_with_extensions` records `session:<id>` (or `no-session` when no
+/// [`SessionId`] is present). The plain `call` body records `call-no-context` as
+/// a sentinel: because an overridden `call_with_extensions` is the single dispatch
+/// entry point, that sentinel must never surface from a dispatched run —
+/// observing it would mean dispatch wrongly bypassed the context-aware path.
+#[derive(Clone, Default)]
+pub struct MockExtensionsProbeTool {
+    /// One entry per call, in call order — lets tests assert across multiple
+    /// tool-call rounds, not just the most recent.
+    seen: Arc<Mutex<Vec<String>>>,
+}
+
+impl MockExtensionsProbeTool {
+    /// What the tool observed on its most recent call, if it has been called.
+    pub fn observed(&self) -> Option<String> {
+        self.seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .last()
+            .cloned()
+    }
+
+    /// Everything the tool observed, one entry per call in call order.
+    pub fn observations(&self) -> Vec<String> {
+        self.seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+}
+
+impl Tool for MockExtensionsProbeTool {
+    const NAME: &'static str = "context_probe";
+    type Error = MockToolError;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Records the SessionId observed in its call context".to_string(),
+            parameters: json!({"type": "object", "properties": {}}),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        self.seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push("call-no-context".to_string());
+        Ok("call-no-context".to_string())
+    }
+
+    async fn call_with_extensions(
+        &self,
+        _args: Self::Args,
+        extensions: &ToolCallExtensions,
+    ) -> Result<Self::Output, Self::Error> {
+        let observed = match extensions.get::<SessionId>() {
+            Some(session) => format!("session:{}", session.0),
+            None => "no-session".to_string(),
+        };
+        self.seen
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(observed.clone());
+        Ok(observed)
     }
 }
 

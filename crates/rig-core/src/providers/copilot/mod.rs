@@ -382,7 +382,7 @@ fn default_headers(
         ("user-agent", USER_AGENT.to_string()),
         ("openai-intent", intent.as_header().to_string()),
         ("x-github-api-version", API_VERSION.to_string()),
-        ("x-request-id", nanoid::nanoid!()),
+        ("x-request-id", crate::id::generate()),
         (
             "x-vscode-user-agent-library-version",
             "electron-fetch".to_string(),
@@ -860,19 +860,12 @@ where
                             message = %err.error_message(),
                             "provider returned an error response"
                         );
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body,
-                            },
-                        ))
+                        Err(CompletionError::from_http_response(status, body))
                     }
                 }
             } else {
                 let body = http_client::text(response).await?;
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, body),
-                ))
+                Err(CompletionError::from_http_response(status, body))
             }
         }
         .instrument(span)
@@ -945,9 +938,7 @@ where
                 })
             } else {
                 let body = http_client::text(response).await?;
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, body),
-                ))
+                Err(CompletionError::from_http_response(status, body))
             }
         }
         .instrument(span)
@@ -1071,7 +1062,7 @@ where
                                         if let StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } = message {
                                             let internal_call_id = tool_call_internal_ids
                                                 .entry(func.id.clone())
-                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .or_insert_with(crate::id::generate)
                                                 .clone();
                                             yield Ok(RawStreamingChoice::ToolCallDelta {
                                                 id: func.id.clone(),
@@ -1084,7 +1075,7 @@ where
                                         StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } => {
                                             let internal_id = tool_call_internal_ids
                                                 .entry(func.id.clone())
-                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .or_insert_with(crate::id::generate)
                                                 .clone();
                                             let raw_tool_call = streaming::RawStreamingToolCall::new(
                                                 func.id.clone(),
@@ -1115,7 +1106,10 @@ where
                                         StreamingItemDoneOutput { item: responses_api::Output::Message(msg), .. } => {
                                             yield Ok(RawStreamingChoice::MessageId(msg.id.clone()));
                                         }
-                                        StreamingItemDoneOutput { item: responses_api::Output::Unknown, .. } => {}
+                                        // Surface an unmodeled output item (e.g. a hosted-tool result) to the consumer verbatim.
+                                        StreamingItemDoneOutput { item: responses_api::Output::Unknown(value), .. } => {
+                                            yield Ok(RawStreamingChoice::Unknown(value.clone()));
+                                        }
                                     },
                                     ItemChunkKind::OutputTextDelta(delta) => {
                                         yield Ok(RawStreamingChoice::Message(delta.delta.clone()))
@@ -1130,7 +1124,7 @@ where
                                         if let Some(item_id) = chunk.item_id.as_ref() {
                                             let internal_call_id = tool_call_internal_ids
                                                 .entry(item_id.clone())
-                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .or_insert_with(crate::id::generate)
                                                 .clone();
                                             yield Ok(RawStreamingChoice::ToolCallDelta {
                                                 id: item_id.clone(),
@@ -1155,13 +1149,25 @@ where
                                     }
                                     responses_api::streaming::ResponseChunkKind::ResponseFailed
                                     | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
-                                        let error = response
-                                            .error
-                                            .as_ref()
-                                            .map(|err| err.message.clone())
-                                            .unwrap_or_else(|| "Copilot response stream failed".into());
                                         terminated_with_error = true;
-                                        yield Err(CompletionError::ProviderError(error));
+                                        // Deliberate two-tier behaviour matching the OpenAI Responses
+                                        // SSE path: when the provider supplies an error object we
+                                        // preserve the raw event JSON via `completion_error_from_body`
+                                        // so the `provider_response_*` helpers surface the full payload
+                                        // (code + message). The error arrives over an established 2xx
+                                        // stream, so there is no HTTP status to attach (status: None).
+                                        // When the object is absent we emit a Rig-authored
+                                        // `ProviderError` diagnostic (provider_response_body() is None).
+                                        match response.error.as_ref() {
+                                            Some(_) => yield Err(
+                                                crate::provider_response::completion_error_from_body(
+                                                    evt.data.clone(),
+                                                ),
+                                            ),
+                                            None => yield Err(CompletionError::ProviderError(
+                                                "Copilot response stream failed".into(),
+                                            )),
+                                        }
                                         break;
                                     }
                                     _ => continue,
@@ -1363,11 +1369,9 @@ where
                 Err(parse_error) => {
                     if let Ok(err) = serde_json::from_slice::<NestedApiError>(&body) {
                         tracing::warn!(message = %err.error.message, "provider returned an error response");
-                        return Err(EmbeddingError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&body).into_owned(),
-                            },
+                        return Err(EmbeddingError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&body).into_owned(),
                         ));
                     }
 
@@ -1399,9 +1403,7 @@ where
                 .collect())
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::HttpError(
-                http_client::Error::InvalidStatusCodeWithMessage(status, text),
-            ))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }
@@ -2112,9 +2114,32 @@ mod tests {
             Ok(_) => panic!("stream should surface a provider error"),
             Err(err) => err,
         };
+        // The terminal `response.failed` event carries the provider's error
+        // payload, so the full raw event JSON is preserved for inspection
+        // (status: None — the error arrived over an already-established stream),
+        // matching the OpenAI Responses SSE path.
+        assert!(matches!(
+            err,
+            crate::completion::CompletionError::ProviderResponse(_)
+        ));
+        assert_eq!(err.provider_response_status(), None);
+        let json = err
+            .provider_response_json()
+            .expect("preserved body should parse as JSON")
+            .expect("preserved body should not be empty");
+        let response_error = json
+            .get("response")
+            .and_then(|response| response.get("error"))
+            .expect("preserved body should retain the provider error object");
         assert_eq!(
-            err.to_string(),
-            "ProviderError: Copilot response stream failed"
+            response_error.get("code").and_then(|value| value.as_str()),
+            Some("server_error")
+        );
+        assert_eq!(
+            response_error
+                .get("message")
+                .and_then(|value| value.as_str()),
+            Some("Copilot response stream failed")
         );
         assert!(
             stream.next().await.is_none(),

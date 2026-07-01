@@ -567,20 +567,16 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.error.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&response_body).into_owned(),
-                            },
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
                         ))
                     }
                 }
             } else {
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).to_string(),
-                    ),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         };

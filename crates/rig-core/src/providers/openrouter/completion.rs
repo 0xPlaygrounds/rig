@@ -1,5 +1,5 @@
 use super::{
-    client::{ApiErrorResponse, ApiResponse, Client, Usage},
+    client::{ApiResponse, Client, Usage},
     streaming::StreamingCompletionResponse,
 };
 use crate::message::{
@@ -583,12 +583,6 @@ pub struct CompletionResponse {
     pub choices: Vec<Choice>,
     pub system_fingerprint: Option<String>,
     pub usage: Option<Usage>,
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -2021,20 +2015,16 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&response_body).into_owned(),
-                            },
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
                         ))
                     }
                 }
             } else {
-                Err(CompletionError::HttpError(
-                    crate::http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).to_string(),
-                    ),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }
@@ -3500,6 +3490,84 @@ mod tests {
             media_type: Some(message::AudioMediaType::WAV),
             additional_params: None,
         });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("base64"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_video_file_id_error() {
+        let rig_content = message::UserContent::Video(message::Video {
+            data: DocumentSourceKind::FileId("file-123".to_string()),
+            media_type: Some(message::VideoMediaType::MP4),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("File IDs are not supported for video")
+        );
+    }
+
+    #[test]
+    fn test_user_content_from_rig_audio_file_id_error() {
+        let rig_content = message::UserContent::Audio(message::Audio {
+            data: DocumentSourceKind::FileId("file-123".to_string()),
+            media_type: Some(message::AudioMediaType::MP3),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("File IDs are not supported for audio")
+        );
+    }
+
+    #[test]
+    fn test_video_helper_converts_to_data_uri() {
+        // `UserContent::video(..)` carries base64 data and should become a
+        // `video_url` data URI.
+        let rig_content =
+            message::UserContent::video("SGVsbG8=", Some(message::VideoMediaType::MP4));
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "data:video/mp4;base64,SGVsbG8=");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_video_url_helper_passes_url_through() {
+        // `UserContent::video_url(..)` passes the URL through unchanged and does
+        // not require a media type.
+        let rig_content = message::UserContent::video_url("https://example.com/video.mp4", None);
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "https://example.com/video.mp4");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_video_raw_helper_errors() {
+        // `UserContent::video_raw(..)` carries raw bytes, which OpenRouter cannot
+        // accept; the caller must base64-encode first.
+        let rig_content =
+            message::UserContent::video_raw(vec![1, 2, 3], Some(message::VideoMediaType::MP4));
         let result: Result<UserContent, _> = rig_content.try_into();
 
         assert!(result.is_err());

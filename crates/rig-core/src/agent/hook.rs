@@ -1,0 +1,927 @@
+//! Hooks for observing and steering an agent run.
+//!
+//! A hook is a single [`AgentHook::on_event`] method that the agent loop calls
+//! at every observable point of a run — before each model call, on each model
+//! response, around every tool call, on streamed deltas, and when the model
+//! emits an invalid tool call. Each call receives a [`StepEvent`] describing
+//! what is happening and returns a [`Flow`] that lets the hook observe, skip a
+//! tool, terminate the run early, or (for invalid tool calls) retry/repair/skip
+//! recovery.
+//!
+//! Unlike the old multi-method hook trait, a hook implements one method and
+//! matches on the event it cares about — every other event falls through to the
+//! default [`Flow::Continue`]. Hooks compose: a [`HookStack`] runs several hooks
+//! in registration order and the first non-[`Flow::Continue`] result wins (the
+//! later hooks are not consulted for that event).
+//!
+//! Hooks are a *driver* concern: they are async, side-effecting and generic over
+//! the model, so they live in the [`AgentRunner`](crate::agent::AgentRunner)
+//! layer rather than inside the sans-IO, serializable
+//! [`AgentRun`](crate::agent::run::AgentRun) state machine.
+//!
+//! # Migrating from `PromptHook`
+//!
+//! The previous eight-method `PromptHook<M>` trait is replaced by the single
+//! [`AgentHook::on_event`] method. Each old method becomes one match arm on a
+//! [`StepEvent`] variant, and the value it used to return becomes the [`Flow`]
+//! you return from that arm (every event you don't care about falls through to
+//! [`Flow::Continue`]). Attach one or more hooks with `add_hook` — they run in
+//! registration order and the first non-[`Flow::Continue`] result wins.
+//!
+//! | Old `PromptHook` method | [`StepEvent`] variant | [`Flow`] to return |
+//! |---|---|---|
+//! | `on_completion_call` | [`CompletionCall`](StepEvent::CompletionCall) `{ prompt, history, turn }` | [`cont`](Flow::cont) / [`override_request`](Flow::override_request) / [`terminate`](Flow::terminate) |
+//! | `on_completion_response` | [`CompletionResponse`](StepEvent::CompletionResponse) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
+//! | `on_invalid_tool_call` | [`InvalidToolCall`](StepEvent::InvalidToolCall)`(ctx)` | [`fail`](Flow::fail) (default) / [`retry`](Flow::retry) / [`repair`](Flow::repair) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
+//! | `on_tool_call` | [`ToolCall`](StepEvent::ToolCall) `{ tool_name, tool_call_id, internal_call_id, args }` | [`cont`](Flow::cont) / [`rewrite_args`](Flow::rewrite_args) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
+//! | `on_tool_result` | [`ToolResult`](StepEvent::ToolResult) `{ tool_name, .., result }` | [`cont`](Flow::cont) / [`rewrite_result`](Flow::rewrite_result) / [`terminate`](Flow::terminate) |
+//! | `on_text_delta` | [`TextDelta`](StepEvent::TextDelta) `{ delta, aggregated }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
+//! | `on_tool_call_delta` | [`ToolCallDelta`](StepEvent::ToolCallDelta) `{ tool_call_id, internal_call_id, tool_name, delta }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
+//! | `on_stream_completion_response_finish` | [`StreamResponseFinish`](StepEvent::StreamResponseFinish) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
+//!
+//! Behavioral notes:
+//!
+//! - The invalid-tool-call default is still fail-fast: returning
+//!   [`Flow::Continue`] for [`StepEvent::InvalidToolCall`] is treated as
+//!   [`Flow::fail`], matching the old trait's default `on_invalid_tool_call`.
+//! - A hook opts out of an event by returning [`Flow::cont`] from that arm,
+//!   instead of leaving a trait method unimplemented.
+//! - For per-delta hooks, override [`AgentHook::observes`] to skip the
+//!   high-frequency [`TextDelta`](StepEvent::TextDelta) /
+//!   [`ToolCallDelta`](StepEvent::ToolCallDelta) events you don't consume.
+
+use std::sync::Arc;
+
+use crate::{
+    completion::CompletionModel,
+    message::{Message, ToolChoice},
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+};
+
+/// Context passed to a hook on a [`StepEvent::InvalidToolCall`] event when the
+/// model emits a tool call that Rig would reject before normal tool-call
+/// handling or execution.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct InvalidToolCallContext {
+    /// Tool name emitted by the model.
+    pub tool_name: String,
+    /// Provider-supplied tool call ID, when available.
+    pub tool_call_id: Option<String>,
+    /// Internal Rig call ID, when available.
+    pub internal_call_id: Option<String>,
+    /// JSON arguments emitted for the tool call, when available.
+    pub args: Option<String>,
+    /// Executable Rig tools advertised to the provider for this turn.
+    pub available_tools: Vec<String>,
+    /// Tools allowed by the active [`ToolChoice`] for this turn.
+    pub allowed_tools: Vec<String>,
+    /// Active tool choice for this turn.
+    pub tool_choice: Option<ToolChoice>,
+    /// Diagnostic chat history including the rejected model output when available.
+    pub chat_history: Vec<Message>,
+    /// Whether the rejected call came from the streaming path.
+    pub is_streaming: bool,
+}
+
+/// Recovery action for an invalid tool call, used internally by
+/// [`AgentRun`](crate::agent::run::AgentRun). Hooks express recovery via
+/// [`Flow`]; the [`AgentRunner`](crate::agent::AgentRunner) translates a `Flow`
+/// returned for a [`StepEvent::InvalidToolCall`] into this type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvalidToolCallHookAction {
+    /// Preserve Rig's default fail-fast behavior.
+    Fail,
+    /// Retry the model turn with corrective feedback.
+    Retry { feedback: String },
+    /// Rewrite only the emitted tool name. The repaired name is revalidated
+    /// against registered tools and the current `ToolChoice` before use.
+    Repair { tool_name: String },
+    /// Treat an invalid structured tool call as skipped by returning synthetic
+    /// feedback as its tool result. This does not execute the invalid tool.
+    Skip { reason: String },
+}
+
+impl InvalidToolCallHookAction {
+    /// Preserve Rig's default fail-fast behavior.
+    pub fn fail() -> Self {
+        Self::Fail
+    }
+
+    /// Retry the model turn with corrective feedback.
+    pub fn retry(feedback: impl Into<String>) -> Self {
+        Self::Retry {
+            feedback: feedback.into(),
+        }
+    }
+
+    /// Repair the emitted tool name.
+    pub fn repair(tool_name: impl Into<String>) -> Self {
+        Self::Repair {
+            tool_name: tool_name.into(),
+        }
+    }
+
+    /// Skip the invalid call with a synthetic tool result.
+    pub fn skip(reason: impl Into<String>) -> Self {
+        Self::Skip {
+            reason: reason.into(),
+        }
+    }
+}
+
+/// An observable point in an agent run, passed to [`AgentHook::on_event`].
+///
+/// `StepEvent` borrows everything it carries (it is `Copy`), so a hook may
+/// inspect the event without taking ownership and a [`HookStack`] can forward
+/// the same event to each hook in turn.
+///
+/// The streaming-only variants ([`TextDelta`](StepEvent::TextDelta),
+/// [`ToolCallDelta`](StepEvent::ToolCallDelta) and
+/// [`StreamResponseFinish`](StepEvent::StreamResponseFinish)) are emitted only
+/// by [`AgentRunner::stream`](crate::agent::AgentRunner::stream).
+#[non_exhaustive]
+pub enum StepEvent<'a, M: CompletionModel> {
+    /// Before a completion request is sent to the model. Honors
+    /// [`Flow::Continue`], [`Flow::OverrideRequest`] (patch this turn's request)
+    /// and [`Flow::Terminate`].
+    CompletionCall {
+        /// The prompt message for this turn.
+        prompt: &'a Message,
+        /// The chat history preceding `prompt`.
+        history: &'a [Message],
+        /// One-based index of this model call within the run.
+        turn: usize,
+    },
+    /// After a non-streaming completion response is received. Suppressed for
+    /// turns recovered by invalid tool-call repair, skip, or retry. Honors
+    /// [`Flow::Continue`] and [`Flow::Terminate`].
+    CompletionResponse {
+        /// The prompt message for this turn.
+        prompt: &'a Message,
+        /// The model's completion response.
+        response: &'a crate::completion::CompletionResponse<M::Response>,
+    },
+    /// The model emitted a tool call that is unknown or disallowed for this
+    /// turn. Honors [`Flow::Fail`] (the default), [`Flow::Retry`],
+    /// [`Flow::Repair`], [`Flow::Skip`] and [`Flow::Terminate`];
+    /// [`Flow::Continue`] is treated as [`Flow::Fail`].
+    InvalidToolCall(&'a InvalidToolCallContext),
+    /// Before a tool is executed. Honors [`Flow::Continue`],
+    /// [`Flow::RewriteArgs`] (execute the tool with rewritten arguments),
+    /// [`Flow::Skip`] (return `reason` as the tool result without executing) and
+    /// [`Flow::Terminate`].
+    ToolCall {
+        /// Name of the tool about to be called.
+        tool_name: &'a str,
+        /// Provider-supplied tool call ID, when available.
+        tool_call_id: Option<&'a str>,
+        /// Internal Rig call ID correlating this call's events.
+        internal_call_id: &'a str,
+        /// JSON arguments for the call.
+        args: &'a str,
+    },
+    /// After a tool has been executed and produced a result. Honors
+    /// [`Flow::Continue`], [`Flow::RewriteResult`] (substitute the result the
+    /// model sees) and [`Flow::Terminate`]. `result` is the tool's actual
+    /// output, observed before any [`Flow::RewriteResult`] is applied.
+    ToolResult {
+        /// Name of the tool that was called.
+        tool_name: &'a str,
+        /// Provider-supplied tool call ID, when available.
+        tool_call_id: Option<&'a str>,
+        /// Internal Rig call ID correlating this call's events.
+        internal_call_id: &'a str,
+        /// JSON arguments for the call.
+        args: &'a str,
+        /// The tool result, as returned to the model.
+        result: &'a str,
+    },
+    /// Streaming only: a text delta was received. `aggregated` is the full text
+    /// accumulated for the turn so far. Honors [`Flow::Continue`] and
+    /// [`Flow::Terminate`].
+    TextDelta {
+        /// The newly received text fragment.
+        delta: &'a str,
+        /// All text accumulated for the turn so far.
+        aggregated: &'a str,
+    },
+    /// Streaming only: a tool-call delta was received. `tool_name` is `Some` on
+    /// the first delta for a tool call and `None` on subsequent deltas. Honors
+    /// [`Flow::Continue`] and [`Flow::Terminate`].
+    ToolCallDelta {
+        /// Provider-supplied tool call ID.
+        tool_call_id: &'a str,
+        /// Internal Rig call ID correlating this call's events.
+        internal_call_id: &'a str,
+        /// Tool name, present on the first delta only.
+        tool_name: Option<&'a str>,
+        /// The newly received argument fragment.
+        delta: &'a str,
+    },
+    /// Streaming only: the provider finished streaming a completion response.
+    /// This is the streaming counterpart of [`CompletionResponse`](Self::CompletionResponse)
+    /// and, like it, is suppressed for turns recovered by invalid tool-call
+    /// repair, skip, or retry. Note one medium-specific difference from
+    /// `CompletionResponse`: it fires only on turns that streamed assistant
+    /// **text** — a turn that emits only a tool call (or only reasoning) does
+    /// not fire it. Honors [`Flow::Continue`] and [`Flow::Terminate`].
+    StreamResponseFinish {
+        /// The prompt message for this turn.
+        prompt: &'a Message,
+        /// The provider's final streaming response.
+        response: &'a M::StreamingResponse,
+    },
+}
+
+// `StepEvent` only holds shared references and `Copy` scalars, so it is `Copy`.
+// These are hand-written to avoid `derive` adding a spurious `M: Clone`/`M: Copy`
+// bound (the generic parameter never appears by value).
+impl<M: CompletionModel> Clone for StepEvent<'_, M> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<M: CompletionModel> Copy for StepEvent<'_, M> {}
+
+/// The discriminant of a [`StepEvent`].
+///
+/// Passed to [`AgentHook::observes`] so a hook can declare which events it cares
+/// about without the runner building the (sometimes expensive) event payload —
+/// in particular the high-frequency streaming [`TextDelta`](StepEventKind::TextDelta)
+/// and [`ToolCallDelta`](StepEventKind::ToolCallDelta) events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StepEventKind {
+    /// [`StepEvent::CompletionCall`].
+    CompletionCall,
+    /// [`StepEvent::CompletionResponse`].
+    CompletionResponse,
+    /// [`StepEvent::InvalidToolCall`].
+    InvalidToolCall,
+    /// [`StepEvent::ToolCall`].
+    ToolCall,
+    /// [`StepEvent::ToolResult`].
+    ToolResult,
+    /// [`StepEvent::TextDelta`].
+    TextDelta,
+    /// [`StepEvent::ToolCallDelta`].
+    ToolCallDelta,
+    /// [`StepEvent::StreamResponseFinish`].
+    StreamResponseFinish,
+}
+
+impl<M: CompletionModel> StepEvent<'_, M> {
+    /// The [`StepEventKind`] discriminant of this event.
+    pub fn kind(&self) -> StepEventKind {
+        match self {
+            StepEvent::CompletionCall { .. } => StepEventKind::CompletionCall,
+            StepEvent::CompletionResponse { .. } => StepEventKind::CompletionResponse,
+            StepEvent::InvalidToolCall(_) => StepEventKind::InvalidToolCall,
+            StepEvent::ToolCall { .. } => StepEventKind::ToolCall,
+            StepEvent::ToolResult { .. } => StepEventKind::ToolResult,
+            StepEvent::TextDelta { .. } => StepEventKind::TextDelta,
+            StepEvent::ToolCallDelta { .. } => StepEventKind::ToolCallDelta,
+            StepEvent::StreamResponseFinish { .. } => StepEventKind::StreamResponseFinish,
+        }
+    }
+}
+
+/// A partial patch over the model request for a single turn, returned by a hook
+/// via [`Flow::OverrideRequest`] on a [`StepEvent::CompletionCall`] event.
+///
+/// Every field is optional: a `Some` value overrides the agent's configured
+/// value for this turn, a `None` value inherits it. The patch is **per-turn and
+/// non-sticky** — it never changes the agent's baseline, so the next turn
+/// resolves from the baseline again. `additional_params` is shallow-merged
+/// (top-level keys, the override winning) onto the agent's passthrough params;
+/// every other field replaces.
+///
+/// Build one with the setters:
+///
+/// ```rust,ignore
+/// Flow::override_request(
+///     RequestOverride::new()
+///         .tool_choice(ToolChoice::Required)
+///         .active_tools(["search"])
+///         .temperature(0.0),
+/// )
+/// ```
+#[derive(Debug, Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct RequestOverride {
+    /// Override the system prompt / preamble for this turn.
+    pub preamble: Option<String>,
+    /// Override the sampling temperature for this turn.
+    pub temperature: Option<f64>,
+    /// Override the max output tokens for this turn.
+    pub max_tokens: Option<u64>,
+    /// Override the tool choice for this turn.
+    pub tool_choice: Option<ToolChoice>,
+    /// Restrict the advertised tools to this allow-list (by name) for this turn.
+    /// `Some(vec![])` advertises no executable tools; `None` keeps the full set.
+    pub active_tools: Option<Vec<String>>,
+    /// Provider-passthrough params shallow-merged onto the agent's for this turn.
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl RequestOverride {
+    /// An empty override — a no-op patch, identical to returning [`Flow::cont`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Override the system prompt / preamble for this turn.
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+        self.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Override the sampling temperature for this turn.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Override the max output tokens for this turn.
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Override the tool choice for this turn.
+    ///
+    /// Not every provider honors `tool_choice`: some in-core providers (e.g.
+    /// Ollama, Hyperbolic, Mira, Perplexity) ignore it and log a warning, so
+    /// forcing a tool this way is a no-op there. A choice a provider cannot
+    /// represent (e.g. a multi-name [`ToolChoice::Specific`] on Anthropic, which
+    /// forces a single tool) surfaces as a request error rather than being
+    /// silently downgraded.
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Restrict the advertised tools to this allow-list (by name) for this turn.
+    ///
+    /// This narrows the executable tool set, so it composes with `tool_choice`:
+    /// if the effective tool choice is a [`ToolChoice::Specific`] naming a tool
+    /// that `active_tools` filters out (e.g. the agent's baseline choice is
+    /// inherited because this override didn't set its own), the request fails
+    /// closed with a request error rather than silently forcing a dropped tool.
+    /// When narrowing the set, set a compatible `tool_choice` in the same patch.
+    pub fn active_tools<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.active_tools = Some(names.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Shallow-merge these provider-passthrough params onto the agent's for this
+    /// turn.
+    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
+        self.additional_params = Some(additional_params);
+        self
+    }
+}
+
+/// Control-flow result returned by [`AgentHook::on_event`].
+///
+/// Each [`StepEvent`] honors a specific subset of variants (documented on each
+/// event). The runner is **fail-closed**: an action an event cannot honor never
+/// silently proceeds — it terminates the run with a diagnostic error. In
+/// particular, a blocking action such as [`Flow::Fail`] returned for a
+/// [`StepEvent::ToolCall`] stops the run rather than letting the tool execute.
+/// Returning [`Flow::Continue`] is always the way to "do nothing".
+///
+/// `Flow` is `PartialEq` but not `Eq`, because [`Flow::OverrideRequest`] carries
+/// a [`RequestOverride`] whose `temperature` is an `f64`.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum Flow {
+    /// Proceed normally.
+    Continue,
+    /// Terminate the agent run early, surfacing `reason`.
+    Terminate {
+        /// Why the run is being terminated.
+        reason: String,
+    },
+    /// Skip the action: for [`StepEvent::ToolCall`], return `reason` as the tool
+    /// result without executing the tool; for [`StepEvent::InvalidToolCall`],
+    /// record `reason` as a synthetic result for the invalid call.
+    Skip {
+        /// The message returned to the model in place of the tool result.
+        reason: String,
+    },
+    /// [`StepEvent::ToolCall`] only: rewrite the tool-call arguments, then
+    /// execute the tool with the replacement. This is the steering action for
+    /// guardrails that normalize, clamp, redirect, or inject scoped parameters
+    /// before a tool runs.
+    ///
+    /// The rewritten arguments are what the tool is invoked with, what the
+    /// following [`StepEvent::ToolResult`] reports, and what the
+    /// `gen_ai.tool.call.arguments` span field records.
+    ///
+    /// This rewrites only what the tool *executes against*, not the model's
+    /// transcript: the assistant message that recorded the original tool call is
+    /// unchanged and keeps the model's original arguments. It is therefore an
+    /// execution-args rewrite (inject defaults, clamp a range, redirect a path),
+    /// **not** a history redactor — it does not scrub a value the model already
+    /// emitted from the conversation.
+    ///
+    /// Note: a rewrite is single-shot. Because a [`HookStack`] short-circuits on
+    /// the first non-[`Flow::Continue`] result, only the first hook to rewrite a
+    /// given call takes effect.
+    RewriteArgs {
+        /// The JSON arguments the tool is invoked with, in place of the ones the
+        /// model emitted.
+        args: serde_json::Value,
+    },
+    /// [`StepEvent::ToolResult`] only: replace the tool's result with this string
+    /// before the model sees it. The post-execution counterpart of
+    /// [`RewriteArgs`](Flow::RewriteArgs) — for guardrails that redact, truncate,
+    /// or normalize a tool's output.
+    ///
+    /// The replacement is what the model receives as the tool result and what the
+    /// `gen_ai.tool.call.result` span field records. As with
+    /// [`RewriteArgs`](Flow::RewriteArgs), this changes only what the model
+    /// *sees*: the tool still ran and produced its real output (which the
+    /// [`ToolResult`](StepEvent::ToolResult) event observed before this
+    /// replacement is applied). It does not scrub the tool's output from logs.
+    ///
+    /// The replacement is delivered to the model verbatim — it is not re-parsed
+    /// as structured/multimodal tool output, so a JSON-shaped replacement reaches
+    /// the model as literal text.
+    ///
+    /// Note: a rewrite is single-shot. Because a [`HookStack`] short-circuits on
+    /// the first non-[`Flow::Continue`] result, only the first hook to rewrite a
+    /// given result takes effect.
+    RewriteResult {
+        /// The result delivered to the model in place of the tool's actual
+        /// output.
+        result: String,
+    },
+    /// [`StepEvent::CompletionCall`] only: override fields of the model request
+    /// for this turn before it is sent. The per-turn request-steering action —
+    /// for hooks that adjust the system prompt, sampling, tool choice, or the
+    /// advertised tool set from run state (e.g. force a tool on the first turn,
+    /// lower the temperature on a critical step, or shrink the tool set after a
+    /// phase).
+    ///
+    /// The override is a partial patch ([`RequestOverride`]): each set field
+    /// replaces (or, for `additional_params`, shallow-merges onto) the agent's
+    /// configured value; unset fields are inherited. It applies to *this turn
+    /// only* and does not change the agent's baseline — the next turn re-fires
+    /// [`CompletionCall`](StepEvent::CompletionCall) and re-resolves from it.
+    ///
+    /// Note: like the other steering actions, this is single-shot. Because a
+    /// [`HookStack`] short-circuits on the first non-[`Flow::Continue`] result,
+    /// only the first hook to override a given turn takes effect; compose several
+    /// patches into one hook to combine them.
+    OverrideRequest {
+        /// The partial request patch applied to this turn.
+        request: RequestOverride,
+    },
+    /// [`StepEvent::InvalidToolCall`] only: fail the run fast (the default for
+    /// invalid tool calls).
+    Fail,
+    /// [`StepEvent::InvalidToolCall`] only: retry the model turn with corrective
+    /// feedback.
+    Retry {
+        /// Feedback appended to the conversation before re-prompting.
+        feedback: String,
+    },
+    /// [`StepEvent::InvalidToolCall`] only: rewrite the emitted tool name, which
+    /// is then revalidated against the allowed tools.
+    Repair {
+        /// The corrected tool name.
+        tool_name: String,
+    },
+}
+
+impl Flow {
+    /// Continue the agent loop as normal.
+    pub fn cont() -> Self {
+        Self::Continue
+    }
+
+    /// Terminate the agent run early with a reason.
+    pub fn terminate(reason: impl Into<String>) -> Self {
+        Self::Terminate {
+            reason: reason.into(),
+        }
+    }
+
+    /// Skip the current tool call (or invalid call) with the provided reason.
+    pub fn skip(reason: impl Into<String>) -> Self {
+        Self::Skip {
+            reason: reason.into(),
+        }
+    }
+
+    /// Rewrite a tool call's arguments, then execute the tool with the
+    /// replacement (tool calls only).
+    ///
+    /// Accepts anything convertible into a [`serde_json::Value`] — most often
+    /// the [`serde_json::json!`] macro or a value built from the parsed original
+    /// arguments. To rewrite from a typed value instead, use
+    /// [`try_rewrite_args`](Flow::try_rewrite_args).
+    ///
+    /// ```rust,ignore
+    /// // Inject a scoped parameter the model never sees, leaving the rest intact.
+    /// let mut args: serde_json::Value = serde_json::from_str(emitted_args)?;
+    /// args["account_id"] = serde_json::json!(session.account_id);
+    /// Flow::rewrite_args(args)
+    /// ```
+    pub fn rewrite_args(args: impl Into<serde_json::Value>) -> Self {
+        Self::RewriteArgs { args: args.into() }
+    }
+
+    /// Rewrite a tool call's arguments from a serializable value (tool calls
+    /// only), serializing it to JSON.
+    ///
+    /// This is the typed convenience over [`rewrite_args`](Flow::rewrite_args)
+    /// for callers that hold a Rust args struct. It only fails if the value
+    /// cannot be serialized to JSON; a hook typically maps that error to
+    /// [`Flow::terminate`]:
+    ///
+    /// ```rust,ignore
+    /// Flow::try_rewrite_args(&new_args).unwrap_or_else(|e| Flow::terminate(e.to_string()))
+    /// ```
+    pub fn try_rewrite_args<T: serde::Serialize>(value: &T) -> Result<Self, serde_json::Error> {
+        Ok(Self::RewriteArgs {
+            args: serde_json::to_value(value)?,
+        })
+    }
+
+    /// Replace a tool's result with `result` before the model sees it (tool
+    /// results only).
+    ///
+    /// The post-execution counterpart of [`rewrite_args`](Flow::rewrite_args),
+    /// for guardrails that redact, truncate, or normalize a tool's output:
+    ///
+    /// ```rust,ignore
+    /// // Redact a secret from the tool output before it reaches the model.
+    /// Flow::rewrite_result(redact(tool_output))
+    /// ```
+    pub fn rewrite_result(result: impl Into<String>) -> Self {
+        Self::RewriteResult {
+            result: result.into(),
+        }
+    }
+
+    /// Override fields of the model request for this turn (completion calls
+    /// only). See [`RequestOverride`] for the partial-patch, per-turn semantics.
+    pub fn override_request(request: RequestOverride) -> Self {
+        Self::OverrideRequest { request }
+    }
+
+    /// Fail fast on an invalid tool call (the default).
+    pub fn fail() -> Self {
+        Self::Fail
+    }
+
+    /// Retry the model turn with corrective feedback (invalid tool calls only).
+    pub fn retry(feedback: impl Into<String>) -> Self {
+        Self::Retry {
+            feedback: feedback.into(),
+        }
+    }
+
+    /// Repair the emitted tool name (invalid tool calls only).
+    pub fn repair(tool_name: impl Into<String>) -> Self {
+        Self::Repair {
+            tool_name: tool_name.into(),
+        }
+    }
+}
+
+/// A per-run hook that observes and steers an agent run.
+///
+/// Implement [`on_event`](AgentHook::on_event) and match on the [`StepEvent`]
+/// variants you care about; every other event falls through to the default
+/// [`Flow::Continue`]. Hooks must be cheap to share (`Clone` is not required —
+/// hooks are held behind an `Arc` once registered).
+///
+/// # Example
+/// ```rust,ignore
+/// use rig_core::agent::{AgentHook, Flow, StepEvent};
+/// use rig_core::completion::CompletionModel;
+///
+/// #[derive(Clone)]
+/// struct Logger;
+///
+/// impl<M: CompletionModel> AgentHook<M> for Logger {
+///     async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+///         if let StepEvent::ToolCall { tool_name, args, .. } = event {
+///             println!("calling {tool_name}({args})");
+///         }
+///         Flow::cont()
+///     }
+/// }
+/// ```
+pub trait AgentHook<M>: WasmCompatSend + WasmCompatSync
+where
+    M: CompletionModel,
+{
+    /// Called at every observable point of the agent run (subject to
+    /// [`observes`](Self::observes)). The default implementation observes
+    /// nothing and returns [`Flow::Continue`].
+    fn on_event(&self, event: StepEvent<'_, M>) -> impl Future<Output = Flow> + WasmCompatSend {
+        let _ = event;
+        async { Flow::Continue }
+    }
+
+    /// Whether this hook observes events of the given [`StepEventKind`].
+    ///
+    /// This is a **performance hint for the high-frequency streaming
+    /// [`TextDelta`](StepEventKind::TextDelta) /
+    /// [`ToolCallDelta`](StepEventKind::ToolCallDelta) events**, which otherwise
+    /// cost one boxed future per delta. The runner skips building and
+    /// dispatching a delta event only when *no* hook in the stack observes it
+    /// (interest is OR-combined across the stack), so a hook may still be
+    /// invoked for a delta a sibling observes — `on_event` must therefore stay
+    /// total (return [`Flow::Continue`] for events it ignores) rather than
+    /// assume it is only called for observed kinds.
+    ///
+    /// Control flow is **never** changed by `observes`: the shared, steering
+    /// events ([`ToolCall`](StepEventKind::ToolCall),
+    /// [`InvalidToolCall`](StepEventKind::InvalidToolCall), …) fire identically
+    /// regardless of this method, so `run()` and `stream()` stay in lock-step.
+    /// The default observes everything.
+    fn observes(&self, kind: StepEventKind) -> bool {
+        let _ = kind;
+        true
+    }
+}
+
+/// The no-op hook: observes nothing, never alters control flow.
+impl<M> AgentHook<M> for () where M: CompletionModel {}
+
+/// Object-safe shim over [`AgentHook`] so a [`HookStack`] can hold a
+/// heterogeneous list of hooks behind `Arc`.
+trait DynAgentHook<M>: WasmCompatSend + WasmCompatSync
+where
+    M: CompletionModel,
+{
+    fn on_event_boxed<'a>(&'a self, event: StepEvent<'a, M>) -> WasmBoxedFuture<'a, Flow>
+    where
+        M: 'a;
+
+    fn observes_dyn(&self, kind: StepEventKind) -> bool;
+}
+
+impl<M, H> DynAgentHook<M> for H
+where
+    M: CompletionModel,
+    H: AgentHook<M>,
+{
+    fn on_event_boxed<'a>(&'a self, event: StepEvent<'a, M>) -> WasmBoxedFuture<'a, Flow>
+    where
+        M: 'a,
+    {
+        Box::pin(self.on_event(event))
+    }
+
+    fn observes_dyn(&self, kind: StepEventKind) -> bool {
+        self.observes(kind)
+    }
+}
+
+/// An ordered list of hooks run as one hook.
+///
+/// Each hook is consulted in registration order; the first hook that returns a
+/// non-[`Flow::Continue`] result short-circuits the rest for that event. Because
+/// the runner is fail-closed (a non-`Continue` action always takes effect or
+/// terminates the run — it is never silently ignored), short-circuiting is
+/// always meaningful: a later hook is only skipped for an event an earlier hook
+/// actually steered. An empty stack is the no-op hook and
+/// [`observes`](HookStack::observes) nothing, so the runner skips event dispatch
+/// for it entirely.
+///
+/// This is the default hook type carried by an
+/// [`Agent`](crate::agent::Agent) and an
+/// [`AgentRunner`](crate::agent::AgentRunner); build one with
+/// [`add_hook`](crate::agent::AgentRunner::add_hook).
+pub struct HookStack<M>
+where
+    M: CompletionModel,
+{
+    hooks: Vec<Arc<dyn DynAgentHook<M>>>,
+}
+
+// Hand-written so the impls do not require `M: Clone`/`M: Default`: `M` only
+// appears inside `Arc<dyn DynAgentHook<M>>`, never by value.
+impl<M> Clone for HookStack<M>
+where
+    M: CompletionModel,
+{
+    fn clone(&self) -> Self {
+        Self {
+            hooks: self.hooks.clone(),
+        }
+    }
+}
+
+impl<M> Default for HookStack<M>
+where
+    M: CompletionModel,
+{
+    fn default() -> Self {
+        Self { hooks: Vec::new() }
+    }
+}
+
+impl<M> std::fmt::Debug for HookStack<M>
+where
+    M: CompletionModel,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HookStack")
+            .field("len", &self.hooks.len())
+            .finish()
+    }
+}
+
+impl<M> HookStack<M>
+where
+    M: CompletionModel,
+{
+    /// An empty stack (the no-op hook).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A stack containing a single hook.
+    pub fn with<H>(hook: H) -> Self
+    where
+        H: AgentHook<M> + 'static,
+    {
+        let mut stack = Self::new();
+        stack.push(hook);
+        stack
+    }
+
+    /// Append a hook to the end of the stack.
+    pub fn push<H>(&mut self, hook: H)
+    where
+        H: AgentHook<M> + 'static,
+    {
+        self.hooks.push(Arc::new(hook));
+    }
+
+    /// Whether the stack contains no hooks.
+    pub fn is_empty(&self) -> bool {
+        self.hooks.is_empty()
+    }
+
+    /// Number of hooks in the stack.
+    pub fn len(&self) -> usize {
+        self.hooks.len()
+    }
+}
+
+impl<M> AgentHook<M> for HookStack<M>
+where
+    M: CompletionModel,
+{
+    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        for hook in &self.hooks {
+            match hook.on_event_boxed(event).await {
+                Flow::Continue => {}
+                other => return other,
+            }
+        }
+        Flow::Continue
+    }
+
+    /// The stack observes an event kind if any of its hooks does (so an empty
+    /// stack observes nothing).
+    fn observes(&self, kind: StepEventKind) -> bool {
+        self.hooks.iter().any(|hook| hook.observes_dyn(kind))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::{AgentHook, Flow, HookStack, StepEvent, StepEventKind};
+    use crate::test_utils::MockCompletionModel;
+
+    type M = MockCompletionModel;
+
+    /// Pushes its label when invoked and returns `Continue` or `Terminate`.
+    struct Recorder {
+        label: u32,
+        log: Arc<Mutex<Vec<u32>>>,
+        stop: bool,
+    }
+
+    impl AgentHook<M> for Recorder {
+        async fn on_event(&self, _event: StepEvent<'_, M>) -> Flow {
+            self.log.lock().expect("log").push(self.label);
+            if self.stop {
+                Flow::terminate("stop")
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    /// Observes exactly one event kind (used to probe stack-level `observes`).
+    struct ObservesOnly(StepEventKind);
+
+    impl AgentHook<M> for ObservesOnly {
+        async fn on_event(&self, _event: StepEvent<'_, M>) -> Flow {
+            Flow::cont()
+        }
+
+        fn observes(&self, kind: StepEventKind) -> bool {
+            kind == self.0
+        }
+    }
+
+    /// A cheap, M-agnostic event to dispatch (no model response required).
+    fn tool_call_event() -> StepEvent<'static, M> {
+        StepEvent::ToolCall {
+            tool_name: "add",
+            tool_call_id: Some("tc1"),
+            internal_call_id: "ic1",
+            args: "{}",
+        }
+    }
+
+    #[tokio::test]
+    async fn runs_hooks_in_registration_order_and_consults_all_on_continue() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut stack = HookStack::<M>::with(Recorder {
+            label: 1,
+            log: log.clone(),
+            stop: false,
+        });
+        stack.push(Recorder {
+            label: 2,
+            log: log.clone(),
+            stop: false,
+        });
+
+        let flow = stack.on_event(tool_call_event()).await;
+
+        assert!(matches!(flow, Flow::Continue));
+        assert_eq!(*log.lock().expect("log"), vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn first_non_continue_short_circuits_the_rest() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut stack = HookStack::<M>::with(Recorder {
+            label: 1,
+            log: log.clone(),
+            stop: true,
+        });
+        stack.push(Recorder {
+            label: 2,
+            log: log.clone(),
+            stop: false,
+        });
+
+        let flow = stack.on_event(tool_call_event()).await;
+
+        assert!(matches!(flow, Flow::Terminate { .. }));
+        assert_eq!(
+            *log.lock().expect("log"),
+            vec![1],
+            "a later hook must not run after an earlier hook returns non-Continue"
+        );
+    }
+
+    #[test]
+    fn stack_observes_is_the_or_of_its_members() {
+        let mut stack = HookStack::<M>::with(ObservesOnly(StepEventKind::ToolCall));
+        stack.push(ObservesOnly(StepEventKind::ToolResult));
+
+        assert!(stack.observes(StepEventKind::ToolCall));
+        assert!(stack.observes(StepEventKind::ToolResult));
+        assert!(
+            !stack.observes(StepEventKind::TextDelta),
+            "no member observes TextDelta, so the stack must not either"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_stack_continues_and_observes_nothing() {
+        let stack = HookStack::<M>::new();
+
+        assert!(stack.is_empty());
+        assert!(!stack.observes(StepEventKind::ToolCall));
+        assert!(!stack.observes(StepEventKind::TextDelta));
+        assert!(matches!(
+            stack.on_event(tool_call_event()).await,
+            Flow::Continue
+        ));
+    }
+}

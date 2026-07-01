@@ -117,9 +117,7 @@ where
         if !status.is_success() {
             let text = http_client::text(response).await?;
 
-            return Err(ImageGenerationError::HttpError(
-                http_client::Error::InvalidStatusCodeWithMessage(status, text),
-            ));
+            return Err(ImageGenerationError::from_http_response(status, text));
         }
 
         let text = http_client::text(response).await?;
@@ -128,12 +126,7 @@ where
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => {
                 tracing::warn!(message = %err.message, "provider returned an error response");
-                Err(ImageGenerationError::ProviderResponse(
-                    crate::provider_response::ProviderResponseError {
-                        status: Some(status),
-                        body: text,
-                    },
-                ))
+                Err(ImageGenerationError::from_http_response(status, text))
             }
         }
     }

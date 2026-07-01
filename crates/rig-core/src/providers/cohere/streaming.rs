@@ -204,7 +204,7 @@ where
                                 let Some(name) = function.name.clone() else { continue; };
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
-                                let internal_call_id = nanoid::nanoid!();
+                                let internal_call_id = crate::id::generate();
                                 current_tool_call = Some((id.clone(), internal_call_id.clone(), name.clone(), arguments));
 
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
@@ -259,7 +259,7 @@ where
                     }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
-                        yield Err(CompletionError::ProviderError(err.to_string()));
+                        yield Err(CompletionError::from_stream_transport(err));
                         break;
                     }
                 }

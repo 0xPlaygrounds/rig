@@ -44,6 +44,243 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_autonomous"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "agent_evaluator_optimizer"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "agent_orchestrator"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "agent_parallelization"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "agent_prompt_chaining"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_routing"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_run_stepping"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_stream_chat"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_agent_tool"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "agent_with_approval_policy"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_context"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_default_max_turns"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_durable_approval"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_echochambers"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "reqwest 0.13.4",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_human_in_the_loop"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_loaders"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_memory"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_memory_streaming"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_tools"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "agent_with_tools_otel"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "opentelemetry 0.32.0",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk 0.32.1",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry 0.33.0",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1783,6 +2020,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "calculator_chatbot"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "camino"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1879,6 +2128,16 @@ dependencies = [
  "cfg-if 1.0.4",
  "cpufeatures 0.3.0",
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "chain"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2088,6 +2347,19 @@ dependencies = [
  "ryu",
  "serde",
  "static_assertions",
+]
+
+[[package]]
+name = "complex_agentic_loop_claude"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2489,6 +2761,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "custom_vector_store"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "redis",
+ "rig",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -3244,6 +3528,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
 
 [[package]]
+name = "debate"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "deepsize"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3512,6 +3807,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "discord_bot"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "displaydoc"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3718,6 +4022,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "869b0adbda23651a9c5c0c3d270aac9fcb52e8622a8f2b17e57802d7791962f2"
 
 [[package]]
+name = "enum_dispatch"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "epub"
 version = "2.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3866,6 +4179,18 @@ dependencies = [
  "rmp-serde",
  "serde",
  "tempfile",
+]
+
+[[package]]
+name = "extractor"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -4230,6 +4555,76 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54614a3312934d066701a80f20f15fa3b56d67ac7722b39eea5b4c9dd1d66c94"
 dependencies = [
  "thread_local",
+]
+
+[[package]]
+name = "gemini_deep_research"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "serde_json",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "gemini_default_api_recovery"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "gemini_extractor_with_rag"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "gemini_nanobanana_image_generation"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
+name = "gemini_stream_kill_token_count"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "reqwest 0.13.4",
+ "rig",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "gemini_video_understanding"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -7061,6 +7456,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
+name = "manual_tool_calls"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7369,6 +7776,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "multi_agent"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "multi_extract"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "multi_turn_agent"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "multi_turn_agent_extended"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7392,15 +7850,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
-]
-
-[[package]]
-name = "nanoid"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ffa00dec017b5b1a8b7cf5e2c008bfda1aa7e0697ac1508b491fdf2622fb4d8"
-dependencies = [
- "rand 0.8.6",
 ]
 
 [[package]]
@@ -7839,6 +8288,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "openai_agent_completions_api_otel"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "opentelemetry 0.32.0",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk 0.32.1",
+ "rig",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry 0.33.0",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "openai_streaming_per_call_usage"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "opendal"
 version = "0.56.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8016,6 +8493,24 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "openai_streaming_with_tools_otel"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "opentelemetry 0.32.0",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk 0.32.1",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry 0.33.0",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -8435,6 +8930,16 @@ dependencies = [
  "hmac 0.12.1",
  "password-hash",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "pdf_agent"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -9290,6 +9795,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "rag"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rag_dynamic_tools"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rag_dynamic_tools_multi_turn"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rag_ollama"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rancor"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9506,6 +10063,21 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "reasoning_loop"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -9755,6 +10327,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "request_hook"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "reqsign-google"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9922,6 +10503,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reqwest_middleware"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "reqwest-middleware",
+ "reqwest-retry",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "resolv-conf"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10058,7 +10650,6 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
- "nanoid",
  "reqwest 0.13.4",
  "rig-core",
  "rig-derive",
@@ -10087,7 +10678,6 @@ dependencies = [
  "fastrand",
  "futures",
  "futures-timer",
- "getrandom 0.2.17",
  "glob",
  "http 1.4.2",
  "hyper-util",
@@ -10095,8 +10685,7 @@ dependencies = [
  "lopdf",
  "mime",
  "mime_guess",
- "nanoid",
- "opentelemetry",
+ "opentelemetry 0.32.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "ordered-float",
@@ -10528,6 +11117,23 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "rmcp_example"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "axum 0.8.9",
+ "hyper-util",
+ "rig",
+ "rmcp",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -11193,6 +11799,17 @@ name = "send_wrapper"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
+
+[[package]]
+name = "sentiment_classifier"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "schemars 1.2.1",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "seq-macro"
@@ -13438,6 +14055,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "transcription"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "trice"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13854,6 +14480,36 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "vector_search"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "vector_search_cohere"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "vector_search_ollama"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "version_check"

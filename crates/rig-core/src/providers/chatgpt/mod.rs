@@ -407,7 +407,7 @@ where
                 http::header::AUTHORIZATION,
                 format!("Bearer {}", context.access_token),
             )
-            .header("session_id", nanoid::nanoid!());
+            .header("session_id", crate::id::generate());
 
         if let Some(account_id) = &context.account_id {
             req.header("ChatGPT-Account-Id", account_id)

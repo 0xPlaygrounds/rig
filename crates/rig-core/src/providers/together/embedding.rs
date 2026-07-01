@@ -120,19 +120,15 @@ where
                         message = %err.error,
                         "provider returned an error response"
                     );
-                    Err(EmbeddingError::ProviderResponse(
-                        crate::provider_response::ProviderResponseError {
-                            status: Some(status),
-                            body: String::from_utf8_lossy(&response_body).into_owned(),
-                        },
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
                     ))
                 }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::HttpError(
-                http_client::Error::InvalidStatusCodeWithMessage(status, text),
-            ))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }

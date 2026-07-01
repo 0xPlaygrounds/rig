@@ -358,3 +358,39 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
                 .contains("Invalid OpenAI Responses additional_params payload")
     ));
 }
+
+#[test]
+fn openai_responses_request_preserves_prompt_cache_parameters() {
+    let request = rig::completion::CompletionRequest {
+        preamble: None,
+        chat_history: OneOrMany::one(CompletionMessage::user("hello")),
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: Some(serde_json::json!({
+            "prompt_cache_key": "tenant-agent-scaffold",
+            "prompt_cache_retention": "24h"
+        })),
+        model: None,
+        output_schema: None,
+    };
+
+    let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
+        .expect("convert request");
+    let request_json = serde_json::to_value(request).expect("serialize request");
+
+    assert_eq!(
+        request_json
+            .get("prompt_cache_key")
+            .and_then(|value| value.as_str()),
+        Some("tenant-agent-scaffold")
+    );
+    assert_eq!(
+        request_json
+            .get("prompt_cache_retention")
+            .and_then(|value| value.as_str()),
+        Some("24h")
+    );
+}

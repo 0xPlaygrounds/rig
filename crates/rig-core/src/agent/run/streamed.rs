@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OneOrMany,
-    agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_user_content},
+    agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
     completion::{CompletionError, GetTokenUsage, Message, Usage},
     json_utils,
     message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult},
@@ -180,14 +180,14 @@ impl PartialStreamedTurn {
             .pending_tool_calls
             .iter()
             .map(|tool_call| {
-                tool_result_user_content(
+                tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                 )
             })
             .collect::<Vec<_>>();
-        retry_results.push(tool_result_user_content(
+        retry_results.push(tool_result_message(
             invalid_tool_call.id,
             invalid_tool_call.call_id,
             feedback,
@@ -473,6 +473,13 @@ impl StreamedTurnAssembler {
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
             }
+            StreamedAssistantContent::Unknown(_) => {
+                // Unmodeled provider item (e.g. a hosted-tool result): forward it
+                // to the consumer but do not fold it into the accumulated
+                // assistant message — there is no `AssistantContent::Unknown`, and
+                // it must not perturb text/tool-call/reasoning accumulation.
+                Ok(vec![StreamedTurnEvent::EmitIngested])
+            }
         }
     }
 
@@ -663,7 +670,7 @@ impl StreamedTurnAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::prompt_request::hooks::InvalidToolCallHookAction;
+    use crate::agent::hook::InvalidToolCallHookAction;
     use crate::agent::run::{AgentRun, AgentRunStep};
     use crate::completion::PromptError;
     use crate::message::{Text, ToolResultContent, UserContent};
@@ -735,6 +742,27 @@ mod tests {
         ));
         asm.ingest(&text_item("lo")).expect("ingest should succeed");
         assert_eq!(asm.aggregated_text(), "hello");
+    }
+
+    #[test]
+    fn unknown_item_emits_to_consumer_without_touching_accumulation() {
+        let mut asm = assembler();
+        asm.ingest(&text_item("answer"))
+            .expect("ingest text should succeed");
+
+        let events = asm
+            .ingest(&StreamedAssistantContent::<MockResponse>::Unknown(
+                json!({ "type": "web_search_call", "id": "ws_1" }),
+            ))
+            .expect("ingest unknown should succeed");
+
+        // The unmodeled item is forwarded to the consumer ...
+        assert!(matches!(
+            events.as_slice(),
+            [StreamedTurnEvent::EmitIngested]
+        ));
+        // ... but perturbs no accumulation state used to build the assistant message.
+        assert_eq!(asm.aggregated_text(), "answer");
     }
 
     #[test]

@@ -196,8 +196,10 @@ where
             let resp: TranscriptionResponse = serde_json::from_slice(&body_bytes)?;
             resp.try_into()
         } else {
-            let text = String::from_utf8_lossy(&body_bytes).to_string();
-            Err(TranscriptionError::ProviderError(text))
+            Err(TranscriptionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body_bytes),
+            ))
         }
     }
 }
@@ -256,5 +258,37 @@ mod tests {
         let resp: TranscriptionResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.text, "Hello world");
         assert!(resp.usage.is_none());
+    }
+
+    #[tokio::test]
+    async fn transcription_non_success_preserves_status_and_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(WHISPER_1);
+
+        let request = model.transcription_request().data(vec![0u8; 16]).build();
+
+        let error = model
+            .transcription(request)
+            .await
+            .err()
+            .expect("should fail with non-success status");
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

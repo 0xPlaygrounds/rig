@@ -11,8 +11,7 @@ use rig::agent::run::{
     StreamedTurnEvent,
 };
 use rig::agent::{
-    HookAction, InvalidToolCallHookAction, MultiTurnStreamItem, PromptHook, StreamingError,
-    ToolCallHookAction,
+    AgentHook, Flow, InvalidToolCallHookAction, MultiTurnStreamItem, StepEvent, StreamingError,
 };
 use rig::client::CompletionClient;
 use rig::completion::{GetTokenUsage, PromptError, Usage};
@@ -518,21 +517,14 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 #[derive(Clone)]
 struct CancelOnToolCall;
 
-impl PromptHook<gemini::completion::CompletionModel> for CancelOnToolCall {
-    async fn on_tool_call(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-    ) -> ToolCallHookAction {
-        ToolCallHookAction::Terminate {
-            reason: "cancelled by test hook".to_string(),
+impl AgentHook<gemini::completion::CompletionModel> for CancelOnToolCall {
+    async fn on_event(&self, event: StepEvent<'_, gemini::completion::CompletionModel>) -> Flow {
+        match event {
+            StepEvent::ToolCall { .. } => Flow::Terminate {
+                reason: "cancelled by test hook".to_string(),
+            },
+            _ => Flow::cont(),
         }
-    }
-
-    async fn on_completion_call(&self, _prompt: &Message, _history: &[Message]) -> HookAction {
-        HookAction::cont()
     }
 }
 
@@ -550,7 +542,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
 
             let mut stream = agent
                 .stream_prompt("What is 21 + 21? Use the add tool.")
-                .with_hook(CancelOnToolCall)
+                .add_hook(CancelOnToolCall)
                 .multi_turn(2)
                 .await;
 

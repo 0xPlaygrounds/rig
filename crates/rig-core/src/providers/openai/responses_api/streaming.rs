@@ -237,7 +237,7 @@ impl RawChoiceAccumulator {
                 let internal_call_id = self
                     .tool_call_internal_ids
                     .entry(func.id.clone())
-                    .or_insert_with(|| nanoid::nanoid!())
+                    .or_insert_with(crate::id::generate)
                     .clone();
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                     id: func.id,
@@ -269,7 +269,7 @@ impl RawChoiceAccumulator {
                     let internal_call_id = self
                         .tool_call_internal_ids
                         .entry(item_id.clone())
-                        .or_insert_with(|| nanoid::nanoid!())
+                        .or_insert_with(crate::id::generate)
                         .clone();
                     immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                         id: item_id,
@@ -315,7 +315,7 @@ impl RawChoiceAccumulator {
                 let internal_call_id = self
                     .tool_call_internal_ids
                     .entry(func.id.clone())
-                    .or_insert_with(|| nanoid::nanoid!())
+                    .or_insert_with(crate::id::generate)
                     .clone();
                 let tool_call =
                     streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
@@ -344,7 +344,13 @@ impl RawChoiceAccumulator {
             Output::Message(message) => {
                 immediate.push(streaming::RawStreamingChoice::MessageId(message.id));
             }
-            Output::Unknown => {}
+            // An unmodeled output item (e.g. a hosted-tool result such as
+            // `web_search_call`) arriving on `response.output_item.done`. Surface
+            // the raw item to stream consumers, mirroring how the non-streaming
+            // decode preserves it on `CompletionResponse.output`.
+            Output::Unknown(value) => {
+                immediate.push(streaming::RawStreamingChoice::Unknown(value));
+            }
         }
     }
 
@@ -419,7 +425,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     let internal_call_id = accumulator
                         .tool_call_internal_ids
                         .entry(func.id.clone())
-                        .or_insert_with(|| nanoid::nanoid!())
+                        .or_insert_with(crate::id::generate)
                         .clone();
                     raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
                         id: func.id,
@@ -445,7 +451,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     let internal_call_id = accumulator
                         .tool_call_internal_ids
                         .entry(item_id.to_owned())
-                        .or_insert_with(|| nanoid::nanoid!())
+                        .or_insert_with(crate::id::generate)
                         .clone();
                     raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
                         id: item_id.to_owned(),
@@ -854,7 +860,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
+    use super::{
+        ItemChunkKind, StreamingCompletionChunk, raw_choices_from_sse_body,
+        reasoning_choices_from_done_item,
+    };
     use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
@@ -1006,6 +1015,42 @@ mod tests {
                 content: ReasoningContent::Encrypted(data),
             }) if id == "rs_1" && data == "enc_blob"
         ));
+    }
+
+    #[test]
+    fn unknown_output_item_surfaces_as_raw_unknown_choice() {
+        // A hosted-tool item (web_search_call) arriving on
+        // `response.output_item.done` must surface to stream consumers as
+        // `RawStreamingChoice::Unknown` carrying the verbatim item, mirroring how
+        // the non-streaming decode preserves it on `CompletionResponse.output`.
+        let item = json!({
+            "type": "web_search_call",
+            "id": "ws_001",
+            "status": "completed",
+            "action": { "type": "search", "queries": ["rig framework"] },
+        });
+        let body = format!(
+            "data: {}\n",
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": item,
+            })
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("sse body should decode");
+
+        let unknown = choices.iter().find_map(|choice| match choice {
+            RawStreamingChoice::Unknown(value) => Some(value),
+            _ => None,
+        });
+        assert_eq!(
+            unknown,
+            Some(&item),
+            "the raw web_search_call item should reach the consumer verbatim",
+        );
     }
 
     #[test]

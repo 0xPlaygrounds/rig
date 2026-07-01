@@ -502,26 +502,13 @@ impl<T> Iterator for IntoIter<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use crate::loaders::test_fixtures::{fixture_glob, fixture_path};
 
     use super::PdfFileLoader;
 
-    fn fixture_path(filename: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/data")
-            .join(filename)
-    }
-
-    fn fixture_glob() -> String {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/data/*.pdf")
-            .to_string_lossy()
-            .into_owned()
-    }
-
     #[test]
     fn test_pdf_loader() {
-        let glob = fixture_glob();
+        let glob = fixture_glob("*.pdf");
         let loader = PdfFileLoader::with_glob(&glob).unwrap();
         let actual = loader
             .load_with_path()

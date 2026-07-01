@@ -170,15 +170,16 @@ where
 
                 response.try_into()
             } else {
-                let text = String::from_utf8_lossy(
-                    &response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?,
-                )
-                .into();
+                let status = response.status();
+                let body = response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?;
 
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ))
             }
         }
         .instrument(span)
@@ -1340,6 +1341,7 @@ pub mod gemini_api_types {
         pub cached_content_token_count: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub candidates_token_count: Option<i32>,
+        #[serde(default)]
         pub total_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thoughts_token_count: Option<i32>,
@@ -2172,6 +2174,16 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_usage_metadata_deserializes_without_total_token_count() {
+        // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
+        // so `totalTokenCount` is absent on short/empty/blocked generations.
+        let usage: UsageMetadata =
+            serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
+        assert_eq!(usage.total_token_count, 0);
+        assert_eq!(usage.prompt_token_count, 12);
+    }
 
     #[test]
     fn test_resolve_request_model_uses_override() {
@@ -3246,5 +3258,36 @@ mod tests {
         anyhow::ensure!(!response_text.is_empty(), "Response should not be empty");
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::completion::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::gemini::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }
