@@ -10,17 +10,6 @@ use super::CompletionError;
 // Message models
 // ================================================================
 
-/// A useful trait to help convert `rig_core::completion::Message` to your own message type.
-///
-/// Particularly useful if you don't want to create a free-standing function as
-/// when trying to use `TryFrom<T>`, you would normally run into the orphan rule as Vec is
-/// technically considered a foreign type (it's owned by stdlib).
-pub trait ConvertMessage: Sized + Send + Sync {
-    type Error: std::error::Error + Send;
-
-    fn convert_from_message(message: Message) -> Result<Vec<Self>, Self::Error>;
-}
-
 /// A provider-agnostic chat message.
 ///
 /// Messages are role-tagged and may contain one or many content items, including

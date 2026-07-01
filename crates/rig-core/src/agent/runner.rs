@@ -56,7 +56,7 @@ use crate::{
     tool::{ToolCallExtensions, server::ToolServerHandle},
 };
 
-const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
+use super::UNKNOWN_AGENT_NAME;
 
 /// Build the per-turn `chat` span shared by both turn sources.
 ///

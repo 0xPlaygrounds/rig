@@ -104,27 +104,6 @@ where
         }
     }
 
-    pub fn with_retry_policy<R>(
-        client: HttpClient,
-        req: Request<RequestBody>,
-        retry_policy: R,
-    ) -> GenericEventSource<HttpClient, RequestBody, R>
-    where
-        R: RetryPolicy,
-    {
-        let response_future = Self::create_response_future(&client, &req, None);
-        let state = SourceState::Connecting { response_future };
-
-        GenericEventSource {
-            client,
-            req,
-            retry_policy,
-            last_event_id: None,
-            allow_missing_content_type: false,
-            state,
-        }
-    }
-
     pub fn allow_missing_content_type(mut self) -> Self {
         self.allow_missing_content_type = true;
         self
