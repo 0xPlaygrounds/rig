@@ -809,8 +809,8 @@ where
             results.resize_with(call_count, || None);
             // Hold the *lowest-index* error (call order), not the first to
             // complete, so the surfaced terminate reason is deterministic and
-            // matches the blocking buffered path; keep draining so in-flight
-            // siblings finish and fire their hooks.
+            // matches the sequential branch's call-order behavior; keep draining
+            // so in-flight siblings finish and fire their hooks.
             let mut first_error: Option<(usize, PromptError)> = None;
             while let Some((index, yield_id, result)) = unordered.next().await {
                 match result {

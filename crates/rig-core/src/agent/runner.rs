@@ -349,8 +349,8 @@ where
     /// finishes, which may be completion order rather than call order. The
     /// persisted message history is unchanged.
     ///
-    /// A `concurrency` of 0 is clamped to 1: `buffered(0)` never makes progress,
-    /// so it would otherwise hang the run the first time the model calls a tool.
+    /// A `concurrency` of 0 is clamped to 1; `0` and `1` both run a turn's tools
+    /// sequentially (the `buffer_unordered` path is used only at `concurrency > 1`).
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
         self
@@ -1388,7 +1388,8 @@ mod tests {
 
     /// Even with `run()` executing tools concurrently, the tool-result order —
     /// and so the whole message history — matches the sequential streaming
-    /// driver. (`run()` uses `buffered`, which preserves call order.)
+    /// driver. (`run()` runs tools with `buffer_unordered` but writes each result
+    /// into its original call-index slot, so results still land in call order.)
     #[tokio::test]
     async fn run_and_stream_same_message_history_for_parallel_tool_calls() {
         let blocking_model = MockCompletionModel::from_turns([
@@ -1448,10 +1449,11 @@ mod tests {
         );
     }
 
-    /// A tool whose first-*called* invocation completes *after* the second, so a
-    /// completion-ordered combinator (`buffer_unordered`) would reorder results
-    /// while call-ordered `buffered` does not. The first call (in poll/call
-    /// order) waits on a gate the second call releases.
+    /// A tool whose first-*called* invocation completes *after* the second, so
+    /// `buffer_unordered` yields the results in completion order — yet the
+    /// persisted history stays in call order because each result is written into
+    /// its original call-index slot. The first call (in poll/call order) waits on
+    /// a gate the second call releases.
     #[derive(Clone)]
     struct OutOfOrderTool {
         gate: Arc<tokio::sync::Notify>,
@@ -1481,10 +1483,11 @@ mod tests {
         }
     }
 
-    /// `run()` must surface tool results in tool-call (emission) order even when
-    /// tools complete out of order under concurrency — i.e. it uses `buffered`,
-    /// not `buffer_unordered`. (This is what keeps its message history identical
-    /// to the sequential streaming driver.)
+    /// `run()` must persist tool results in tool-call (emission) order even when
+    /// tools complete out of order under concurrency — it runs them with
+    /// `buffer_unordered` but reindexes each result into its original call-index
+    /// slot. (This is what keeps its message history identical to the sequential
+    /// streaming driver.)
     #[tokio::test]
     async fn run_preserves_tool_call_order_under_out_of_order_completion() {
         let model = MockCompletionModel::from_turns([
@@ -2105,11 +2108,18 @@ mod tests {
             .add_hook(TerminateOnFirstToolHook)
             .stream()
             .await;
+        let mut saw_error = false;
         while let Some(item) = stream.next().await {
-            if item.is_err() {
+            if let Err(err) = item {
+                saw_error = true;
+                assert!(
+                    err.to_string().contains("stop"),
+                    "stream() should surface the terminate reason, got: {err}"
+                );
                 break;
             }
         }
+        assert!(saw_error, "stream() must surface the terminate error");
         assert_eq!(
             streaming_calls.load(SeqCst),
             1,
@@ -2117,10 +2127,10 @@ mod tests {
         );
     }
 
-    /// `tool_concurrency(0)` is clamped to 1. Without the clamp the blocking
-    /// driver's `buffered(0)` never makes progress, so the run would hang the
-    /// first time the model calls a tool. The timeout turns a regression
-    /// (dropping the `.max(1)`) into a clean failure rather than a silent hang.
+    /// `tool_concurrency(0)` is clamped to 1 and runs to completion. The timeout
+    /// guards against a regression that lets `concurrency == 0` reach a
+    /// `buffer_unordered(0)` (which never makes progress) instead of the
+    /// sequential `concurrency <= 1` path.
     #[tokio::test]
     async fn tool_concurrency_zero_is_clamped_and_does_not_hang() {
         let model = MockCompletionModel::from_turns([
@@ -2137,7 +2147,7 @@ mod tests {
 
         let response = tokio::time::timeout(std::time::Duration::from_secs(5), run)
             .await
-            .expect("tool_concurrency(0) must clamp to 1, not hang on buffered(0)")
+            .expect("tool_concurrency(0) must clamp to 1, not hang on buffer_unordered(0)")
             .expect("run should succeed");
         assert_eq!(response.output, "done");
     }
