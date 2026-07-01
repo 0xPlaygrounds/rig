@@ -308,6 +308,7 @@ pub struct ResponsesCompletionModel<H = reqwest::Client> {
     client: Client<H>,
     pub model: String,
     pub tools: Vec<responses_api::ResponsesToolDefinition>,
+    pub strict_tools: bool,
 }
 
 impl<H> ResponsesCompletionModel<H>
@@ -320,7 +321,14 @@ where
             client,
             model: model.into(),
             tools: Vec::new(),
+            strict_tools: false,
         }
+    }
+
+    /// Enable strict mode for function tool schemas.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
     }
 
     pub fn with_tool(mut self, tool: impl Into<responses_api::ResponsesToolDefinition>) -> Self {
@@ -343,6 +351,7 @@ where
             self.model.clone(),
         );
         model.tools = self.tools.clone();
+        model.strict_tools = self.strict_tools;
         model
     }
 

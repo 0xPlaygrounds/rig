@@ -79,7 +79,7 @@ fn test_nested_objects() {
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
     };
-    let response = ResponsesToolDefinition::from(tool_def);
+    let response = ResponsesToolDefinition::from(tool_def).with_strict();
 
     assert!(
         check_add_prps(&response.parameters),
@@ -95,7 +95,7 @@ fn test_array_items() {
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
     };
-    let response = ResponsesToolDefinition::from(tool_def);
+    let response = ResponsesToolDefinition::from(tool_def).with_strict();
 
     assert!(
         check_add_prps(&response.parameters),
@@ -111,7 +111,7 @@ fn test_enum_schemas() {
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
     };
-    let response = ResponsesToolDefinition::from(tool_def);
+    let response = ResponsesToolDefinition::from(tool_def).with_strict();
 
     assert!(
         check_add_prps(&response.parameters),
