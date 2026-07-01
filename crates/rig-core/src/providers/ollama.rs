@@ -410,7 +410,8 @@ pub(super) struct OllamaCompletionRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
     pub stream: bool,
-    think: Think,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    think: Option<Think>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -450,7 +451,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                 .collect::<Vec<_>>(),
         );
 
-        let mut think = Think::Bool(false);
+        let mut think: Option<Think> = None;
         let mut keep_alive: Option<String> = None;
 
         let options = if let Some(mut extra) = req.additional_params {
@@ -458,7 +459,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
             if let Some(obj) = extra.as_object_mut() {
                 // Extract `think` parameter
                 if let Some(think_val) = obj.remove("think") {
-                    think = match think_val {
+                    think = Some(match think_val {
                         Value::Bool(think) => Think::Bool(think),
                         Value::String(think) => Think::Level(match think.to_lowercase().as_str() {
                             "low" => Level::Low,
@@ -475,7 +476,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                                 "`think` must be a 'low', 'medium', 'high', or bool".into(),
                             ));
                         }
-                    };
+                    });
                 }
 
                 // Extract `keep_alive` parameter
@@ -1962,9 +1963,10 @@ mod tests {
         assert!(ollama_request.is_err())
     }
 
-    // Test that `think` defaults to false when not specified
+    // Test that `think` is omitted when not specified, so Ollama applies the
+    // model's default thinking behavior (issue #1970)
     #[test]
-    fn test_completion_request_with_think_false_default() {
+    fn test_completion_request_with_think_omitted_by_default() {
         use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
@@ -1993,7 +1995,8 @@ mod tests {
         let serialized =
             serde_json::to_value(&ollama_request).expect("Failed to serialize request");
 
-        // Assert that "think" defaults to false and "keep_alive" is not present
+        // Assert that "think" is absent (so Ollama uses the model default) and
+        // "keep_alive" is not present
         let expected = json!({
             "model": "llama3.2",
             "messages": [
@@ -2008,7 +2011,6 @@ mod tests {
             ],
             "temperature": 0.5,
             "stream": false,
-            "think": false,
             "options": {
                 "temperature": 0.5
             }
