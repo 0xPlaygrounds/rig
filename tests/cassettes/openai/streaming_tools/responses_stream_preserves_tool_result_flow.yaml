@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o","stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","model":"gpt-4o","stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -45,7 +45,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"lookup_harbor_label","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"crimson-harbor","status":"completed","type":"function_call_output"}],"model":"gpt-4o","stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"lookup_harbor_label","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"crimson-harbor","status":"completed","type":"function_call_output"}],"instructions":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","model":"gpt-4o","stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
 then:
   status: 200
   header:

@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o"}'
+  body: '{"input":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant. Answer directly.","model":"gpt-4o"}'
 then:
   status: 200
   header:

@@ -128,23 +128,22 @@ fn assert_responses_request_order(scenario: &str) {
     let input = body["input"]
         .as_array()
         .expect("OpenAI Responses request should contain input[]");
+    assert_eq!(body["instructions"], SYSTEM_INSTRUCTION);
     assert_eq!(
         input.len(),
-        4,
-        "expected system, document, assistant history, and prompt input items: {body:#}"
+        3,
+        "expected document, assistant history, and prompt input items after lifting system instructions: {body:#}"
     );
-    assert_eq!(input[0]["role"], "system");
-    assert!(input[0].to_string().contains(SYSTEM_INSTRUCTION));
-    assert_eq!(input[1]["role"], "user");
+    assert_eq!(input[0]["role"], "user");
     assert!(
-        input[1].to_string().contains("<file id: ordering-note>"),
-        "expected second input item to contain normalized document: {body:#}"
+        input[0].to_string().contains("<file id: ordering-note>"),
+        "expected first input item to contain normalized document: {body:#}"
     );
-    assert_eq!(input[2]["role"], "assistant");
-    assert_eq!(input[2]["content"], "Acknowledged.");
-    assert!(input[2].get("status").is_none());
-    assert_eq!(input[3]["role"], "user");
-    assert!(input[3].to_string().contains(PROMPT));
+    assert_eq!(input[1]["role"], "assistant");
+    assert_eq!(input[1]["content"], "Acknowledged.");
+    assert!(input[1].get("status").is_none());
+    assert_eq!(input[2]["role"], "user");
+    assert!(input[2].to_string().contains(PROMPT));
 }
 
 fn assert_chat_request_order(scenario: &str) {

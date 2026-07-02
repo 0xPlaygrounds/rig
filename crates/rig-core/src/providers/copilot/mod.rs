@@ -782,7 +782,10 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<ResponsesRequest, CompletionError> {
-        let mut request = ResponsesRequest::try_from((self.model.clone(), completion_request))?;
+        let mut request = ResponsesRequest::try_from_with_system_instructions_as_messages((
+            self.model.clone(),
+            completion_request,
+        ))?;
         // Copilot's Responses endpoint expects strict function tool schemas for
         // reliable tool calls. Preserve that provider-specific behavior while
         // keeping Chat Completions strict mode opt-in.

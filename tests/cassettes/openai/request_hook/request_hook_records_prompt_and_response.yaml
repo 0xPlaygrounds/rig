@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are a comedian here to entertain the user using humour and jokes.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Entertain me!","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o"}'
+  body: '{"input":[{"content":[{"text":"Entertain me!","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a comedian here to entertain the user using humour and jokes.","model":"gpt-4o"}'
 then:
   status: 200
   header:
