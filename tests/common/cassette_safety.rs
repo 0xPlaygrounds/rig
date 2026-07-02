@@ -25,6 +25,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_completions_cassette",
             "with_openai_cassette_result",
             "with_openai_completions_cassette_result",
+            "with_openai_vllm_cassette",
         ],
     },
     ProviderCassetteSuite {

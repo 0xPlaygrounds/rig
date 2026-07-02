@@ -1157,7 +1157,11 @@ pub struct AdditionalParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_retention: Option<String>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
-    #[serde(skip_serializing_if = "Map::is_empty", default)]
+    #[serde(
+        skip_serializing_if = "Map::is_empty",
+        default,
+        deserialize_with = "deserialize_metadata"
+    )]
     pub metadata: serde_json::Map<String, serde_json::Value>,
     /// Whether or not you want tool calls to run in parallel.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1174,6 +1178,18 @@ pub struct AdditionalParameters {
     /// Whether or not to store the response for later retrieval by API.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<bool>,
+}
+
+fn deserialize_metadata<'de, D>(
+    deserializer: D,
+) -> Result<serde_json::Map<String, serde_json::Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(
+        Option::<serde_json::Map<String, serde_json::Value>>::deserialize(deserializer)?
+            .unwrap_or_default(),
+    )
 }
 
 impl AdditionalParameters {
@@ -2587,6 +2603,33 @@ mod tests {
             completion::AssistantContent::Reasoning(_)
         ));
         assert!(matches!(items[1], completion::AssistantContent::Text(_)));
+    }
+
+    #[test]
+    fn completion_response_accepts_null_metadata() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "openai-compatible-model",
+            "metadata": null,
+            "output": [{
+                "type": "message",
+                "id": "msg_123",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("response with null metadata should deserialize");
+
+        assert!(response.additional_parameters.metadata.is_empty());
     }
 
     #[test]
