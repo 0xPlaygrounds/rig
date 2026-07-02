@@ -630,6 +630,18 @@ fn config_dir() -> Option<PathBuf> {
 fn normalize_system_messages_into_instructions(
     request: &mut ResponsesRequest,
 ) -> Result<Option<String>, CompletionError> {
+    // The generic Responses conversion already lifts the leading run of system
+    // messages into `instructions`; only mid-conversation system messages can
+    // remain in `input`. Skip the clone-and-rebuild below in the common case
+    // where there are none.
+    if !request
+        .input
+        .iter()
+        .any(|item| item.system_text().is_some())
+    {
+        return Ok(None);
+    }
+
     let mut system_instructions = Vec::new();
     let mut filtered_items = Vec::new();
 
@@ -749,6 +761,39 @@ data: [DONE]"#;
         );
         assert!(instructions.is_none());
         assert_eq!(request.input.len(), 1);
+    }
+
+    #[test]
+    fn test_normalize_lifts_mid_conversation_system_messages() {
+        let completion_request = completion::CompletionRequest {
+            model: Some("gpt-5.4".to_string()),
+            preamble: Some("System one".to_string()),
+            chat_history: OneOrMany::many(vec![
+                completion::Message::user("hi"),
+                completion::Message::system("Mid-conversation instruction"),
+                completion::Message::user("again"),
+            ])
+            .expect("history"),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+        let mut request = ResponsesRequest::try_from(("gpt-5.4".to_string(), completion_request))
+            .expect("request");
+
+        let instructions =
+            normalize_system_messages_into_instructions(&mut request).expect("normalize");
+
+        assert_eq!(request.instructions.as_deref(), Some("System one"));
+        assert_eq!(
+            instructions.as_deref(),
+            Some("Mid-conversation instruction")
+        );
+        assert_eq!(request.input.len(), 2);
     }
 
     #[test]

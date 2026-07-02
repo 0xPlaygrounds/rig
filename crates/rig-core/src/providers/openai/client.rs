@@ -21,7 +21,9 @@ const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 // OpenAI Responses API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExt;
+pub struct OpenAIResponsesExt {
+    pub(crate) system_instructions_as_messages: bool,
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAIResponsesExtBuilder;
@@ -50,6 +52,10 @@ pub type CompletionsClientBuilder<H = crate::markers::Missing> =
 impl Provider for OpenAIResponsesExt {
     type Builder = OpenAIResponsesExtBuilder;
     const VERIFY_PATH: &'static str = "/models";
+
+    fn system_instructions_as_input_messages(&self) -> bool {
+        self.system_instructions_as_messages
+    }
 }
 
 impl Provider for OpenAICompletionsExt {
@@ -100,7 +106,7 @@ impl ProviderBuilder for OpenAIResponsesExtBuilder {
     where
         H: HttpClientExt,
     {
-        Ok(OpenAIResponsesExt)
+        Ok(OpenAIResponsesExt::default())
     }
 }
 
@@ -143,6 +149,20 @@ where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
     {
         ExtractorBuilder::new(self.completion_model(model))
+    }
+
+    /// Sends Rig system instructions as `system` messages in `input` instead of
+    /// as top-level Responses API `instructions` for every completion model
+    /// created from this client, including through [`CompletionClient::agent`]
+    /// and [`Self::extractor`].
+    ///
+    /// OpenAI's Responses API supports `instructions`, and Rig uses it by
+    /// default. Use this compatibility fallback for OpenAI-compatible providers
+    /// that reject or ignore top-level `instructions`.
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        let mut ext = *self.ext();
+        ext.system_instructions_as_messages = true;
+        self.with_ext(ext)
     }
 
     /// Create a Completions API client from this Responses API client.
@@ -203,7 +223,7 @@ where
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API.
     pub fn responses_api(self) -> Client<H> {
-        self.with_ext(OpenAIResponsesExt)
+        self.with_ext(OpenAIResponsesExt::default())
     }
 }
 

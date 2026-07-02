@@ -12,10 +12,9 @@ async fn responses_api_no_think_returns_text() {
     with_mistralrs_cassette(
         "responses_api/responses_api_no_think_returns_text",
         |client| async move {
-            let model = client
-                .completion_model(model_name())
-                .with_system_instructions_as_messages();
-            let agent = rig::agent::AgentBuilder::new(model)
+            let agent = client
+                .with_system_instructions_as_messages()
+                .agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();
@@ -36,10 +35,9 @@ async fn responses_api_reasoning_plus_answer_completes() {
     with_mistralrs_cassette(
         "responses_api/responses_api_reasoning_plus_answer_completes",
         |client| async move {
-            let model = client
-                .completion_model(model_name())
-                .with_system_instructions_as_messages();
-            let agent = rig::agent::AgentBuilder::new(model)
+            let agent = client
+                .with_system_instructions_as_messages()
+                .agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(512)
                 .build();
@@ -62,10 +60,9 @@ async fn responses_api_multi_turn_replays_history() {
     with_mistralrs_cassette(
         "responses_api/responses_api_multi_turn_replays_history",
         |client| async move {
-            let model = client
-                .completion_model(model_name())
-                .with_system_instructions_as_messages();
-            let agent = rig::agent::AgentBuilder::new(model)
+            let agent = client
+                .with_system_instructions_as_messages()
+                .agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(256)
                 .build();

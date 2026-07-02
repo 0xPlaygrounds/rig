@@ -47,10 +47,9 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes",
         |client| async move {
-            let model = client
-                .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
-                .with_system_instructions_as_messages();
-            let agent = rig::agent::AgentBuilder::new(model)
+            let agent = client
+                .with_system_instructions_as_messages()
+                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer with one short sentence.")
                 .build();
 
@@ -70,10 +69,9 @@ async fn openai_responses_stream_against_openrouter_completes() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_stream_against_openrouter_completes",
         |client| async move {
-            let model = client
-                .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
-                .with_system_instructions_as_messages();
-            let agent = rig::agent::AgentBuilder::new(model)
+            let agent = client
+                .with_system_instructions_as_messages()
+                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer directly.")
                 .build();
 

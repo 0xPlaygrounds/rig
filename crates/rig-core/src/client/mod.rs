@@ -263,6 +263,14 @@ pub trait Provider: Sized {
     fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
         Ok(req)
     }
+
+    /// Whether completion models created from this provider send Rig system
+    /// instructions as `system` messages in the request input instead of a
+    /// top-level `instructions` field. Only consulted by models that use the
+    /// OpenAI Responses request conversion.
+    fn system_instructions_as_input_messages(&self) -> bool {
+        false
+    }
 }
 
 /// A wrapper type providing runtime checks on a provider's capabilities via the [Capability] trait
