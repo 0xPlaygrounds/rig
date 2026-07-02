@@ -584,10 +584,11 @@ pub struct ResponsesToolDefinition {
     /// Tool name
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    /// Parameters - this should be a JSON schema. Tools should additionally ensure an "additionalParameters" field has been added with the value set to false, as this is required if using OpenAI's strict mode (enabled by default).
+    /// Parameters - this should be a JSON schema. Strict function tools must use OpenAI's supported strict schema subset.
     #[serde(default, skip_serializing_if = "is_json_null")]
     pub parameters: serde_json::Value,
-    /// Whether to use strict mode. Enabled by default as it allows for improved efficiency.
+    /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
+    /// or [`GenericResponsesCompletionModel::with_strict_tools`].
     #[serde(default, skip_serializing_if = "is_false")]
     pub strict: bool,
     /// Tool description.
@@ -607,22 +608,44 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl ResponsesToolDefinition {
-    /// Creates a function tool definition.
+    /// Creates a function tool definition with strict mode disabled.
     pub fn function(
         name: impl Into<String>,
         description: impl Into<String>,
-        mut parameters: serde_json::Value,
+        parameters: serde_json::Value,
     ) -> Self {
-        super::sanitize_schema(&mut parameters);
-
         Self {
             kind: "function".to_string(),
             name: name.into(),
             parameters,
-            strict: true,
+            strict: false,
             description: description.into(),
             config: Map::new(),
         }
+    }
+
+    /// Creates a strict function tool definition.
+    ///
+    /// The schema is sanitized to OpenAI's strict subset (`additionalProperties: false`
+    /// added and every property forced into `required`).
+    pub fn strict_function(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        Self::function(name, description, parameters).with_strict()
+    }
+
+    /// Enables strict mode for this function tool.
+    ///
+    /// Function schemas are sanitized to OpenAI's strict subset. Hosted tools are
+    /// returned unchanged because strict mode only applies to function tools.
+    pub fn with_strict(mut self) -> Self {
+        if self.kind == "function" {
+            super::sanitize_schema(&mut self.parameters);
+            self.strict = true;
+        }
+        self
     }
 
     /// Creates a hosted tool definition for an arbitrary hosted tool type.
@@ -658,12 +681,8 @@ impl ResponsesToolDefinition {
         self
     }
 
-    fn normalize(mut self) -> Self {
-        if self.kind == "function" {
-            super::sanitize_schema(&mut self.parameters);
-            self.strict = true;
-        }
-        self
+    fn normalize(self) -> Self {
+        self.with_strict()
     }
 }
 
@@ -905,11 +924,6 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             additional_params_payload = Value::Null;
         }
 
-        additional_tools = additional_tools
-            .into_iter()
-            .map(ResponsesToolDefinition::normalize)
-            .collect();
-
         let mut additional_parameters = if additional_params_payload.is_null() {
             // If there's no additional parameters, initialise an empty object
             AdditionalParameters::default()
@@ -979,6 +993,9 @@ pub struct GenericResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = 
     pub model: String,
     /// Model-level default tools that are always added to outgoing requests.
     pub tools: Vec<ResponsesToolDefinition>,
+    /// Whether function tools should use strict mode. Disabled by default to match
+    /// the Chat Completions API; enable with [`Self::with_strict_tools`].
+    pub strict_tools: bool,
 }
 
 /// The completion model struct for OpenAI's Responses API.
@@ -1000,6 +1017,7 @@ where
             client,
             model: model.into(),
             tools: Vec::new(),
+            strict_tools: false,
         }
     }
 
@@ -1008,7 +1026,17 @@ where
             client,
             model: model.to_string(),
             tools: Vec::new(),
+            strict_tools: false,
         }
+    }
+
+    /// Enable strict mode for function tool schemas.
+    ///
+    /// When enabled, function tool schemas are sanitized to meet OpenAI's strict
+    /// mode requirements and `strict: true` is set on each function definition.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
     }
 
     /// Adds a default tool to all requests from this model.
@@ -1034,6 +1062,14 @@ where
     ) -> Result<CompletionRequest, CompletionError> {
         let mut req = CompletionRequest::try_from((self.model.clone(), completion_request))?;
         req.tools.extend(self.tools.clone());
+
+        if self.strict_tools {
+            req.tools = req
+                .tools
+                .into_iter()
+                .map(ResponsesToolDefinition::normalize)
+                .collect();
+        }
 
         Ok(req)
     }
@@ -2143,6 +2179,161 @@ mod tests {
             text: text.to_string(),
             additional_props: HashMap::new(),
         }
+    }
+
+    fn weather_tool_definition() -> completion::ToolDefinition {
+        completion::ToolDefinition {
+            name: "get_weather".to_string(),
+            description: "Get the weather".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string"},
+                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+                },
+                "required": ["location"]
+            }),
+        }
+    }
+
+    fn weather_tool_request() -> completion::CompletionRequest {
+        completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one(message::Message::user("what's the weather?")),
+            documents: Vec::new(),
+            tools: vec![weather_tool_definition()],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn responses_function_tools_are_non_strict_by_default() {
+        let tool = ResponsesToolDefinition::function(
+            "get_weather",
+            "Get the weather",
+            weather_tool_definition().parameters,
+        );
+
+        assert!(!tool.strict);
+        assert_eq!(tool.parameters["required"], json!(["location"]));
+        assert!(tool.parameters.get("additionalProperties").is_none());
+
+        let serialized = serde_json::to_value(tool).expect("tool should serialize");
+        assert!(serialized.get("strict").is_none());
+    }
+
+    #[test]
+    fn responses_strict_function_tools_sanitize_schema() {
+        let tool = ResponsesToolDefinition::strict_function(
+            "get_weather",
+            "Get the weather",
+            weather_tool_definition().parameters,
+        );
+
+        assert!(tool.strict);
+        assert_eq!(tool.parameters["additionalProperties"], json!(false));
+        assert_eq!(tool.parameters["required"], json!(["location", "unit"]));
+    }
+
+    #[test]
+    fn responses_request_conversion_keeps_tools_non_strict_by_default() {
+        let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), weather_tool_request()))
+            .expect("request should convert");
+
+        let tool = &req.tools[0];
+        assert!(!tool.strict);
+        assert_eq!(tool.parameters["required"], json!(["location"]));
+        assert!(tool.parameters.get("additionalProperties").is_none());
+    }
+
+    #[test]
+    fn responses_model_strict_tools_opt_in_sanitizes_all_function_tools() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+            .with_strict_tools()
+            .with_tool(completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Look something up".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {"q": {"type": "string"}}
+                }),
+            });
+
+        let mut request = weather_tool_request();
+        request.additional_params = Some(json!({
+            "tools": [{
+                "type": "function",
+                "name": "extra",
+                "description": "An additional_params tool",
+                "parameters": {"type": "object", "properties": {"x": {"type": "string"}}}
+            }]
+        }));
+
+        let req = model
+            .create_completion_request(request)
+            .expect("request should convert");
+
+        assert_eq!(req.tools.len(), 3);
+        for tool in &req.tools {
+            assert!(tool.strict, "{} should be strict", tool.name);
+            assert_eq!(tool.parameters["additionalProperties"], json!(false));
+        }
+    }
+
+    #[test]
+    fn responses_model_default_preserves_all_function_tools_as_constructed() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+            .with_tool(weather_tool_definition());
+
+        let mut request = weather_tool_request();
+        request.additional_params = Some(json!({
+            "tools": [{
+                "type": "function",
+                "name": "extra",
+                "description": "An additional_params tool",
+                "parameters": {"type": "object", "properties": {"x": {"type": "string"}}}
+            }]
+        }));
+
+        let req = model
+            .create_completion_request(request)
+            .expect("request should convert");
+
+        assert_eq!(req.tools.len(), 3);
+        for tool in &req.tools {
+            assert!(!tool.strict, "{} should not be strict", tool.name);
+            assert!(tool.parameters.get("additionalProperties").is_none());
+        }
+    }
+
+    #[test]
+    fn responses_explicit_strict_tool_stays_strict_on_default_model() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini").with_tool(
+            ResponsesToolDefinition::strict_function(
+                "lookup",
+                "Look something up",
+                json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+            ),
+        );
+
+        let req = model
+            .create_completion_request(weather_tool_request())
+            .expect("request should convert");
+
+        assert!(!req.tools[0].strict);
+        assert!(req.tools[1].strict);
+        assert_eq!(
+            req.tools[1].parameters["additionalProperties"],
+            json!(false)
+        );
     }
 
     fn response_with_service_tier(service_tier: &str) -> Value {

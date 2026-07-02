@@ -16,7 +16,7 @@ async fn stream_tool_call_completed_response_without_output() {
     with_chatgpt_cassette(
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_3_CODEX);
+            let model = client.completion_model(chatgpt::GPT_5_4);
             let request = model
                 .completion_request(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
