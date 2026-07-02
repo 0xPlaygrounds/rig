@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.39.0...rig-neo4j-v0.40.0) - 2026-07-02
+
+### Added
+
+- *(neo4j)* implement InsertDocuments for Neo4jVectorIndex ([#1960](https://github.com/0xPlaygrounds/rig/pull/1960)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
 
 ### Added
 

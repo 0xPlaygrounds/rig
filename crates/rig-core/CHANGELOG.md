@@ -6,6 +6,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.39.0...rig-core-v0.40.0) - 2026-07-02
+
+### Added
+
+- *(ollama)* Extend `think` options with `max` ([#1982](https://github.com/0xPlaygrounds/rig/pull/1982)) (by @m-dreiling)
+- *(examples)* human-in-the-loop tool-call approval — examples + tests ([#1967](https://github.com/0xPlaygrounds/rig/pull/1967)) (by @gold-silver-copper)
+- *(rig-core)* steer the model request per turn from a hook via Flow::OverrideRequest ([#1966](https://github.com/0xPlaygrounds/rig/pull/1966)) (by @gold-silver-copper)
+- *(rig-core)* rewrite tool results from a hook via Flow::RewriteResult ([#1965](https://github.com/0xPlaygrounds/rig/pull/1965)) (by @gold-silver-copper)
+- *(rig-core)* rewrite tool-call arguments from a hook via Flow::RewriteArgs ([#1963](https://github.com/0xPlaygrounds/rig/pull/1963)) (by @gold-silver-copper)
+- *(rig-core)* concurrent tool execution in the streaming driver (parity with blocking tool_concurrency) ([#1957](https://github.com/0xPlaygrounds/rig/pull/1957)) (by @gold-silver-copper)
+- *(rig-core)* ToolCallExtensions — per-call tool context through the agent loop, MCP & sub-agents (supersedes #1537, #1953) ([#1954](https://github.com/0xPlaygrounds/rig/pull/1954)) (by @gold-silver-copper)
+- *(openai)* preserve responses prompt cache parameters ([#1830](https://github.com/0xPlaygrounds/rig/pull/1830)) (by @Kade-Powell)
+- *(streaming)* [**breaking**] surface unmodeled provider output items through the stream ([#1951](https://github.com/0xPlaygrounds/rig/pull/1951)) (by @gold-silver-copper)
+- *(openai-responses)* [**breaking**] preserve unknown Output payloads ([#1950](https://github.com/0xPlaygrounds/rig/pull/1950)) (by @gold-silver-copper)
+- *(rig-core)* [**breaking**] integrate hooks into AgentRun via a composable AgentRunner ([#1945](https://github.com/0xPlaygrounds/rig/pull/1945)) (by @gold-silver-copper)
+- *(rig-core)* [**breaking**] broaden provider error-response inspection workspace-wide ([#1944](https://github.com/0xPlaygrounds/rig/pull/1944)) (by @gold-silver-copper)
+- *(message)* add video helper constructors + OpenRouter audio/video conversion tests ([#1942](https://github.com/0xPlaygrounds/rig/pull/1942)) (by @gold-silver-copper)
+- *(rig-core)* [**breaking**] expose provider error response inspection ([#1859](https://github.com/0xPlaygrounds/rig/pull/1859)) (by @Shaurya-Sethi)
+- *(agent)* add OutputMode to compose structured output with tools ([#1928](https://github.com/0xPlaygrounds/rig/pull/1928)) ([#1929](https://github.com/0xPlaygrounds/rig/pull/1929)) (by @gold-silver-copper)
+
+### Fixed
+
+- *(openai)* accept null Responses metadata ([#1993](https://github.com/0xPlaygrounds/rig/pull/1993)) (by @gold-silver-copper)
+- *(gemini)* tolerate omitted proto defaults ([#1984](https://github.com/0xPlaygrounds/rig/pull/1984)) (by @gold-silver-copper)
+- *(openai)* make Responses API strict tools opt-in ([#1991](https://github.com/0xPlaygrounds/rig/pull/1991)) (by @gold-silver-copper)
+- *(ollama)* omit `think` when unset so the model default applies ([#1990](https://github.com/0xPlaygrounds/rig/pull/1990)) (by @SarthakB11)
+- *(agent)* stream concurrent tool results as they complete ([#1981](https://github.com/0xPlaygrounds/rig/pull/1981)) (by @gold-silver-copper)
+- *(anthropic)* deserialize explicit null citations as empty vec ([#1972](https://github.com/0xPlaygrounds/rig/pull/1972)) (by @CharmingGroot)
+- *(anthropic)* coerce tool_use.input to an object at the send boundary ([#1964](https://github.com/0xPlaygrounds/rig/pull/1964)) (by @wey-gu)
+- *(openai-compat)* normalize evicted tool-call string arguments to an object ([#1958](https://github.com/0xPlaygrounds/rig/pull/1958)) (by @wey-gu)
+- *(rig-core)* fix epub loader tests + prevent CWD-relative fixture-path regressions ([#1940](https://github.com/0xPlaygrounds/rig/pull/1940)) (by @gold-silver-copper)
+- *(gemini)* default totalTokenCount to avoid deser crash on empty generations ([#1936](https://github.com/0xPlaygrounds/rig/pull/1936)) (by @gold-silver-copper)
+- *(ollama)* preserve assistant reasoning from non-streaming responses ([#1926](https://github.com/0xPlaygrounds/rig/pull/1926)) ([#1927](https://github.com/0xPlaygrounds/rig/pull/1927)) (by @gold-silver-copper)
+
+### Other
+
+- Release-N cleanup: correctness fixes + dead-code removal ([#1987](https://github.com/0xPlaygrounds/rig/pull/1987)) (by @gold-silver-copper) - #1987
+- *(agent)* unify streaming/non-streaming seams; fix Anthropic streaming output_schema drop ([#1986](https://github.com/0xPlaygrounds/rig/pull/1986)) (by @gold-silver-copper)
+- *(agent)* unify the streaming and non-streaming drivers over one engine ([#1985](https://github.com/0xPlaygrounds/rig/pull/1985)) (by @gold-silver-copper)
+- *(openai-compat)* genuinely exercise the #1958 tool-call eviction string-leak (+ live cassette) ([#1962](https://github.com/0xPlaygrounds/rig/pull/1962)) (by @gold-silver-copper)
+- *(rig-core)* [**breaking**] remove the experimental pipeline module ([#1941](https://github.com/0xPlaygrounds/rig/pull/1941)) (by @gold-silver-copper)
+- *(rig-core)* replace nanoid with fastrand for internal IDs ([#1938](https://github.com/0xPlaygrounds/rig/pull/1938)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
+* @SarthakB11
+* @m-dreiling
+* @CharmingGroot
+* @wey-gu
+* @Kade-Powell
+* @Shaurya-Sethi
 
 ### Added
 
