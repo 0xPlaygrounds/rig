@@ -1,3 +1,5 @@
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionError;
 use rig_core::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
@@ -86,7 +88,26 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                                 .set_name(tool_call.function.name.clone())
                                 .set_args(struct_val);
 
-                            Ok(vertexai::model::Part::new().set_function_call(function_call))
+                            let mut part =
+                                vertexai::model::Part::new().set_function_call(function_call);
+
+                            // Echo back the Gemini `thoughtSignature` captured on the read side
+                            // (base64 → bytes). Required by thinking models on every follow-up turn.
+                            // A malformed signature is dropped (with a warning) rather than failing
+                            // the whole turn — one bad byte must not kill every other tool call.
+                            if let Some(signature) = &tool_call.signature {
+                                match BASE64.decode(signature.as_bytes()) {
+                                    Ok(bytes) => part = part.set_thought_signature(bytes),
+                                    Err(err) => tracing::warn!(
+                                        %err,
+                                        tool = %tool_call.function.name,
+                                        "Failed to base64-decode tool call thought_signature; \
+                                         dropping it for this turn"
+                                    ),
+                                }
+                            }
+
+                            Ok(part)
                         }
                         _ => Err(CompletionError::ProviderError(format!(
                             "Unsupported assistant content type: {:?}",
@@ -177,6 +198,44 @@ mod tests {
         assert!(function_call.is_some());
         let function_call = function_call.unwrap();
         assert_eq!(function_call.name.as_str(), "add");
+    }
+
+    #[test]
+    fn test_assistant_tool_call_echoes_thought_signature() {
+        use rig_core::message::{ToolCall, ToolFunction};
+        let raw = b"\x00\x01\x02thinking-sig\xff";
+        let tool_call = ToolCall::new(
+            "add".to_string(),
+            ToolFunction::new("add".to_string(), serde_json::json!({"x": 5})),
+        )
+        .with_signature(Some(BASE64.encode(raw)));
+        let content: vertexai::model::Content = RigMessage(Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+        })
+        .try_into()
+        .unwrap();
+        assert_eq!(content.parts[0].thought_signature.as_ref(), raw.as_slice());
+    }
+
+    #[test]
+    fn test_assistant_tool_call_malformed_signature_is_dropped_not_fatal() {
+        // A malformed signature must not abort the whole turn — it is dropped with a warning.
+        use rig_core::message::{ToolCall, ToolFunction};
+        let tool_call = ToolCall::new(
+            "add".to_string(),
+            ToolFunction::new("add".to_string(), serde_json::json!({"x": 5})),
+        )
+        .with_signature(Some("!!! not base64 !!!".to_string()));
+        let content: vertexai::model::Content = RigMessage(Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+        })
+        .try_into()
+        .expect("malformed signature should not fail the conversion");
+        assert_eq!(content.parts.len(), 1);
+        assert!(content.parts[0].thought_signature.is_empty());
+        assert!(content.parts[0].function_call().is_some());
     }
 
     #[test]

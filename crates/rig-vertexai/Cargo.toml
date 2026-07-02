@@ -10,6 +10,7 @@ description = "VertexAI model provider for Rig integration."
 workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 google-cloud-aiplatform-v1 = { workspace = true }
 google-cloud-auth = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.39.0", default-features = false }
