@@ -271,6 +271,7 @@ mod gemini_api_types {
 
     #[derive(Debug, Deserialize)]
     pub struct EmbeddingValues {
+        #[serde(default)]
         pub values: Vec<serde_json::Number>,
     }
 }
@@ -278,6 +279,13 @@ mod gemini_api_types {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_embedding_values_deserializes_without_empty_values_field() {
+        let values: gemini_api_types::EmbeddingValues =
+            serde_json::from_str("{}").expect("empty embedding values should deserialize");
+        assert!(values.values.is_empty());
+    }
 
     #[test]
     fn test_model_default_ndims_lookup() {

@@ -581,8 +581,10 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentResponse {
+        #[serde(default)]
         pub response_id: String,
         /// Candidate responses from the model.
+        #[serde(default)]
         pub candidates: Vec<ContentCandidate>,
         /// Returns the prompt's feedback related to the content filters.
         pub prompt_feedback: Option<PromptFeedback>,
@@ -1363,6 +1365,7 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct ModalityTokenCount {
         pub modality: Modality,
+        #[serde(default)]
         pub token_count: i32,
     }
 
@@ -1484,6 +1487,7 @@ pub mod gemini_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CitationMetadata {
+        #[serde(default)]
         pub citation_sources: Vec<CitationSource>,
     }
 
@@ -1503,21 +1507,29 @@ pub mod gemini_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogprobsResult {
-        pub top_candidate: Vec<TopCandidate>,
-        pub chosen_candidate: Vec<LogProbCandidate>,
+        #[serde(default)]
+        pub top_candidates: Vec<TopCandidate>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub log_probability_sum: Option<f64>,
+        #[serde(default)]
+        pub chosen_candidates: Vec<LogProbCandidate>,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TopCandidate {
+        #[serde(default)]
         pub candidates: Vec<LogProbCandidate>,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct LogProbCandidate {
-        pub token: String,
-        pub token_id: String,
-        pub log_probability: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub token: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub token_id: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub log_probability: Option<f64>,
     }
 
     /// Gemini API Configuration options for model generation and outputs. Not all parameters are
@@ -2167,8 +2179,9 @@ mod tests {
     use crate::{
         message,
         providers::gemini::completion::gemini_api_types::{
-            ContentCandidate, FinishReason, FunctionCall, Schema, UsageMetadata, flatten_schema,
-            tool_parameters_to_schema,
+            CitationMetadata, ContentCandidate, FinishReason, FunctionCall,
+            GenerateContentResponse, LogprobsResult, ModalityTokenCount, Schema, TopCandidate,
+            UsageMetadata, flatten_schema, tool_parameters_to_schema,
         },
     };
 
@@ -2183,6 +2196,103 @@ mod tests {
             serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
         assert_eq!(usage.total_token_count, 0);
         assert_eq!(usage.prompt_token_count, 12);
+    }
+
+    #[test]
+    fn test_generate_content_response_deserializes_without_candidates_or_response_id() {
+        // Blocked prompt responses can omit default-valued proto fields, including
+        // empty repeated `candidates` and empty string `responseId`.
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "promptFeedback": {
+                "blockReason": "SAFETY"
+            }
+        }))
+        .expect("blocked prompt response should deserialize");
+
+        assert!(response.response_id.is_empty());
+        assert!(response.candidates.is_empty());
+
+        let error = completion::CompletionResponse::try_from(response)
+            .expect_err("empty candidates should become a response error");
+        assert!(error.to_string().contains("No response candidates"));
+    }
+
+    #[test]
+    fn test_modality_token_count_deserializes_without_zero_token_count() {
+        let count: ModalityTokenCount = serde_json::from_value(json!({
+            "modality": "TEXT"
+        }))
+        .expect("zero tokenCount may be omitted");
+
+        assert_eq!(count.token_count, 0);
+    }
+
+    #[test]
+    fn test_response_metadata_repeated_fields_deserialize_when_omitted() {
+        let citation_metadata: CitationMetadata =
+            serde_json::from_value(json!({})).expect("empty citation metadata should deserialize");
+        assert!(citation_metadata.citation_sources.is_empty());
+
+        let logprobs: LogprobsResult =
+            serde_json::from_value(json!({})).expect("empty logprobs result should deserialize");
+        assert!(logprobs.top_candidates.is_empty());
+        assert_eq!(logprobs.log_probability_sum, None);
+        assert!(logprobs.chosen_candidates.is_empty());
+
+        let top_candidate: TopCandidate =
+            serde_json::from_value(json!({})).expect("empty top candidate should deserialize");
+        assert!(top_candidate.candidates.is_empty());
+    }
+
+    #[test]
+    fn test_logprobs_result_deserializes_official_json_field_names() {
+        let logprobs: LogprobsResult = serde_json::from_value(json!({
+            "topCandidates": [
+                {
+                    "candidates": [
+                        {
+                            "token": "Hello",
+                            "tokenId": 123,
+                            "logProbability": -0.1
+                        },
+                        {
+                            "token": "Hi",
+                            "tokenId": 124,
+                            "logProbability": -1.25
+                        }
+                    ]
+                }
+            ],
+            "logProbabilitySum": -0.1,
+            "chosenCandidates": [
+                {
+                    "token": "Hello",
+                    "tokenId": 123,
+                    "logProbability": -0.1
+                }
+            ]
+        }))
+        .expect("official Gemini logprobs result should deserialize");
+
+        assert_eq!(logprobs.top_candidates.len(), 1);
+        assert_eq!(logprobs.top_candidates[0].candidates.len(), 2);
+        assert_eq!(
+            logprobs.top_candidates[0].candidates[0].token.as_deref(),
+            Some("Hello")
+        );
+        assert_eq!(logprobs.top_candidates[0].candidates[0].token_id, Some(123));
+        assert_eq!(
+            logprobs.top_candidates[0].candidates[0].log_probability,
+            Some(-0.1)
+        );
+        assert_eq!(logprobs.log_probability_sum, Some(-0.1));
+        assert_eq!(logprobs.chosen_candidates.len(), 1);
+        assert_eq!(
+            logprobs.chosen_candidates[0].token.as_deref(),
+            Some("Hello")
+        );
+        assert_eq!(logprobs.chosen_candidates[0].token_id, Some(123));
+        assert_eq!(logprobs.chosen_candidates[0].log_probability, Some(-0.1));
     }
 
     #[test]
