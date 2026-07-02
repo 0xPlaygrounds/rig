@@ -902,23 +902,33 @@ pub trait ResponsesProviderExt {
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
     type Error = CompletionError;
     fn try_from(
-        request: (String, crate::completion::CompletionRequest),
+        (model, request): (String, crate::completion::CompletionRequest),
     ) -> Result<Self, Self::Error> {
-        Self::try_from_with_system_instructions_placement(
+        Self::try_from(ResponsesRequestParams {
+            model,
             request,
-            SystemInstructionsPlacement::default(),
-        )
+            system_instructions_placement: SystemInstructionsPlacement::default(),
+        })
     }
 }
 
-impl CompletionRequest {
-    /// Converts like the [`TryFrom`] impl, but places Rig system instructions
-    /// according to `system_instructions_placement` instead of the default.
-    /// See [`SystemInstructionsPlacement`] for when each placement applies.
-    pub fn try_from_with_system_instructions_placement(
-        (model, mut req): (String, crate::completion::CompletionRequest),
-        system_instructions_placement: SystemInstructionsPlacement,
-    ) -> Result<Self, CompletionError> {
+/// Parameters for converting a [`crate::completion::CompletionRequest`] into a
+/// Responses API [`CompletionRequest`] with a non-default configuration.
+pub struct ResponsesRequestParams {
+    pub model: String,
+    pub request: crate::completion::CompletionRequest,
+    pub system_instructions_placement: SystemInstructionsPlacement,
+}
+
+impl TryFrom<ResponsesRequestParams> for CompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from(params: ResponsesRequestParams) -> Result<Self, Self::Error> {
+        let ResponsesRequestParams {
+            model,
+            request: mut req,
+            system_instructions_placement,
+        } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
         let preamble = req.preamble.take();
@@ -945,6 +955,7 @@ impl CompletionRequest {
                 instruction_parts.push(text.to_string());
             }
         };
+        let items_before_lift = input.len();
         match system_instructions_placement {
             SystemInstructionsPlacement::Instructions => {
                 // Lift only the leading run of system items (the preamble and any
@@ -976,9 +987,10 @@ impl CompletionRequest {
             SystemInstructionsPlacement::InputSystemMessages => {}
         }
         let instructions = (!instruction_parts.is_empty()).then(|| instruction_parts.join("\n\n"));
+        let lifted_system_items = input.len() < items_before_lift;
 
         let input = OneOrMany::many(input).map_err(|_| {
-            CompletionError::RequestError(if instructions.is_some() {
+            CompletionError::RequestError(if lifted_system_items {
                 "OpenAI Responses request input must contain at least one non-system item \
                  (system messages were lifted into the top-level `instructions` field)"
                     .into()
@@ -1171,10 +1183,11 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionRequest, CompletionError> {
-        let mut req = CompletionRequest::try_from_with_system_instructions_placement(
-            (self.model.clone(), completion_request),
-            self.system_instructions_placement,
-        )?;
+        let mut req = CompletionRequest::try_from(ResponsesRequestParams {
+            model: self.model.clone(),
+            request: completion_request,
+            system_instructions_placement: self.system_instructions_placement,
+        })?;
         req.tools.extend(self.tools.clone());
 
         if self.strict_tools {
@@ -2386,6 +2399,21 @@ mod tests {
         }
     }
 
+    fn system_only_request(system_text: &str) -> completion::CompletionRequest {
+        completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one(completion::Message::system(system_text)),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
     #[test]
     fn responses_request_uses_top_level_instructions_for_preamble_by_default() {
         let req = CompletionRequest::try_from((
@@ -2447,21 +2475,11 @@ mod tests {
 
     #[test]
     fn responses_request_with_only_system_messages_keeps_them_in_input() {
-        let request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: crate::OneOrMany::one(completion::Message::system("System only")),
-            documents: Vec::new(),
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        };
-
-        let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
-            .expect("request conversion should succeed");
+        let req = CompletionRequest::try_from((
+            "gpt-4o-mini".to_string(),
+            system_only_request("System only"),
+        ))
+        .expect("request conversion should succeed");
         let serialized = serde_json::to_value(&req).expect("request should serialize");
         let input = serialized["input"]
             .as_array()
@@ -2576,28 +2594,32 @@ mod tests {
 
     #[test]
     fn all_instructions_system_only_input_reports_non_system_requirement() {
-        let request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: crate::OneOrMany::one(completion::Message::system("System only")),
-            documents: Vec::new(),
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        };
-
-        let err = CompletionRequest::try_from_with_system_instructions_placement(
-            ("gpt-4o-mini".to_string(), request),
-            SystemInstructionsPlacement::AllInstructions,
-        )
+        let err = CompletionRequest::try_from(ResponsesRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: system_only_request("System only"),
+            system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
+        })
         .expect_err("system-only input should fail once every item is lifted");
 
         assert!(
             err.to_string().contains("non-system item"),
             "error should explain that lifted system messages left input empty: {err}"
+        );
+    }
+
+    #[test]
+    fn all_instructions_whitespace_only_system_input_reports_non_system_requirement() {
+        let err = CompletionRequest::try_from(ResponsesRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: system_only_request("   "),
+            system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
+        })
+        .expect_err("whitespace-only system input should fail once every item is lifted");
+
+        assert!(
+            err.to_string().contains("non-system item"),
+            "even when lifted system text is whitespace-only (so no `instructions` field is \
+             produced), the error should explain that system messages were lifted: {err}"
         );
     }
 
