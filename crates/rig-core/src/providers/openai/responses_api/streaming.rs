@@ -804,7 +804,7 @@ impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
+    Ext: crate::client::Provider + super::ResponsesProviderExt + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
 {
     pub(crate) async fn stream(

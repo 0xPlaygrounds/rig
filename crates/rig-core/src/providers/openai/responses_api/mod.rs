@@ -863,15 +863,37 @@ pub enum ResponseStatus {
 
 /// Controls where Rig system instructions are placed in an OpenAI Responses request.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum SystemInstructionsPlacement {
-    /// Send system instructions through the official top-level `instructions` field.
+#[non_exhaustive]
+pub enum SystemInstructionsPlacement {
+    /// Send the leading run of system instructions (the preamble and any system
+    /// messages that open the conversation) through the official top-level
+    /// `instructions` field. Mid-conversation system messages keep their
+    /// position in `input`.
     #[default]
     Instructions,
+    /// Send every system message through the top-level `instructions` field,
+    /// including mid-conversation ones.
+    ///
+    /// Use this for backends that reject the `system` role in `input` entirely.
+    AllInstructions,
     /// Send system instructions as `system` messages in `input`.
     ///
     /// Use this only for OpenAI-compatible providers that do not support top-level
     /// `instructions`.
     InputSystemMessages,
+}
+
+/// Provider extensions that drive the OpenAI Responses request conversion.
+///
+/// Implemented by the `Ext` type of a [`crate::client::Client`] used with
+/// [`GenericResponsesCompletionModel`], so a client-level configuration can
+/// control request shaping for every model created from that client.
+pub trait ResponsesProviderExt {
+    /// Where Rig system instructions are placed in requests built from this
+    /// provider. See [`SystemInstructionsPlacement`].
+    fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
+        SystemInstructionsPlacement::default()
+    }
 }
 
 /// Attempt to try and create a `NewCompletionRequest` from a model name and [`crate::completion::CompletionRequest`]
@@ -925,27 +947,41 @@ impl CompletionRequest {
             full_history
         };
 
-        if system_instructions_placement == SystemInstructionsPlacement::Instructions {
-            // Lift only the leading run of system items (the preamble and any
-            // system messages that open the conversation) into the top-level
-            // `instructions` field. Mid-conversation system messages keep
-            // their position in `input`, and a request made up solely of
-            // system messages keeps them in `input` so it stays non-empty.
-            let leading_system_items = input
-                .iter()
-                .take_while(|item| item.system_text().is_some())
-                .count();
-            if leading_system_items < input.len() {
-                for item in input.drain(..leading_system_items) {
-                    let Some(system_text) = item.system_text() else {
-                        continue;
-                    };
-                    let system_text = system_text.trim();
-                    if !system_text.is_empty() {
-                        instruction_parts.push(system_text.to_string());
-                    }
+        let mut lift_system_text = |text: String| {
+            let text = text.trim();
+            if !text.is_empty() {
+                instruction_parts.push(text.to_string());
+            }
+        };
+        match system_instructions_placement {
+            SystemInstructionsPlacement::Instructions => {
+                // Lift only the leading run of system items (the preamble and any
+                // system messages that open the conversation) into the top-level
+                // `instructions` field. Mid-conversation system messages keep
+                // their position in `input`, and a request made up solely of
+                // system messages keeps them in `input` so it stays non-empty.
+                let leading_system_texts: Vec<String> =
+                    input.iter().map_while(InputItem::system_text).collect();
+                if leading_system_texts.len() < input.len() {
+                    input.drain(..leading_system_texts.len());
+                    leading_system_texts
+                        .into_iter()
+                        .for_each(&mut lift_system_text);
                 }
             }
+            SystemInstructionsPlacement::AllInstructions => {
+                // Lift every system item, wherever it appears, for backends
+                // that reject the `system` role in `input` entirely.
+                let mut remaining = Vec::with_capacity(input.len());
+                for item in input {
+                    match item.system_text() {
+                        Some(text) => lift_system_text(text),
+                        None => remaining.push(item),
+                    }
+                }
+                input = remaining;
+            }
+            SystemInstructionsPlacement::InputSystemMessages => {}
         }
         let instructions = (!instruction_parts.is_empty()).then(|| instruction_parts.join("\n\n"));
 
@@ -1069,28 +1105,23 @@ pub type ResponsesCompletionModel<H = reqwest::Client> =
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
+    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + 'static,
 {
     /// Creates a new [`ResponsesCompletionModel`].
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
+        let system_instructions_placement = client.ext().system_instructions_placement();
         Self {
             client,
             model: model.into(),
             tools: Vec::new(),
             strict_tools: false,
-            system_instructions_placement: SystemInstructionsPlacement::default(),
+            system_instructions_placement,
         }
     }
 
     pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            tools: Vec::new(),
-            strict_tools: false,
-            system_instructions_placement: SystemInstructionsPlacement::default(),
-        }
+        Self::new(client, model)
     }
 
     /// Enable strict mode for function tool schemas.
@@ -1686,6 +1717,7 @@ where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
+        + ResponsesProviderExt
         + crate::client::DebugExt
         + Clone
         + WasmCompatSend
@@ -1699,12 +1731,7 @@ where
     type Client = crate::client::Client<Ext, H>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        let mut completion_model = Self::new(client.clone(), model);
-        if client.ext().system_instructions_as_input_messages() {
-            completion_model.system_instructions_placement =
-                SystemInstructionsPlacement::InputSystemMessages;
-        }
-        completion_model
+        Self::new(client.clone(), model)
     }
 
     // The OpenAI Responses API constrains only the final assistant message via
@@ -2366,6 +2393,26 @@ mod tests {
             .expect("input should be array");
 
         assert_eq!(serialized["instructions"], json!("You are concise."));
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[test]
+    fn responses_request_drops_whitespace_only_preamble() {
+        let req = CompletionRequest::try_from((
+            "gpt-4o-mini".to_string(),
+            request_with_preamble("  \n "),
+        ))
+        .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert!(
+            serialized.get("instructions").is_none(),
+            "a whitespace-only preamble carries no content and is dropped"
+        );
         assert_eq!(input.len(), 1);
         assert_eq!(input[0]["role"], "user");
     }

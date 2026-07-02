@@ -1,3 +1,4 @@
+use super::responses_api::{ResponsesProviderExt, SystemInstructionsPlacement};
 use crate::{
     client::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -22,7 +23,7 @@ const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAIResponsesExt {
-    pub(crate) system_instructions_as_messages: bool,
+    pub(crate) system_instructions_placement: SystemInstructionsPlacement,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -52,9 +53,11 @@ pub type CompletionsClientBuilder<H = crate::markers::Missing> =
 impl Provider for OpenAIResponsesExt {
     type Builder = OpenAIResponsesExtBuilder;
     const VERIFY_PATH: &'static str = "/models";
+}
 
-    fn system_instructions_as_input_messages(&self) -> bool {
-        self.system_instructions_as_messages
+impl ResponsesProviderExt for OpenAIResponsesExt {
+    fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
+        self.system_instructions_placement
     }
 }
 
@@ -161,7 +164,7 @@ where
     /// that reject or ignore top-level `instructions`.
     pub fn with_system_instructions_as_messages(self) -> Self {
         let mut ext = *self.ext();
-        ext.system_instructions_as_messages = true;
+        ext.system_instructions_placement = SystemInstructionsPlacement::InputSystemMessages;
         self.with_ext(ext)
     }
 
