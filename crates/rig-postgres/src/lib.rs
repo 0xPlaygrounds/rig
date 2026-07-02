@@ -359,13 +359,10 @@ where
                 let embedding_text = embedding.document;
                 let embedding: Vec<f64> = embedding.vec;
 
-                sqlx::query(
-                    format!(
-                        "INSERT INTO {} (id, document, embedded_text, embedding) VALUES ($1, $2, $3, $4)",
-                        self.documents_table
-                    )
-                    .as_str(),
-                )
+                sqlx::query(sqlx::AssertSqlSafe(format!(
+                    "INSERT INTO {} (id, document, embedded_text, embedding) VALUES ($1, $2, $3, $4)",
+                    self.documents_table
+                )))
                 .bind(id)
                 .bind(&json_document)
                 .bind(&embedding_text)
@@ -413,7 +410,7 @@ where
             .into();
 
         let (search_query, params) = self.search_query_full(&req);
-        let builder = sqlx::query_as(search_query.as_str())
+        let builder = sqlx::query_as(sqlx::AssertSqlSafe(search_query))
             .bind(embedded_query)
             .bind(req.samples() as i64);
 
@@ -457,7 +454,7 @@ where
             .into();
 
         let (search_query, params) = self.search_query_only_ids(&req);
-        let builder = sqlx::query_as(search_query.as_str())
+        let builder = sqlx::query_as(sqlx::AssertSqlSafe(search_query))
             .bind(embedded_query)
             .bind(req.samples() as i64);
 
