@@ -19,6 +19,7 @@ mod cassette {
     mod streaming_tools;
     mod structured_output;
     mod typed_prompt_tools;
+    mod vllm;
 }
 
 mod live {
