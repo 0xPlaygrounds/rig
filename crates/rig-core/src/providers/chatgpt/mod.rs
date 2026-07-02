@@ -366,7 +366,7 @@ where
         {
             request.instructions = Some(match request.instructions.as_deref() {
                 Some(existing) if !existing.trim().is_empty() => {
-                    format!("{system_instructions}\n\n{existing}")
+                    format!("{existing}\n\n{system_instructions}")
                 }
                 _ => system_instructions,
             });
@@ -740,11 +740,14 @@ data: [DONE]"#;
         let mut request = ResponsesRequest::try_from(("gpt-5.4".to_string(), completion_request))
             .expect("request");
 
-        let instructions = normalize_system_messages_into_instructions(&mut request)
-            .expect("normalize")
-            .expect("instructions");
+        let instructions =
+            normalize_system_messages_into_instructions(&mut request).expect("normalize");
 
-        assert_eq!(instructions, "System one\n\nSystem two");
+        assert_eq!(
+            request.instructions.as_deref(),
+            Some("System one\n\nSystem two")
+        );
+        assert!(instructions.is_none());
         assert_eq!(request.input.len(), 1);
     }
 
