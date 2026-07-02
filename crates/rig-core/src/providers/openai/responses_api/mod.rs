@@ -891,9 +891,11 @@ pub enum SystemInstructionsPlacement {
 pub trait ResponsesProviderExt {
     /// Where Rig system instructions are placed in requests built from this
     /// provider. See [`SystemInstructionsPlacement`].
-    fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
-        SystemInstructionsPlacement::default()
-    }
+    ///
+    /// Deliberately has no default body: each provider must state its
+    /// placement explicitly, so a backend that can't handle the default
+    /// (top-level `instructions`) is never inherited by accident.
+    fn system_instructions_placement(&self) -> SystemInstructionsPlacement;
 }
 
 /// Attempt to try and create a `NewCompletionRequest` from a model name and [`crate::completion::CompletionRequest`]
@@ -910,20 +912,10 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
 }
 
 impl CompletionRequest {
-    /// Converts like the [`TryFrom`] impl, but keeps Rig system instructions as
-    /// `system` messages in `input` instead of lifting them into the top-level
-    /// `instructions` field. Use this for OpenAI-compatible providers that
-    /// reject or ignore top-level `instructions`.
-    pub fn try_from_with_system_instructions_as_messages(
-        request: (String, crate::completion::CompletionRequest),
-    ) -> Result<Self, CompletionError> {
-        Self::try_from_with_system_instructions_placement(
-            request,
-            SystemInstructionsPlacement::InputSystemMessages,
-        )
-    }
-
-    fn try_from_with_system_instructions_placement(
+    /// Converts like the [`TryFrom`] impl, but places Rig system instructions
+    /// according to `system_instructions_placement` instead of the default.
+    /// See [`SystemInstructionsPlacement`] for when each placement applies.
+    pub fn try_from_with_system_instructions_placement(
         (model, mut req): (String, crate::completion::CompletionRequest),
         system_instructions_placement: SystemInstructionsPlacement,
     ) -> Result<Self, CompletionError> {
@@ -986,9 +978,13 @@ impl CompletionRequest {
         let instructions = (!instruction_parts.is_empty()).then(|| instruction_parts.join("\n\n"));
 
         let input = OneOrMany::many(input).map_err(|_| {
-            CompletionError::RequestError(
-                "OpenAI Responses request input must contain at least one item".into(),
-            )
+            CompletionError::RequestError(if instructions.is_some() {
+                "OpenAI Responses request input must contain at least one non-system item \
+                 (system messages were lifted into the top-level `instructions` field)"
+                    .into()
+            } else {
+                "OpenAI Responses request input must contain at least one item".into()
+            })
         })?;
 
         let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
@@ -1133,15 +1129,25 @@ where
         self
     }
 
+    /// Sets where Rig system instructions are placed in requests from this
+    /// model, overriding the client-level default. See
+    /// [`SystemInstructionsPlacement`] for when each placement applies.
+    pub fn with_system_instructions_placement(
+        mut self,
+        placement: SystemInstructionsPlacement,
+    ) -> Self {
+        self.system_instructions_placement = placement;
+        self
+    }
+
     /// Sends Rig system instructions as `system` messages in `input` instead of
     /// as top-level Responses API `instructions`.
     ///
     /// OpenAI's Responses API supports `instructions`, and Rig uses it by
     /// default. Use this compatibility fallback for OpenAI-compatible providers
     /// that reject or ignore top-level `instructions`.
-    pub fn with_system_instructions_as_messages(mut self) -> Self {
-        self.system_instructions_placement = SystemInstructionsPlacement::InputSystemMessages;
-        self
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
     }
 
     /// Adds a default tool to all requests from this model.
@@ -2513,6 +2519,86 @@ mod tests {
         assert_eq!(input[0]["role"], "system");
         assert!(input[0].to_string().contains("You are concise."));
         assert_eq!(input[1]["role"], "user");
+    }
+
+    #[test]
+    fn responses_model_can_lift_all_system_messages_via_placement() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+            .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
+
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "again")
+            .preamble("System one".to_string())
+            .message(completion::Message::user("hi"))
+            .message(completion::Message::system("Mid-conversation instruction"))
+            .build();
+
+        let req = model
+            .create_completion_request(request)
+            .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert_eq!(
+            serialized["instructions"],
+            json!("System one\n\nMid-conversation instruction")
+        );
+        assert!(
+            input.iter().all(|item| item["role"] != "system"),
+            "AllInstructions should leave no system items in input: {input:?}"
+        );
+    }
+
+    #[test]
+    fn responses_client_placement_survives_completions_api_round_trip() {
+        use crate::prelude::CompletionClient;
+
+        let client = crate::providers::openai::Client::new("dummy-key")
+            .expect("client")
+            .with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
+            .completions_api()
+            .responses_api();
+        let model = client.completion_model("gpt-4o-mini");
+
+        let req = model
+            .create_completion_request(request_with_preamble("You are concise."))
+            .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+
+        assert!(
+            serialized.get("instructions").is_none(),
+            "placement configured before completions_api() should survive responses_api()"
+        );
+        assert_eq!(serialized["input"][0]["role"], "system");
+    }
+
+    #[test]
+    fn all_instructions_system_only_input_reports_non_system_requirement() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one(completion::Message::system("System only")),
+            documents: Vec::new(),
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let err = CompletionRequest::try_from_with_system_instructions_placement(
+            ("gpt-4o-mini".to_string(), request),
+            SystemInstructionsPlacement::AllInstructions,
+        )
+        .expect_err("system-only input should fail once every item is lifted");
+
+        assert!(
+            err.to_string().contains("non-system item"),
+            "error should explain that lifted system messages left input empty: {err}"
+        );
     }
 
     #[test]
