@@ -15,7 +15,11 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod request_hook;
     mod response_schema;
+    mod responses_behaviors;
     mod responses_input_item;
+    mod responses_sessions;
+    mod responses_tool_args;
+    mod responses_tool_choice;
     mod streaming;
     mod streaming_tools;
     mod structured_output;

@@ -332,6 +332,61 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
 }
 
 #[test]
+fn assistant_tool_call_with_local_id_omits_function_call_item_id() {
+    let message = CompletionMessage::Assistant {
+        id: None,
+        content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+            "history_tool_1",
+            "call_local_1".to_string(),
+            "my_tool",
+            serde_json::json!({}),
+        )),
+    };
+
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("tool call with call_id should convert");
+    assert_eq!(items.len(), 1);
+
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert_eq!(
+        item_json.get("type").and_then(|value| value.as_str()),
+        Some("function_call")
+    );
+    assert!(
+        item_json.get("id").is_none(),
+        "non-`fc` tool-call IDs must be omitted so the API pairs by call_id: {item_json}"
+    );
+    assert_eq!(
+        item_json.get("call_id").and_then(|value| value.as_str()),
+        Some("call_local_1")
+    );
+}
+
+#[test]
+fn assistant_tool_call_with_provider_item_id_keeps_it() {
+    let message = CompletionMessage::Assistant {
+        id: None,
+        content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+            "fc_native_1",
+            "call_native_1".to_string(),
+            "my_tool",
+            serde_json::json!({}),
+        )),
+    };
+
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("tool call with call_id should convert");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert_eq!(
+        item_json.get("id").and_then(|value| value.as_str()),
+        Some("fc_native_1"),
+        "provider-native fc item IDs must round-trip"
+    );
+}
+
+#[test]
 fn assistant_tool_call_without_call_id_returns_request_error() {
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
