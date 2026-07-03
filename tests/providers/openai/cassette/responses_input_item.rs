@@ -355,11 +355,33 @@ fn assistant_tool_call_with_local_id_omits_function_call_item_id() {
     );
     assert!(
         item_json.get("id").is_none(),
-        "non-`fc` tool-call IDs must be omitted so the API pairs by call_id: {item_json}"
+        "non-`fc_` tool-call IDs must be omitted so the API pairs by call_id: {item_json}"
     );
     assert_eq!(
         item_json.get("call_id").and_then(|value| value.as_str()),
         Some("call_local_1")
+    );
+}
+
+#[test]
+fn assistant_tool_call_with_local_fc_prefix_without_separator_omits_function_call_item_id() {
+    let message = CompletionMessage::Assistant {
+        id: None,
+        content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+            "fclocal_1",
+            "call_local_1".to_string(),
+            "my_tool",
+            serde_json::json!({}),
+        )),
+    };
+
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("tool call with call_id should convert");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert!(
+        item_json.get("id").is_none(),
+        "only provider-native `fc_` item IDs should round-trip: {item_json}"
     );
 }
 

@@ -1879,7 +1879,7 @@ pub struct OutputFunctionCall {
 /// See [`OutputFunctionCall::id`]: only provider-native `fc` item IDs may be
 /// sent back to the Responses API.
 fn is_not_function_call_item_id(id: &str) -> bool {
-    !id.starts_with("fc")
+    !id.starts_with("fc_")
 }
 
 /// The status of a given tool.
