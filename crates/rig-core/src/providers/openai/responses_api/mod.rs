@@ -14,7 +14,6 @@
 //! # }
 //! ```
 use super::InputAudio;
-use super::completion::ToolChoice;
 use super::responses_api::streaming::StreamingCompletionResponse;
 use crate::completion::{CompletionError, GetTokenUsage};
 use crate::http_client;
@@ -748,6 +747,100 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
         } = value;
 
         Self::function(name, description, parameters)
+    }
+}
+
+/// Tool choice for the OpenAI Responses API.
+///
+/// The Responses API accepts the `"auto"`/`"none"`/`"required"` modes shared
+/// with the Chat Completions API, and additionally supports forcing one
+/// specific function (`{"type": "function", "name": "..."}`) or restricting
+/// the model to a subset of the request's tools
+/// (`{"type": "allowed_tools", ...}`).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum ToolChoice {
+    /// `"auto"`, `"none"`, or `"required"`.
+    Mode(super::completion::ToolChoice),
+    /// A typed tool-choice object (`function` or `allowed_tools`).
+    Definition(ToolChoiceDefinition),
+}
+
+/// A typed Responses API tool-choice object.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolChoiceDefinition {
+    /// Force the model to call the named function tool.
+    Function {
+        /// Name of the function tool the model must call.
+        name: String,
+    },
+    /// Restrict the model to a subset of the request's tools.
+    AllowedTools {
+        /// Whether the model may still answer without a tool call (`auto`)
+        /// or must call one of the allowed tools (`required`).
+        mode: AllowedToolsMode,
+        /// The tools the model is allowed to call.
+        tools: Vec<AllowedTool>,
+    },
+}
+
+/// Constrains how the model may use the tools listed in
+/// [`ToolChoiceDefinition::AllowedTools`].
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AllowedToolsMode {
+    /// The model may call one of the allowed tools or answer directly.
+    Auto,
+    /// The model must call one of the allowed tools.
+    Required,
+}
+
+/// One entry of a [`ToolChoiceDefinition::AllowedTools`] tool list.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AllowedTool {
+    /// A function tool referenced by name.
+    Function {
+        /// Name of the allowed function tool.
+        name: String,
+    },
+}
+
+impl TryFrom<message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        let choice = match value {
+            message::ToolChoice::Auto => Self::Mode(super::completion::ToolChoice::Auto),
+            message::ToolChoice::None => Self::Mode(super::completion::ToolChoice::None),
+            message::ToolChoice::Required => Self::Mode(super::completion::ToolChoice::Required),
+            message::ToolChoice::Specific { function_names } => {
+                let mut names = function_names.into_iter();
+                let Some(first) = names.next() else {
+                    return Err(CompletionError::RequestError(
+                        "ToolChoice::Specific requires at least one function name".into(),
+                    ));
+                };
+
+                match names.next() {
+                    None => Self::Definition(ToolChoiceDefinition::Function { name: first }),
+                    Some(second) => {
+                        let tools = std::iter::once(first)
+                            .chain(std::iter::once(second))
+                            .chain(names)
+                            .map(|name| AllowedTool::Function { name })
+                            .collect();
+                        Self::Definition(ToolChoiceDefinition::AllowedTools {
+                            mode: AllowedToolsMode::Required,
+                            tools,
+                        })
+                    }
+                }
+            }
+        };
+
+        Ok(choice)
     }
 }
 
@@ -1769,12 +1862,24 @@ pub struct OutputReasoning {
 /// An OpenAI Responses API tool call. A call ID will be returned that must be used when creating a tool result to send back to OpenAI as a message input, otherwise an error will be received.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct OutputFunctionCall {
+    /// Provider-assigned `fc_...` item ID. The Responses API rejects
+    /// `function_call` input IDs that are not native `fc` item IDs, so IDs
+    /// minted outside the Responses API (by Rig's agent loop or another
+    /// provider) are omitted on serialization and the call is paired with its
+    /// output by `call_id` alone.
+    #[serde(default, skip_serializing_if = "is_not_function_call_item_id")]
     pub id: String,
     #[serde(with = "json_utils::stringified_json")]
     pub arguments: serde_json::Value,
     pub call_id: String,
     pub name: String,
     pub status: ToolStatus,
+}
+
+/// See [`OutputFunctionCall::id`]: only provider-native `fc` item IDs may be
+/// sent back to the Responses API.
+fn is_not_function_call_item_id(id: &str) -> bool {
+    !id.starts_with("fc_")
 }
 
 /// The status of a given tool.
@@ -2428,6 +2533,84 @@ mod tests {
             additional_params: None,
             output_schema: None,
         }
+    }
+
+    #[test]
+    fn responses_tool_choice_modes_serialize_as_plain_strings() {
+        for (choice, expected) in [
+            (message::ToolChoice::Auto, json!("auto")),
+            (message::ToolChoice::None, json!("none")),
+            (message::ToolChoice::Required, json!("required")),
+        ] {
+            let converted = ToolChoice::try_from(choice).expect("mode should convert");
+            assert_eq!(
+                serde_json::to_value(&converted).expect("serialize tool choice"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn responses_tool_choice_specific_single_name_serializes_as_named_function() {
+        let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+            function_names: vec!["get_weather".to_string()],
+        })
+        .expect("single specific tool should convert");
+
+        assert_eq!(
+            serde_json::to_value(&converted).expect("serialize tool choice"),
+            json!({"type": "function", "name": "get_weather"})
+        );
+    }
+
+    #[test]
+    fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
+        let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+            function_names: vec!["add".to_string(), "subtract".to_string()],
+        })
+        .expect("multiple specific tools should convert");
+
+        assert_eq!(
+            serde_json::to_value(&converted).expect("serialize tool choice"),
+            json!({
+                "type": "allowed_tools",
+                "mode": "required",
+                "tools": [
+                    {"type": "function", "name": "add"},
+                    {"type": "function", "name": "subtract"}
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn responses_tool_choice_specific_empty_names_error() {
+        let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+            function_names: vec![],
+        });
+
+        assert!(matches!(
+            converted,
+            Err(CompletionError::RequestError(error))
+                if error.to_string().contains("at least one function name")
+        ));
+    }
+
+    #[test]
+    fn responses_request_with_specific_tool_choice_serializes_named_function() {
+        let mut request = weather_tool_request();
+        request.tool_choice = Some(message::ToolChoice::Specific {
+            function_names: vec!["get_weather".to_string()],
+        });
+
+        let request =
+            CompletionRequest::try_from(("gpt-test".to_string(), request)).expect("convert");
+        let request_json = serde_json::to_value(&request).expect("serialize request");
+
+        assert_eq!(
+            request_json.get("tool_choice"),
+            Some(&json!({"type": "function", "name": "get_weather"}))
+        );
     }
 
     #[test]
@@ -3750,9 +3933,11 @@ mod tests {
         // The hand-written Serialize must reproduce the modeled wire shape, so a
         // decoded known item re-serializes value-equal to what it came from
         // (guards the `function_call` arm, including its stringified `arguments`).
+        // The item ID uses the provider-native `fc_` prefix; other IDs are
+        // intentionally dropped on serialization (see `OutputFunctionCall::id`).
         let item = json!({
             "type": "function_call",
-            "id": "call_1",
+            "id": "fc_1",
             "arguments": "{}",
             "call_id": "c1",
             "name": "search",
