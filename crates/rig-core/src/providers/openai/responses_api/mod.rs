@@ -197,8 +197,13 @@ pub enum InputContent {
 pub struct OpenAIReasoning {
     id: String,
     pub summary: Vec<ReasoningSummary>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub content: Vec<OpenAIReasoningContent>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_reasoning_text_content",
+        serialize_with = "serialize_reasoning_text_content",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub content: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encrypted_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -209,27 +214,6 @@ pub struct OpenAIReasoning {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ReasoningSummary {
     SummaryText { text: String },
-}
-
-/// Visible reasoning content inside an OpenAI Responses API `reasoning` item.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum OpenAIReasoningContent {
-    /// Plain reasoning text emitted by OpenAI-compatible providers.
-    ReasoningText { text: String },
-}
-
-impl OpenAIReasoningContent {
-    fn new(input: &str) -> Self {
-        Self::ReasoningText {
-            text: input.to_string(),
-        }
-    }
-
-    fn text(self) -> String {
-        let Self::ReasoningText { text } = self;
-        text
-    }
 }
 
 impl ReasoningSummary {
@@ -243,6 +227,48 @@ impl ReasoningSummary {
         let ReasoningSummary::SummaryText { text } = self;
         text.clone()
     }
+}
+
+fn reasoning_text_content_json(content: &[String]) -> Value {
+    Value::Array(
+        content
+            .iter()
+            .map(|text| {
+                serde_json::json!({
+                    "type": "reasoning_text",
+                    "text": text,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn serialize_reasoning_text_content<S>(content: &[String], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    reasoning_text_content_json(content).serialize(serializer)
+}
+
+fn deserialize_reasoning_text_content<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(match value {
+        Value::Array(items) => items
+            .into_iter()
+            .filter_map(|item| match item {
+                Value::Object(mut item) => item
+                    .remove("text")
+                    .and_then(|text| text.as_str().map(ToOwned::to_owned)),
+                Value::String(text) => Some(text),
+                _ => None,
+            })
+            .collect(),
+        Value::String(text) => vec![text],
+        _ => Vec::new(),
+    })
 }
 
 /// A tool result.
@@ -567,7 +593,7 @@ fn openai_reasoning_from_core(
     for content in &reasoning.content {
         match content {
             crate::message::ReasoningContent::Text { text, .. } => {
-                reasoning_content.push(OpenAIReasoningContent::new(text));
+                reasoning_content.push(text.clone());
             }
             crate::message::ReasoningContent::Summary(text) => {
                 summary.push(ReasoningSummary::new(text));
@@ -1548,7 +1574,7 @@ pub enum Output {
     Reasoning {
         id: String,
         summary: Vec<ReasoningSummary>,
-        content: Vec<OpenAIReasoningContent>,
+        content: Vec<String>,
         encrypted_content: Option<String>,
         status: Option<ToolStatus>,
     },
@@ -1571,8 +1597,8 @@ struct ReasoningFields {
     id: String,
     #[serde(default)]
     summary: Vec<ReasoningSummary>,
-    #[serde(default)]
-    content: Vec<OpenAIReasoningContent>,
+    #[serde(default, deserialize_with = "deserialize_reasoning_text_content")]
+    content: Vec<String>,
     #[serde(default)]
     encrypted_content: Option<String>,
     #[serde(default)]
@@ -1639,10 +1665,7 @@ impl Serialize for Output {
                     let map = value.as_object_mut().ok_or_else(|| {
                         serde::ser::Error::custom("reasoning output must serialize to an object")
                     })?;
-                    map.insert(
-                        "content".to_string(),
-                        serde_json::to_value(content).map_err(serde::ser::Error::custom)?,
-                    );
+                    map.insert("content".to_string(), reasoning_text_content_json(content));
                 }
                 Ok(value)
             }
@@ -1713,9 +1736,9 @@ impl From<Output> for Vec<completion::AssistantContent> {
                         }
                     })
                     .collect::<Vec<_>>();
-                content.extend(reasoning_content.into_iter().map(|content| {
+                content.extend(reasoning_content.into_iter().map(|text| {
                     message::ReasoningContent::Text {
-                        text: content.text(),
+                        text,
                         signature: None,
                     }
                 }));
@@ -3746,7 +3769,7 @@ mod tests {
 
     #[test]
     fn output_reasoning_round_trips_value_equal() {
-        // Highest-value parity guard: the `Reasoning` struct variant threads four
+        // Highest-value parity guard: the `Reasoning` struct variant threads its
         // fields by hand in *both* directions. Populated `encrypted_content` /
         // `status` (the `#[serde(default)]` optionals) must survive
         // serialize -> deserialize unchanged — catching a dropped field or a
@@ -3756,9 +3779,7 @@ mod tests {
             summary: vec![ReasoningSummary::SummaryText {
                 text: "weighing options".to_string(),
             }],
-            content: vec![OpenAIReasoningContent::ReasoningText {
-                text: "private reasoning".to_string(),
-            }],
+            content: vec!["private reasoning".to_string()],
             encrypted_content: Some("ENCRYPTED".to_string()),
             status: Some(ToolStatus::Completed),
         };
