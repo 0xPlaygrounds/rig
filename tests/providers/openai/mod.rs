@@ -9,6 +9,7 @@ mod cassette {
     mod extractor_usage;
     mod models;
     mod multi_extract;
+    mod openai_compatible_reasoning_content;
     mod permission_control;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;

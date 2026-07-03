@@ -76,7 +76,7 @@ fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
 }
 
 #[test]
-fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
+fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
     let mut reasoning =
         Reasoning::new_with_signature("step-1", Some("sig-1".to_string())).with_id("rs_2".into());
     reasoning
@@ -100,6 +100,15 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
     assert_eq!(items.len(), 1);
 
     let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    let content = item_json
+        .get("content")
+        .and_then(|value| value.as_array())
+        .expect("reasoning item should include reasoning content array");
+    let content_texts: Vec<&str> = content
+        .iter()
+        .filter(|entry| entry.get("type").and_then(|kind| kind.as_str()) == Some("reasoning_text"))
+        .filter_map(|entry| entry.get("text").and_then(|text| text.as_str()))
+        .collect();
     let summary = item_json
         .get("summary")
         .and_then(|value| value.as_array())
@@ -109,7 +118,8 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
         .filter_map(|entry| entry.get("text").and_then(|text| text.as_str()))
         .collect();
 
-    assert_eq!(summary_texts, vec!["step-1", "summary-2"]);
+    assert_eq!(content_texts, vec!["step-1"]);
+    assert_eq!(summary_texts, vec!["summary-2"]);
     assert_eq!(
         item_json
             .get("encrypted_content")
@@ -174,6 +184,31 @@ fn openai_responses_reasoning_output_preserves_encrypted_content() {
     assert!(matches!(
         reasoning.content.get(1),
         Some(ReasoningContent::Encrypted(value)) if value == "cipher_blob"
+    ));
+}
+
+#[test]
+fn openai_responses_reasoning_output_preserves_reasoning_text_content() {
+    let output: Output = serde_json::from_value(serde_json::json!({
+        "type": "reasoning",
+        "id": "rs_text_1",
+        "summary": [],
+        "content": [
+            { "type": "reasoning_text", "text": "visible reasoning" }
+        ],
+        "status": "completed"
+    }))
+    .expect("deserialize reasoning output");
+
+    let content: Vec<AssistantContent> = output.into();
+    assert_eq!(content.len(), 1);
+    let Some(AssistantContent::Reasoning(reasoning)) = content.first() else {
+        panic!("expected reasoning output content");
+    };
+    assert_eq!(reasoning.id.as_deref(), Some("rs_text_1"));
+    assert!(matches!(
+        reasoning.content.first(),
+        Some(ReasoningContent::Text { text, signature: None }) if text == "visible reasoning"
     ));
 }
 

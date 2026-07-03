@@ -111,7 +111,7 @@ mod tests {
                 text: "s2".to_string(),
             },
         ];
-        let choices = reasoning_choices_from_done_item("xr_1", &summary, Some("enc"));
+        let choices = reasoning_choices_from_done_item("xr_1", &summary, &[], Some("enc"));
 
         assert_eq!(choices.len(), 3);
         assert!(matches!(
