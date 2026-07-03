@@ -1,3 +1,4 @@
+use super::responses_api::{ResponsesProviderExt, SystemInstructionsPlacement};
 use crate::{
     client::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -21,7 +22,9 @@ const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 // OpenAI Responses API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExt;
+pub struct OpenAIResponsesExt {
+    pub(crate) system_instructions_placement: SystemInstructionsPlacement,
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAIResponsesExtBuilder;
@@ -30,7 +33,12 @@ pub struct OpenAIResponsesExtBuilder;
 // OpenAI Completions API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAICompletionsExt;
+pub struct OpenAICompletionsExt {
+    /// Carried through API switches so that a placement configured on a
+    /// Responses client survives `completions_api()` → `responses_api()`
+    /// round trips. Not used by Chat Completions requests themselves.
+    pub(crate) system_instructions_placement: SystemInstructionsPlacement,
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAICompletionsExtBuilder;
@@ -50,6 +58,12 @@ pub type CompletionsClientBuilder<H = crate::markers::Missing> =
 impl Provider for OpenAIResponsesExt {
     type Builder = OpenAIResponsesExtBuilder;
     const VERIFY_PATH: &'static str = "/models";
+}
+
+impl ResponsesProviderExt for OpenAIResponsesExt {
+    fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
+        self.system_instructions_placement
+    }
 }
 
 impl Provider for OpenAICompletionsExt {
@@ -100,7 +114,7 @@ impl ProviderBuilder for OpenAIResponsesExtBuilder {
     where
         H: HttpClientExt,
     {
-        Ok(OpenAIResponsesExt)
+        Ok(OpenAIResponsesExt::default())
     }
 }
 
@@ -119,7 +133,7 @@ impl ProviderBuilder for OpenAICompletionsExtBuilder {
     where
         H: HttpClientExt,
     {
-        Ok(OpenAICompletionsExt)
+        Ok(OpenAICompletionsExt::default())
     }
 }
 
@@ -145,10 +159,40 @@ where
         ExtractorBuilder::new(self.completion_model(model))
     }
 
+    /// Sets where Rig system instructions are placed in Responses requests for
+    /// every completion model created from this client, including through
+    /// [`CompletionClient::agent`] and [`Self::extractor`]. Models capture the
+    /// placement when they are created, so models built before this call are
+    /// unaffected. See [`SystemInstructionsPlacement`] for when each placement
+    /// applies.
+    pub fn with_system_instructions_placement(
+        self,
+        placement: SystemInstructionsPlacement,
+    ) -> Self {
+        let mut ext = *self.ext();
+        ext.system_instructions_placement = placement;
+        self.with_ext(ext)
+    }
+
+    /// Sends Rig system instructions as `system` messages in `input` instead of
+    /// as top-level Responses API `instructions` for every completion model
+    /// created from this client, including through [`CompletionClient::agent`]
+    /// and [`Self::extractor`]. Models built before this call are unaffected.
+    ///
+    /// OpenAI's Responses API supports `instructions`, and Rig uses it by
+    /// default. Use this compatibility fallback for OpenAI-compatible providers
+    /// that reject or ignore top-level `instructions`.
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
+    }
+
     /// Create a Completions API client from this Responses API client.
     /// Useful for switching to the traditional Chat Completions API.
     pub fn completions_api(self) -> CompletionsClient<H> {
-        self.with_ext(OpenAICompletionsExt)
+        let system_instructions_placement = self.ext().system_instructions_placement;
+        self.with_ext(OpenAICompletionsExt {
+            system_instructions_placement,
+        })
     }
 }
 
@@ -201,9 +245,14 @@ where
     }
 
     /// Create a Responses API client from this Completions API client.
-    /// Useful for switching to the newer Responses API.
+    /// Useful for switching to the newer Responses API. A system-instructions
+    /// placement configured before switching to the Completions API is
+    /// restored.
     pub fn responses_api(self) -> Client<H> {
-        self.with_ext(OpenAIResponsesExt)
+        let system_instructions_placement = self.ext().system_instructions_placement;
+        self.with_ext(OpenAIResponsesExt {
+            system_instructions_placement,
+        })
     }
 }
 

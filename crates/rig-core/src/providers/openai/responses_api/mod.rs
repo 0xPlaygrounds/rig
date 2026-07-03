@@ -861,26 +861,86 @@ pub enum ResponseStatus {
     Incomplete,
 }
 
+/// Controls where Rig system instructions are placed in an OpenAI Responses request.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SystemInstructionsPlacement {
+    /// Send the leading run of system instructions (the preamble and any system
+    /// messages that open the conversation) through the official top-level
+    /// `instructions` field. Mid-conversation system messages keep their
+    /// position in `input`.
+    #[default]
+    Instructions,
+    /// Send every system message through the top-level `instructions` field,
+    /// including mid-conversation ones.
+    ///
+    /// Use this for backends that reject the `system` role in `input` entirely.
+    AllInstructions,
+    /// Send system instructions as `system` messages in `input`.
+    ///
+    /// Use this only for OpenAI-compatible providers that do not support top-level
+    /// `instructions`.
+    InputSystemMessages,
+}
+
+/// Provider extensions that drive the OpenAI Responses request conversion.
+///
+/// Implemented by the `Ext` type of a [`crate::client::Client`] used with
+/// [`GenericResponsesCompletionModel`], so a client-level configuration can
+/// control request shaping for every model created from that client.
+pub trait ResponsesProviderExt {
+    /// Where Rig system instructions are placed in requests built from this
+    /// provider. See [`SystemInstructionsPlacement`].
+    ///
+    /// Deliberately has no default body: each provider must state its
+    /// placement explicitly, so a backend that can't handle the default
+    /// (top-level `instructions`) is never inherited by accident.
+    fn system_instructions_placement(&self) -> SystemInstructionsPlacement;
+}
+
 /// Attempt to try and create a `NewCompletionRequest` from a model name and [`crate::completion::CompletionRequest`]
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
     type Error = CompletionError;
     fn try_from(
-        (model, mut req): (String, crate::completion::CompletionRequest),
+        (model, request): (String, crate::completion::CompletionRequest),
     ) -> Result<Self, Self::Error> {
+        Self::try_from(ResponsesRequestParams {
+            model,
+            request,
+            system_instructions_placement: SystemInstructionsPlacement::default(),
+        })
+    }
+}
+
+/// Parameters for converting a [`crate::completion::CompletionRequest`] into a
+/// Responses API [`CompletionRequest`] with a non-default configuration.
+pub struct ResponsesRequestParams {
+    pub model: String,
+    pub request: crate::completion::CompletionRequest,
+    pub system_instructions_placement: SystemInstructionsPlacement,
+}
+
+impl TryFrom<ResponsesRequestParams> for CompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from(params: ResponsesRequestParams) -> Result<Self, Self::Error> {
+        let ResponsesRequestParams {
+            model,
+            request: mut req,
+            system_instructions_placement,
+        } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
-        let input = {
+        let preamble = req.preamble.take();
+        let mut instruction_parts = Vec::new();
+        let mut input = {
             let mut partial_history = vec![];
             partial_history.extend(chat_history);
 
-            // Initialize full history with preamble (or empty if non-existent)
-            // Some "Responses API compatible" providers don't support `instructions` field
-            // so we need to add a system message until further notice
-            let mut full_history: Vec<InputItem> = if let Some(content) = req.preamble {
-                vec![InputItem::system_message(content)]
-            } else {
-                Vec::new()
-            };
+            let mut full_history: Vec<InputItem> = preamble
+                .map(InputItem::system_message)
+                .into_iter()
+                .collect();
 
             for history_item in partial_history {
                 full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
@@ -889,10 +949,54 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             full_history
         };
 
+        let mut lift_system_text = |text: String| {
+            let text = text.trim();
+            if !text.is_empty() {
+                instruction_parts.push(text.to_string());
+            }
+        };
+        let items_before_lift = input.len();
+        match system_instructions_placement {
+            SystemInstructionsPlacement::Instructions => {
+                // Lift only the leading run of system items (the preamble and any
+                // system messages that open the conversation) into the top-level
+                // `instructions` field. Mid-conversation system messages keep
+                // their position in `input`, and a request made up solely of
+                // system messages keeps them in `input` so it stays non-empty.
+                let leading_system_texts: Vec<String> =
+                    input.iter().map_while(InputItem::system_text).collect();
+                if leading_system_texts.len() < input.len() {
+                    input.drain(..leading_system_texts.len());
+                    leading_system_texts
+                        .into_iter()
+                        .for_each(&mut lift_system_text);
+                }
+            }
+            SystemInstructionsPlacement::AllInstructions => {
+                // Lift every system item, wherever it appears, for backends
+                // that reject the `system` role in `input` entirely.
+                let mut remaining = Vec::with_capacity(input.len());
+                for item in input {
+                    match item.system_text() {
+                        Some(text) => lift_system_text(text),
+                        None => remaining.push(item),
+                    }
+                }
+                input = remaining;
+            }
+            SystemInstructionsPlacement::InputSystemMessages => {}
+        }
+        let instructions = (!instruction_parts.is_empty()).then(|| instruction_parts.join("\n\n"));
+        let lifted_system_items = input.len() < items_before_lift;
+
         let input = OneOrMany::many(input).map_err(|_| {
-            CompletionError::RequestError(
-                "OpenAI Responses request input must contain at least one item".into(),
-            )
+            CompletionError::RequestError(if lifted_system_items {
+                "OpenAI Responses request input must contain at least one non-system item \
+                 (system messages were lifted into the top-level `instructions` field)"
+                    .into()
+            } else {
+                "OpenAI Responses request input must contain at least one item".into()
+            })
         })?;
 
         let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
@@ -972,7 +1076,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
         Ok(Self {
             input,
             model,
-            instructions: None, // is currently None due to lack of support in compliant providers
+            instructions,
             max_output_tokens: req.max_tokens,
             stream,
             tool_choice,
@@ -996,6 +1100,7 @@ pub struct GenericResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = 
     /// Whether function tools should use strict mode. Disabled by default to match
     /// the Chat Completions API; enable with [`Self::with_strict_tools`].
     pub strict_tools: bool,
+    system_instructions_placement: SystemInstructionsPlacement,
 }
 
 /// The completion model struct for OpenAI's Responses API.
@@ -1008,26 +1113,23 @@ pub type ResponsesCompletionModel<H = reqwest::Client> =
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
+    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + 'static,
 {
     /// Creates a new [`ResponsesCompletionModel`].
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
+        let system_instructions_placement = client.ext().system_instructions_placement();
         Self {
             client,
             model: model.into(),
             tools: Vec::new(),
             strict_tools: false,
+            system_instructions_placement,
         }
     }
 
     pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            tools: Vec::new(),
-            strict_tools: false,
-        }
+        Self::new(client, model)
     }
 
     /// Enable strict mode for function tool schemas.
@@ -1037,6 +1139,27 @@ where
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
         self
+    }
+
+    /// Sets where Rig system instructions are placed in requests from this
+    /// model, overriding the client-level default. See
+    /// [`SystemInstructionsPlacement`] for when each placement applies.
+    pub fn with_system_instructions_placement(
+        mut self,
+        placement: SystemInstructionsPlacement,
+    ) -> Self {
+        self.system_instructions_placement = placement;
+        self
+    }
+
+    /// Sends Rig system instructions as `system` messages in `input` instead of
+    /// as top-level Responses API `instructions`.
+    ///
+    /// OpenAI's Responses API supports `instructions`, and Rig uses it by
+    /// default. Use this compatibility fallback for OpenAI-compatible providers
+    /// that reject or ignore top-level `instructions`.
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
     }
 
     /// Adds a default tool to all requests from this model.
@@ -1060,7 +1183,11 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionRequest, CompletionError> {
-        let mut req = CompletionRequest::try_from((self.model.clone(), completion_request))?;
+        let mut req = CompletionRequest::try_from(ResponsesRequestParams {
+            model: self.model.clone(),
+            request: completion_request,
+            system_instructions_placement: self.system_instructions_placement,
+        })?;
         req.tools.extend(self.tools.clone());
 
         if self.strict_tools {
@@ -1609,6 +1736,7 @@ where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
+        + ResponsesProviderExt
         + crate::client::DebugExt
         + Clone
         + WasmCompatSend
@@ -2256,6 +2384,245 @@ mod tests {
         assert_eq!(tool.parameters["required"], json!(["location", "unit"]));
     }
 
+    fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
+        completion::CompletionRequest {
+            model: None,
+            preamble: Some(preamble.to_string()),
+            chat_history: crate::OneOrMany::one(message::Message::user("Hello")),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    fn system_only_request(system_text: &str) -> completion::CompletionRequest {
+        completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one(completion::Message::system(system_text)),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn responses_request_uses_top_level_instructions_for_preamble_by_default() {
+        let req = CompletionRequest::try_from((
+            "gpt-4o-mini".to_string(),
+            request_with_preamble("You are concise."),
+        ))
+        .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert_eq!(serialized["instructions"], json!("You are concise."));
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[test]
+    fn responses_request_drops_whitespace_only_preamble() {
+        let req = CompletionRequest::try_from((
+            "gpt-4o-mini".to_string(),
+            request_with_preamble("  \n "),
+        ))
+        .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert!(
+            serialized.get("instructions").is_none(),
+            "a whitespace-only preamble carries no content and is dropped"
+        );
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[test]
+    fn responses_request_lifts_system_messages_to_top_level_instructions_by_default() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello")
+            .preamble("System one".to_string())
+            .message(completion::Message::system("System two"))
+            .build();
+
+        let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
+            .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert_eq!(
+            serialized["instructions"],
+            json!("System one\n\nSystem two")
+        );
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[test]
+    fn responses_request_with_only_system_messages_keeps_them_in_input() {
+        let req = CompletionRequest::try_from((
+            "gpt-4o-mini".to_string(),
+            system_only_request("System only"),
+        ))
+        .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert!(
+            serialized.get("instructions").is_none(),
+            "lifting a system-only history would leave input empty, so it stays in input"
+        );
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "system");
+        assert!(input[0].to_string().contains("System only"));
+    }
+
+    #[test]
+    fn responses_model_can_fallback_to_system_messages_in_input() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+            .with_system_instructions_as_messages();
+
+        let req = model
+            .create_completion_request(request_with_preamble("You are concise."))
+            .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert!(serialized.get("instructions").is_none());
+        assert_eq!(input.len(), 2);
+        assert_eq!(input[0]["role"], "system");
+        assert!(input[0].to_string().contains("You are concise."));
+        assert_eq!(input[1]["role"], "user");
+    }
+
+    #[test]
+    fn responses_client_can_fallback_to_system_messages_in_input() {
+        use crate::prelude::CompletionClient;
+
+        let client = crate::providers::openai::Client::new("dummy-key")
+            .expect("client")
+            .with_system_instructions_as_messages();
+        let model = client.completion_model("gpt-4o-mini");
+
+        let req = model
+            .create_completion_request(request_with_preamble("You are concise."))
+            .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert!(serialized.get("instructions").is_none());
+        assert_eq!(input.len(), 2);
+        assert_eq!(input[0]["role"], "system");
+        assert!(input[0].to_string().contains("You are concise."));
+        assert_eq!(input[1]["role"], "user");
+    }
+
+    #[test]
+    fn responses_model_can_lift_all_system_messages_via_placement() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+            .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
+
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "again")
+            .preamble("System one".to_string())
+            .message(completion::Message::user("hi"))
+            .message(completion::Message::system("Mid-conversation instruction"))
+            .build();
+
+        let req = model
+            .create_completion_request(request)
+            .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be array");
+
+        assert_eq!(
+            serialized["instructions"],
+            json!("System one\n\nMid-conversation instruction")
+        );
+        assert!(
+            input.iter().all(|item| item["role"] != "system"),
+            "AllInstructions should leave no system items in input: {input:?}"
+        );
+    }
+
+    #[test]
+    fn responses_client_placement_survives_completions_api_round_trip() {
+        use crate::prelude::CompletionClient;
+
+        let client = crate::providers::openai::Client::new("dummy-key")
+            .expect("client")
+            .with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
+            .completions_api()
+            .responses_api();
+        let model = client.completion_model("gpt-4o-mini");
+
+        let req = model
+            .create_completion_request(request_with_preamble("You are concise."))
+            .expect("request should convert");
+        let serialized = serde_json::to_value(&req).expect("request should serialize");
+
+        assert!(
+            serialized.get("instructions").is_none(),
+            "placement configured before completions_api() should survive responses_api()"
+        );
+        assert_eq!(serialized["input"][0]["role"], "system");
+    }
+
+    #[test]
+    fn all_instructions_system_only_input_reports_non_system_requirement() {
+        let err = CompletionRequest::try_from(ResponsesRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: system_only_request("System only"),
+            system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
+        })
+        .expect_err("system-only input should fail once every item is lifted");
+
+        assert!(
+            err.to_string().contains("non-system item"),
+            "error should explain that lifted system messages left input empty: {err}"
+        );
+    }
+
+    #[test]
+    fn all_instructions_whitespace_only_system_input_reports_non_system_requirement() {
+        let err = CompletionRequest::try_from(ResponsesRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: system_only_request("   "),
+            system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
+        })
+        .expect_err("whitespace-only system input should fail once every item is lifted");
+
+        assert!(
+            err.to_string().contains("non-system item"),
+            "even when lifted system text is whitespace-only (so no `instructions` field is \
+             produced), the error should explain that system messages were lifted: {err}"
+        );
+    }
+
     #[test]
     fn responses_request_conversion_keeps_tools_non_strict_by_default() {
         let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), weather_tool_request()))
@@ -2404,7 +2771,7 @@ mod tests {
     }
 
     #[test]
-    fn responses_request_keeps_documents_after_system_messages() {
+    fn responses_request_keeps_documents_after_lifted_system_messages() {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
             .message(completion::Message::system("System prompt"))
             .message(completion::Message::user("Earlier user turn"))
@@ -2416,35 +2783,37 @@ mod tests {
             .expect("request conversion should succeed");
 
         let serialized =
-            serde_json::to_value(&responses_request.input).expect("input should serialize");
-        let input = serialized.as_array().expect("input should be an array");
+            serde_json::to_value(&responses_request).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be an array");
 
-        assert_eq!(input.len(), 5);
-        assert_eq!(input[0]["role"], "system");
+        assert_eq!(serialized["instructions"], json!("System prompt"));
+        assert_eq!(input.len(), 4);
+        assert_eq!(input[0]["role"], "user");
+        assert!(
+            input[0].to_string().contains("<file id: doc1>"),
+            "document input should be first after system instructions are lifted: {input:?}"
+        );
         assert_eq!(input[1]["role"], "user");
         assert!(
-            input[1].to_string().contains("<file id: doc1>"),
-            "document input should follow system input: {input:?}"
-        );
-        assert_eq!(input[2]["role"], "user");
-        assert!(
-            input[2].to_string().contains("Earlier user turn"),
+            input[1].to_string().contains("Earlier user turn"),
             "prior user history should follow document input: {input:?}"
         );
-        assert_eq!(input[3]["role"], "assistant");
+        assert_eq!(input[2]["role"], "assistant");
         assert!(
-            input[3].to_string().contains("Earlier assistant turn"),
+            input[2].to_string().contains("Earlier assistant turn"),
             "prior assistant history should follow prior user history: {input:?}"
         );
-        assert_eq!(input[4]["role"], "user");
+        assert_eq!(input[3]["role"], "user");
         assert!(
-            input[4].to_string().contains("Prompt"),
+            input[3].to_string().contains("Prompt"),
             "prompt should remain last: {input:?}"
         );
     }
 
     #[test]
-    fn responses_direct_request_keeps_documents_after_system_messages() {
+    fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
         let request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
@@ -2468,19 +2837,31 @@ mod tests {
             .expect("request conversion should succeed");
 
         let serialized =
-            serde_json::to_value(&responses_request.input).expect("input should serialize");
-        let input = serialized.as_array().expect("input should be an array");
+            serde_json::to_value(&responses_request).expect("request should serialize");
+        let input = serialized["input"]
+            .as_array()
+            .expect("input should be an array");
 
-        assert_eq!(input.len(), 5);
-        assert_eq!(input[0]["role"], "system");
-        assert_eq!(input[1]["role"], "user");
-        assert!(
-            input[1].to_string().contains("<file id: doc1>"),
-            "document input should follow leading system input: {input:?}"
+        assert_eq!(
+            serialized["instructions"],
+            json!("System prompt"),
+            "only the leading run of system messages should be lifted"
         );
-        assert_eq!(input[2]["role"], "assistant");
-        assert_eq!(input[3]["role"], "system");
-        assert_eq!(input[4]["role"], "user");
+        assert_eq!(input.len(), 4);
+        assert_eq!(input[0]["role"], "user");
+        assert!(
+            input[0].to_string().contains("<file id: doc1>"),
+            "document input should follow lifted system instructions: {input:?}"
+        );
+        assert_eq!(input[1]["role"], "assistant");
+        assert_eq!(input[2]["role"], "system");
+        assert!(
+            input[2]
+                .to_string()
+                .contains("Mid-conversation instruction"),
+            "mid-conversation system messages should keep their position: {input:?}"
+        );
+        assert_eq!(input[3]["role"], "user");
         assert_eq!(
             input
                 .iter()

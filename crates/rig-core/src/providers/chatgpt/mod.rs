@@ -18,7 +18,6 @@
 
 mod auth;
 
-use crate::OneOrMany;
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient, Transport,
@@ -155,6 +154,15 @@ impl Provider for ChatGPTExt {
             base_url.trim_end_matches('/'),
             path.trim_start_matches('/')
         )
+    }
+}
+
+impl responses_api::ResponsesProviderExt for ChatGPTExt {
+    // The ChatGPT backend rejects the `system` role in `input`, so every
+    // system message — including mid-conversation ones — is lifted into the
+    // top-level `instructions` field.
+    fn system_instructions_placement(&self) -> responses_api::SystemInstructionsPlacement {
+        responses_api::SystemInstructionsPlacement::AllInstructions
     }
 }
 
@@ -360,17 +368,6 @@ where
         request: completion::CompletionRequest,
     ) -> Result<ResponsesRequest, CompletionError> {
         let mut request = self.openai_model().create_completion_request(request)?;
-
-        if let Some(system_instructions) =
-            normalize_system_messages_into_instructions(&mut request)?
-        {
-            request.instructions = Some(match request.instructions.as_deref() {
-                Some(existing) if !existing.trim().is_empty() => {
-                    format!("{system_instructions}\n\n{existing}")
-                }
-                _ => system_instructions,
-            });
-        }
 
         if let Some(default_instructions) = &self.client.ext().default_instructions {
             request.instructions = Some(merge_instructions(
@@ -627,36 +624,6 @@ fn config_dir() -> Option<PathBuf> {
     }
 }
 
-fn normalize_system_messages_into_instructions(
-    request: &mut ResponsesRequest,
-) -> Result<Option<String>, CompletionError> {
-    let mut system_instructions = Vec::new();
-    let mut filtered_items = Vec::new();
-
-    for item in request.input.clone() {
-        if let Some(system_text) = item.system_text() {
-            let system_text = system_text.trim();
-            if !system_text.is_empty() {
-                system_instructions.push(system_text.to_string());
-            }
-        } else {
-            filtered_items.push(item);
-        }
-    }
-
-    request.input = OneOrMany::many(filtered_items).map_err(|_| {
-        CompletionError::RequestError(
-            "ChatGPT responses request input must contain at least one non-system item".into(),
-        )
-    })?;
-
-    if system_instructions.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(system_instructions.join("\n\n")))
-    }
-}
-
 fn merge_instructions(default_instructions: &str, existing_instructions: Option<&str>) -> String {
     match existing_instructions
         .map(str::trim)
@@ -671,6 +638,7 @@ fn merge_instructions(default_instructions: &str, existing_instructions: Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::OneOrMany;
 
     #[test]
     fn test_parse_chatgpt_sse_completion() {
@@ -719,33 +687,65 @@ data: [DONE]"#;
         );
     }
 
+    fn chatgpt_conversion_request(
+        chat_history: OneOrMany<completion::Message>,
+    ) -> ResponsesRequest {
+        let client = crate::providers::chatgpt::Client::builder()
+            .oauth()
+            .build()
+            .expect("client");
+        let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
+
+        model
+            .openai_model()
+            .create_completion_request(completion::CompletionRequest {
+                model: Some("gpt-5.4".to_string()),
+                preamble: Some("System one".to_string()),
+                chat_history,
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .expect("request")
+    }
+
     #[test]
-    fn test_normalize_system_messages_into_instructions() {
-        let completion_request = completion::CompletionRequest {
-            model: Some("gpt-5.4".to_string()),
-            preamble: Some("System one".to_string()),
-            chat_history: OneOrMany::many(vec![
+    fn test_conversion_lifts_leading_system_messages_into_instructions() {
+        let request = chatgpt_conversion_request(
+            OneOrMany::many(vec![
                 completion::Message::system("System two"),
                 completion::Message::user("hi"),
             ])
             .expect("history"),
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        };
-        let mut request = ResponsesRequest::try_from(("gpt-5.4".to_string(), completion_request))
-            .expect("request");
+        );
 
-        let instructions = normalize_system_messages_into_instructions(&mut request)
-            .expect("normalize")
-            .expect("instructions");
-
-        assert_eq!(instructions, "System one\n\nSystem two");
+        assert_eq!(
+            request.instructions.as_deref(),
+            Some("System one\n\nSystem two")
+        );
         assert_eq!(request.input.len(), 1);
+    }
+
+    #[test]
+    fn test_conversion_lifts_mid_conversation_system_messages() {
+        let request = chatgpt_conversion_request(
+            OneOrMany::many(vec![
+                completion::Message::user("hi"),
+                completion::Message::system("Mid-conversation instruction"),
+                completion::Message::user("again"),
+            ])
+            .expect("history"),
+        );
+
+        assert_eq!(
+            request.instructions.as_deref(),
+            Some("System one\n\nMid-conversation instruction")
+        );
+        assert_eq!(request.input.len(), 2);
     }
 
     #[test]

@@ -13,6 +13,7 @@ async fn responses_api_no_think_returns_text() {
         "responses_api/responses_api_no_think_returns_text",
         |client| async move {
             let agent = client
+                .with_system_instructions_as_messages()
                 .agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
@@ -35,6 +36,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
         "responses_api/responses_api_reasoning_plus_answer_completes",
         |client| async move {
             let agent = client
+                .with_system_instructions_as_messages()
                 .agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(512)
@@ -59,6 +61,7 @@ async fn responses_api_multi_turn_replays_history() {
         "responses_api/responses_api_multi_turn_replays_history",
         |client| async move {
             let agent = client
+                .with_system_instructions_as_messages()
                 .agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(256)
