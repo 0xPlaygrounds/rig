@@ -89,7 +89,7 @@ impl ProviderBuilder for DeepSeekExtBuilder {
 
 pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<DeepSeekExtBuilder, String, H>;
+    client::ClientBuilder<DeepSeekExtBuilder, DeepSeekApiKey, H>;
 
 impl ProviderClient for Client {
     type Input = DeepSeekApiKey;
@@ -1147,10 +1147,9 @@ mod tests {
     fn test_client_initialization() {
         let _client =
             crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::deepseek::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let builder: crate::providers::deepseek::ClientBuilder =
+            crate::providers::deepseek::Client::builder().api_key("dummy-key");
+        let _client_from_builder = builder.build().expect("Client::builder() failed");
     }
 
     #[test]
