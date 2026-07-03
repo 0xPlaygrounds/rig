@@ -43,6 +43,7 @@ pub struct StreamingCompletionResponse {
 pub(crate) fn reasoning_choices_from_done_item(
     id: &str,
     summary: &[ReasoningSummary],
+    content: &[String],
     encrypted_content: Option<&str>,
 ) -> Vec<RawStreamingChoice<StreamingCompletionResponse>> {
     let mut choices = summary
@@ -54,6 +55,14 @@ pub(crate) fn reasoning_choices_from_done_item(
             },
         })
         .collect::<Vec<_>>();
+
+    choices.extend(content.iter().map(|text| RawStreamingChoice::Reasoning {
+        id: Some(id.to_owned()),
+        content: ReasoningContent::Text {
+            text: text.to_owned(),
+            signature: None,
+        },
+    }));
 
     if let Some(encrypted_content) = encrypted_content {
         choices.push(RawStreamingChoice::Reasoning {
@@ -261,6 +270,12 @@ impl RawChoiceAccumulator {
                     reasoning: delta.delta,
                 });
             }
+            ItemChunkKind::ReasoningTextDelta(delta) => {
+                immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
+                    id: outer_item_id,
+                    reasoning: delta.delta,
+                });
+            }
             ItemChunkKind::RefusalDelta(delta) => {
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
@@ -332,12 +347,14 @@ impl RawChoiceAccumulator {
             Output::Reasoning {
                 id,
                 summary,
+                content,
                 encrypted_content,
                 ..
             } => {
                 immediate.extend(reasoning_choices_from_done_item(
                     &id,
                     &summary,
+                    &content,
                     encrypted_content.as_deref(),
                 ));
             }
@@ -411,6 +428,17 @@ pub(crate) fn raw_choices_from_sse_body(
                 if let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) {
                     raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
                         id: None,
+                        reasoning: delta.to_owned(),
+                    });
+                }
+            }
+            Some("response.reasoning_text.delta") => {
+                if let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) {
+                    raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
+                        id: value
+                            .get("item_id")
+                            .and_then(serde_json::Value::as_str)
+                            .map(ToOwned::to_owned),
                         reasoning: delta.to_owned(),
                     });
                 }
@@ -717,6 +745,8 @@ pub enum ItemChunkKind {
     ReasoningSummaryTextDelta(SummaryTextChunk),
     #[serde(rename = "response.reasoning_summary_text.done")]
     ReasoningSummaryTextDone(SummaryTextChunk),
+    #[serde(rename = "response.reasoning_text.delta")]
+    ReasoningTextDelta(DeltaTextChunkWithItemId),
     /// Catch-all for unknown item chunk types (e.g., `web_search_call` events).
     /// This prevents unknown streaming events from breaking deserialization.
     #[serde(other)]
@@ -991,9 +1021,11 @@ mod tests {
                 text: "step 2".to_string(),
             },
         ];
-        let choices = reasoning_choices_from_done_item("rs_1", &summary, Some("enc_blob"));
+        let content = vec!["private reasoning".to_string()];
+        let choices =
+            reasoning_choices_from_done_item("rs_1", &summary, &content, Some("enc_blob"));
 
-        assert_eq!(choices.len(), 3);
+        assert_eq!(choices.len(), 4);
         assert!(matches!(
             choices.first(),
             Some(RawStreamingChoice::Reasoning {
@@ -1012,8 +1044,69 @@ mod tests {
             choices.get(2),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
+                content: ReasoningContent::Text { text, signature: None },
+            }) if id == "rs_1" && text == "private reasoning"
+        ));
+        assert!(matches!(
+            choices.get(3),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
                 content: ReasoningContent::Encrypted(data),
             }) if id == "rs_1" && data == "enc_blob"
+        ));
+    }
+
+    #[test]
+    fn reasoning_output_item_done_emits_reasoning_text_content() {
+        let body = format!(
+            "data: {}\n",
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "reasoning",
+                    "id": "rs_text_1",
+                    "summary": [],
+                    "content": [{ "type": "reasoning_text", "text": "visible reasoning" }],
+                    "status": "completed"
+                },
+            })
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("sse body should decode");
+
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Text { text, signature: None },
+            }) if id == "rs_text_1" && text == "visible reasoning"
+        ));
+    }
+
+    #[test]
+    fn reasoning_text_delta_emits_reasoning_delta() {
+        let body = format!(
+            "data: {}\n",
+            json!({
+                "type": "response.reasoning_text.delta",
+                "item_id": "rs_delta_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "thinking",
+            })
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("sse body should decode");
+
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::ReasoningDelta { id: Some(id), reasoning })
+                if id == "rs_delta_1" && reasoning == "thinking"
         ));
     }
 
@@ -1058,7 +1151,7 @@ mod tests {
         let summary = vec![ReasoningSummary::SummaryText {
             text: "only summary".to_string(),
         }];
-        let choices = reasoning_choices_from_done_item("rs_2", &summary, None);
+        let choices = reasoning_choices_from_done_item("rs_2", &summary, &[], None);
 
         assert_eq!(choices.len(), 1);
         assert!(matches!(

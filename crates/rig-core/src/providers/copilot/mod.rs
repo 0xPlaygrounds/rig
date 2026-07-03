@@ -1100,10 +1100,11 @@ where
                                             .with_call_id(func.call_id.clone());
                                             tool_calls.push(RawStreamingChoice::ToolCall(raw_tool_call));
                                         }
-                                        StreamingItemDoneOutput { item: responses_api::Output::Reasoning { summary, id, encrypted_content, .. }, .. } => {
+                                        StreamingItemDoneOutput { item: responses_api::Output::Reasoning { summary, id, content, encrypted_content, .. }, .. } => {
                                             for reasoning_choice in responses_api::streaming::reasoning_choices_from_done_item(
                                                 id,
                                                 summary,
+                                                content,
                                                 encrypted_content.as_deref(),
                                             ) {
                                                 match reasoning_choice {
