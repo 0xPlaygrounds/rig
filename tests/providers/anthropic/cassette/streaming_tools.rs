@@ -402,7 +402,10 @@ struct RecordedRequest {
     body: Option<String>,
 }
 
-fn assert_cassette_groups_multiple_tool_results(scenario: &str, expected_tools: &[&str]) {
+pub(super) fn assert_cassette_groups_multiple_tool_results(
+    scenario: &str,
+    expected_tools: &[&str],
+) {
     let cassette_path = crate::cassettes::cassette_path("anthropic", scenario);
     let contents = std::fs::read_to_string(&cassette_path).unwrap_or_else(|error| {
         panic!(
@@ -449,7 +452,7 @@ fn messages_group_tool_results(messages: &[Value], expected_tools: &[&str]) -> b
     })
 }
 
-fn assert_cassette_tool_results_follow_assistant_tool_use_order(
+pub(super) fn assert_cassette_tool_results_follow_assistant_tool_use_order(
     scenario: &str,
     expected_tools: &[&str],
 ) {

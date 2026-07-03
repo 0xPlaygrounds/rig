@@ -1544,6 +1544,16 @@ impl CassetteScrubber {
                         continue;
                     }
 
+                    // Anthropic redacted thinking carries an opaque encrypted
+                    // blob; placeholder it like OpenAI encrypted reasoning so
+                    // fixtures never commit provider ciphertext.
+                    if key == "data" && object_type.as_deref() == Some("redacted_thinking") {
+                        if let Value::String(data) = value {
+                            *data = self.placeholder(data, "redacted_thinking_");
+                        }
+                        continue;
+                    }
+
                     if key == "id"
                         && should_scrub_id_for_object(
                             self.policy,
