@@ -114,12 +114,15 @@ Provider implementations should include:
 - `Provider` implementation
 - `Capabilities` declaration
 - `ProviderBuilder` implementation
-- client type aliases
+- `ProviderClient::{from_env, from_val}`
+- public `Client` and `ClientBuilder` aliases; the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`
+- explicit API-key marker/auth types with redacted debug behavior for credential-bearing values
 - model constants where useful
 - request conversion from Rig request types
 - response conversion into Rig response types
 - streaming support when the provider supports streaming
-- telemetry spans following existing GenAI conventions
+- provider-response error preservation through the relevant Rig error helpers
+- `ProviderResponseExt` and telemetry spans following existing GenAI conventions
 - tests or examples appropriate to the provider
 
 Do not add request or response fields that do not exist in the provider's real API.

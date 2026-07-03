@@ -31,6 +31,30 @@
 //! [`EmbeddingsClient`](crate::client::EmbeddingsClient) are implemented only
 //! when the provider declares that capability.
 //!
+//! # Provider implementation checklist
+//!
+//! When adding or changing a provider, verify that the integration includes:
+//!
+//! - public `Client` and `ClientBuilder` aliases with the correct generics,
+//!   including a `ClientBuilder` API-key generic matching `ProviderBuilder::ApiKey`;
+//! - the `Provider`, `ProviderBuilder`, `Capabilities`, and `ProviderClient`
+//!   implementations;
+//! - explicit API-key marker/auth types with redacted debug behavior for
+//!   credential-bearing values;
+//! - model constants where they are useful and current;
+//! - request conversion from Rig request types, such as
+//!   [`CompletionRequest`](crate::completion::CompletionRequest), without
+//!   inventing unsupported provider API fields;
+//! - response conversion into Rig response types, including usage and tool or
+//!   multimodal content where applicable;
+//! - streaming support when the provider supports streaming;
+//! - provider-response error preservation plus `ProviderResponseExt` and
+//!   telemetry fields consistent with nearby providers where applicable;
+//! - unit, cassette, or live-test coverage appropriate to the changed behavior;
+//! - root facade feature/docs updates for companion provider crates; and
+//! - examples and documentation that match the actual API, feature flags, and
+//!   credential requirements.
+//!
 //! # Example
 //! ```no_run
 //! use rig_core::{
