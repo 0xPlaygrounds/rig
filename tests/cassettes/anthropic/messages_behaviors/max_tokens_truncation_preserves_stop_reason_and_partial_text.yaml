@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Write a story of at least 150 words about a lighthouse keeper.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a storyteller.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"# The Last Light of Kettle Point\n\nEvery evening, without fail, old Magnus Calloway climbed the one hundred and twelve steps of the Kettle Point lighthouse. He had counted them so many times over thirty-seven years that the number lived in his bones rather than his mind.\n\nThe lamp","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"max_tokens","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":29,"output_tokens":64,"service_tier":"standard"}}'

@@ -6,6 +6,11 @@ mod cassette {
     mod document_file_id;
     mod empty_end_turn;
     mod image;
+    mod messages_behaviors;
+    mod messages_sessions;
+    mod messages_thinking;
+    mod messages_tool_args;
+    mod messages_tool_choice;
     mod models;
     mod multi_turn_streaming;
     mod opus_4_7;

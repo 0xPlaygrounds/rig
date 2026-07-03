@@ -1,0 +1,37 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Look up the harbor label with the tool.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant with perfect recall of this conversation.","type":"text"}],"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"Sure! Let me look that up right away.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":572,"output_tokens":49,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"My favorite color is teal. Please remember it.","type":"text"}],"role":"user"},{"content":[{"text":"Noted - your favorite color is teal.","type":"text"}],"role":"assistant"},{"content":[{"text":"Now look up the harbor label with the tool.","type":"text"}],"role":"user"},{"content":[{"text":"Checking the harbor label now.","type":"text"},{"id":"toolu_REDACTED_1","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"text":"The harbor label is crimson-harbor.","type":"text"}],"role":"assistant"},{"content":[{"text":"In one short sentence: what is my favorite color, and what was the harbor label you looked up earlier?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant with perfect recall of this conversation.","type":"text"}],"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"Your favorite color is teal, and the harbor label is crimson-harbor.","type":"text"}],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":699,"output_tokens":20,"service_tier":"standard"}}'
