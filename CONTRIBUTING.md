@@ -54,6 +54,43 @@ AI-generated PRs may require additional review to ensure correctness and long-te
 
 Other than that, each PR will be taken on a case-by-case basis.
 
+### Provider implementation checklist
+
+When adding or changing a provider, use this checklist to keep the provider
+integration consistent with Rig's generic client architecture and contributor
+expectations:
+
+- `Client` and `ClientBuilder` public aliases use the correct generic types;
+  the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`.
+- Provider extension and builder types are defined and wired through the
+  `Provider` implementation.
+- `Capabilities` declares each supported capability with `Capable<T>` and each
+  unsupported capability with `Nothing`.
+- `ProviderBuilder` sets the correct base URL, API-key type, and provider
+  extension construction behavior.
+- `ProviderClient::{from_env, from_val}` use the correct environment variable
+  and input type.
+- API-key marker/auth types are explicit, insert the intended headers, and keep
+  credential-bearing debug output redacted.
+- Model constants are added where they are useful and are current with the
+  provider's real API.
+- Requests convert from Rig request types such as `CompletionRequest` without
+  adding fields that the provider API does not support.
+- Responses convert into Rig response types, including token usage and tool or
+  multimodal content where applicable.
+- Streaming is implemented when the provider supports it, and follows existing
+  streaming normalization patterns.
+- Provider error responses preserve status/body details through the relevant Rig
+  error helpers, so callers can inspect provider response details.
+- `ProviderResponseExt`, telemetry spans, and GenAI fields are populated
+  consistently with nearby providers where applicable.
+- Tests cover the smallest reliable scope: unit tests, cassette-backed provider
+  tests, or ignored live tests when cassette replay is unsuitable.
+- Companion provider crates update the root facade dependency, feature flag,
+  re-export, README, examples, and crate docs as applicable.
+- Examples and documentation use actual feature flags, module paths, model
+  constants, and credential requirements.
+
 ### PRs that will be rejected
 As with every open source repo, not every contribution is within the scope of the repo and as Rig grows, so will the number of potential contributions - which also means defining an absolute list of things that are not within the scope of Rig. This includes but is not limited to:
 - Changes that would force model provider integrations to diverge from the original API (eg attempting to add a field to the OpenAI API that does not actually exist within the OpenAI API for the sake of satisfying another model provider)
