@@ -447,9 +447,7 @@ where
 
         match raw_response.clone().try_into() {
             Ok(response) => Ok(response),
-            Err(CompletionError::ResponseError(message))
-                if message == "Response contained no parts" =>
-            {
+            Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
                 responses_api::streaming::completion_response_from_sse_body(&text, raw_response)
                     .await
             }
