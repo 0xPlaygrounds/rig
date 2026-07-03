@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Book this trip by calling the plan_trip tool exactly once with these exact values: itinerary.city = \"Kyoto\", itinerary.days = 3, itinerary.activities = [\"temples\", \"tea ceremony\"], itinerary.lodging.name = \"Sakura Inn\", itinerary.lodging.rooms = 2. After the tool returns, repeat its confirmation code in one short sentence.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a travel booking assistant. Use the plan_trip tool for every booking request and copy the requested values into the tool arguments exactly as given.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Book a trip from a nested itinerary object.","name":"plan_trip","parameters":{"properties":{"itinerary":{"description":"The trip to book.","properties":{"activities":{"items":{"type":"string"},"type":"array"},"city":{"type":"string"},"days":{"type":"integer"},"lodging":{"properties":{"name":{"type":"string"},"rooms":{"type":"integer"}},"required":["name","rooms"],"type":"object"}},"required":["city","days","activities","lodging"],"type":"object"}},"required":["itinerary"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"itinerary":{"activities":["temples","tea ceremony"],"city":"Kyoto","days":3,"lodging":{"name":"Sakura Inn","rooms":2}}},"name":"plan_trip"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":56,"promptTokenCount":301,"promptTokensDetails":[{"modality":"TEXT","tokenCount":301}],"serviceTier":"standard","thoughtsTokenCount":228,"totalTokenCount":585}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Book this trip by calling the plan_trip tool exactly once with these exact values: itinerary.city = \"Kyoto\", itinerary.days = 3, itinerary.activities = [\"temples\", \"tea ceremony\"], itinerary.lodging.name = \"Sakura Inn\", itinerary.lodging.rooms = 2. After the tool returns, repeat its confirmation code in one short sentence.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"itinerary":{"activities":["temples","tea ceremony"],"city":"Kyoto","days":3,"lodging":{"name":"Sakura Inn","rooms":2}}},"name":"plan_trip"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"plan_trip","response":{"result":"Booked Kyoto for 3 day(s), 2 room(s) at Sakura Inn, with 2 planned activities. Confirmation code SAKURA-77."}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a travel booking assistant. Use the plan_trip tool for every booking request and copy the requested values into the tool arguments exactly as given.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Book a trip from a nested itinerary object.","name":"plan_trip","parameters":{"properties":{"itinerary":{"description":"The trip to book.","properties":{"activities":{"items":{"type":"string"},"type":"array"},"city":{"type":"string"},"days":{"type":"integer"},"lodging":{"properties":{"name":{"type":"string"},"rooms":{"type":"integer"}},"required":["name","rooms"],"type":"object"}},"required":["city","days","activities","lodging"],"type":"object"}},"required":["itinerary"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Your trip to Kyoto has been booked with confirmation code SAKURA-77."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":17,"promptTokenCount":406,"promptTokensDetails":[{"modality":"TEXT","tokenCount":406}],"serviceTier":"standard","totalTokenCount":423}}'

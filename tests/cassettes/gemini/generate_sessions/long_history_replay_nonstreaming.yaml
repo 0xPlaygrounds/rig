@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"My favorite color is teal. Please remember it.","thought":false}],"role":"user"},{"parts":[{"text":"Noted - your favorite color is teal.","thought":false}],"role":"model"},{"parts":[{"text":"Now look up the harbor label with the tool.","thought":false}],"role":"user"},{"parts":[{"text":"Checking the harbor label now.","thought":false},{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"},{"parts":[{"text":"The harbor label is crimson-harbor.","thought":false}],"role":"model"},{"parts":[{"text":"In one short sentence: what is my favorite color, and what was the harbor label you looked up earlier?","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant with perfect recall of this conversation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Your favorite color is teal, and the harbor label looked up earlier was crimson-harbor."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":19,"promptTokenCount":149,"promptTokensDetails":[{"modality":"TEXT","tokenCount":149}],"serviceTier":"standard","totalTokenCount":168}}'

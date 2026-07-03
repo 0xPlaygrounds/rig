@@ -1,0 +1,56 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"First use the add tool to compute 3 + 4. After you receive that result, use the subtract tool to subtract 5 from it. Then state the final number in one short sentence.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator. Use the provided tools instead of doing arithmetic yourself. Call exactly one tool at a time and wait for its result before deciding the next step.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":3,"y":4},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":190,"promptTokensDetails":[{"modality":"TEXT","tokenCount":190}],"serviceTier":"standard","thoughtsTokenCount":68,"totalTokenCount":276}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"First use the add tool to compute 3 + 4. After you receive that result, use the subtract tool to subtract 5 from it. Then state the final number in one short sentence.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":4},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":7}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator. Use the provided tools instead of doing arithmetic yourself. Call exactly one tool at a time and wait for its result before deciding the next step.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":7,"y":5},"name":"subtract"},"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":221,"promptTokensDetails":[{"modality":"TEXT","tokenCount":221}],"serviceTier":"standard","thoughtsTokenCount":46,"totalTokenCount":285}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"First use the add tool to compute 3 + 4. After you receive that result, use the subtract tool to subtract 5 from it. Then state the final number in one short sentence.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":4},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":7}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":7,"y":5},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":2}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator. Use the provided tools instead of doing arithmetic yourself. Call exactly one tool at a time and wait for its result before deciding the next step.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The final number is 2.","thoughtSignature":"signature_REDACTED_3"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_3","usageMetadata":{"candidatesTokenCount":7,"promptTokenCount":252,"promptTokensDetails":[{"modality":"TEXT","tokenCount":252}],"serviceTier":"standard","thoughtsTokenCount":27,"totalTokenCount":286}}'

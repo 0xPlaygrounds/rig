@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Write a story of at least 150 words about a lighthouse keeper.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":48,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a storyteller.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Elara had seen a thousand storms, each one a furious ballet of wind and water against the unyielding stone of the lighthouse. Tonight, however, felt different. The air thrummed with an ancient energy, and the waves, usually"}],"role":"model"},"finishReason":"MAX_TOKENS","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":48,"promptTokenCount":23,"promptTokensDetails":[{"modality":"TEXT","tokenCount":23}],"serviceTier":"standard","totalTokenCount":71}}'
