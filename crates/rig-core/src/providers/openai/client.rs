@@ -161,8 +161,10 @@ where
 
     /// Sets where Rig system instructions are placed in Responses requests for
     /// every completion model created from this client, including through
-    /// [`CompletionClient::agent`] and [`Self::extractor`]. See
-    /// [`SystemInstructionsPlacement`] for when each placement applies.
+    /// [`CompletionClient::agent`] and [`Self::extractor`]. Models capture the
+    /// placement when they are created, so models built before this call are
+    /// unaffected. See [`SystemInstructionsPlacement`] for when each placement
+    /// applies.
     pub fn with_system_instructions_placement(
         self,
         placement: SystemInstructionsPlacement,
@@ -175,7 +177,7 @@ where
     /// Sends Rig system instructions as `system` messages in `input` instead of
     /// as top-level Responses API `instructions` for every completion model
     /// created from this client, including through [`CompletionClient::agent`]
-    /// and [`Self::extractor`].
+    /// and [`Self::extractor`]. Models built before this call are unaffected.
     ///
     /// OpenAI's Responses API supports `instructions`, and Rig uses it by
     /// default. Use this compatibility fallback for OpenAI-compatible providers
