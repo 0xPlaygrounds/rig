@@ -20,7 +20,7 @@ type MistralApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<MistralExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MistralBuilder, String, H>;
+    client::ClientBuilder<MistralBuilder, MistralApiKey, H>;
 
 impl Provider for MistralExt {
     type Builder = MistralBuilder;
@@ -161,9 +161,8 @@ mod tests {
     fn test_client_initialization() {
         let _client =
             crate::providers::mistral::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::mistral::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let builder: crate::providers::mistral::ClientBuilder =
+            crate::providers::mistral::Client::builder().api_key("dummy-key");
+        let _client_from_builder = builder.build().expect("Client::builder() failed");
     }
 }

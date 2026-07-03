@@ -91,7 +91,8 @@ impl ProviderBuilder for GroqBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<GroqBuilder, String, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<GroqBuilder, GroqApiKey, H>;
 
 impl ProviderClient for Client {
     type Input = String;
@@ -793,10 +794,9 @@ mod tests {
     fn test_client_initialization() {
         let _client =
             crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::groq::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let builder: crate::providers::groq::ClientBuilder =
+            crate::providers::groq::Client::builder().api_key("dummy-key");
+        let _client_from_builder = builder.build().expect("Client::builder() failed");
     }
 
     #[tokio::test]
