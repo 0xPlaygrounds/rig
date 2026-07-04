@@ -1,12 +1,16 @@
-use serde::{Deserialize, Serialize};
+use http::Request;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{convert::Infallible, str::FromStr};
 use tracing::{Instrument, Level, enabled, info_span};
 
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::internal::buffered;
-use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
+use crate::providers::internal::openai_chat_completions_compatible::{
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+    CompatibleToolCallChunk,
+};
+use crate::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -53,6 +57,43 @@ pub enum UserContent {
     Text { text: String },
 }
 
+fn mistral_content_value_to_text(value: serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text,
+        serde_json::Value::Array(parts) => parts
+            .into_iter()
+            .filter_map(|part| {
+                (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
+                    .then(|| part.get("text").and_then(serde_json::Value::as_str))
+                    .flatten()
+                    .map(ToOwned::to_owned)
+            })
+            .collect::<Vec<_>>()
+            .join(""),
+        _ => String::new(),
+    }
+}
+
+fn deserialize_mistral_content_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<serde_json::Value>::deserialize(deserializer)?
+        .map(mistral_content_value_to_text)
+        .unwrap_or_default())
+}
+
+fn deserialize_optional_mistral_content_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<serde_json::Value>::deserialize(deserializer)?
+        .map(mistral_content_value_to_text)
+        .filter(|text| !text.is_empty()))
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
@@ -68,6 +109,7 @@ pub enum Message {
         content: String,
     },
     Assistant {
+        #[serde(default, deserialize_with = "deserialize_mistral_content_string")]
         content: String,
         #[serde(
             default,
@@ -83,6 +125,7 @@ pub enum Message {
     },
     Tool {
         /// The name of the tool that was called
+        #[serde(skip_serializing_if = "String::is_empty")]
         name: String,
         /// The content of the tool call
         content: String,
@@ -126,7 +169,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             call_id,
                             content: tool_content,
                         }) => {
-                            let call_id_key = call_id.unwrap_or_else(|| id.clone());
+                            let tool_call_id = call_id.unwrap_or(id);
                             let content_text = tool_content
                                 .into_iter()
                                 .find_map(|content_item| match content_item {
@@ -135,9 +178,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 })
                                 .unwrap_or_default();
                             tool_result_messages.push(Message::Tool {
-                                name: id,
+                                name: String::new(),
                                 content: content_text,
-                                tool_call_id: call_id_key,
+                                tool_call_id,
                             });
                         }
                         message::UserContent::Text(message::Text { text, .. }) => {
@@ -304,12 +347,34 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub model: String,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub enum ToolChoice {
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum ToolChoice {
+    Mode(ToolChoiceMode),
+    Function {
+        r#type: ToolChoiceFunctionKind,
+        function: ToolChoiceFunction,
+    },
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+enum ToolChoiceMode {
     #[default]
     Auto,
     None,
     Any,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ToolChoiceFunctionKind {
+    Function,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ToolChoiceFunction {
+    name: String,
 }
 
 impl TryFrom<message::ToolChoice> for ToolChoice {
@@ -317,18 +382,35 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 
     fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
         let res = match value {
-            message::ToolChoice::Auto => Self::Auto,
-            message::ToolChoice::None => Self::None,
-            message::ToolChoice::Required => Self::Any,
-            message::ToolChoice::Specific { .. } => {
-                return Err(CompletionError::ProviderError(
-                    "Mistral doesn't support requiring specific tools to be called".to_string(),
-                ));
+            message::ToolChoice::Auto => Self::Mode(ToolChoiceMode::Auto),
+            message::ToolChoice::None => Self::Mode(ToolChoiceMode::None),
+            message::ToolChoice::Required => Self::Mode(ToolChoiceMode::Any),
+            message::ToolChoice::Specific { function_names } => {
+                specific_tool_choice(function_names)?
             }
         };
 
         Ok(res)
     }
+}
+
+fn specific_tool_choice(function_names: Vec<String>) -> Result<ToolChoice, CompletionError> {
+    let mut names = function_names.into_iter();
+    let Some(name) = names.next() else {
+        return Err(CompletionError::RequestError(
+            "ToolChoice::Specific requires at least one function name".into(),
+        ));
+    };
+    if names.next().is_some() {
+        return Err(CompletionError::RequestError(
+            "Mistral only supports forcing one specific tool".into(),
+        ));
+    }
+
+    Ok(ToolChoice::Function {
+        r#type: ToolChoiceFunctionKind::Function,
+        function: ToolChoiceFunction { name },
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -337,10 +419,12 @@ pub(super) struct MistralCompletionRequest {
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    tool_choice: Option<ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -350,9 +434,6 @@ impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let chat_history = req.chat_history_with_documents();
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Mistral");
-        }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble.clone())],
@@ -381,13 +462,41 @@ impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
         let tool_choice = req
             .tool_choice
             .clone()
-            .map(crate::providers::openai::completion::ToolChoice::try_from)
+            .map(ToolChoice::try_from)
             .transpose()?;
+
+        let additional_params = if let Some(schema) = req.output_schema {
+            let name = schema
+                .as_object()
+                .and_then(|object| object.get("title"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            crate::providers::openai::sanitize_schema(&mut schema_value);
+            let response_format = serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": name,
+                        "strict": true,
+                        "schema": schema_value,
+                    }
+                }
+            });
+            Some(match req.additional_params {
+                Some(existing) => json_utils::merge(existing, response_format),
+                None => response_format,
+            })
+        } else {
+            req.additional_params
+        };
 
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
             temperature: req.temperature,
+            max_tokens: req.max_tokens,
             tools: req
                 .tools
                 .clone()
@@ -395,7 +504,7 @@ impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
                 .map(ToolDefinition::from)
                 .collect::<Vec<_>>(),
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }
@@ -468,19 +577,23 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> crate::completion::Usage {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.prompt_tokens as u64;
+        usage.output_tokens = self.completion_tokens as u64;
+        usage.total_tokens = self.total_tokens as u64;
+        usage.cached_input_tokens = self.cached_tokens();
+        usage
+    }
+}
+
 impl GetTokenUsage for CompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
-        let Some(api_usage) = self.usage.as_ref() else {
-            return crate::completion::Usage::new();
-        };
-
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = api_usage.prompt_tokens as u64;
-        usage.output_tokens = api_usage.completion_tokens as u64;
-        usage.total_tokens = api_usage.total_tokens as u64;
-        usage.cached_input_tokens = api_usage.cached_tokens();
-
-        usage
+        self.usage
+            .as_ref()
+            .map(GetTokenUsage::token_usage)
+            .unwrap_or_default()
     }
 }
 
@@ -533,7 +646,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .as_ref()
             .map(|usage| completion::Usage {
                 input_tokens: usage.prompt_tokens as u64,
-                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                output_tokens: usage.completion_tokens as u64,
                 total_tokens: usage.total_tokens as u64,
                 cached_input_tokens: usage.cached_tokens(),
                 cache_creation_input_tokens: 0,
@@ -542,27 +655,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             })
             .unwrap_or_default();
 
+        let message_id = response.id.clone();
+
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
-            message_id: None,
+            message_id: Some(message_id),
         })
-    }
-}
-
-fn assistant_content_to_streaming_choices(
-    content: message::AssistantContent,
-) -> Result<Vec<RawStreamingChoice<CompletionResponse>>, CompletionError> {
-    match content {
-        message::AssistantContent::Text(t) => Ok(vec![RawStreamingChoice::Message(t.text)]),
-        message::AssistantContent::ToolCall(tc) => Ok(vec![RawStreamingChoice::ToolCall(
-            RawStreamingToolCall::new(tc.id, tc.function.name, tc.function.arguments),
-        )]),
-        message::AssistantContent::Reasoning(_) => Ok(Vec::new()),
-        message::AssistantContent::Image(_) => Err(CompletionError::ResponseError(
-            "Image content is not supported on Mistral via Rig".into(),
-        )),
     }
 }
 
@@ -571,7 +671,7 @@ where
     T: HttpClientExt + Send + Clone + std::fmt::Debug + 'static,
 {
     type Response = CompletionResponse;
-    type StreamingResponse = CompletionResponse;
+    type StreamingResponse = MistralStreamingCompletionResponse;
 
     type Client = Client<T>;
 
@@ -650,16 +750,215 @@ where
 
     async fn stream(
         &self,
-        request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let resp = self.completion(request).await?;
-        buffered::stream_from_completion_response(resp, assistant_content_to_streaming_choices)
+        let preamble = completion_request.preamble.clone();
+        let mut request =
+            MistralCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        request.additional_params = Some(json_utils::merge(
+            request
+                .additional_params
+                .unwrap_or_else(|| serde_json::json!({})),
+            serde_json::json!({ "stream": true }),
+        ));
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Mistral streaming completion request: {}",
+                serde_json::to_string_pretty(&request)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .post("v1/chat/completions")?
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "mistral",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        tracing::Instrument::instrument(
+            send_mistral_streaming_request(self.client.clone(), req),
+            span,
+        )
+        .await
     }
+}
+
+#[derive(Default, Deserialize, Debug)]
+struct StreamingFunction {
+    name: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::json_utils::deserialize_json_string_or_value"
+    )]
+    arguments: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct StreamingToolCall {
+    #[serde(default)]
+    index: usize,
+    id: Option<String>,
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
+    function: StreamingFunction,
+}
+
+impl From<&StreamingToolCall> for CompatibleToolCallChunk {
+    fn from(value: &StreamingToolCall) -> Self {
+        Self {
+            index: value.index,
+            id: value.id.clone(),
+            name: value.function.name.clone(),
+            arguments: value.function.arguments.clone(),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct StreamingDelta {
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_mistral_content_string"
+    )]
+    content: Option<String>,
+    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+    tool_calls: Vec<StreamingToolCall>,
+}
+
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum FinishReason {
+    ToolCalls,
+    Stop,
+    Length,
+    ModelLength,
+    Error,
+    #[serde(untagged)]
+    Other(String),
+}
+
+#[derive(Deserialize, Debug)]
+struct StreamingChoice {
+    delta: StreamingDelta,
+    finish_reason: Option<FinishReason>,
+}
+
+#[derive(Deserialize, Debug)]
+struct StreamingCompletionChunk {
+    id: Option<String>,
+    model: Option<String>,
+    choices: Vec<StreamingChoice>,
+    usage: Option<Usage>,
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct MistralStreamingCompletionResponse {
+    pub usage: Usage,
+}
+
+impl GetTokenUsage for MistralStreamingCompletionResponse {
+    fn token_usage(&self) -> crate::completion::Usage {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.usage.prompt_tokens as u64;
+        usage.output_tokens = self.usage.completion_tokens as u64;
+        usage.total_tokens = self.usage.total_tokens as u64;
+        usage.cached_input_tokens = self.usage.cached_tokens();
+        usage
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MistralCompatibleProfile;
+
+impl CompatibleStreamProfile for MistralCompatibleProfile {
+    type Usage = Usage;
+    type Detail = ();
+    type FinalResponse = MistralStreamingCompletionResponse;
+
+    fn normalize_chunk(
+        &self,
+        data: &str,
+    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
+            Ok(data) => data,
+            Err(error) => {
+                tracing::debug!("Couldn't parse Mistral SSE payload: {:?}", error);
+                return Ok(None);
+            }
+        };
+
+        Ok(Some(
+            openai_chat_completions_compatible::normalize_first_choice_chunk(
+                data.id,
+                data.model,
+                data.usage,
+                &data.choices,
+                |choice| CompatibleChoiceData {
+                    finish_reason: match choice.finish_reason {
+                        Some(FinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
+                        _ => CompatibleFinishReason::Other,
+                    },
+                    text: choice.delta.content.clone(),
+                    reasoning: None,
+                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                        &choice.delta.tool_calls,
+                    ),
+                    details: Vec::new(),
+                },
+            ),
+        ))
+    }
+
+    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+        MistralStreamingCompletionResponse { usage }
+    }
+
+    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
+        true
+    }
+}
+
+async fn send_mistral_streaming_request<T>(
+    http_client: T,
+    req: Request<Vec<u8>>,
+) -> Result<StreamingCompletionResponse<MistralStreamingCompletionResponse>, CompletionError>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    openai_chat_completions_compatible::send_compatible_streaming_request(
+        http_client,
+        req,
+        MistralCompatibleProfile,
+    )
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::{CompletionRequestBuilder, ToolDefinition as RigToolDefinition};
+    use crate::message::ToolChoice as RigToolChoice;
+    use crate::test_utils::MockCompletionModel;
 
     #[test]
     fn test_response_deserialization() {
@@ -824,6 +1123,27 @@ mod tests {
     }
 
     #[test]
+    fn test_tool_result_with_call_id_omits_unstable_name() {
+        let message = message::Message::tool_result_with_call_id(
+            "runtime_generated_name",
+            Some("call_123".to_string()),
+            "tool output",
+        );
+
+        let converted: Vec<Message> = message.try_into().expect("conversion should work");
+        assert_eq!(converted.len(), 1);
+
+        let serialized = serde_json::to_value(&converted[0]).expect("message should serialize");
+        assert_eq!(serialized["role"], "tool");
+        assert_eq!(serialized["content"], "tool output");
+        assert_eq!(serialized["tool_call_id"], "call_123");
+        assert!(
+            serialized.get("name").is_none(),
+            "Mistral tool result names are omitted because Rig does not store a stable tool name separately from tool result ids"
+        );
+    }
+
+    #[test]
     fn test_assistant_text_and_tool_call_are_preserved_when_reasoning_present() {
         let assistant = message::Message::Assistant {
             id: None,
@@ -862,34 +1182,114 @@ mod tests {
     }
 
     #[test]
-    fn test_streaming_choice_mapping_skips_reasoning_and_preserves_other_content() {
-        let reasoning_choices =
-            assistant_content_to_streaming_choices(message::AssistantContent::reasoning("hidden"))
-                .expect("reasoning should be ignored");
-        assert!(reasoning_choices.is_empty());
+    fn test_request_serializes_mistral_tool_choice_and_max_tokens() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
+            .max_tokens(123)
+            .tool(RigToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool_choice(RigToolChoice::Required)
+            .build();
 
-        let text_choices =
-            assistant_content_to_streaming_choices(message::AssistantContent::text("visible"))
-                .expect("text should be preserved");
-        match text_choices.as_slice() {
-            [RawStreamingChoice::Message(text)] => assert_eq!(text, "visible"),
-            _ => panic!("expected text streaming choice"),
+        let mistral_request = MistralCompletionRequest::try_from((MISTRAL_SMALL, request))
+            .expect("Mistral request should serialize");
+        let serialized = serde_json::to_value(mistral_request).expect("request should serialize");
+
+        assert_eq!(serialized["tool_choice"], serde_json::json!("any"));
+        assert_eq!(serialized["max_tokens"], 123);
+    }
+
+    #[test]
+    fn test_request_serializes_specific_tool_choice_as_function_object() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use beta.")
+            .tool(RigToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+            })
+            .tool(RigToolDefinition {
+                name: "beta".to_string(),
+                description: "Beta tool".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+            })
+            .tool_choice(RigToolChoice::Specific {
+                function_names: vec!["beta".to_string()],
+            })
+            .build();
+
+        let mistral_request = MistralCompletionRequest::try_from((MISTRAL_SMALL, request))
+            .expect("Mistral request should serialize");
+        let serialized = serde_json::to_value(mistral_request).expect("request should serialize");
+
+        assert_eq!(
+            serialized["tool_choice"],
+            serde_json::json!({"type": "function", "function": {"name": "beta"}})
+        );
+    }
+
+    #[test]
+    fn test_assistant_response_accepts_null_and_array_content() {
+        let null_content = r#"{
+            "id": "cmpl-null",
+            "object": "chat.completion",
+            "model": "mistral-small-latest",
+            "created": 1700000000,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "tool_123456789",
+                        "type": "function",
+                        "function": {"name": "alpha", "arguments": "{}"}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+        }"#;
+        let response: CompletionResponse = serde_json::from_str(null_content).unwrap();
+        match &response.choices[0].message {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                assert_eq!(content, "");
+                assert_eq!(tool_calls.len(), 1);
+            }
+            _ => panic!("expected assistant message"),
         }
 
-        let tool_choices =
-            assistant_content_to_streaming_choices(message::AssistantContent::tool_call(
-                "call_2",
-                "add",
-                serde_json::json!({"x": 2, "y": 3}),
-            ))
-            .expect("tool call should be preserved");
-        match tool_choices.as_slice() {
-            [RawStreamingChoice::ToolCall(call)] => {
-                assert_eq!(call.id, "call_2");
-                assert_eq!(call.name, "add");
-                assert_eq!(call.arguments, serde_json::json!({"x": 2, "y": 3}));
-            }
-            _ => panic!("expected tool-call streaming choice"),
+        let array_content = r#"{
+            "id": "cmpl-array",
+            "object": "chat.completion",
+            "model": "mistral-small-latest",
+            "created": 1700000000,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": [{"type": "text", "text": "hidden"}]},
+                        {"type": "text", "text": "visible"}
+                    ]
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+        }"#;
+        let response: CompletionResponse = serde_json::from_str(array_content).unwrap();
+        match &response.choices[0].message {
+            Message::Assistant { content, .. } => assert_eq!(content, "visible"),
+            _ => panic!("expected assistant message"),
         }
     }
 

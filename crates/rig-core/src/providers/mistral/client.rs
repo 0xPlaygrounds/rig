@@ -98,7 +98,7 @@ pub struct PromptTokensDetails {
 /// always present; the remaining fields are populated by Mistral on a best-effort
 /// basis (e.g. cached-token information appears once a prompt is large enough to
 /// be cached).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Usage {
     pub completion_tokens: usize,
     pub prompt_tokens: usize,
