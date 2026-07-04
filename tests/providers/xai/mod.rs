@@ -1,4 +1,5 @@
 mod agent;
+mod agent_tool_sessions;
 #[cfg(feature = "audio")]
 mod audio_generation;
 mod context;
