@@ -1,0 +1,16 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are concise and should rely on the provided chat history.","type":"text"}],"role":"system"},{"content":"My favorite color is teal. Please remember it.","role":"user"},{"content":[{"text":"Noted: your favorite color is teal.","type":"text"}],"role":"assistant"},{"content":"For this release, use the canary lane.","role":"user"},{"content":[{"text":"Understood: the release lane is canary.","type":"text"}],"role":"assistant"},{"content":"Look up the harbor label with the tool.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"The harbor label is crimson-harbor.","type":"text"}],"role":"assistant"},{"content":"Answer in one short sentence: what is my favorite color, which label came from the tool, and which release lane did I choose? Do not call any tools.","role":"user"}],"model":"llama-3.3-70b-versatile","stream":false,"tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Your favorite color is teal, the harbor label is crimson-harbor, and you chose the canary release lane.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.060355109,"completion_tokens":25,"prompt_time":0.012750972,"prompt_tokens":222,"queue_time":0.373757595,"total_time":0.073106081,"total_tokens":247},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":1144826916}}'

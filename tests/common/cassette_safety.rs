@@ -81,6 +81,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_deepseek_cassette", "with_deepseek_cassette_result"],
     },
     ProviderCassetteSuite {
+        provider: "groq",
+        source_dir: "tests/providers/groq",
+        wrapper_names: &["with_groq_cassette_result"],
+    },
+    ProviderCassetteSuite {
         provider: "mistral",
         source_dir: "tests/providers/mistral",
         wrapper_names: &["with_mistral_cassette_result"],

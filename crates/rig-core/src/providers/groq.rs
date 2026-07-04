@@ -166,15 +166,83 @@ pub(super) struct GroqCompletionRequest {
     pub messages: Vec<OpenAIMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
+    tool_choice: Option<GroqToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<GroqAdditionalParameters>,
     pub(super) stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) stream_options: Option<StreamOptions>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum GroqToolChoice {
+    Mode(GroqToolChoiceMode),
+    Function {
+        r#type: GroqToolChoiceFunctionKind,
+        function: GroqToolChoiceFunction,
+    },
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum GroqToolChoiceMode {
+    #[default]
+    Auto,
+    None,
+    Required,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum GroqToolChoiceFunctionKind {
+    Function,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GroqToolChoiceFunction {
+    name: String,
+}
+
+impl TryFrom<message::ToolChoice> for GroqToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        match value {
+            message::ToolChoice::Auto => Ok(Self::Mode(GroqToolChoiceMode::Auto)),
+            message::ToolChoice::None => Ok(Self::Mode(GroqToolChoiceMode::None)),
+            message::ToolChoice::Required => Ok(Self::Mode(GroqToolChoiceMode::Required)),
+            message::ToolChoice::Specific { function_names } => {
+                specific_groq_tool_choice(function_names)
+            }
+        }
+    }
+}
+
+fn specific_groq_tool_choice(
+    function_names: Vec<String>,
+) -> Result<GroqToolChoice, CompletionError> {
+    let mut names = function_names.into_iter();
+    let Some(name) = names.next() else {
+        return Err(CompletionError::RequestError(
+            "ToolChoice::Specific requires at least one function name".into(),
+        ));
+    };
+    if names.next().is_some() {
+        return Err(CompletionError::RequestError(
+            "Groq only supports forcing one specific tool".into(),
+        ));
+    }
+
+    Ok(GroqToolChoice::Function {
+        r#type: GroqToolChoiceFunctionKind::Function,
+        function: GroqToolChoiceFunction { name },
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -187,9 +255,6 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
 
     fn try_from((model, mut req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let chat_history = req.chat_history_with_documents();
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Groq");
-        }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         // Build up the order of messages.
         let mut partial_history = vec![];
@@ -215,12 +280,38 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
         let tool_choice = req
             .tool_choice
             .clone()
-            .map(crate::providers::openai::ToolChoice::try_from)
+            .map(GroqToolChoice::try_from)
             .transpose()?;
 
         let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
         let native_tools =
             extract_native_tools_from_additional_params(&mut additional_params_payload)?;
+
+        if let Some(schema) = req.output_schema {
+            let name = schema
+                .as_object()
+                .and_then(|object| object.get("title"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            super::openai::sanitize_schema(&mut schema_value);
+            let response_format = serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": name,
+                        "strict": true,
+                        "schema": schema_value,
+                    }
+                }
+            });
+            additional_params_payload = if additional_params_payload.is_null() {
+                response_format
+            } else {
+                json_utils::merge(additional_params_payload, response_format)
+            };
+        }
 
         let mut additional_params: Option<GroqAdditionalParameters> =
             if additional_params_payload.is_null() {
@@ -234,6 +325,7 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
             model: model.to_string(),
             messages: full_history,
             temperature: req.temperature,
+            max_tokens: req.max_tokens,
             tools: req
                 .tools
                 .clone()
@@ -415,7 +507,7 @@ where
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                             span.record(
                                 "gen_ai.usage.output_tokens",
-                                usage.total_tokens - usage.prompt_tokens,
+                                usage.token_usage().output_tokens,
                             );
                             span.record(
                                 "gen_ai.usage.cache_read.input_tokens",
@@ -629,9 +721,27 @@ enum StreamingDelta {
     },
 }
 
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum FinishReason {
+    ToolCalls,
+    Stop,
+    Length,
+    ContentFilter,
+    FunctionCall,
+    #[serde(untagged)]
+    Other(String),
+}
+
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
+    finish_reason: Option<FinishReason>,
+}
+
+#[derive(Deserialize, Debug)]
+struct StreamingGroqMetadata {
+    usage: Option<Usage>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -640,6 +750,7 @@ struct StreamingCompletionChunk {
     model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<Usage>,
+    x_groq: Option<StreamingGroqMetadata>,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
@@ -676,32 +787,44 @@ impl CompatibleStreamProfile for GroqCompatibleProfile {
             }
         };
 
+        let usage = data
+            .usage
+            .or_else(|| data.x_groq.and_then(|metadata| metadata.usage));
+
         Ok(Some(
             openai_chat_completions_compatible::normalize_first_choice_chunk(
                 data.id,
                 data.model,
-                data.usage,
+                usage,
                 &data.choices,
-                |choice| match &choice.delta {
-                    StreamingDelta::Reasoning { reasoning } => CompatibleChoiceData {
-                        finish_reason: CompatibleFinishReason::Other,
-                        text: None,
-                        reasoning: Some(reasoning.clone()),
-                        tool_calls: Vec::new(),
-                        details: Vec::new(),
-                    },
-                    StreamingDelta::MessageContent {
-                        content,
-                        tool_calls,
-                    } => CompatibleChoiceData {
-                        finish_reason: CompatibleFinishReason::Other,
-                        text: content.clone(),
-                        reasoning: None,
-                        tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                |choice| {
+                    let finish_reason = match choice.finish_reason {
+                        Some(FinishReason::ToolCalls | FinishReason::FunctionCall) => {
+                            CompatibleFinishReason::ToolCalls
+                        }
+                        _ => CompatibleFinishReason::Other,
+                    };
+                    match &choice.delta {
+                        StreamingDelta::Reasoning { reasoning } => CompatibleChoiceData {
+                            finish_reason,
+                            text: None,
+                            reasoning: Some(reasoning.clone()),
+                            tool_calls: Vec::new(),
+                            details: Vec::new(),
+                        },
+                        StreamingDelta::MessageContent {
+                            content,
                             tool_calls,
-                        ),
-                        details: Vec::new(),
-                    },
+                        } => CompatibleChoiceData {
+                            finish_reason,
+                            text: content.clone(),
+                            reasoning: None,
+                            tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                                tool_calls,
+                            ),
+                            details: Vec::new(),
+                        },
+                    }
                 },
             ),
         ))
@@ -742,10 +865,12 @@ where
 mod tests {
     use crate::{
         OneOrMany,
+        completion::CompletionRequestBuilder,
         providers::{
             groq::{GroqAdditionalParameters, GroqCompletionRequest},
             openai::{Message, UserContent},
         },
+        test_utils::MockCompletionModel,
     };
 
     #[test]
@@ -759,6 +884,7 @@ mod tests {
         let groq = GroqCompletionRequest {
             model: "openai/gpt-120b-oss".to_string(),
             temperature: None,
+            max_tokens: None,
             tool_choice: None,
             stream_options: None,
             tools: Vec::new(),
@@ -790,6 +916,34 @@ mod tests {
             })
         )
     }
+    #[test]
+    fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
+            .max_tokens(64)
+            .tool(crate::completion::ToolDefinition {
+                name: "choose_beta".to_string(),
+                description: "Choose beta".to_string(),
+                parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+            })
+            .tool_choice(crate::message::ToolChoice::Specific {
+                function_names: vec!["choose_beta".to_string()],
+            })
+            .output_schema(schemars::schema_for!(serde_json::Value))
+            .build();
+
+        let groq = GroqCompletionRequest::try_from(("llama-3.3-70b-versatile", request))
+            .expect("Groq request should serialize");
+        let json = serde_json::to_value(groq).expect("request should serialize");
+
+        assert_eq!(json["max_tokens"], 64);
+        assert_eq!(
+            json["tool_choice"],
+            serde_json::json!({"type":"function","function":{"name":"choose_beta"}})
+        );
+        assert_eq!(json["response_format"]["type"], "json_schema");
+        assert_eq!(json["response_format"]["json_schema"]["strict"], true);
+    }
+
     #[test]
     fn test_client_initialization() {
         let _client =
