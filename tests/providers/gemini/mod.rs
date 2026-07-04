@@ -14,6 +14,10 @@ mod cassette {
     mod dynamic_tools;
     mod embeddings;
     mod extractor;
+    mod generate_behaviors;
+    mod generate_sessions;
+    mod generate_tool_args;
+    mod generate_tool_modes;
     mod image_generation;
     mod interactions_api;
     mod models;

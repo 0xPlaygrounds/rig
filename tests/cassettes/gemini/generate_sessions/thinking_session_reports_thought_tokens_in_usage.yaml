@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"A farmer has 17 sheep. All but 9 run away. How many sheep are left? Think it through, then answer in one short sentence.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**My Analysis of the Sheep Problem**\n\nOkay, let''s break this down. The core question is about how many sheep remain. The critical piece of information is the phrase \"All but 9 run away.\" My expertise immediately flags this as a potential word trick. The initial number, 17, is likely a distraction. The crucial point is the phrase itself. \"All but 9\" implies that these are the *only* sheep that remain. The question explicitly asks how many are *left*. Therefore, the answer is directly embedded in that key phrase. Since \"all but 9\" clearly states the number that *didn''t* run away and the question focuses on the amount *left*, those nine sheep are the answer. Now, let me just make sure I hit the length constraint... *yup*, a single sentence will do. Therefore, the answer is nine sheep.\n","thought":true},{"text":"Nine sheep are left."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":5,"promptTokenCount":33,"promptTokensDetails":[{"modality":"TEXT","tokenCount":33}],"serviceTier":"standard","thoughtsTokenCount":173,"totalTokenCount":211}}'

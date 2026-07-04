@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Return an event record for a Rust meetup titled \"Rust Seattle June\" at the venue \"Fremont Hall\" in Seattle, with attendees Alice and Bob. No note is needed.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"responseJsonSchema":{"$defs":{"EventLocation":{"properties":{"city":{"type":"string"},"venue":{"type":"string"}},"required":["city","venue"],"type":"object"}},"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"attendees":{"items":{"type":"string"},"type":"array"},"location":{"$ref":"#/$defs/EventLocation"},"note":{"type":"string"},"title":{"type":"string"}},"required":["title","location","attendees","note"],"title":"EventRecord","type":"object"},"responseMimeType":"application/json","temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"{\"title\":\"Rust Seattle June\",\"location\":{\"city\":\"Seattle\",\"venue\":\"Fremont Hall\"},\"attendees\":[\"Alice\",\"Bob\"],\"note\":\"\"}"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":32,"promptTokenCount":38,"promptTokensDetails":[{"modality":"TEXT","tokenCount":38}],"serviceTier":"standard","thoughtsTokenCount":115,"totalTokenCount":185}}'
