@@ -1,6 +1,10 @@
 mod support;
 
 mod cassette {
+    mod codex_behaviors;
+    mod codex_sessions;
+    mod codex_tool_args;
+    mod codex_tool_choice;
     mod streaming_tools;
 }
 
