@@ -112,6 +112,13 @@ jobs:
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
+      # `nextest` below runs with `--all-features`, which does not compile the
+      # default-feature test graph. Build the root integration tests with the
+      # default feature set so feature-gated test modules cannot accidentally
+      # depend on APIs that only exist under optional features.
+      - name: Compile default-feature root test targets
+        run: cargo test -p rig --tests --no-run
+
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
         with:
