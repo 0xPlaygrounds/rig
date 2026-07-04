@@ -10,9 +10,9 @@ use tracing::{Instrument, Level, enabled, info_span};
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest};
+use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
-use crate::providers::openai::completion::ToolChoice;
+use crate::providers::openai::responses_api::ToolChoice;
 use crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
 use crate::providers::openai::responses_api::{Output, ResponsesUsage};
 use crate::streaming::StreamingCompletionResponse as BaseStreamingCompletionResponse;
@@ -148,26 +148,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|u| completion::Usage {
-                input_tokens: u.input_tokens,
-                output_tokens: u.output_tokens,
-                total_tokens: u.total_tokens,
-                cached_input_tokens: u
-                    .input_tokens_details
-                    .clone()
-                    .map(|x| x.cached_tokens)
-                    .unwrap_or_default(),
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
+        let message_id = response.output.iter().find_map(|item| match item {
+            Output::Message(message) => Some(message.id.clone()),
+            _ => None,
+        });
 
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
-            message_id: None,
+            message_id,
         })
     }
 }
@@ -294,7 +286,8 @@ mod tests {
     use super::XAICompletionRequest;
     use crate::OneOrMany;
     use crate::completion::request::Document;
-    use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message};
+    use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
+    use crate::message::ToolChoice;
     use crate::test_utils::MockCompletionModel;
 
     #[test]
@@ -374,6 +367,84 @@ mod tests {
             1,
             "document input should appear exactly once: {input:?}"
         );
+    }
+
+    #[test]
+    fn xai_request_uses_responses_tool_choice_for_specific_tool() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
+            .tool(ToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool(ToolDefinition {
+                name: "beta".to_string(),
+                description: "Beta tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["beta".to_string()],
+            })
+            .build();
+
+        let xai_request = XAICompletionRequest::try_from(("grok-4.3", request))
+            .expect("xAI Responses API should support specific tool choice");
+        let serialized = serde_json::to_value(xai_request).expect("serialization should succeed");
+
+        assert_eq!(
+            serialized["tool_choice"],
+            serde_json::json!({"type": "function", "name": "beta"})
+        );
+    }
+
+    #[test]
+    fn xai_response_preserves_message_id_and_reasoning_token_usage() {
+        let raw: super::CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "resp_123",
+            "model": "grok-4.3",
+            "output": [
+                {
+                    "type": "reasoning",
+                    "id": "rs_123",
+                    "summary": [{ "type": "summary_text", "text": "thinking" }],
+                    "status": "completed"
+                },
+                {
+                    "type": "message",
+                    "id": "msg_123",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [
+                        { "type": "output_text", "text": "done", "annotations": [] }
+                    ]
+                }
+            ],
+            "usage": {
+                "input_tokens": 10,
+                "input_tokens_details": { "cached_tokens": 3 },
+                "output_tokens": 8,
+                "output_tokens_details": { "reasoning_tokens": 5 },
+                "total_tokens": 18
+            }
+        }))
+        .expect("fixture should deserialize");
+
+        let converted = crate::completion::CompletionResponse::try_from(raw)
+            .expect("xAI response should convert");
+
+        assert_eq!(converted.message_id.as_deref(), Some("msg_123"));
+        assert_eq!(converted.usage.input_tokens, 10);
+        assert_eq!(converted.usage.cached_input_tokens, 3);
+        assert_eq!(converted.usage.output_tokens, 8);
+        assert_eq!(converted.usage.reasoning_tokens, 5);
     }
 
     #[tokio::test]

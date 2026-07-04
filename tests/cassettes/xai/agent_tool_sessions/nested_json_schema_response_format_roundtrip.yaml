@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"Return only JSON matching the supplied schema.","role":"system","type":"message"},{"content":"Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.","role":"user","type":"message"}],"model":"grok-4.3","text":{"format":{"name":"xai_release_plan","schema":{"additionalProperties":false,"properties":{"checks":{"items":{"additionalProperties":false,"properties":{"name":{"type":"string"},"required":{"type":"boolean"}},"required":["name","required"],"type":"object"},"type":"array"},"release":{"additionalProperties":false,"properties":{"lane":{"type":"string"},"risk":{"type":"string"}},"required":["lane","risk"],"type":"object"}},"required":["release","checks"],"type":"object"},"strict":true,"type":"json_schema"}}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is: \"Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.\"\n","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"{\n  \"release\": {\n    \"lane\": \"canary\",\n    \"risk\": \"low\"\n  },\n  \"checks\": [\n    {\n      \"name\": \"compile\",\n      \"required\": true\n    },\n    {\n      \"name\": \"replay\",\n      \"required\": true\n    }\n  ]\n}","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"schema":{"additionalProperties":false,"properties":{"checks":{"items":{"additionalProperties":false,"properties":{"name":{"type":"string"},"required":{"type":"boolean"}},"required":["name","required"],"type":"object"},"type":"array"},"release":{"additionalProperties":false,"properties":{"lane":{"type":"string"},"risk":{"type":"string"}},"required":["lane","risk"],"type":"object"}},"required":["release","checks"],"type":"object"},"type":"json_schema"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":273,"output_tokens":327},"cost_in_usd_ticks":10243500,"input_tokens":273,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":327,"output_tokens_details":{"reasoning_tokens":261},"total_tokens":600},"user":null}'
