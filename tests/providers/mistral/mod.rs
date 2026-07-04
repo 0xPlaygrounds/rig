@@ -1,4 +1,5 @@
 mod agent;
+mod agent_tool_sessions;
 #[cfg(feature = "derive")]
 mod embeddings;
 mod extractor;
@@ -9,6 +10,7 @@ mod permission_control;
 mod request_hook;
 mod streaming;
 mod streaming_tools;
+mod support;
 mod transcription;
 mod typed_prompt_tools;
 
