@@ -18,6 +18,7 @@ mod cassette {
     mod generate_sessions;
     mod generate_tool_args;
     mod generate_tool_modes;
+    #[cfg(feature = "image")]
     mod image_generation;
     mod interactions_api;
     mod models;
