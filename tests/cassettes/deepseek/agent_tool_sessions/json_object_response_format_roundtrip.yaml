@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Return only valid JSON. No markdown.","role":"system"},{"content":"Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.","role":"user"}],"model":"deepseek-v4-flash","response_format":{"type":"json_object"},"thinking":{"type":"disabled"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"{\n  \"release_lane\": \"canary\",\n  \"risk\": \"low\",\n  \"checks\": {\n    \"compile\": true,\n    \"replay\": true\n  }\n}","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":39,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":54,"prompt_tokens":54,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":93}}'

@@ -127,10 +127,16 @@ enum ApiResponse<T> {
 /// The response shape from the DeepSeek API
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
-    // We'll match the JSON:
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub object: Option<String>,
+    #[serde(default)]
+    pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
     pub usage: Usage,
-    // you may want other fields
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -148,16 +154,25 @@ pub struct Usage {
 
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
-        crate::providers::internal::completion_usage(
-            self.prompt_tokens as u64,
-            self.completion_tokens as u64,
-            self.total_tokens as u64,
-            self.prompt_tokens_details
+        crate::completion::Usage {
+            input_tokens: self.prompt_tokens as u64,
+            output_tokens: self.completion_tokens as u64,
+            total_tokens: self.total_tokens as u64,
+            cached_input_tokens: self
+                .prompt_tokens_details
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
                 .map(u64::from)
                 .unwrap_or(0),
-        )
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: self
+                .completion_tokens_details
+                .as_ref()
+                .and_then(|details| details.reasoning_tokens)
+                .map(u64::from)
+                .unwrap_or(0),
+        }
     }
 }
 
@@ -378,6 +393,104 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum ToolChoice {
+    Mode(ToolChoiceMode),
+    Function {
+        r#type: ToolChoiceFunctionKind,
+        function: ToolChoiceFunction,
+    },
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum ToolChoiceMode {
+    #[default]
+    Auto,
+    None,
+    Required,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ToolChoiceFunctionKind {
+    Function,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ToolChoiceFunction {
+    name: String,
+}
+
+impl TryFrom<crate::message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+
+    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
+        let choice = match value {
+            crate::message::ToolChoice::Auto => Self::Mode(ToolChoiceMode::Auto),
+            crate::message::ToolChoice::None => Self::Mode(ToolChoiceMode::None),
+            crate::message::ToolChoice::Required => Self::Mode(ToolChoiceMode::Required),
+            crate::message::ToolChoice::Specific { function_names } => {
+                specific_tool_choice(function_names)?
+            }
+        };
+
+        Ok(choice)
+    }
+}
+
+fn specific_tool_choice(function_names: Vec<String>) -> Result<ToolChoice, CompletionError> {
+    let mut names = function_names.into_iter();
+    let Some(name) = names.next() else {
+        return Err(CompletionError::RequestError(
+            "ToolChoice::Specific requires at least one function name".into(),
+        ));
+    };
+    if names.next().is_some() {
+        return Err(CompletionError::RequestError(
+            "DeepSeek chat completions only supports forcing one specific tool".into(),
+        ));
+    }
+
+    Ok(ToolChoice::Function {
+        r#type: ToolChoiceFunctionKind::Function,
+        function: ToolChoiceFunction { name },
+    })
+}
+
+fn thinking_is_disabled(additional_params: Option<&serde_json::Value>) -> bool {
+    additional_params
+        .and_then(|params| params.get("thinking"))
+        .and_then(|thinking| thinking.get("type"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"))
+}
+
+fn deepseek_tool_choice(
+    value: crate::message::ToolChoice,
+    additional_params: Option<&serde_json::Value>,
+) -> Result<Option<serde_json::Value>, CompletionError> {
+    let tool_choice = match value {
+        crate::message::ToolChoice::Auto => Some(serde_json::json!("auto")),
+        crate::message::ToolChoice::None => Some(serde_json::json!("none")),
+        crate::message::ToolChoice::Required => Some(if thinking_is_disabled(additional_params) {
+            serde_json::json!("required")
+        } else {
+            serde_json::Value::Null
+        }),
+        crate::message::ToolChoice::Specific { function_names } => {
+            Some(if thinking_is_disabled(additional_params) {
+                serde_json::to_value(specific_tool_choice(function_names)?)?
+            } else {
+                serde_json::Value::Null
+            })
+        }
+    };
+
+    Ok(tool_choice)
+}
+
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
@@ -428,21 +541,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
-        let usage = completion::Usage {
-            input_tokens: response.usage.prompt_tokens as u64,
-            output_tokens: response.usage.completion_tokens as u64,
-            total_tokens: response.usage.total_tokens as u64,
-            cached_input_tokens: response
-                .usage
-                .prompt_tokens_details
-                .as_ref()
-                .and_then(|d| d.cached_tokens)
-                .map(|c| c as u64)
-                .unwrap_or(0),
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        };
+        let usage = response.usage.token_usage();
 
         Ok(completion::CompletionResponse {
             choice,
@@ -462,7 +561,7 @@ pub(super) struct DeepseekCompletionRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
+    tool_choice: Option<serde_json::Value>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -494,8 +593,9 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
         let tool_choice = req
             .tool_choice
             .clone()
-            .map(crate::providers::openrouter::ToolChoice::try_from)
-            .transpose()?;
+            .map(|choice| deepseek_tool_choice(choice, req.additional_params.as_ref()))
+            .transpose()?
+            .flatten();
 
         Ok(Self {
             model: model.to_string(),
@@ -894,7 +994,9 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 mod tests {
     use super::*;
     use crate::client::ModelListingClient;
-    use crate::test_utils::RecordingHttpClient;
+    use crate::completion::{CompletionRequestBuilder, ToolDefinition as RigToolDefinition};
+    use crate::message::ToolChoice as RigToolChoice;
+    use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
 
     #[test]
     fn test_deserialize_vec_choice() {
@@ -942,6 +1044,106 @@ mod tests {
                 panic!("Deserialization error at {}: {}", err.path(), err);
             }
         }
+    }
+
+    #[test]
+    fn deepseek_request_serializes_specific_tool_choice_as_chat_completions_object() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
+            .tool(RigToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool(RigToolDefinition {
+                name: "beta".to_string(),
+                description: "Beta tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool_choice(RigToolChoice::Specific {
+                function_names: vec!["beta".to_string()],
+            })
+            .additional_params(serde_json::json!({"thinking": {"type": "disabled"}}))
+            .build();
+
+        let deepseek_request = DeepseekCompletionRequest::try_from(("deepseek-v4-flash", request))
+            .expect("DeepSeek should support one specific tool choice");
+        let serialized = serde_json::to_value(deepseek_request).expect("request should serialize");
+
+        assert_eq!(
+            serialized["tool_choice"],
+            serde_json::json!({"type": "function", "function": {"name": "beta"}})
+        );
+    }
+
+    #[test]
+    fn deepseek_request_suppresses_required_tool_choice_when_thinking_is_not_disabled() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
+            .tool(RigToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool_choice(RigToolChoice::Required)
+            .build();
+
+        let deepseek_request = DeepseekCompletionRequest::try_from(("deepseek-v4-flash", request))
+            .expect("DeepSeek request should serialize");
+        let serialized = serde_json::to_value(deepseek_request).expect("request should serialize");
+
+        assert_eq!(serialized["tool_choice"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn deepseek_response_preserves_metadata_and_reasoning_token_usage() {
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_123",
+            "object": "chat.completion",
+            "model": "deepseek-v4-flash",
+            "system_fingerprint": "fp_123",
+            "choices": [{
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "role": "assistant",
+                    "content": "done",
+                    "reasoning_content": "thinking"
+                }
+            }],
+            "usage": {
+                "completion_tokens": 8,
+                "completion_tokens_details": { "reasoning_tokens": 5 },
+                "prompt_tokens": 10,
+                "prompt_tokens_details": { "cached_tokens": 3 },
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 10,
+                "total_tokens": 18
+            }
+        }))
+        .expect("fixture should deserialize");
+
+        let converted = crate::completion::CompletionResponse::try_from(raw.clone())
+            .expect("DeepSeek response should convert");
+
+        assert_eq!(raw.id.as_deref(), Some("chatcmpl_123"));
+        assert_eq!(raw.model.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(raw.system_fingerprint.as_deref(), Some("fp_123"));
+        assert_eq!(converted.usage.input_tokens, 10);
+        assert_eq!(converted.usage.cached_input_tokens, 3);
+        assert_eq!(converted.usage.output_tokens, 8);
+        assert_eq!(converted.usage.reasoning_tokens, 5);
     }
 
     #[test]

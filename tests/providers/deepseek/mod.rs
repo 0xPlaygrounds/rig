@@ -1,6 +1,7 @@
 mod support;
 
 mod agent;
+mod agent_tool_sessions;
 mod document_ordering;
 mod extractor;
 mod extractor_usage;
