@@ -959,19 +959,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: usage
-                    .prompt_tokens_details
-                    .as_ref()
-                    .map(|d| d.cached_tokens as u64)
-                    .unwrap_or(0),
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -1063,20 +1051,45 @@ pub struct PromptTokensDetails {
     pub cached_tokens: usize,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct CompletionTokensDetails {
+    /// Reasoning tokens reported by reasoning-capable providers.
+    #[serde(default)]
+    pub reasoning_tokens: usize,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens: Option<usize>,
     pub total_tokens: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_time: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_time: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_time: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_time: Option<f64>,
 }
 
 impl Usage {
     pub fn new() -> Self {
         Self {
             prompt_tokens: 0,
+            completion_tokens: None,
             total_tokens: 0,
             prompt_tokens_details: None,
+            completion_tokens_details: None,
+            queue_time: None,
+            prompt_time: None,
+            completion_time: None,
+            total_time: None,
         }
     }
 }
@@ -1103,15 +1116,23 @@ impl fmt::Display for Usage {
 
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
-        crate::providers::internal::completion_usage(
+        let mut usage = crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
-            (self.total_tokens - self.prompt_tokens) as u64,
+            self.completion_tokens
+                .unwrap_or_else(|| self.total_tokens.saturating_sub(self.prompt_tokens))
+                as u64,
             self.total_tokens as u64,
             self.prompt_tokens_details
                 .as_ref()
                 .map(|d| d.cached_tokens as u64)
                 .unwrap_or(0),
-        )
+        );
+        usage.reasoning_tokens = self
+            .completion_tokens_details
+            .as_ref()
+            .map(|d| d.reasoning_tokens as u64)
+            .unwrap_or(0);
+        usage
     }
 }
 

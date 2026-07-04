@@ -1,0 +1,16 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":[{"text":"Return only valid JSON. No markdown.","type":"text"}],"role":"system"},{"content":"Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.","role":"user"}],"model":"llama-3.3-70b-versatile","response_format":{"type":"json_object"},"stream":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"{\n  \"release_lane\": \"canary\",\n   \"risk\": \"low\",\n   \"checks\": {\n      \"compile\": true,\n      \"replay\": true\n   }\n}","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.080923801,"completion_tokens":38,"prompt_time":0.038802288,"prompt_tokens":80,"queue_time":0.17809775,"total_time":0.119726089,"total_tokens":118},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":788503977}}'

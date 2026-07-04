@@ -555,7 +555,7 @@ fn route_for_model(model: &str) -> CompletionRoute {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "api", rename_all = "snake_case")]
 pub enum CopilotCompletionResponse {
-    Chat(ChatCompletionResponse),
+    Chat(Box<ChatCompletionResponse>),
     Responses(Box<responses_api::CompletionResponse>),
 }
 
@@ -865,7 +865,7 @@ where
                         Ok(completion::CompletionResponse {
                             choice: core.choice,
                             usage: core.usage,
-                            raw_response: CopilotCompletionResponse::Chat(response),
+                            raw_response: CopilotCompletionResponse::Chat(Box::new(response)),
                             message_id: core.message_id,
                         })
                     }
