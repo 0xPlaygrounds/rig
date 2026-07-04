@@ -367,8 +367,11 @@ where
     }
 
     /// Append a hook to this request's hook stack (on top of any the agent
-    /// already carries). Hooks run in registration order; the first to return a
-    /// non-`Continue` result short-circuits the rest.
+    /// already carries). Hooks run in registration order; how their results
+    /// compose is event-dependent (`CompletionCall` request patches accumulate
+    /// and merge, `ToolCall`/`ToolResult` rewrites chain, and only
+    /// observe-only/recovery events use first-non-`Continue`-wins). See the
+    /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook<M> + 'static,
