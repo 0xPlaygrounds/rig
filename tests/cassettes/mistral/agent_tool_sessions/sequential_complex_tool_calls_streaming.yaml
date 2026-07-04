@@ -13,13 +13,12 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
-  body: |+
+  body: |
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
     data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{}","name":"ping_empty"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh","usage":{"completion_tokens":6,"prompt_tokens":722,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":728}}
 
     data: [DONE]
-
 ---
 when:
   path: /v1/chat/completions
@@ -36,13 +35,12 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
-  body: |+
+  body: |
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
     data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"project\": \"rig-mistral\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\mistral\"}","name":"inspect_manifest"},"id":"call_REDACTED_2","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop","usage":{"completion_tokens":82,"prompt_tokens":734,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":816}}
 
     data: [DONE]
-
 ---
 when:
   path: /v1/chat/completions
@@ -59,13 +57,12 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
-  body: |+
+  body: |
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_3","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
     data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}","name":"join_labels"},"id":"call_REDACTED_3","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_3","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrs","usage":{"completion_tokens":34,"prompt_tokens":837,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":871}}
 
     data: [DONE]
-
 ---
 when:
   path: /v1/chat/completions
@@ -82,13 +79,12 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
-  body: |+
+  body: |
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
     data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"name\": \"sentinel\", \"nullable_code\": null}","name":"optional_nullable_probe"},"id":"call_REDACTED_4","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012","usage":{"completion_tokens":21,"prompt_tokens":891,"prompt_tokens_details":{"cached_tokens":864},"total_tokens":912}}
 
     data: [DONE]
-
 ---
 when:
   path: /v1/chat/completions
@@ -105,13 +101,12 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
-  body: |+
+  body: |
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_5","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
     data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}","name":"escape_echo"},"id":"call_REDACTED_5","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_5","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy","usage":{"completion_tokens":29,"prompt_tokens":927,"prompt_tokens_details":{"cached_tokens":864},"total_tokens":956}}
 
     data: [DONE]
-
 ---
 when:
   path: /v1/chat/completions
@@ -128,7 +123,7 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
-  body: |+
+  body: |
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_6","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
     data: {"choices":[{"delta":{"content":"E"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_6","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvw"}

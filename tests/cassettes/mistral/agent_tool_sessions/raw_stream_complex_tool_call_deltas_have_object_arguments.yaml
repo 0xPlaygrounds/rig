@@ -13,7 +13,7 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
-  body: |+
+  body: |
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
     data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"project\": \"rig-mistral\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"streamed nested JSON\"}","name":"inspect_manifest"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq","usage":{"completion_tokens":69,"prompt_tokens":261,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":330}}
