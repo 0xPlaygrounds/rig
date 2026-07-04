@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call the ping tool with no arguments. Do not answer with normal text before the tool call.","role":"user"}],"model":"deepseek-v4-flash","stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"},"tool_choice":null,"tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"Call the ping tool with no arguments. Do not answer with normal text before the tool call.","role":"user"}],"model":"deepseek-v4-flash","stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"},"tool_choice":"required","tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -20,7 +20,7 @@ then:
 
     data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{}"},"index":0}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","usage":null}
 
-    data: {"choices":[{"delta":{"content":""},"finish_reason":"tool_calls","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":26,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":280,"prompt_tokens":280,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":306}}
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"tool_calls","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":19,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":287,"prompt_tokens":287,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":306}}
 
     data: [DONE]
 
