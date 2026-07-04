@@ -60,7 +60,7 @@ where
     M: CompletionModel,
     M::Response: Serialize,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::CompletionCall {
                 prompt, history, ..

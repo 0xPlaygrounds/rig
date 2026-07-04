@@ -21,7 +21,7 @@
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
 
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, StepEvent};
+use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
 use rig::providers::openai;
@@ -150,7 +150,7 @@ async fn ask(prompt: &str) -> Option<String> {
 struct ApprovalHook;
 
 impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
         // Only the pre-execution tool-call event is a decision point; everything
         // else falls through untouched.
         let StepEvent::ToolCall {

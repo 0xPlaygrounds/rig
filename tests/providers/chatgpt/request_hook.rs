@@ -25,7 +25,7 @@ impl<'a, M> AgentHook<M> for SessionIdHook<'a>
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::CompletionCall { prompt, .. } => {
                 let Message::User { content } = prompt else {

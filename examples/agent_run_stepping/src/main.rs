@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::{AgentHook, Flow, InvalidToolCallHookAction, StepEvent};
+use rig::agent::{AgentHook, Flow, HookContext, InvalidToolCallHookAction, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Completion, CompletionModel, ToolDefinition};
 use rig::message::{ToolResultContent, UserContent};
@@ -76,7 +76,7 @@ impl Tool for Add {
 struct ToolLoggerHook;
 
 impl<M: CompletionModel> AgentHook<M> for ToolLoggerHook {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
         if let StepEvent::ToolCall {
             tool_name, args, ..
         } = event

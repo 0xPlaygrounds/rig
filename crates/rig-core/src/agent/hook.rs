@@ -3,16 +3,55 @@
 //! A hook is a single [`AgentHook::on_event`] method that the agent loop calls
 //! at every observable point of a run — before each model call, on each model
 //! response, around every tool call, on streamed deltas, and when the model
-//! emits an invalid tool call. Each call receives a [`StepEvent`] describing
-//! what is happening and returns a [`Flow`] that lets the hook observe, skip a
-//! tool, terminate the run early, or (for invalid tool calls) retry/repair/skip
-//! recovery.
+//! emits an invalid tool call. Each call receives a [`HookContext`] (run-scoped
+//! identity + a shared scratchpad) and a [`StepEvent`] describing what is
+//! happening, and returns a [`Flow`] that lets the hook observe, patch the
+//! request, skip a tool, terminate the run early, or (for invalid tool calls)
+//! retry/repair/skip recovery.
 //!
 //! Unlike the old multi-method hook trait, a hook implements one method and
 //! matches on the event it cares about — every other event falls through to the
-//! default [`Flow::Continue`]. Hooks compose: a [`HookStack`] runs several hooks
-//! in registration order and the first non-[`Flow::Continue`] result wins (the
-//! later hooks are not consulted for that event).
+//! default [`Flow::Continue`]. Hooks compose in a [`HookStack`] that runs several
+//! hooks in registration order.
+//!
+//! # Composition: mergeable patches vs. terminal control actions
+//!
+//! How a [`HookStack`] combines several hooks' [`Flow`] results depends on the
+//! event, and this is the central behavior to understand:
+//!
+//! - **[`StepEvent::CompletionCall`] — accumulate & merge.** Every hook is
+//!   consulted. A hook that returns [`Flow::PatchRequest`] does **not** stop the
+//!   others: patches from all hooks are merged in registration order into one
+//!   effective patch (see [`RequestPatch`] for the per-field merge rules). This
+//!   lets a RAG hook, a tool-policy hook, and a provider-param hook all
+//!   contribute to the same turn. [`Flow::Terminate`] stops the stack and is
+//!   honored; any other (unsupported) flow stops the stack and fails closed,
+//!   discarding the accumulated patch.
+//! - **[`StepEvent::ToolCall`] / [`StepEvent::ToolResult`] — chain.** Every hook
+//!   is consulted; a [`Flow::RewriteArgs`] / [`Flow::RewriteResult`] does not
+//!   stop the others — the rewritten value is threaded into the next hook's
+//!   event, so hook *N* observes the value as rewritten by hooks *1..N-1* and may
+//!   rewrite further (a redaction hook and a truncation hook compose).
+//!   [`Flow::Skip`] / [`Flow::Terminate`] are terminal mid-chain.
+//! - **Every other event — first non-[`Continue`](Flow::Continue) wins.** These
+//!   are observe-only or recovery events ([`CompletionResponse`](StepEvent::CompletionResponse),
+//!   [`ModelTurnFinished`](StepEvent::ModelTurnFinished),
+//!   [`InvalidToolCall`](StepEvent::InvalidToolCall), the streamed deltas): the
+//!   first hook to return a non-[`Continue`](Flow::Continue) result short-circuits
+//!   the rest.
+//!
+//! **Blind merge.** During accumulation/chaining a hook does *not* see earlier
+//! hooks' contributions in its event payload for `CompletionCall` (it sees the
+//! agent baseline); for `ToolCall`/`ToolResult` it *does* see the running
+//! rewritten value. `CompletionCall` patches are declarative with documented
+//! conflict rules, so blind merge is sufficient and keeps [`StepEvent`] `Copy`.
+//!
+//! **Ordering guidance.** Because [`Flow::Terminate`] short-circuits the stack,
+//! register observe-only hooks (telemetry) *before* steering hooks so a later
+//! terminate cannot hide the run from them. A [`HookStack`] pushed *as a hook*
+//! into another stack composes correctly: it returns its own net flow (a merged
+//! patch, a threaded rewrite, or a terminal action) which the outer stack folds
+//! in again — nesting never reintroduces short-circuiting on mergeable results.
 //!
 //! Hooks are a *driver* concern: they are async, side-effecting and generic over
 //! the model, so they live in the [`AgentRunner`](crate::agent::AgentRunner)
@@ -25,12 +64,12 @@
 //! [`AgentHook::on_event`] method. Each old method becomes one match arm on a
 //! [`StepEvent`] variant, and the value it used to return becomes the [`Flow`]
 //! you return from that arm (every event you don't care about falls through to
-//! [`Flow::Continue`]). Attach one or more hooks with `add_hook` — they run in
-//! registration order and the first non-[`Flow::Continue`] result wins.
+//! [`Flow::Continue`]). Every `on_event` now also receives a [`HookContext`]
+//! first argument. Attach one or more hooks with `add_hook`.
 //!
 //! | Old `PromptHook` method | [`StepEvent`] variant | [`Flow`] to return |
 //! |---|---|---|
-//! | `on_completion_call` | [`CompletionCall`](StepEvent::CompletionCall) `{ prompt, history, turn }` | [`cont`](Flow::cont) / [`override_request`](Flow::override_request) / [`terminate`](Flow::terminate) |
+//! | `on_completion_call` | [`CompletionCall`](StepEvent::CompletionCall) `{ prompt, history, turn }` | [`cont`](Flow::cont) / [`patch_request`](Flow::patch_request) / [`terminate`](Flow::terminate) |
 //! | `on_completion_response` | [`CompletionResponse`](StepEvent::CompletionResponse) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_invalid_tool_call` | [`InvalidToolCall`](StepEvent::InvalidToolCall)`(ctx)` | [`fail`](Flow::fail) (default) / [`retry`](Flow::retry) / [`repair`](Flow::repair) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call` | [`ToolCall`](StepEvent::ToolCall) `{ tool_name, tool_call_id, internal_call_id, args }` | [`cont`](Flow::cont) / [`rewrite_args`](Flow::rewrite_args) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
@@ -38,6 +77,7 @@
 //! | `on_text_delta` | [`TextDelta`](StepEvent::TextDelta) `{ delta, aggregated }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call_delta` | [`ToolCallDelta`](StepEvent::ToolCallDelta) `{ tool_call_id, internal_call_id, tool_name, delta }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_stream_completion_response_finish` | [`StreamResponseFinish`](StepEvent::StreamResponseFinish) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
+//! | *(new, both surfaces)* | [`ModelTurnFinished`](StepEvent::ModelTurnFinished) `{ turn, content, usage }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //!
 //! Behavioral notes:
 //!
@@ -51,11 +91,208 @@
 //!   [`ToolCallDelta`](StepEvent::ToolCallDelta) events you don't consume.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{
-    completion::CompletionModel,
-    message::{Message, ToolChoice},
+    OneOrMany,
+    completion::{CompletionModel, Document, Usage},
+    json_utils,
+    message::{AssistantContent, Message, ToolChoice},
+    tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+};
+
+/// Opaque, process-scoped identifier for a single agent run.
+///
+/// Minted once when a run's [`HookContext`] is created and stable for the whole
+/// run, so a hook can correlate every event it observes (across turns, tool
+/// calls and streamed deltas) to one run. It is a short URL-safe string from
+/// Rig's internal, non-cryptographic id generator — not globally unique across
+/// process restarts, and not security-sensitive.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RunId(String);
+
+impl RunId {
+    /// Mint a fresh run id.
+    pub(crate) fn generate() -> Self {
+        Self(crate::id::generate())
+    }
+
+    /// The id as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for RunId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// A run-scoped, shared scratchpad passed to every hook via [`HookContext`].
+///
+/// A type-map with interior mutability: cooperating hooks read and write typed
+/// values keyed by type, sharing per-run state (a turn counter, a running
+/// budget, a phase flag) without each rolling its own `Arc<Mutex<…>>`. All
+/// clones of a run's [`HookContext`] share one scratchpad; a fresh run starts
+/// with an empty one.
+///
+/// Hooks receive `&HookContext` (shared), so every accessor here takes `&self`
+/// and mutates through an internal lock. Reads clone the stored value out (the
+/// lock cannot hand out a borrow), so store cheaply-cloneable values.
+///
+/// # Example
+/// ```
+/// # use rig_core::agent::hook::Scratchpad;
+/// #[derive(Clone, Default)]
+/// struct Calls(u32);
+///
+/// let pad = Scratchpad::default();
+/// pad.update(|c: &mut Calls| c.0 += 1);
+/// assert_eq!(pad.get::<Calls>().map(|c| c.0), Some(1));
+/// ```
+#[derive(Clone, Default)]
+pub struct Scratchpad {
+    // Reuses the tested `ToolCallExtensions` type-map as the storage, wrapped in
+    // a shared lock so `&HookContext` hooks can mutate it. Sequential within a
+    // run (the driver awaits each hook), so this never actually contends.
+    inner: Arc<std::sync::Mutex<ToolCallExtensions>>,
+}
+
+impl Scratchpad {
+    fn lock(&self) -> std::sync::MutexGuard<'_, ToolCallExtensions> {
+        // A poisoned scratchpad (a hook panicked while holding the lock) should
+        // not cascade into cancelling later hooks or the run; recover the guard.
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Insert a typed value, returning the previous value of the same type.
+    pub fn insert<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(
+        &self,
+        val: T,
+    ) -> Option<T> {
+        self.lock().insert(val)
+    }
+
+    /// Get a clone of the stored value of type `T`, if present.
+    pub fn get<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(&self) -> Option<T> {
+        self.lock().get::<T>().cloned()
+    }
+
+    /// Whether a value of type `T` is present.
+    pub fn contains<T: WasmCompatSend + WasmCompatSync + 'static>(&self) -> bool {
+        self.lock().contains::<T>()
+    }
+
+    /// Remove and return the stored value of type `T`, if present.
+    pub fn remove<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(&self) -> Option<T> {
+        self.lock().remove::<T>()
+    }
+
+    /// Read-modify-write the value of type `T` under one lock acquisition,
+    /// starting from [`Default`] when absent. The value is stored back and the
+    /// closure's return value is returned.
+    ///
+    /// This is the race-free way to bump a counter or accumulate:
+    /// ```
+    /// # use rig_core::agent::hook::Scratchpad;
+    /// # #[derive(Clone, Default)] struct Total(u64);
+    /// # let pad = Scratchpad::default();
+    /// pad.update(|t: &mut Total| t.0 += 10);
+    /// ```
+    pub fn update<T, R>(&self, f: impl FnOnce(&mut T) -> R) -> R
+    where
+        T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        let mut guard = self.lock();
+        let mut val = guard.remove::<T>().unwrap_or_default();
+        let out = f(&mut val);
+        guard.insert(val);
+        out
+    }
+}
+
+impl std::fmt::Debug for Scratchpad {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Scratchpad")
+            .field("entries", &self.lock().len())
+            .finish()
+    }
+}
+
+/// Run-scoped context passed by shared reference to every [`AgentHook::on_event`]
+/// call.
+///
+/// Carries the run's identity and a shared [`Scratchpad`]. It is a *driver*
+/// construct built once per run by [`AgentRunner`](crate::agent::AgentRunner);
+/// nothing here reaches the sans-IO [`AgentRun`](crate::agent::run::AgentRun)
+/// state machine. Hooks hold it by `&`, so all fields are read via accessors and
+/// run-scoped mutation goes through [`scratchpad`](Self::scratchpad).
+#[derive(Debug)]
+pub struct HookContext {
+    run_id: RunId,
+    // Interior-mutable so the driver can advance it each turn while hooks hold a
+    // shared `&HookContext`; also the reason the context is `Sync`.
+    turn: AtomicUsize,
+    is_streaming: bool,
+    agent_name: Option<String>,
+    scratchpad: Scratchpad,
+}
+
+impl HookContext {
+    /// Build a fresh run-scoped context. `is_streaming` records which surface is
+    /// driving ([`run`](crate::agent::AgentRunner::run) vs.
+    /// [`stream`](crate::agent::AgentRunner::stream)).
+    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
+        Self {
+            run_id: RunId::generate(),
+            turn: AtomicUsize::new(0),
+            is_streaming,
+            agent_name,
+            scratchpad: Scratchpad::default(),
+        }
+    }
+
+    /// Record the current one-based model-call index (set by the driver before
+    /// each turn), so events that don't carry a turn still see it.
+    pub(crate) fn set_turn(&self, turn: usize) {
+        self.turn.store(turn, Ordering::Relaxed);
+    }
+
+    /// The run's stable identifier.
+    pub fn run_id(&self) -> &RunId {
+        &self.run_id
+    }
+
+    /// The current one-based model-call index (0 before the first turn).
+    pub fn turn(&self) -> usize {
+        self.turn.load(Ordering::Relaxed)
+    }
+
+    /// Whether this run is driven by the streaming surface.
+    pub fn is_streaming(&self) -> bool {
+        self.is_streaming
+    }
+
+    /// The agent's configured name, if any.
+    pub fn agent_name(&self) -> Option<&str> {
+        self.agent_name.as_deref()
+    }
+
+    /// The run-scoped shared scratchpad.
+    pub fn scratchpad(&self) -> &Scratchpad {
+        &self.scratchpad
+    }
+}
+
+// `&HookContext` is borrowed across `.await` points in async hook dispatch, so
+// on native targets `HookContext` must stay `Sync` (and `Send`). This fails to
+// compile if a future change drops the property.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<HookContext>();
 };
 
 /// Context passed to a hook on a [`StepEvent::InvalidToolCall`] event when the
@@ -143,8 +380,9 @@ impl InvalidToolCallHookAction {
 #[non_exhaustive]
 pub enum StepEvent<'a, M: CompletionModel> {
     /// Before a completion request is sent to the model. Honors
-    /// [`Flow::Continue`], [`Flow::OverrideRequest`] (patch this turn's request)
-    /// and [`Flow::Terminate`].
+    /// [`Flow::Continue`], [`Flow::PatchRequest`] (patch this turn's request) and
+    /// [`Flow::Terminate`]. Across a [`HookStack`], every hook's
+    /// [`PatchRequest`](Flow::PatchRequest) is merged (see the module docs).
     CompletionCall {
         /// The prompt message for this turn.
         prompt: &'a Message,
@@ -155,12 +393,32 @@ pub enum StepEvent<'a, M: CompletionModel> {
     },
     /// After a non-streaming completion response is received. Suppressed for
     /// turns recovered by invalid tool-call repair, skip, or retry. Honors
-    /// [`Flow::Continue`] and [`Flow::Terminate`].
+    /// [`Flow::Continue`] and [`Flow::Terminate`]. The medium-specific
+    /// (non-streaming) counterpart of [`ModelTurnFinished`](Self::ModelTurnFinished),
+    /// carrying the raw provider response.
     CompletionResponse {
         /// The prompt message for this turn.
         prompt: &'a Message,
         /// The model's completion response.
         response: &'a crate::completion::CompletionResponse<M::Response>,
+    },
+    /// After a model turn is accepted into the run, on **both** surfaces,
+    /// regardless of whether the turn produced text, tool calls, reasoning, or
+    /// mixed content. This is the normalized, medium-neutral counterpart of
+    /// [`CompletionResponse`](Self::CompletionResponse) (non-streaming) and
+    /// [`StreamResponseFinish`](Self::StreamResponseFinish) (streaming) — use it
+    /// for telemetry that must fire once per turn everywhere, including a
+    /// streamed tool-only turn that fires no `StreamResponseFinish`. Suppressed
+    /// for turns recovered by invalid tool-call repair, skip, or retry, and
+    /// fired *after* the medium-specific raw event when one fires. Observe-only:
+    /// honors [`Flow::Continue`] and [`Flow::Terminate`].
+    ModelTurnFinished {
+        /// One-based index of this model call within the run.
+        turn: usize,
+        /// The turn's assistant content, as recorded into the run.
+        content: &'a OneOrMany<AssistantContent>,
+        /// Token usage for this turn (zeroed if the provider reported none).
+        usage: Usage,
     },
     /// The model emitted a tool call that is unknown or disallowed for this
     /// turn. Honors [`Flow::Fail`] (the default), [`Flow::Retry`],
@@ -170,7 +428,8 @@ pub enum StepEvent<'a, M: CompletionModel> {
     /// Before a tool is executed. Honors [`Flow::Continue`],
     /// [`Flow::RewriteArgs`] (execute the tool with rewritten arguments),
     /// [`Flow::Skip`] (return `reason` as the tool result without executing) and
-    /// [`Flow::Terminate`].
+    /// [`Flow::Terminate`]. Across a [`HookStack`], [`RewriteArgs`](Flow::RewriteArgs)
+    /// is chained: `args` reflects prior hooks' rewrites (see the module docs).
     ToolCall {
         /// Name of the tool about to be called.
         tool_name: &'a str,
@@ -184,7 +443,9 @@ pub enum StepEvent<'a, M: CompletionModel> {
     /// After a tool has been executed and produced a result. Honors
     /// [`Flow::Continue`], [`Flow::RewriteResult`] (substitute the result the
     /// model sees) and [`Flow::Terminate`]. `result` is the tool's actual
-    /// output, observed before any [`Flow::RewriteResult`] is applied.
+    /// output for the first hook; across a [`HookStack`],
+    /// [`RewriteResult`](Flow::RewriteResult) is chained so a later hook sees the
+    /// prior hook's replacement (see the module docs).
     ToolResult {
         /// Name of the tool that was called.
         tool_name: &'a str,
@@ -225,7 +486,9 @@ pub enum StepEvent<'a, M: CompletionModel> {
     /// repair, skip, or retry. Note one medium-specific difference from
     /// `CompletionResponse`: it fires only on turns that streamed assistant
     /// **text** — a turn that emits only a tool call (or only reasoning) does
-    /// not fire it. Honors [`Flow::Continue`] and [`Flow::Terminate`].
+    /// not fire it. For a per-turn event that fires on *every* turn on both
+    /// surfaces, use [`ModelTurnFinished`](Self::ModelTurnFinished). Honors
+    /// [`Flow::Continue`] and [`Flow::Terminate`].
     StreamResponseFinish {
         /// The prompt message for this turn.
         prompt: &'a Message,
@@ -258,6 +521,8 @@ pub enum StepEventKind {
     CompletionCall,
     /// [`StepEvent::CompletionResponse`].
     CompletionResponse,
+    /// [`StepEvent::ModelTurnFinished`].
+    ModelTurnFinished,
     /// [`StepEvent::InvalidToolCall`].
     InvalidToolCall,
     /// [`StepEvent::ToolCall`].
@@ -278,6 +543,7 @@ impl<M: CompletionModel> StepEvent<'_, M> {
         match self {
             StepEvent::CompletionCall { .. } => StepEventKind::CompletionCall,
             StepEvent::CompletionResponse { .. } => StepEventKind::CompletionResponse,
+            StepEvent::ModelTurnFinished { .. } => StepEventKind::ModelTurnFinished,
             StepEvent::InvalidToolCall(_) => StepEventKind::InvalidToolCall,
             StepEvent::ToolCall { .. } => StepEventKind::ToolCall,
             StepEvent::ToolResult { .. } => StepEventKind::ToolResult,
@@ -289,20 +555,40 @@ impl<M: CompletionModel> StepEvent<'_, M> {
 }
 
 /// A partial patch over the model request for a single turn, returned by a hook
-/// via [`Flow::OverrideRequest`] on a [`StepEvent::CompletionCall`] event.
+/// via [`Flow::PatchRequest`] on a [`StepEvent::CompletionCall`] event.
 ///
 /// Every field is optional: a `Some` value overrides the agent's configured
 /// value for this turn, a `None` value inherits it. The patch is **per-turn and
 /// non-sticky** — it never changes the agent's baseline, so the next turn
-/// resolves from the baseline again. `additional_params` is shallow-merged
-/// (top-level keys, the override winning) onto the agent's passthrough params;
-/// every other field replaces.
+/// re-fires [`CompletionCall`](StepEvent::CompletionCall) and resolves from the
+/// baseline again.
+///
+/// # Merge behavior
+///
+/// Two kinds of merge apply. When several hooks in a [`HookStack`] each return a
+/// patch, they are combined **hook ⊕ hook in registration order** with these
+/// per-field rules; the effective patch is then applied **patch → baseline**.
+///
+/// | Field | hook ⊕ hook (registration order) | patch → baseline |
+/// |---|---|---|
+/// | `extra_context` | append (earlier hooks' docs first) | append after static + dynamic context |
+/// | `additional_params` | shallow-merge top-level keys, later hook wins | shallow-merge onto baseline params |
+/// | `preamble` | last writer wins (warns on conflict) | replaces |
+/// | `temperature`, `max_tokens`, `tool_choice` | last writer wins (warns on conflict) | replaces |
+/// | `active_tools` | set **intersection** (warns when empty) | narrows the advertised set |
+/// | `history` | last writer wins (warns on conflict) | replaces the messages sent this turn |
+///
+/// `active_tools` intersects rather than last-writer-wins because it is an
+/// allow-list guardrail: two narrowing hooks must compose as *narrowing*. All
+/// last-writer-wins conflicts emit a `tracing::warn!` so composition stays
+/// debuggable — additive guidance belongs in `extra_context` documents, not in
+/// preamble concatenation.
 ///
 /// Build one with the setters:
 ///
 /// ```rust,ignore
-/// Flow::override_request(
-///     RequestOverride::new()
+/// Flow::patch_request(
+///     RequestPatch::new()
 ///         .tool_choice(ToolChoice::Required)
 ///         .active_tools(["search"])
 ///         .temperature(0.0),
@@ -310,7 +596,7 @@ impl<M: CompletionModel> StepEvent<'_, M> {
 /// ```
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
-pub struct RequestOverride {
+pub struct RequestPatch {
     /// Override the system prompt / preamble for this turn.
     pub preamble: Option<String>,
     /// Override the sampling temperature for this turn.
@@ -324,10 +610,33 @@ pub struct RequestOverride {
     pub active_tools: Option<Vec<String>>,
     /// Provider-passthrough params shallow-merged onto the agent's for this turn.
     pub additional_params: Option<serde_json::Value>,
+    /// Extra context documents appended (after static and dynamic context) for
+    /// this turn only. The passive-RAG injection point.
+    pub extra_context: Vec<Document>,
+    /// Replace the prior chat history sent to the provider **this turn only**.
+    /// The persisted transcript and the run state are untouched, and RAG's query
+    /// text still derives from the original prompt/history — this changes only
+    /// what messages are sent. `None` sends the real history. The enabling
+    /// primitive for context-window compaction / summarization middleware.
+    pub history: Option<Vec<Message>>,
 }
 
-impl RequestOverride {
-    /// An empty override — a no-op patch, identical to returning [`Flow::cont`].
+/// Last-writer-wins merge for a scalar patch field, warning on a real conflict.
+fn merge_last_wins<T>(earlier: Option<T>, later: Option<T>, field: &str) -> Option<T> {
+    match (earlier, later) {
+        (Some(_), Some(l)) => {
+            tracing::warn!(
+                patch_field = field,
+                "two hooks set `{field}` on the same turn; the later hook wins"
+            );
+            Some(l)
+        }
+        (earlier, later) => later.or(earlier),
+    }
+}
+
+impl RequestPatch {
+    /// An empty patch — a no-op, identical to returning [`Flow::cont`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -368,7 +677,7 @@ impl RequestOverride {
     /// This narrows the executable tool set, so it composes with `tool_choice`:
     /// if the effective tool choice is a [`ToolChoice::Specific`] naming a tool
     /// that `active_tools` filters out (e.g. the agent's baseline choice is
-    /// inherited because this override didn't set its own), the request fails
+    /// inherited because this patch didn't set its own), the request fails
     /// closed with a request error rather than silently forcing a dropped tool.
     /// When narrowing the set, set a compatible `tool_choice` in the same patch.
     pub fn active_tools<I, S>(mut self, names: I) -> Self
@@ -386,6 +695,93 @@ impl RequestOverride {
         self.additional_params = Some(additional_params);
         self
     }
+
+    /// Append extra context documents for this turn (the passive-RAG injection
+    /// point). Documents are appended after the agent's static and dynamic
+    /// (vector-store) context, in the order added.
+    pub fn extra_context<I>(mut self, docs: I) -> Self
+    where
+        I: IntoIterator<Item = Document>,
+    {
+        self.extra_context.extend(docs);
+        self
+    }
+
+    /// Append a single extra context document for this turn.
+    pub fn context(mut self, doc: Document) -> Self {
+        self.extra_context.push(doc);
+        self
+    }
+
+    /// Replace the prior chat history sent to the provider **this turn only**.
+    /// The persisted transcript is untouched; RAG query text still derives from
+    /// the original history. Use for context-window compaction / summarization.
+    pub fn history<I>(mut self, history: I) -> Self
+    where
+        I: IntoIterator<Item = Message>,
+    {
+        self.history = Some(history.into_iter().collect());
+        self
+    }
+
+    /// Whether this patch has no effect (all fields unset).
+    pub(crate) fn is_empty(&self) -> bool {
+        self.preamble.is_none()
+            && self.temperature.is_none()
+            && self.max_tokens.is_none()
+            && self.tool_choice.is_none()
+            && self.active_tools.is_none()
+            && self.additional_params.is_none()
+            && self.extra_context.is_empty()
+            && self.history.is_none()
+    }
+
+    /// Merge a later hook's patch onto this one (registration order: `self` is
+    /// the accumulated earlier hooks, `later` is the next hook). See the struct
+    /// docs for the per-field rules.
+    pub(crate) fn merge(mut self, later: RequestPatch) -> RequestPatch {
+        // extra_context: append (earlier hooks' documents first).
+        self.extra_context.extend(later.extra_context);
+
+        // additional_params: shallow-merge when both are objects (later wins per
+        // key), otherwise the later non-None value wins wholesale — mirroring the
+        // patch → baseline behavior in request assembly.
+        self.additional_params = match (self.additional_params.take(), later.additional_params) {
+            (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
+                Some(json_utils::merge(base, patch))
+            }
+            (base, patch) => patch.or(base),
+        };
+
+        // Scalars + preamble + history: last writer wins, warn on real conflict.
+        self.preamble = merge_last_wins(self.preamble, later.preamble, "preamble");
+        self.temperature = merge_last_wins(self.temperature, later.temperature, "temperature");
+        self.max_tokens = merge_last_wins(self.max_tokens, later.max_tokens, "max_tokens");
+        self.tool_choice = merge_last_wins(self.tool_choice, later.tool_choice, "tool_choice");
+        self.history = merge_last_wins(self.history, later.history, "history");
+
+        // active_tools: set intersection (two narrowing guardrails compose as
+        // narrowing). One-sided keeps the present allow-list.
+        self.active_tools = match (self.active_tools.take(), later.active_tools) {
+            (Some(earlier), Some(later)) => {
+                let later_set: std::collections::BTreeSet<&String> = later.iter().collect();
+                let intersection: Vec<String> = earlier
+                    .into_iter()
+                    .filter(|name| later_set.contains(name))
+                    .collect();
+                if intersection.is_empty() {
+                    tracing::warn!(
+                        "two hooks' `active_tools` allow-lists have an empty intersection; \
+                         no executable tools will be advertised this turn"
+                    );
+                }
+                Some(intersection)
+            }
+            (earlier, later) => earlier.or(later),
+        };
+
+        self
+    }
 }
 
 /// Control-flow result returned by [`AgentHook::on_event`].
@@ -397,8 +793,8 @@ impl RequestOverride {
 /// [`StepEvent::ToolCall`] stops the run rather than letting the tool execute.
 /// Returning [`Flow::Continue`] is always the way to "do nothing".
 ///
-/// `Flow` is `PartialEq` but not `Eq`, because [`Flow::OverrideRequest`] carries
-/// a [`RequestOverride`] whose `temperature` is an `f64`.
+/// `Flow` is `PartialEq` but not `Eq`, because [`Flow::PatchRequest`] carries a
+/// [`RequestPatch`] whose `temperature` is an `f64`.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Flow {
@@ -432,9 +828,9 @@ pub enum Flow {
     /// **not** a history redactor — it does not scrub a value the model already
     /// emitted from the conversation.
     ///
-    /// Note: a rewrite is single-shot. Because a [`HookStack`] short-circuits on
-    /// the first non-[`Flow::Continue`] result, only the first hook to rewrite a
-    /// given call takes effect.
+    /// Across a [`HookStack`], rewrites **chain**: the rewritten arguments are
+    /// threaded into the next hook's [`ToolCall`](StepEvent::ToolCall) event, so
+    /// several hooks can each refine the arguments in registration order.
     RewriteArgs {
         /// The JSON arguments the tool is invoked with, in place of the ones the
         /// model emitted.
@@ -448,42 +844,40 @@ pub enum Flow {
     /// The replacement is what the model receives as the tool result and what the
     /// `gen_ai.tool.call.result` span field records. As with
     /// [`RewriteArgs`](Flow::RewriteArgs), this changes only what the model
-    /// *sees*: the tool still ran and produced its real output (which the
-    /// [`ToolResult`](StepEvent::ToolResult) event observed before this
+    /// *sees*: the tool still ran and produced its real output (which the first
+    /// hook's [`ToolResult`](StepEvent::ToolResult) event observed before this
     /// replacement is applied). It does not scrub the tool's output from logs.
     ///
     /// The replacement is delivered to the model verbatim — it is not re-parsed
     /// as structured/multimodal tool output, so a JSON-shaped replacement reaches
     /// the model as literal text.
     ///
-    /// Note: a rewrite is single-shot. Because a [`HookStack`] short-circuits on
-    /// the first non-[`Flow::Continue`] result, only the first hook to rewrite a
-    /// given result takes effect.
+    /// Across a [`HookStack`], rewrites **chain**: the replacement is threaded
+    /// into the next hook's [`ToolResult`](StepEvent::ToolResult) event, so a
+    /// redaction hook and a truncation hook can compose in registration order.
     RewriteResult {
         /// The result delivered to the model in place of the tool's actual
         /// output.
         result: String,
     },
-    /// [`StepEvent::CompletionCall`] only: override fields of the model request
-    /// for this turn before it is sent. The per-turn request-steering action —
-    /// for hooks that adjust the system prompt, sampling, tool choice, or the
-    /// advertised tool set from run state (e.g. force a tool on the first turn,
-    /// lower the temperature on a critical step, or shrink the tool set after a
-    /// phase).
+    /// [`StepEvent::CompletionCall`] only: patch fields of the model request for
+    /// this turn before it is sent. The per-turn request-steering action — for
+    /// hooks that adjust the system prompt, sampling, tool choice, the advertised
+    /// tool set, or inject context documents from run state (force a tool on the
+    /// first turn, lower the temperature on a critical step, add RAG context).
     ///
-    /// The override is a partial patch ([`RequestOverride`]): each set field
-    /// replaces (or, for `additional_params`, shallow-merges onto) the agent's
-    /// configured value; unset fields are inherited. It applies to *this turn
-    /// only* and does not change the agent's baseline — the next turn re-fires
+    /// The patch is partial ([`RequestPatch`]): each set field replaces (or, for
+    /// `additional_params`/`extra_context`, merges onto) the agent's configured
+    /// value; unset fields are inherited. It applies to *this turn only* and does
+    /// not change the agent's baseline — the next turn re-fires
     /// [`CompletionCall`](StepEvent::CompletionCall) and re-resolves from it.
     ///
-    /// Note: like the other steering actions, this is single-shot. Because a
-    /// [`HookStack`] short-circuits on the first non-[`Flow::Continue`] result,
-    /// only the first hook to override a given turn takes effect; compose several
-    /// patches into one hook to combine them.
-    OverrideRequest {
+    /// Across a [`HookStack`], patches from all hooks **accumulate** and merge in
+    /// registration order (see [`RequestPatch`] and the module docs); this action
+    /// therefore does *not* short-circuit later hooks.
+    PatchRequest {
         /// The partial request patch applied to this turn.
-        request: RequestOverride,
+        patch: RequestPatch,
     },
     /// [`StepEvent::InvalidToolCall`] only: fail the run fast (the default for
     /// invalid tool calls).
@@ -573,10 +967,10 @@ impl Flow {
         }
     }
 
-    /// Override fields of the model request for this turn (completion calls
-    /// only). See [`RequestOverride`] for the partial-patch, per-turn semantics.
-    pub fn override_request(request: RequestOverride) -> Self {
-        Self::OverrideRequest { request }
+    /// Patch fields of the model request for this turn (completion calls only).
+    /// See [`RequestPatch`] for the partial-patch, per-turn, mergeable semantics.
+    pub fn patch_request(patch: RequestPatch) -> Self {
+        Self::PatchRequest { patch }
     }
 
     /// Fail fast on an invalid tool call (the default).
@@ -608,16 +1002,16 @@ impl Flow {
 ///
 /// # Example
 /// ```rust,ignore
-/// use rig_core::agent::{AgentHook, Flow, StepEvent};
+/// use rig_core::agent::{AgentHook, Flow, HookContext, StepEvent};
 /// use rig_core::completion::CompletionModel;
 ///
 /// #[derive(Clone)]
 /// struct Logger;
 ///
 /// impl<M: CompletionModel> AgentHook<M> for Logger {
-///     async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+///     async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
 ///         if let StepEvent::ToolCall { tool_name, args, .. } = event {
-///             println!("calling {tool_name}({args})");
+///             println!("[run {}] calling {tool_name}({args})", ctx.run_id());
 ///         }
 ///         Flow::cont()
 ///     }
@@ -628,10 +1022,15 @@ where
     M: CompletionModel,
 {
     /// Called at every observable point of the agent run (subject to
-    /// [`observes`](Self::observes)). The default implementation observes
-    /// nothing and returns [`Flow::Continue`].
-    fn on_event(&self, event: StepEvent<'_, M>) -> impl Future<Output = Flow> + WasmCompatSend {
-        let _ = event;
+    /// [`observes`](Self::observes)). Receives the run-scoped [`HookContext`] and
+    /// the [`StepEvent`]. The default implementation observes nothing and returns
+    /// [`Flow::Continue`].
+    fn on_event(
+        &self,
+        ctx: &HookContext,
+        event: StepEvent<'_, M>,
+    ) -> impl Future<Output = Flow> + WasmCompatSend {
+        let _ = (ctx, event);
         async { Flow::Continue }
     }
 
@@ -667,7 +1066,11 @@ trait DynAgentHook<M>: WasmCompatSend + WasmCompatSync
 where
     M: CompletionModel,
 {
-    fn on_event_boxed<'a>(&'a self, event: StepEvent<'a, M>) -> WasmBoxedFuture<'a, Flow>
+    fn on_event_boxed<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: StepEvent<'a, M>,
+    ) -> WasmBoxedFuture<'a, Flow>
     where
         M: 'a;
 
@@ -679,11 +1082,15 @@ where
     M: CompletionModel,
     H: AgentHook<M>,
 {
-    fn on_event_boxed<'a>(&'a self, event: StepEvent<'a, M>) -> WasmBoxedFuture<'a, Flow>
+    fn on_event_boxed<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: StepEvent<'a, M>,
+    ) -> WasmBoxedFuture<'a, Flow>
     where
         M: 'a,
     {
-        Box::pin(self.on_event(event))
+        Box::pin(self.on_event(ctx, event))
     }
 
     fn observes_dyn(&self, kind: StepEventKind) -> bool {
@@ -693,14 +1100,15 @@ where
 
 /// An ordered list of hooks run as one hook.
 ///
-/// Each hook is consulted in registration order; the first hook that returns a
-/// non-[`Flow::Continue`] result short-circuits the rest for that event. Because
-/// the runner is fail-closed (a non-`Continue` action always takes effect or
-/// terminates the run — it is never silently ignored), short-circuiting is
-/// always meaningful: a later hook is only skipped for an event an earlier hook
-/// actually steered. An empty stack is the no-op hook and
-/// [`observes`](HookStack::observes) nothing, so the runner skips event dispatch
-/// for it entirely.
+/// Each hook is consulted in registration order. How their [`Flow`] results
+/// combine depends on the event (see the [module docs](self)):
+/// [`CompletionCall`](StepEvent::CompletionCall) patches **accumulate**;
+/// [`ToolCall`](StepEvent::ToolCall) / [`ToolResult`](StepEvent::ToolResult)
+/// rewrites **chain**; every other event uses **first non-[`Continue`](Flow::Continue)
+/// wins**. Because the runner is fail-closed, a non-`Continue` action always
+/// takes effect or terminates the run — it is never silently ignored. An empty
+/// stack is the no-op hook and [`observes`](HookStack::observes) nothing, so the
+/// runner skips event dispatch for it entirely.
 ///
 /// This is the default hook type carried by an
 /// [`Agent`](crate::agent::Agent) and an
@@ -788,14 +1196,104 @@ impl<M> AgentHook<M> for HookStack<M>
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
-        for hook in &self.hooks {
-            match hook.on_event_boxed(event).await {
-                Flow::Continue => {}
-                other => return other,
+    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+        match event {
+            // Accumulate mergeable request patches from every hook (registration
+            // order); short-circuit on `Terminate` or any flow the event cannot
+            // honor (fail-closed downstream, discarding the accumulated patch).
+            // Hooks see the agent baseline, not earlier hooks' patches (blind
+            // merge), which keeps `StepEvent` `Copy`.
+            StepEvent::CompletionCall { .. } => {
+                let mut merged: Option<RequestPatch> = None;
+                for hook in &self.hooks {
+                    match hook.on_event_boxed(ctx, event).await {
+                        Flow::Continue => {}
+                        Flow::PatchRequest { patch } => {
+                            merged = Some(match merged {
+                                Some(acc) => acc.merge(patch),
+                                None => patch,
+                            });
+                        }
+                        other => return other,
+                    }
+                }
+                match merged {
+                    Some(patch) if !patch.is_empty() => Flow::PatchRequest { patch },
+                    _ => Flow::Continue,
+                }
+            }
+            // Chain tool-arg rewrites: thread the effective arguments through
+            // each hook so a later hook observes (and may further rewrite) the
+            // value produced by earlier hooks. `Skip`/`Terminate` are terminal;
+            // any other flow is returned for fail-closed handling.
+            StepEvent::ToolCall {
+                tool_name,
+                tool_call_id,
+                internal_call_id,
+                args,
+            } => {
+                let mut effective: Option<serde_json::Value> = None;
+                for hook in &self.hooks {
+                    let rewritten = effective.as_ref().map(json_utils::value_to_json_string);
+                    let args_for_hook = rewritten.as_deref().unwrap_or(args);
+                    let per_hook = StepEvent::ToolCall {
+                        tool_name,
+                        tool_call_id,
+                        internal_call_id,
+                        args: args_for_hook,
+                    };
+                    match hook.on_event_boxed(ctx, per_hook).await {
+                        Flow::Continue => {}
+                        Flow::RewriteArgs { args } => effective = Some(args),
+                        other => return other,
+                    }
+                }
+                match effective {
+                    Some(args) => Flow::RewriteArgs { args },
+                    None => Flow::Continue,
+                }
+            }
+            // Chain tool-result rewrites: thread the effective result through
+            // each hook (the first hook sees the tool's real output).
+            StepEvent::ToolResult {
+                tool_name,
+                tool_call_id,
+                internal_call_id,
+                args,
+                result,
+            } => {
+                let mut effective: Option<String> = None;
+                for hook in &self.hooks {
+                    let result_for_hook = effective.as_deref().unwrap_or(result);
+                    let per_hook = StepEvent::ToolResult {
+                        tool_name,
+                        tool_call_id,
+                        internal_call_id,
+                        args,
+                        result: result_for_hook,
+                    };
+                    match hook.on_event_boxed(ctx, per_hook).await {
+                        Flow::Continue => {}
+                        Flow::RewriteResult { result } => effective = Some(result),
+                        other => return other,
+                    }
+                }
+                match effective {
+                    Some(result) => Flow::RewriteResult { result },
+                    None => Flow::Continue,
+                }
+            }
+            // Observe-only / recovery events: first non-`Continue` wins.
+            _ => {
+                for hook in &self.hooks {
+                    match hook.on_event_boxed(ctx, event).await {
+                        Flow::Continue => {}
+                        other => return other,
+                    }
+                }
+                Flow::Continue
             }
         }
-        Flow::Continue
     }
 
     /// The stack observes an event kind if any of its hooks does (so an empty
@@ -809,10 +1307,16 @@ where
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use super::{AgentHook, Flow, HookStack, StepEvent, StepEventKind};
+    use super::{
+        AgentHook, Flow, HookContext, HookStack, RequestPatch, Scratchpad, StepEvent, StepEventKind,
+    };
     use crate::test_utils::MockCompletionModel;
 
     type M = MockCompletionModel;
+
+    fn ctx() -> HookContext {
+        HookContext::new(false, Some("test-agent".to_string()))
+    }
 
     /// Pushes its label when invoked and returns `Continue` or `Terminate`.
     struct Recorder {
@@ -822,7 +1326,7 @@ mod tests {
     }
 
     impl AgentHook<M> for Recorder {
-        async fn on_event(&self, _event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, _event: StepEvent<'_, M>) -> Flow {
             self.log.lock().expect("log").push(self.label);
             if self.stop {
                 Flow::terminate("stop")
@@ -836,12 +1340,31 @@ mod tests {
     struct ObservesOnly(StepEventKind);
 
     impl AgentHook<M> for ObservesOnly {
-        async fn on_event(&self, _event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, _event: StepEvent<'_, M>) -> Flow {
             Flow::cont()
         }
 
         fn observes(&self, kind: StepEventKind) -> bool {
             kind == self.0
+        }
+    }
+
+    /// A hook that returns a fixed patch on `CompletionCall`, and records its
+    /// label so we can prove every hook ran.
+    struct Patcher {
+        label: u32,
+        log: Arc<Mutex<Vec<u32>>>,
+        patch: RequestPatch,
+    }
+
+    impl AgentHook<M> for Patcher {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            self.log.lock().expect("log").push(self.label);
+            if matches!(event, StepEvent::CompletionCall { .. }) {
+                Flow::patch_request(self.patch.clone())
+            } else {
+                Flow::cont()
+            }
         }
     }
 
@@ -852,6 +1375,16 @@ mod tests {
             tool_call_id: Some("tc1"),
             internal_call_id: "ic1",
             args: "{}",
+        }
+    }
+
+    fn completion_call_event() -> StepEvent<'static, M> {
+        static PROMPT: std::sync::OnceLock<crate::message::Message> = std::sync::OnceLock::new();
+        let prompt = PROMPT.get_or_init(|| crate::message::Message::user("hi"));
+        StepEvent::CompletionCall {
+            prompt,
+            history: &[],
+            turn: 1,
         }
     }
 
@@ -869,14 +1402,16 @@ mod tests {
             stop: false,
         });
 
-        let flow = stack.on_event(tool_call_event()).await;
+        let flow = stack.on_event(&ctx(), tool_call_event()).await;
 
         assert!(matches!(flow, Flow::Continue));
         assert_eq!(*log.lock().expect("log"), vec![1, 2]);
     }
 
     #[tokio::test]
-    async fn first_non_continue_short_circuits_the_rest() {
+    async fn first_terminate_short_circuits_on_observe_only_events() {
+        // For a tool-call (a chained event), `Terminate` is terminal mid-chain,
+        // so a later hook must not run once an earlier hook terminates.
         let log = Arc::new(Mutex::new(Vec::new()));
         let mut stack = HookStack::<M>::with(Recorder {
             label: 1,
@@ -889,14 +1424,116 @@ mod tests {
             stop: false,
         });
 
-        let flow = stack.on_event(tool_call_event()).await;
+        let flow = stack.on_event(&ctx(), tool_call_event()).await;
 
         assert!(matches!(flow, Flow::Terminate { .. }));
         assert_eq!(
             *log.lock().expect("log"),
             vec![1],
-            "a later hook must not run after an earlier hook returns non-Continue"
+            "a later hook must not run after an earlier hook terminates"
         );
+    }
+
+    #[tokio::test]
+    async fn completion_call_patches_accumulate_and_consult_every_hook() {
+        // The core composability fix: a patch from hook 1 must NOT skip hook 2.
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut stack = HookStack::<M>::with(Patcher {
+            label: 1,
+            log: log.clone(),
+            patch: RequestPatch::new().temperature(0.1),
+        });
+        stack.push(Patcher {
+            label: 2,
+            log: log.clone(),
+            patch: RequestPatch::new().max_tokens(256),
+        });
+
+        let flow = stack.on_event(&ctx(), completion_call_event()).await;
+
+        assert_eq!(
+            *log.lock().expect("log"),
+            vec![1, 2],
+            "both hooks must run; a mergeable patch does not short-circuit"
+        );
+        match flow {
+            Flow::PatchRequest { patch } => {
+                assert_eq!(patch.temperature, Some(0.1));
+                assert_eq!(patch.max_tokens, Some(256));
+            }
+            other => panic!("expected a merged PatchRequest, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completion_call_terminate_short_circuits_and_discards_patch() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut stack = HookStack::<M>::with(Patcher {
+            label: 1,
+            log: log.clone(),
+            patch: RequestPatch::new().temperature(0.1),
+        });
+        // A terminating recorder in the middle.
+        stack.push(Recorder {
+            label: 2,
+            log: log.clone(),
+            stop: true,
+        });
+        stack.push(Patcher {
+            label: 3,
+            log: log.clone(),
+            patch: RequestPatch::new().max_tokens(256),
+        });
+
+        let flow = stack.on_event(&ctx(), completion_call_event()).await;
+
+        assert!(matches!(flow, Flow::Terminate { .. }));
+        assert_eq!(
+            *log.lock().expect("log"),
+            vec![1, 2],
+            "hook 3 must not run after a terminate"
+        );
+    }
+
+    #[tokio::test]
+    async fn nested_stack_composes_patches_without_inner_short_circuit() {
+        // A HookStack pushed as a hook must not reintroduce short-circuiting:
+        // the inner stack returns its own merged patch, which the outer stack
+        // merges again.
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut inner = HookStack::<M>::with(Patcher {
+            label: 1,
+            log: log.clone(),
+            patch: RequestPatch::new().temperature(0.2),
+        });
+        inner.push(Patcher {
+            label: 2,
+            log: log.clone(),
+            patch: RequestPatch::new().max_tokens(128),
+        });
+
+        let mut outer = HookStack::<M>::with(inner);
+        outer.push(Patcher {
+            label: 3,
+            log: log.clone(),
+            patch: RequestPatch::new().preamble("outer"),
+        });
+
+        let flow = outer.on_event(&ctx(), completion_call_event()).await;
+
+        assert_eq!(
+            *log.lock().expect("log"),
+            vec![1, 2, 3],
+            "every hook, including both inner-stack hooks, must run"
+        );
+        match flow {
+            Flow::PatchRequest { patch } => {
+                assert_eq!(patch.temperature, Some(0.2));
+                assert_eq!(patch.max_tokens, Some(128));
+                assert_eq!(patch.preamble.as_deref(), Some("outer"));
+            }
+            other => panic!("expected a merged PatchRequest, got {other:?}"),
+        }
     }
 
     #[test]
@@ -920,8 +1557,105 @@ mod tests {
         assert!(!stack.observes(StepEventKind::ToolCall));
         assert!(!stack.observes(StepEventKind::TextDelta));
         assert!(matches!(
-            stack.on_event(tool_call_event()).await,
+            stack.on_event(&ctx(), tool_call_event()).await,
             Flow::Continue
         ));
+    }
+
+    // --- RequestPatch merge unit tests ---
+
+    #[test]
+    fn merge_appends_extra_context_in_order() {
+        let doc = |id: &str| crate::completion::Document {
+            id: id.to_string(),
+            text: String::new(),
+            additional_props: Default::default(),
+        };
+        let a = RequestPatch::new().context(doc("a"));
+        let b = RequestPatch::new().context(doc("b"));
+        let merged = a.merge(b);
+        let ids: Vec<&str> = merged.extra_context.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn merge_shallow_merges_additional_params_later_wins() {
+        let a = RequestPatch::new().additional_params(serde_json::json!({"x": 1, "y": 2}));
+        let b = RequestPatch::new().additional_params(serde_json::json!({"y": 3, "z": 4}));
+        let merged = a.merge(b);
+        assert_eq!(
+            merged.additional_params,
+            Some(serde_json::json!({"x": 1, "y": 3, "z": 4}))
+        );
+    }
+
+    #[test]
+    fn merge_scalar_last_writer_wins() {
+        let a = RequestPatch::new().temperature(0.1);
+        let b = RequestPatch::new().temperature(0.9);
+        assert_eq!(a.merge(b).temperature, Some(0.9));
+    }
+
+    #[test]
+    fn merge_active_tools_intersects() {
+        let a = RequestPatch::new().active_tools(["search", "add", "sub"]);
+        let b = RequestPatch::new().active_tools(["add", "sub", "mul"]);
+        let merged = a.merge(b);
+        assert_eq!(
+            merged.active_tools,
+            Some(vec!["add".to_string(), "sub".to_string()])
+        );
+    }
+
+    #[test]
+    fn merge_active_tools_empty_intersection_yields_empty() {
+        let a = RequestPatch::new().active_tools(["search"]);
+        let b = RequestPatch::new().active_tools(["add"]);
+        let merged = a.merge(b);
+        assert_eq!(merged.active_tools, Some(vec![]));
+    }
+
+    #[test]
+    fn merge_one_sided_active_tools_keeps_the_present_list() {
+        let a = RequestPatch::new().active_tools(["search"]);
+        let b = RequestPatch::new();
+        assert_eq!(a.merge(b).active_tools, Some(vec!["search".to_string()]));
+    }
+
+    // --- Scratchpad tests ---
+
+    #[test]
+    fn scratchpad_insert_get_update() {
+        #[derive(Clone, Default, Debug, PartialEq)]
+        struct Count(u32);
+
+        let pad = Scratchpad::default();
+        assert_eq!(pad.get::<Count>(), None);
+        pad.update(|c: &mut Count| c.0 += 1);
+        pad.update(|c: &mut Count| c.0 += 1);
+        assert_eq!(pad.get::<Count>(), Some(Count(2)));
+        assert!(pad.contains::<Count>());
+        assert_eq!(pad.remove::<Count>(), Some(Count(2)));
+        assert!(!pad.contains::<Count>());
+    }
+
+    #[test]
+    fn scratchpad_is_shared_across_clones() {
+        let pad = Scratchpad::default();
+        let clone = pad.clone();
+        pad.insert(7u32);
+        // The clone shares the same underlying storage.
+        assert_eq!(clone.get::<u32>(), Some(7));
+    }
+
+    #[test]
+    fn hook_context_reports_identity_and_turn() {
+        let ctx = HookContext::new(true, Some("agent".to_string()));
+        assert!(ctx.is_streaming());
+        assert_eq!(ctx.agent_name(), Some("agent"));
+        assert_eq!(ctx.turn(), 0);
+        ctx.set_turn(3);
+        assert_eq!(ctx.turn(), 3);
+        assert!(!ctx.run_id().as_str().is_empty());
     }
 }

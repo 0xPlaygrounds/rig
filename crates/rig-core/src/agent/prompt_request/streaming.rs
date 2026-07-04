@@ -1,7 +1,9 @@
 use crate::{
     OneOrMany,
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
-    agent::hook::{AgentHook, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind},
+    agent::hook::{
+        AgentHook, HookContext, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind,
+    },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
         AgentRun, AgentRunStep, PendingToolCall,
@@ -458,9 +460,11 @@ where
     /// Run one model turn: issue the provider call, feed the result into the
     /// sans-IO machine, and yield any intermediate items. Returning normally
     /// advances the loop; yielding an `Err` terminates the run.
+    #[allow(clippy::too_many_arguments)]
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest<M>,
         chat_span: tracing::Span,
@@ -473,6 +477,7 @@ where
     fn run_tool_calls<'a>(
         &'a self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, Self::Raw>;
@@ -516,12 +521,18 @@ pub(crate) fn drive_agent<M, S>(
     agent_span: tracing::Span,
     created_agent_span: bool,
     memory_handle: Option<(Arc<dyn crate::memory::ConversationMemory>, String)>,
+    is_streaming: bool,
 ) -> impl Stream<Item = Result<DriveItem<S::Raw>, StreamingError>>
 where
     M: CompletionModel,
     S: TurnSource<M>,
 {
     async_stream::stream! {
+        // Run-scoped hook context: minted once, shared by every hook event on
+        // both surfaces. `is_streaming` records which surface is driving; the
+        // per-turn index is advanced on each `CallModel` step below.
+        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+
         'outer: loop {
             let step = match run.next_step() {
                 Ok(step) => step,
@@ -536,21 +547,22 @@ where
                     if runner.max_turns > 1 {
                         tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
                     }
+                    hook_ctx.set_turn(turn);
 
-                    let request_override =
-                        match resolve_completion_call(&runner.hooks, &prompt, &history, turn).await {
+                    let request_patch =
+                        match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
-                            CompletionCallOutcome::Proceed(request_override) => request_override,
+                            CompletionCallOutcome::Proceed(request_patch) => request_patch,
                         };
 
-                    // Record this turn's base system prompt — the override-or-baseline
+                    // Record this turn's base system prompt — the patched-or-baseline
                     // preamble, before any output-mode augmentation the request builder
                     // appends. Borrow rather than clone since it only needs to outlive
                     // span creation.
-                    let effective_preamble = request_override
+                    let effective_preamble = request_patch
                         .as_ref()
                         .and_then(|o| o.preamble.as_deref())
                         .or(runner.preamble.as_deref());
@@ -575,7 +587,7 @@ where
                         runner.output_schema.as_ref(),
                         &runner.output_mode,
                         committed_output_tool.as_deref(),
-                        request_override.as_ref(),
+                        request_patch.as_ref(),
                     )
                     .await
                     {
@@ -589,6 +601,7 @@ where
 
                     let mut turn_stream = source.run_model_turn(
                         &runner,
+                        &hook_ctx,
                         &mut run,
                         prepared,
                         chat_span,
@@ -612,7 +625,7 @@ where
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let mut tool_stream = source.run_tool_calls(&runner, &mut run, calls);
+                    let mut tool_stream = source.run_tool_calls(&runner, &hook_ctx, &mut run, calls);
                     let mut errored = false;
                     while let Some(item) = tool_stream.next().await {
                         match item {
@@ -672,6 +685,7 @@ where
 /// unchanged).
 pub(crate) fn drive_tool_calls<'a, M, R, F>(
     runner: &'a AgentRunner<M>,
+    hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
     chain_tool_span: F,
@@ -718,6 +732,7 @@ where
 
                 let result = run_single_tool(
                     &runner.hooks,
+                    hook_ctx,
                     &runner.tool_server_handle,
                     &runner.tool_extensions,
                     &tool_call,
@@ -815,6 +830,7 @@ where
                             pending.internal_call_id.unwrap_or_else(crate::id::generate);
                         let result = run_single_tool(
                             hooks,
+                            hook_ctx,
                             tool_server_handle,
                             tool_extensions,
                             &pending.tool_call,
@@ -960,6 +976,7 @@ where
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest<M>,
         chat_span: tracing::Span,
@@ -979,6 +996,9 @@ where
                     return;
                 }
             };
+            // Captured from each completion-call emission so the normalized
+            // `ModelTurnFinished` event carries the turn's usage.
+            let mut last_usage = crate::completion::Usage::new();
 
             let mut assembler = StreamedTurnAssembler::new(
                 prepared.executable_tool_names.clone(),
@@ -1001,6 +1021,7 @@ where
             macro_rules! emit_completion_call {
                 ($usage:expr) => {{
                     let usage = $usage;
+                    last_usage = usage;
                     if !completion_call_emitted {
                         if usage.has_values() {
                             record_usage_on_span(&chat_span, usage);
@@ -1045,7 +1066,7 @@ where
                                 && let Some(reason) = observe_flow(
                                     runner
                                         .hooks
-                                        .on_event(StepEvent::TextDelta {
+                                        .on_event(hook_ctx, StepEvent::TextDelta {
                                             delta: &text.text,
                                             aggregated: assembler.aggregated_text(),
                                         })
@@ -1074,7 +1095,7 @@ where
                                 if let Some(reason) = observe_flow(
                                     runner
                                         .hooks
-                                        .on_event(StepEvent::ToolCallDelta {
+                                        .on_event(hook_ctx, StepEvent::ToolCallDelta {
                                             tool_call_id: &id,
                                             internal_call_id: &internal_call_id,
                                             tool_name: delta_name,
@@ -1115,7 +1136,7 @@ where
                                     && let Some(reason) = observe_flow(
                                         runner
                                             .hooks
-                                            .on_event(StepEvent::StreamResponseFinish {
+                                            .on_event(hook_ctx, StepEvent::StreamResponseFinish {
                                                 prompt: &current_prompt,
                                                 response: final_resp,
                                             })
@@ -1143,7 +1164,7 @@ where
                                 match flow_into_invalid(
                                     runner
                                         .hooks
-                                        .on_event(StepEvent::InvalidToolCall(&context))
+                                        .on_event(hook_ctx, StepEvent::InvalidToolCall(&context))
                                         .await,
                                 ) {
                                     InvalidDecision::Action(action) => action,
@@ -1256,6 +1277,27 @@ where
                 yield Err(Box::new(err).into());
                 return;
             }
+
+            // Normalized per-turn event, fired once the turn is committed on the
+            // streaming surface — including tool-only / reasoning-only turns that
+            // fire no `StreamResponseFinish`. Suppressed for recovered turns,
+            // mirroring the blocking surface's `Continue` arm.
+            if !turn_recovered
+                && let Some(reason) = observe_flow(
+                    runner
+                        .hooks
+                        .on_event(hook_ctx, StepEvent::ModelTurnFinished {
+                            turn: hook_ctx.turn(),
+                            content: &final_turn_content,
+                            usage: last_usage,
+                        })
+                        .await,
+                )
+            {
+                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                return;
+            }
+
             self.last_final_choice = final_turn_content;
         })
     }
@@ -1263,12 +1305,13 @@ where
     fn run_tool_calls<'a>(
         &'a self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, M::StreamingResponse> {
         // The streaming surface chains nothing onto its tool spans, and forwards
         // the ToolCall/ToolResult items to the consumer.
-        drive_tool_calls(runner, run, calls, |span| span, true)
+        drive_tool_calls(runner, hook_ctx, run, calls, |span| span, true)
     }
 
     fn record_run_level_telemetry(
@@ -1324,7 +1367,7 @@ where
     ///
     /// Shares the drive loop, run construction, tool execution and fail-closed
     /// hook handling with the blocking [`run`](AgentRunner::run) via
-    /// [`drive_agent`], so the two behave identically apart from the streamed
+    /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
     pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
         let (agent_span, created_agent_span) =
@@ -1372,6 +1415,7 @@ where
             agent_span.clone(),
             created_agent_span,
             memory_handle,
+            true,
         )
         .filter_map(|item| {
             std::future::ready(match item {
@@ -1442,7 +1486,7 @@ pub async fn stream_to_stdout<R>(
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{AgentHook, Flow, InvalidToolCallContext, StepEvent};
+    use crate::agent::hook::{AgentHook, Flow, HookContext, InvalidToolCallContext, StepEvent};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
@@ -1838,7 +1882,11 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::ToolCallDelta { .. } => {
                     panic!("unknown tool call delta should fail before delta hooks run")
@@ -2353,7 +2401,11 @@ mod tests {
     struct TerminateOnStreamFinish;
 
     impl AgentHook<MockCompletionModel> for TerminateOnStreamFinish {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::StreamResponseFinish { .. } => {
                     Flow::terminate("stop after completion call")
@@ -2369,7 +2421,11 @@ mod tests {
     struct RepairDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     assert_eq!(context.tool_name, "default_api");
@@ -2384,7 +2440,11 @@ mod tests {
     struct RetryDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     assert_eq!(context.tool_name, "default_api");
@@ -2402,7 +2462,11 @@ mod tests {
     struct SkipDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     assert_eq!(context.tool_name, "default_api");
@@ -2428,7 +2492,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     self.contexts
@@ -2457,7 +2525,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingToolCallDeltaHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::ToolCallDelta {
                     tool_call_id,
@@ -2497,7 +2569,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextDeltaHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::TextDelta { delta, aggregated } => {
                     let record = (delta.to_string(), aggregated.to_string());
@@ -2518,10 +2594,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    SkipDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2533,10 +2615,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    RetryDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2548,10 +2636,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    RetryDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2563,10 +2657,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    SkipDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2587,7 +2687,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::ToolCallDelta {
                     tool_call_id,

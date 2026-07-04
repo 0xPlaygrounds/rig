@@ -35,7 +35,9 @@ use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
-    hook::{AgentHook, Flow, HookStack, InvalidToolCallHookAction, RequestOverride, StepEvent},
+    hook::{
+        AgentHook, Flow, HookContext, HookStack, InvalidToolCallHookAction, RequestPatch, StepEvent,
+    },
     prompt_request::{
         PromptResponse,
         streaming::{
@@ -100,7 +102,7 @@ fn flow_name(flow: &Flow) -> &'static str {
         Flow::Skip { .. } => "Skip",
         Flow::RewriteArgs { .. } => "RewriteArgs",
         Flow::RewriteResult { .. } => "RewriteResult",
-        Flow::OverrideRequest { .. } => "OverrideRequest",
+        Flow::PatchRequest { .. } => "PatchRequest",
         Flow::Fail => "Fail",
         Flow::Retry { .. } => "Retry",
         Flow::Repair { .. } => "Repair",
@@ -188,23 +190,25 @@ pub(crate) fn flow_into_tool_result(flow: Flow) -> ToolResultDecision {
 pub(crate) enum CompletionCallDecision {
     /// Build and send the request as configured.
     Proceed,
-    /// Build and send the request with this per-turn override applied.
-    Override(RequestOverride),
+    /// Build and send the request with this per-turn patch applied (the merged
+    /// patch from every hook that contributed one).
+    Patch(RequestPatch),
     /// Terminate the run.
     Terminate(String),
 }
 
 /// Resolve a hook's [`Flow`] for a [`StepEvent::CompletionCall`] event (honors
-/// `Continue`/`OverrideRequest`/`Terminate`). **Fail-closed**: any other action
-/// terminates the run rather than silently sending the request.
+/// `Continue`/`PatchRequest`/`Terminate`). **Fail-closed**: any other action
+/// terminates the run rather than silently sending the request. Across a
+/// [`HookStack`] the `flow` is already the merged patch of every hook.
 pub(crate) fn flow_into_completion_call(flow: Flow) -> CompletionCallDecision {
     match flow {
         Flow::Continue => CompletionCallDecision::Proceed,
-        Flow::OverrideRequest { request } => CompletionCallDecision::Override(request),
+        Flow::PatchRequest { patch } => CompletionCallDecision::Patch(patch),
         Flow::Terminate { reason } => CompletionCallDecision::Terminate(reason),
         other => CompletionCallDecision::Terminate(format!(
             "hook returned `{}` for a completion-call event, which only honors \
-             Continue/OverrideRequest/Terminate — terminating the run (fail-closed)",
+             Continue/PatchRequest/Terminate — terminating the run (fail-closed)",
             flow_name(&other)
         )),
     }
@@ -233,12 +237,12 @@ pub(crate) fn flow_into_invalid(flow: Flow) -> InvalidDecision {
         Flow::Skip { reason } => InvalidDecision::Action(InvalidToolCallHookAction::skip(reason)),
         // Continue and Fail both preserve fail-fast for invalid calls.
         Flow::Continue | Flow::Fail => InvalidDecision::Action(InvalidToolCallHookAction::fail()),
-        // `RewriteArgs`/`RewriteResult`/`OverrideRequest` steer a *valid* call;
+        // `RewriteArgs`/`RewriteResult`/`PatchRequest` steer a *valid* call;
         // they cannot repair an unknown or disallowed one (use `Repair` to
         // rewrite the name), so they are fail-closed here.
         other @ (Flow::RewriteArgs { .. }
         | Flow::RewriteResult { .. }
-        | Flow::OverrideRequest { .. }) => InvalidDecision::Terminate(format!(
+        | Flow::PatchRequest { .. }) => InvalidDecision::Terminate(format!(
             "hook returned `{}` for an invalid tool-call event, which only \
                  honors Fail/Retry/Repair/Skip/Terminate — terminating the run \
                  (fail-closed)",
@@ -491,8 +495,9 @@ pub(crate) fn acquire_agent_span(
 
 /// Outcome of firing the `CompletionCall` hook for a turn.
 pub(crate) enum CompletionCallOutcome {
-    /// Proceed, optionally applying a per-turn request override.
-    Proceed(Option<RequestOverride>),
+    /// Proceed, optionally applying a per-turn request patch (the merged patch
+    /// from every hook that contributed one).
+    Proceed(Option<RequestPatch>),
     /// Terminate the run with this reason.
     Terminate(String),
 }
@@ -500,9 +505,11 @@ pub(crate) enum CompletionCallOutcome {
 /// Fire the `CompletionCall` hook for a turn and resolve its [`Flow`]
 /// (fail-closed). Shared by the blocking and streaming drivers so this steering
 /// event fires identically on both; each driver surfaces `Terminate` in its own
-/// medium (a returned `Err` vs. a yielded error item).
+/// medium (a returned `Err` vs. a yielded error item). Across a [`HookStack`]
+/// the resolved flow is the merged patch of every contributing hook.
 pub(crate) async fn resolve_completion_call<M>(
     hooks: &HookStack<M>,
+    ctx: &HookContext,
     prompt: &Message,
     history: &[Message],
     turn: usize,
@@ -512,15 +519,18 @@ where
 {
     match flow_into_completion_call(
         hooks
-            .on_event(StepEvent::CompletionCall {
-                prompt,
-                history,
-                turn,
-            })
+            .on_event(
+                ctx,
+                StepEvent::CompletionCall {
+                    prompt,
+                    history,
+                    turn,
+                },
+            )
             .await,
     ) {
         CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
-        CompletionCallDecision::Override(request) => CompletionCallOutcome::Proceed(Some(request)),
+        CompletionCallDecision::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
         CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
     }
 }
@@ -553,6 +563,7 @@ pub(crate) async fn append_run_messages(
 /// `error_history` builds a cancellation error if a hook terminates the run.
 pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
+    ctx: &HookContext,
     tool_server: &ToolServerHandle,
     tool_extensions: &ToolCallExtensions,
     tool_call: &ToolCall,
@@ -574,12 +585,15 @@ where
 
     match flow_into_tool_call(
         hooks
-            .on_event(StepEvent::ToolCall {
-                tool_name,
-                tool_call_id: tool_call.call_id.as_deref(),
-                internal_call_id,
-                args: &args,
-            })
+            .on_event(
+                ctx,
+                StepEvent::ToolCall {
+                    tool_name,
+                    tool_call_id: tool_call.call_id.as_deref(),
+                    internal_call_id,
+                    args: &args,
+                },
+            )
             .await,
     ) {
         ToolCallDecision::Terminate(reason) => {
@@ -628,15 +642,18 @@ where
 
     match flow_into_tool_result(
         hooks
-            .on_event(StepEvent::ToolResult {
-                tool_name,
-                tool_call_id: tool_call.call_id.as_deref(),
-                internal_call_id,
-                // The result hook observes the tool's actual output, before any
-                // `RewriteResult` replacement is applied below.
-                args: &args,
-                result: &output,
-            })
+            .on_event(
+                ctx,
+                StepEvent::ToolResult {
+                    tool_name,
+                    tool_call_id: tool_call.call_id.as_deref(),
+                    internal_call_id,
+                    // The first result hook observes the tool's actual output,
+                    // before any `RewriteResult` replacement is applied below.
+                    args: &args,
+                    result: &output,
+                },
+            )
             .await,
     ) {
         ToolResultDecision::Terminate(reason) => {
@@ -749,6 +766,7 @@ where
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest<M>,
         chat_span: tracing::Span,
@@ -783,7 +801,7 @@ where
                     ModelTurnOutcome::NeedsResolution(context) => {
                         let flow = runner
                             .hooks
-                            .on_event(StepEvent::InvalidToolCall(&context))
+                            .on_event(hook_ctx, StepEvent::InvalidToolCall(&context))
                             .await;
                         match flow_into_invalid(flow) {
                             InvalidDecision::Terminate(reason) => {
@@ -807,19 +825,35 @@ where
                     ModelTurnOutcome::Continue {
                         response_hook_suppressed,
                     } => {
-                        if !response_hook_suppressed
-                            && let Some(reason) = observe_flow(
+                        if !response_hook_suppressed {
+                            // The medium-specific raw response event fires first,
+                            // then the normalized per-turn event. Both are
+                            // observe-only and suppressed for recovered turns.
+                            if let Some(reason) = observe_flow(
                                 runner
                                     .hooks
-                                    .on_event(StepEvent::CompletionResponse {
+                                    .on_event(hook_ctx, StepEvent::CompletionResponse {
                                         prompt: &current_prompt,
                                         response: &resp,
                                     })
                                     .await,
-                            )
-                        {
-                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                            return;
+                            ) {
+                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                                return;
+                            }
+                            if let Some(reason) = observe_flow(
+                                runner
+                                    .hooks
+                                    .on_event(hook_ctx, StepEvent::ModelTurnFinished {
+                                        turn: hook_ctx.turn(),
+                                        content: &resp.choice,
+                                        usage: resp.usage,
+                                    })
+                                    .await,
+                            ) {
+                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                                return;
+                            }
                         }
                         break;
                     }
@@ -831,13 +865,21 @@ where
     fn run_tool_calls<'a>(
         &'a self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, M::Response> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it
         // skips building them.
-        drive_tool_calls(runner, run, calls, |span| self.chain_span(span), false)
+        drive_tool_calls(
+            runner,
+            hook_ctx,
+            run,
+            calls,
+            |span| self.chain_span(span),
+            false,
+        )
     }
 
     fn record_run_level_telemetry(
@@ -906,6 +948,7 @@ where
             agent_span,
             created_agent_span,
             memory_handle,
+            false,
         );
         futures::pin_mut!(driver);
 
@@ -938,7 +981,9 @@ mod tests {
     use serde_json::json;
 
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{AgentHook, Flow, RequestOverride, StepEvent, StepEventKind};
+    use crate::agent::hook::{
+        AgentHook, Flow, HookContext, RequestPatch, StepEvent, StepEventKind,
+    };
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{CompletionModel, Message, PromptError, ToolDefinition};
@@ -997,7 +1042,7 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for RecordingHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             self.events.lock().expect("events lock").push(event.kind());
             if let StepEvent::ToolResult { result, .. } = event {
                 self.tool_results
@@ -1838,7 +1883,7 @@ mod tests {
     /// A hook that terminates the run the first time it observes a tool result.
     struct TerminateOnToolResultHook;
     impl<M: CompletionModel> AgentHook<M> for TerminateOnToolResultHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::ToolResult { .. } = event {
                 Flow::terminate("stop after a tool result")
             } else {
@@ -1966,7 +2011,7 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for OrderedTerminateHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::ToolCall { args, .. } = event {
                 let x = serde_json::from_str::<serde_json::Value>(args)
                     .ok()
@@ -2084,7 +2129,7 @@ mod tests {
     /// (`x == 1`), letting any later tool through.
     struct TerminateOnFirstToolHook;
     impl<M: CompletionModel> AgentHook<M> for TerminateOnFirstToolHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::ToolCall { args, .. } = event
                 && serde_json::from_str::<serde_json::Value>(args)
                     .ok()
@@ -2206,7 +2251,7 @@ mod tests {
 
     struct FailOnToolCallHook;
     impl<M: CompletionModel> AgentHook<M> for FailOnToolCallHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::ToolCall { .. } = event {
                 // Fail is illegal for a ToolCall event: the runner must be
                 // fail-CLOSED and never execute the tool.
@@ -2257,7 +2302,7 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for ToolOnlyHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             match event.kind() {
                 StepEventKind::TextDelta => {
                     self.text_delta_calls.fetch_add(1, SeqCst);
@@ -2309,7 +2354,7 @@ mod tests {
     struct TerminateOn(StepEventKind);
 
     impl<M: CompletionModel> AgentHook<M> for TerminateOn {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if event.kind() == self.0 {
                 Flow::terminate("stop here")
             } else {
@@ -2433,7 +2478,7 @@ mod tests {
     struct RepairInvalidToHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for RepairInvalidToHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::InvalidToolCall(_) = event {
                 Flow::repair(self.0)
             } else {
@@ -2789,7 +2834,7 @@ mod tests {
     struct SkipInvalidHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for SkipInvalidHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::InvalidToolCall(_) = event {
                 Flow::skip(self.0)
             } else {
@@ -2969,7 +3014,7 @@ mod tests {
     struct SkipToolCallHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for SkipToolCallHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::ToolCall { .. } = event {
                 Flow::skip(self.0)
             } else {
@@ -3068,7 +3113,7 @@ mod tests {
     struct RewriteToolArgsHook(serde_json::Value);
 
     impl<M: CompletionModel> AgentHook<M> for RewriteToolArgsHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::ToolCall { .. } = event {
                 Flow::rewrite_args(self.0.clone())
             } else {
@@ -3184,7 +3229,7 @@ mod tests {
     struct RewriteToolResultHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for RewriteToolResultHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::ToolResult { .. } = event {
                 Flow::rewrite_result(self.0)
             } else {
@@ -3343,16 +3388,16 @@ mod tests {
         );
     }
 
-    /// A hook that overrides the model request for the turn (`Flow::OverrideRequest`
+    /// A hook that patches the model request for the turn (`Flow::PatchRequest`
     /// on `CompletionCall`): forces tool_choice + temperature, narrows the
     /// advertised tools to an allow-list, and injects a passthrough param.
-    struct OverrideRequestHook;
+    struct PatchRequestHook;
 
-    impl<M: CompletionModel> AgentHook<M> for OverrideRequestHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    impl<M: CompletionModel> AgentHook<M> for PatchRequestHook {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::CompletionCall { .. } = event {
-                Flow::override_request(
-                    RequestOverride::new()
+                Flow::patch_request(
+                    RequestPatch::new()
                         .preamble(OVERRIDE_PREAMBLE)
                         .temperature(0.25)
                         .max_tokens(OVERRIDE_MAX_TOKENS)
@@ -3369,28 +3414,28 @@ mod tests {
     const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
     const OVERRIDE_MAX_TOKENS: u64 = 512;
 
-    /// `Flow::OverrideRequest` resolves to an `Override` completion-call decision
+    /// `Flow::PatchRequest` resolves to a `Patch` completion-call decision
     /// carrying the patch, and is named for fail-closed diagnostics.
     #[test]
-    fn override_request_resolves_to_override_for_completion_call() {
-        let patch = RequestOverride::new()
+    fn patch_request_resolves_to_patch_for_completion_call() {
+        let patch = RequestPatch::new()
             .temperature(0.25)
             .tool_choice(ToolChoice::Required);
-        match super::flow_into_completion_call(Flow::override_request(patch.clone())) {
-            super::CompletionCallDecision::Override(got) => assert_eq!(got, patch),
-            _ => panic!("OverrideRequest should resolve to Override for a completion call"),
+        match super::flow_into_completion_call(Flow::patch_request(patch.clone())) {
+            super::CompletionCallDecision::Patch(got) => assert_eq!(got, patch),
+            _ => panic!("PatchRequest should resolve to Patch for a completion call"),
         }
         assert_eq!(
-            super::flow_name(&Flow::override_request(RequestOverride::new())),
-            "OverrideRequest"
+            super::flow_name(&Flow::patch_request(RequestPatch::new())),
+            "PatchRequest"
         );
     }
 
-    /// `OverrideRequest` is only honored by `CompletionCall`; every other event is
-    /// fail-closed, and `CompletionCall` only honors Continue/OverrideRequest/Terminate.
+    /// `PatchRequest` is only honored by `CompletionCall`; every other event is
+    /// fail-closed, and `CompletionCall` only honors Continue/PatchRequest/Terminate.
     #[test]
-    fn override_request_is_fail_closed_off_the_completion_call_event() {
-        let patch = || Flow::override_request(RequestOverride::new());
+    fn patch_request_is_fail_closed_off_the_completion_call_event() {
+        let patch = || Flow::patch_request(RequestPatch::new());
         assert!(matches!(
             super::flow_into_invalid(patch()),
             super::InvalidDecision::Terminate(_)
@@ -3411,12 +3456,12 @@ mod tests {
         ));
     }
 
-    /// A `Flow::OverrideRequest` hook patches the request for the turn identically
+    /// A `Flow::PatchRequest` hook patches the request for the turn identically
     /// under `run()` and `stream()`: the captured completion request shows the
     /// overridden temperature/tool_choice, the merged additional_params, and the
     /// tool set narrowed to the allow-list — on both drivers.
     #[tokio::test]
-    async fn override_request_parity_across_run_and_stream() {
+    async fn patch_request_parity_across_run_and_stream() {
         fn assert_request(req: &crate::completion::CompletionRequest) {
             assert_eq!(
                 req.temperature,
@@ -3464,7 +3509,7 @@ mod tests {
             .temperature(0.9)
             .max_tokens(64)
             .additional_params(json!({"baseline": "keep"}))
-            .add_hook(OverrideRequestHook)
+            .add_hook(PatchRequestHook)
             .build()
             .runner("go")
             .max_turns(2)
@@ -3487,7 +3532,7 @@ mod tests {
             .temperature(0.9)
             .max_tokens(64)
             .additional_params(json!({"baseline": "keep"}))
-            .add_hook(OverrideRequestHook)
+            .add_hook(PatchRequestHook)
             .build()
             .runner("go")
             .max_turns(2)
@@ -3499,6 +3544,403 @@ mod tests {
         let streaming_requests = streaming_probe.requests();
         assert_eq!(streaming_requests.len(), 1);
         assert_request(&streaming_requests[0]);
+    }
+
+    // --- Hook system v2: extra_context, history view, ModelTurnFinished, chained rewrites ---
+
+    fn hook_doc(id: &str, text: &str) -> crate::completion::Document {
+        crate::completion::Document {
+            id: id.to_string(),
+            text: text.to_string(),
+            additional_props: Default::default(),
+        }
+    }
+
+    /// Injects one extra context document on every completion call.
+    struct ExtraContextHook {
+        id: &'static str,
+        text: &'static str,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for ExtraContextHook {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::CompletionCall { .. } = event {
+                Flow::patch_request(RequestPatch::new().context(hook_doc(self.id, self.text)))
+            } else {
+                Flow::cont()
+            }
+        }
+    }
+
+    /// Injects an extra context document only on the first turn (to prove
+    /// per-turn, non-sticky behavior).
+    struct ExtraContextTurnOneHook;
+
+    impl<M: CompletionModel> AgentHook<M> for ExtraContextTurnOneHook {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::CompletionCall { turn, .. } = event
+                && turn == 1
+            {
+                return Flow::patch_request(
+                    RequestPatch::new().context(hook_doc("turn-one", "only turn 1")),
+                );
+            }
+            Flow::cont()
+        }
+    }
+
+    fn one_text_stream_turn(text: &'static str) -> Vec<MockStreamEvent> {
+        vec![
+            MockStreamEvent::text(text),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ]
+    }
+
+    /// A single hook's `extra_context` document appears in the completion request,
+    /// after the agent's static context, on both `run()` and `stream()`.
+    #[tokio::test]
+    async fn extra_context_appears_after_static_context_on_both_surfaces() {
+        fn assert_docs(req: &crate::completion::CompletionRequest) {
+            let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+            let static_pos = ids
+                .iter()
+                .position(|id| id.starts_with("static_doc"))
+                .expect("static context document present");
+            let extra_pos = ids
+                .iter()
+                .position(|id| *id == "hook-doc")
+                .expect("hook extra_context document present");
+            assert!(
+                static_pos < extra_pos,
+                "static context precedes hook extras: {ids:?}"
+            );
+            assert!(
+                req.documents.iter().any(|d| d.text == "injected"),
+                "the hook document's text is present"
+            );
+        }
+
+        let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let blocking_probe = blocking_model.clone();
+        AgentBuilder::new(blocking_model)
+            .context("static context text")
+            .add_hook(ExtraContextHook {
+                id: "hook-doc",
+                text: "injected",
+            })
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_docs(blocking_probe.requests().first().expect("one request"));
+
+        let streaming_model =
+            MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
+        let streaming_probe = streaming_model.clone();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .context("static context text")
+            .add_hook(ExtraContextHook {
+                id: "hook-doc",
+                text: "injected",
+            })
+            .build()
+            .runner("go")
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert_docs(streaming_probe.requests().first().expect("one request"));
+    }
+
+    /// Two hooks' `extra_context` documents append in registration order.
+    #[tokio::test]
+    async fn multiple_hooks_extra_context_append_in_registration_order() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let probe = model.clone();
+        AgentBuilder::new(model)
+            .add_hook(ExtraContextHook {
+                id: "first",
+                text: "1",
+            })
+            .add_hook(ExtraContextHook {
+                id: "second",
+                text: "2",
+            })
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .expect("run should succeed");
+        let requests = probe.requests();
+        let req = requests.first().expect("one request");
+        let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["first", "second"],
+            "hook extras append in registration order"
+        );
+    }
+
+    /// A hook's `extra_context` is per-turn and non-sticky: a document injected on
+    /// turn 1 does not reappear on turn 2. Checked on both surfaces.
+    #[tokio::test]
+    async fn extra_context_is_per_turn_non_sticky() {
+        fn assert_turns(requests: &[crate::completion::CompletionRequest]) {
+            assert_eq!(requests.len(), 2, "two model turns");
+            let turn1 = requests.first().expect("turn 1");
+            let turn2 = requests.get(1).expect("turn 2");
+            assert!(
+                turn1.documents.iter().any(|d| d.id == "turn-one"),
+                "turn 1 carries the injected document"
+            );
+            assert!(
+                turn2.documents.iter().all(|d| d.id != "turn-one"),
+                "turn 2 does not inherit turn 1's per-turn document"
+            );
+        }
+
+        let blocking_probe = blocking_model();
+        let probe = blocking_probe.clone();
+        AgentBuilder::new(blocking_probe)
+            .tool(MockAddTool)
+            .add_hook(ExtraContextTurnOneHook)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_turns(&probe.requests());
+
+        let streaming = streaming_model();
+        let stream_probe = streaming.clone();
+        let mut stream = AgentBuilder::new(streaming)
+            .tool(MockAddTool)
+            .add_hook(ExtraContextTurnOneHook)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert_turns(&stream_probe.requests());
+    }
+
+    /// A hook that overrides `history` changes the messages sent to the provider
+    /// for the turn without touching the persisted transcript, on both surfaces.
+    #[tokio::test]
+    async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
+        const SENTINEL: &str = "COMPACTED-HISTORY-SENTINEL";
+
+        struct HistoryOverrideHook;
+        impl<M: CompletionModel> AgentHook<M> for HistoryOverrideHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::CompletionCall { .. } = event {
+                    Flow::patch_request(RequestPatch::new().history([Message::user(SENTINEL)]))
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        fn request_has_sentinel(req: &crate::completion::CompletionRequest) -> bool {
+            req.chat_history.iter().any(|m| match m {
+                Message::User { content } => content
+                    .iter()
+                    .any(|c| matches!(c, UserContent::Text(text) if text.text.contains(SENTINEL))),
+                _ => false,
+            })
+        }
+
+        fn messages_have_sentinel(messages: &[Message]) -> bool {
+            messages.iter().any(|m| match m {
+                Message::User { content } => content
+                    .iter()
+                    .any(|c| matches!(c, UserContent::Text(text) if text.text.contains(SENTINEL))),
+                _ => false,
+            })
+        }
+
+        let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let blocking_probe = blocking_model.clone();
+        let blocking = AgentBuilder::new(blocking_model)
+            .add_hook(HistoryOverrideHook)
+            .build()
+            .runner("real prompt")
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert!(
+            request_has_sentinel(blocking_probe.requests().first().expect("one request")),
+            "the overridden history reaches the provider"
+        );
+        assert!(
+            !messages_have_sentinel(blocking.messages.as_deref().unwrap_or_default()),
+            "the persisted transcript is untouched by the per-turn history override"
+        );
+
+        let streaming_model =
+            MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
+        let streaming_probe = streaming_model.clone();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .add_hook(HistoryOverrideHook)
+            .build()
+            .runner("real prompt")
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert!(
+            request_has_sentinel(streaming_probe.requests().first().expect("one request")),
+            "the overridden history reaches the provider on the streaming surface too"
+        );
+    }
+
+    /// `ModelTurnFinished` fires exactly once per accepted turn on both surfaces,
+    /// including a streamed tool-only turn that fires no `StreamResponseFinish`.
+    #[tokio::test]
+    async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() {
+        let blocking_hook = RecordingHook::default();
+        AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .add_hook(blocking_hook.clone())
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_eq!(
+            blocking_hook.count(StepEventKind::ModelTurnFinished),
+            2,
+            "one ModelTurnFinished per accepted turn (tool turn + text turn)"
+        );
+
+        let streaming_hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(streaming_model())
+            .tool(MockAddTool)
+            .add_hook(streaming_hook.clone())
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert_eq!(
+            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            2,
+            "ModelTurnFinished fires once per turn on the streaming surface too"
+        );
+        // The tool-only first turn streams no assistant text, so only the second
+        // (text) turn fires StreamResponseFinish — proving ModelTurnFinished
+        // covers the gap.
+        assert_eq!(
+            streaming_hook.count(StepEventKind::StreamResponseFinish),
+            1,
+            "the tool-only turn fires no StreamResponseFinish"
+        );
+    }
+
+    /// `RewriteArgs` and `RewriteResult` chain across hooks: a later hook observes
+    /// (and further rewrites) the value produced by earlier hooks.
+    #[tokio::test]
+    async fn chained_rewrites_compose_across_hooks() {
+        /// Sets one key of the tool arguments, preserving the rest.
+        struct SetArg {
+            key: &'static str,
+            value: i64,
+        }
+        impl<M: CompletionModel> AgentHook<M> for SetArg {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolCall { args, .. } = event {
+                    let mut parsed: serde_json::Value =
+                        serde_json::from_str(args).unwrap_or_else(|_| json!({}));
+                    parsed[self.key] = json!(self.value);
+                    Flow::rewrite_args(parsed)
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        /// Wraps the tool result in `label(...)`.
+        struct WrapResult(&'static str);
+        impl<M: CompletionModel> AgentHook<M> for WrapResult {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolResult { result, .. } = event {
+                    Flow::rewrite_result(format!("{}({})", self.0, result))
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        // The model asks add(2, 3). SetArg{y:40} then SetArg{x:100} chain, so the
+        // tool runs with (100, 40) = 140 — proving arg rewrites compose. Then
+        // WrapResult "A" and "B" chain, and a trailing recorder observes the fully
+        // chained result "B(A(140))".
+        let recorder = RecordingHook::default();
+        let blocking = AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .add_hook(SetArg {
+                key: "y",
+                value: 40,
+            })
+            .add_hook(SetArg {
+                key: "x",
+                value: 100,
+            })
+            .add_hook(WrapResult("A"))
+            .add_hook(WrapResult("B"))
+            .add_hook(recorder.clone())
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_eq!(blocking.output, "the answer is 5");
+        assert_eq!(
+            recorder.tool_results(),
+            vec!["B(A(140))".to_string()],
+            "arg rewrites compose (100+40=140) and result rewrites nest B(A(...))"
+        );
+
+        // Same on the streaming surface.
+        let stream_recorder = RecordingHook::default();
+        let mut stream = AgentBuilder::new(streaming_model())
+            .tool(MockAddTool)
+            .add_hook(SetArg {
+                key: "y",
+                value: 40,
+            })
+            .add_hook(SetArg {
+                key: "x",
+                value: 100,
+            })
+            .add_hook(WrapResult("A"))
+            .add_hook(WrapResult("B"))
+            .add_hook(stream_recorder.clone())
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert_eq!(
+            stream_recorder.tool_results(),
+            vec!["B(A(140))".to_string()],
+            "chained rewrites compose identically on the streaming surface"
+        );
     }
 
     #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -3536,9 +3978,9 @@ mod tests {
     struct ActiveToolsAddOnly;
 
     impl<M: CompletionModel> AgentHook<M> for ActiveToolsAddOnly {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             if let StepEvent::CompletionCall { .. } = event {
-                Flow::override_request(RequestOverride::new().active_tools(["add"]))
+                Flow::patch_request(RequestPatch::new().active_tools(["add"]))
             } else {
                 Flow::cont()
             }
@@ -3650,7 +4092,7 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for HumanApprovalHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             let StepEvent::ToolCall {
                 tool_name, args, ..
             } = event
@@ -3891,7 +4333,7 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for PolicyHook {
-        async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
             let StepEvent::ToolCall { tool_name, .. } = event else {
                 return Flow::cont();
             };

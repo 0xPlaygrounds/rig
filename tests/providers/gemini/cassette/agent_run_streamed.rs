@@ -518,7 +518,11 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 struct CancelOnToolCall;
 
 impl AgentHook<gemini::completion::CompletionModel> for CancelOnToolCall {
-    async fn on_event(&self, event: StepEvent<'_, gemini::completion::CompletionModel>) -> Flow {
+    async fn on_event(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: StepEvent<'_, gemini::completion::CompletionModel>,
+    ) -> Flow {
         match event {
             StepEvent::ToolCall { .. } => Flow::Terminate {
                 reason: "cancelled by test hook".to_string(),

@@ -1,4 +1,4 @@
-use super::hook::{HookStack, RequestOverride};
+use super::hook::{HookStack, RequestPatch};
 use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
@@ -200,18 +200,19 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     output_schema: Option<&schemars::Schema>,
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
-    request_override: Option<&RequestOverride>,
+    request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest<M>, CompletionError> {
-    // Apply a per-turn request override (a partial patch from a `CompletionCall`
+    // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
-    // unset fields inherit it, and `additional_params` is shallow-merged. This is
-    // per-turn only — it never mutates the agent's baseline.
-    let preamble = request_override
+    // unset fields inherit it, `additional_params` is shallow-merged, and
+    // `extra_context`/`history` are applied below. This is per-turn only — it
+    // never mutates the agent's baseline.
+    let preamble = request_patch
         .and_then(|o| o.preamble.as_deref())
         .or(preamble);
-    let temperature = request_override.and_then(|o| o.temperature).or(temperature);
-    let max_tokens = request_override.and_then(|o| o.max_tokens).or(max_tokens);
-    let tool_choice = request_override
+    let temperature = request_patch.and_then(|o| o.temperature).or(temperature);
+    let max_tokens = request_patch.and_then(|o| o.max_tokens).or(max_tokens);
+    let tool_choice = request_patch
         .and_then(|o| o.tool_choice.as_ref())
         .or(tool_choice);
     // Provider passthrough params: when both the baseline and the override are
@@ -222,14 +223,14 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // when either side isn't an object.
     let additional_params: Option<serde_json::Value> = match (
         additional_params,
-        request_override.and_then(|o| o.additional_params.as_ref()),
+        request_patch.and_then(|o| o.additional_params.as_ref()),
     ) {
         (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
             Some(json_utils::merge(base.clone(), patch.clone()))
         }
         (base, patch) => patch.or(base).cloned(),
     };
-    let active_tools = request_override.and_then(|o| o.active_tools.as_deref());
+    let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
 
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
@@ -391,7 +392,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // In committed Tool mode the run can only finalize by calling the synthetic
     // output tool, and the mode is pinned (it cannot degrade to Native mid-run,
     // see #1928). A `tool_choice` that forbids the output-tool call — `None`, or
-    // a `Specific` set that excludes it, e.g. from a per-turn `RequestOverride` —
+    // a `Specific` set that excludes it, e.g. from a per-turn `RequestPatch` —
     // therefore produces a turn that cannot emit the structured result. The
     // non-committed path degrades to Native via `resolve_output_mode`, so this
     // only fires once a turn has committed Tool mode; warn rather than silently
@@ -400,7 +401,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         tracing::warn!(
             "the active tool_choice forbids calling the structured-output tool while the \
              run is pinned to Tool output mode; this turn cannot emit the structured \
-             result (check for a `RequestOverride` setting `tool_choice` to None or a \
+             result (check for a `RequestPatch` setting `tool_choice` to None or a \
              Specific set that excludes the output tool)"
         );
     }
@@ -435,12 +436,19 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         }
     };
 
+    // A per-turn `history` patch replaces the prior messages sent to the provider
+    // *this turn only* (context-window compaction / summarization). The RAG query
+    // text above deliberately still derives from the original `chat_history`, so
+    // this changes only what is sent, never what is retrieved or persisted.
+    let messages_history: &[Message] = request_patch
+        .and_then(|o| o.history.as_deref())
+        .unwrap_or(chat_history);
     let chat_history: Vec<Message> = if let Some(preamble) = &effective_preamble {
         std::iter::once(Message::system(preamble.clone()))
-            .chain(chat_history.iter().cloned())
+            .chain(messages_history.iter().cloned())
             .collect()
     } else {
-        chat_history.to_vec()
+        messages_history.to_vec()
     };
 
     // In Tool mode, advertise the synthetic output tool to the provider (its name
@@ -470,6 +478,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
 
     if !fetched_context.is_empty() {
         completion_request = completion_request.documents(fetched_context);
+    }
+
+    // Hook-supplied extra context documents (passive RAG) are appended last, so
+    // document order is static → dynamic (vector-store) → hook extras, with the
+    // extras in the hooks' registration order (they were merged in that order).
+    // Per-turn and non-sticky: the next turn re-resolves from the baseline.
+    if let Some(patch) = request_patch
+        && !patch.extra_context.is_empty()
+    {
+        completion_request = completion_request.documents(patch.extra_context.clone());
     }
 
     // Only Native mode sets the provider's native structured-output constraint.

@@ -2,7 +2,7 @@
 //! turn, end-to-end through a real Anthropic round-trip.
 //!
 //! The agent registers two tools (`get_weather` and `get_time`). On the first
-//! turn a hook returns `Flow::override_request(...)` that narrows the advertised
+//! turn a hook returns `Flow::patch_request(...)` that narrows the advertised
 //! tools to `["get_weather"]` and forces `tool_choice = Required`. The recorded
 //! request to Anthropic therefore advertises only `get_weather` (not `get_time`)
 //! and carries a non-auto tool choice — proving the per-turn override reached the
@@ -12,7 +12,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::{AgentHook, Flow, RequestOverride, StepEvent};
+use rig::agent::{AgentHook, Flow, RequestPatch, StepEvent};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
 use rig::message::ToolChoice;
@@ -111,12 +111,12 @@ impl Tool for GetTime {
 struct ForceWeatherOnlyOnFirstTurn;
 
 impl<M: CompletionModel> AgentHook<M> for ForceWeatherOnlyOnFirstTurn {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         if let StepEvent::CompletionCall { turn, .. } = event
             && turn == 1
         {
-            return Flow::override_request(
-                RequestOverride::new()
+            return Flow::patch_request(
+                RequestPatch::new()
                     .active_tools([GetWeather::NAME])
                     .tool_choice(ToolChoice::Required),
             );

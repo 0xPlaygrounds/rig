@@ -638,7 +638,7 @@ mod tests {
     use crate::{
         agent::{
             AgentBuilder,
-            hook::{AgentHook, Flow, InvalidToolCallContext, StepEvent},
+            hook::{AgentHook, Flow, HookContext, InvalidToolCallContext, StepEvent},
         },
         completion::{
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
@@ -704,7 +704,11 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::CompletionResponse { .. } => {
                     panic!("unknown tool response should fail before response hooks run")
@@ -721,7 +725,11 @@ mod tests {
     struct PanicOnToolCallHook;
 
     impl AgentHook<MockCompletionModel> for PanicOnToolCallHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::ToolCall { .. } => {
                     panic!("recovered invalid turn should not invoke normal tool hooks")
@@ -735,14 +743,20 @@ mod tests {
     struct SkipDefaultApiAndPanicOnToolCallHook;
 
     impl AgentHook<MockCompletionModel> for SkipDefaultApiAndPanicOnToolCallHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     SkipDefaultApiHook
-                        .on_event(StepEvent::InvalidToolCall(context))
+                        .on_event(_ctx, StepEvent::InvalidToolCall(context))
                         .await
                 }
-                event @ StepEvent::ToolCall { .. } => PanicOnToolCallHook.on_event(event).await,
+                event @ StepEvent::ToolCall { .. } => {
+                    PanicOnToolCallHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -752,7 +766,11 @@ mod tests {
     struct RepairDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     assert_eq!(context.tool_name, "default_api");
@@ -767,7 +785,11 @@ mod tests {
     struct RepairToSubtractHook;
 
     impl AgentHook<MockCompletionModel> for RepairToSubtractHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(_) => Flow::repair("subtract"),
                 _ => Flow::cont(),
@@ -779,7 +801,11 @@ mod tests {
     struct RetryDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     let allowed_tools = &context.allowed_tools;
@@ -794,7 +820,11 @@ mod tests {
     struct SkipDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(_) => Flow::skip("default_api is not available"),
                 _ => Flow::cont(),
@@ -817,7 +847,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     self.contexts

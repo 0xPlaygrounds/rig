@@ -376,7 +376,7 @@ impl<M> AgentHook<M> for ToolEventRecorder
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::ToolCall {
                 tool_name, args, ..
@@ -415,7 +415,7 @@ impl<M> AgentHook<M> for SkipToolHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::ToolCall { tool_name, .. } => {
                 if tool_name == self.tool_name {
@@ -440,7 +440,7 @@ impl<M> AgentHook<M> for TerminateOnToolHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::ToolCall { tool_name, .. } => {
                 if tool_name == self.tool_name {
@@ -466,7 +466,7 @@ impl<M> AgentHook<M> for RemoveToolBeforeExecutionHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::ToolCall { tool_name, .. } => {
                 if tool_name == self.tool_name {
