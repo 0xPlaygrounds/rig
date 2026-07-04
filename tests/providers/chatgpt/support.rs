@@ -5,7 +5,10 @@ use std::panic::AssertUnwindSafe;
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 use futures::FutureExt;
 
-async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, chatgpt::Client) {
+async fn chatgpt_cassette_with_default_instructions(
+    spec: impl Into<CassetteSpec>,
+    default_instructions: impl Into<String>,
+) -> (ProviderCassette, chatgpt::Client) {
     let cassette =
         ProviderCassette::start("chatgpt", spec, "https://chatgpt.com/backend-api/codex").await;
     let client = chatgpt::Client::builder()
@@ -14,11 +17,15 @@ async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, c
             account_id: Some(cassette.api_key("CHATGPT_ACCOUNT_ID")),
         })
         .base_url(cassette.base_url())
-        .default_instructions("")
+        .default_instructions(default_instructions)
         .build()
         .expect("client should build");
 
     (cassette, client)
+}
+
+async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, chatgpt::Client) {
+    chatgpt_cassette_with_default_instructions(spec, "").await
 }
 
 pub(super) async fn with_chatgpt_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
@@ -27,6 +34,20 @@ where
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = chatgpt_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
+pub(super) async fn with_chatgpt_cassette_default_instructions<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    default_instructions: impl Into<String>,
+    test_body: F,
+) where
+    F: FnOnce(chatgpt::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) =
+        chatgpt_cassette_with_default_instructions(spec, default_instructions).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

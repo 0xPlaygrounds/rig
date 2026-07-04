@@ -41,6 +41,7 @@ Replay the migrated provider suites with:
 cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test anthropic anthropic::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture --test-threads=1
+cargo test -p rig --all-features --test chatgpt chatgpt::cassette -- --nocapture --test-threads=1
 ```
 
 Record mode requires the relevant provider API key in the environment and overwrites existing
@@ -59,6 +60,11 @@ cargo test -p rig --all-features --test anthropic anthropic::cassette -- --nocap
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
 cargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture --test-threads=1
+```
+
+```bash
+CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=... RIG_PROVIDER_TEST_MODE=record \
+cargo test -p rig --all-features --test chatgpt chatgpt::cassette -- --nocapture --test-threads=1
 ```
 
 Run one cassette test by passing a test-name substring:
