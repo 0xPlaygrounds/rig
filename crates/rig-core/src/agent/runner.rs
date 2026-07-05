@@ -2349,12 +2349,14 @@ mod tests {
     }
 
     /// Records the `x` arg of every tool call that reaches its body. The `x == 1`
-    /// sibling stays pending across several polls (so it holds its concurrency
-    /// slot in flight), which lets the synchronous terminator free the *other*
-    /// slot first and drop the not-yet-started `x == 2` sibling.
+    /// sibling signals it has started (via `sibling_started`) and then stays
+    /// pending across several polls, so it is genuinely in flight when the
+    /// terminator (`x == 0`) fires — while a sibling beyond the concurrency
+    /// window is not yet started and must be dropped.
     #[derive(Clone)]
     struct RecordingArgsTool {
         called: Arc<Mutex<Vec<i64>>>,
+        sibling_started: Arc<tokio::sync::Notify>,
     }
 
     impl Tool for RecordingArgsTool {
@@ -2373,6 +2375,9 @@ mod tests {
                 self.called.lock().expect("called").push(x);
             }
             if x == Some(1) {
+                // Signal that the in-flight sibling has started, then stay pending
+                // so it is still executing when the terminator fires.
+                self.sibling_started.notify_one();
                 for _ in 0..8 {
                     tokio::task::yield_now().await;
                 }
@@ -2384,9 +2389,10 @@ mod tests {
     fn three_tools_first_terminates_streaming_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([
             vec![
-                // tc0 (x==0) terminates on its ToolCall hook (no execution); tc1
-                // (x==1) is slow/in-flight; tc2 (x==2) is not-yet-started at
-                // concurrency 2 and must be dropped once tc0 terminates.
+                // tc0 (x==0) terminates on its ToolCall hook after the in-flight
+                // sibling starts; tc1 (x==1) is the in-flight sibling (drains);
+                // tc2 (x==2) is beyond the concurrency-2 window (not yet started)
+                // and must be dropped once tc0 terminates.
                 MockStreamEvent::tool_call("tc0", "add", json!({"x": 0, "y": 0})),
                 MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
                 MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 2})),
@@ -2399,26 +2405,50 @@ mod tests {
         ])
     }
 
+    /// Terminates from the `x == 0` tool's `ToolCall` hook, but only after the
+    /// `x == 1` sibling has signalled it started executing — so tc1 is genuinely
+    /// in flight (not merely not-yet-started) when the terminate fires.
+    struct TerminateOnArgZeroAfterSiblingHook {
+        sibling_started: Arc<tokio::sync::Notify>,
+    }
+    impl<M: CompletionModel> AgentHook<M> for TerminateOnArgZeroAfterSiblingHook {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { args, .. } = event
+                && serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                    == Some(0)
+            {
+                self.sibling_started.notified().await;
+                return Flow::terminate("stop");
+            }
+            Flow::cont()
+        }
+    }
+
     /// Concurrent fail-fast: when a tool terminates the turn under
-    /// `tool_concurrency > 1`, a sibling *beyond* the concurrency window — not yet
-    /// started when the terminate is observed — is dropped and its side effect
-    /// never runs. With concurrency 2 and three tools, tc0 (`x == 0`) terminates
-    /// synchronously on its `ToolCall` hook, and tc1 (`x == 1`) stays in flight
-    /// holding its slot, so tc2 (`x == 2`) is pulled only after tc0 frees a slot —
-    /// by which time the run is terminating, so tc2 is deterministically dropped.
-    /// The pre-fix run-all-then-decide would have executed tc2 anyway.
+    /// `tool_concurrency > 1`, an **already-in-flight** sibling is drained while a
+    /// sibling **beyond the concurrency window** — not yet started — is dropped.
+    /// With concurrency 2 and three tools: tc0 (`x == 0`) terminates only after
+    /// tc1 (`x == 1`) has started, so tc1 is genuinely in flight and drains
+    /// (`called` contains 1); tc2 (`x == 2`) is pulled only after tc0 frees a slot
+    /// — by which time the run is terminating — so it is dropped (`called` never
+    /// contains 2), and tc0's own body never runs (its `ToolCall` hook terminated).
+    /// The pre-fix run-all-then-decide would have executed tc2 too.
     #[tokio::test]
-    async fn concurrent_terminate_drops_not_yet_started_siblings() {
+    async fn concurrent_terminate_drops_beyond_window_sibling_but_drains_in_flight() {
         let called = Arc::new(Mutex::new(Vec::new()));
+        let sibling_started = Arc::new(tokio::sync::Notify::new());
         let mut stream = AgentBuilder::new(three_tools_first_terminates_streaming_model())
             .tool(RecordingArgsTool {
                 called: called.clone(),
+                sibling_started: sibling_started.clone(),
             })
             .build()
             .runner("go")
             .max_turns(3)
             .tool_concurrency(2)
-            .add_hook(TerminateOnArgZeroHook)
+            .add_hook(TerminateOnArgZeroAfterSiblingHook { sibling_started })
             .stream()
             .await;
 
@@ -2445,26 +2475,19 @@ mod tests {
         );
         let called = called.lock().expect("called").clone();
         assert!(
+            called.contains(&1),
+            "the in-flight sibling (x==1) must be drained to completion; called args: {called:?}"
+        );
+        assert!(
             !called.contains(&2),
             "the not-yet-started sibling beyond the concurrency window (x==2) must be \
              dropped, not executed; called args: {called:?}"
         );
-    }
-
-    /// Terminates the run from the `ToolCall` event of the tool whose `x` arg is 0.
-    struct TerminateOnArgZeroHook;
-    impl<M: CompletionModel> AgentHook<M> for TerminateOnArgZeroHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(0)
-            {
-                return Flow::terminate("stop");
-            }
-            Flow::cont()
-        }
+        assert!(
+            !called.contains(&0),
+            "the terminator's own body never runs (its ToolCall hook terminated); \
+             called args: {called:?}"
+        );
     }
 
     /// `tool_concurrency(0)` is clamped to 1 and runs to completion. The timeout

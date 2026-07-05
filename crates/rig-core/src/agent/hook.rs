@@ -1088,8 +1088,9 @@ impl<M> AgentHook<M> for ()
 where
     M: CompletionModel,
 {
-    /// Observe nothing, so the runner skips building/dispatching every event
-    /// (including the high-frequency streaming deltas) for a `()` hook.
+    /// Observe nothing, so the runner skips building/dispatching the
+    /// high-frequency streaming delta events (`TextDelta` / `ToolCallDelta`,
+    /// the only events gated on `observes`) for a `()` hook.
     fn observes(&self, _kind: StepEventKind) -> bool {
         false
     }
