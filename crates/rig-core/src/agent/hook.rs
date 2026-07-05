@@ -53,6 +53,17 @@
 //! patch, a threaded rewrite, or a terminal action) which the outer stack folds
 //! in again — nesting never reintroduces short-circuiting on mergeable results.
 //!
+//! # Why a returned [`Flow`], not a `next()`-style middleware
+//!
+//! A hook returns a typed [`Flow`] rather than receiving a `next` continuation it
+//! must invoke. A `next()`/middleware model — where each layer has to call
+//! `next(ctx)` to let the rest of the chain *and* the wrapped action run — carries
+//! a well-known footgun: forgetting the call silently disables every downstream
+//! hook and the action itself, with no error. The declarative returned-[`Flow`]
+//! model makes that impossible: proceeding is the explicit [`Flow::Continue`], and
+//! any action an event cannot honor is fail-closed (it terminates the run) rather
+//! than silently skipped.
+//!
 //! Hooks are a *driver* concern: they are async, side-effecting and generic over
 //! the model, so they live in the [`AgentRunner`](crate::agent::AgentRunner)
 //! layer rather than inside the sans-IO, serializable
@@ -842,7 +853,10 @@ pub enum Flow {
     /// result without executing the tool; for [`StepEvent::InvalidToolCall`],
     /// record `reason` as a synthetic result for the invalid call.
     Skip {
-        /// The message returned to the model in place of the tool result.
+        /// The message returned to the model in place of the tool result. It is
+        /// delivered verbatim, so it doubles as a prompt: state that the tool did
+        /// not run and, unless you want the model to try again, tell it not to
+        /// retry — a bare `"denied"` often makes the model re-emit the same call.
         reason: String,
     },
     /// [`StepEvent::ToolCall`] only: rewrite the tool-call arguments, then
@@ -943,6 +957,14 @@ impl Flow {
     }
 
     /// Skip the current tool call (or invalid call) with the provided reason.
+    ///
+    /// `reason` is delivered to the model verbatim as the tool result, so it
+    /// doubles as a prompt — tell the model the tool did not run and whether to
+    /// retry, or it may re-emit the identical call:
+    ///
+    /// ```rust,ignore
+    /// Flow::skip("Not executed (denied by policy). Do not retry unless the user asks.")
+    /// ```
     pub fn skip(reason: impl Into<String>) -> Self {
         Self::Skip {
             reason: reason.into(),
@@ -1012,6 +1034,21 @@ impl Flow {
     }
 
     /// Retry the model turn with corrective feedback (invalid tool calls only).
+    ///
+    /// A common recovery is to let the model self-correct by naming the valid
+    /// tools, built from the diagnostics in [`InvalidToolCallContext`]:
+    ///
+    /// ```rust,ignore
+    /// // On the `StepEvent::InvalidToolCall(ctx)` arm of `on_event`:
+    /// Flow::retry(format!(
+    ///     "`{}` is not a valid tool. Call one of: [{}].",
+    ///     ctx.tool_name,
+    ///     ctx.available_tools.join(", "),
+    /// ))
+    /// ```
+    ///
+    /// Without such a hook the invalid-call default stays fail-closed
+    /// ([`Flow::Continue`] is treated as [`Flow::fail`]).
     pub fn retry(feedback: impl Into<String>) -> Self {
         Self::Retry {
             feedback: feedback.into(),
