@@ -55,7 +55,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::{ToolCallExtensions, server::ToolServerHandle},
+    tool::{ToolCallExtensions, ToolExecutionResult, ToolOutcome, server::ToolServerHandle},
 };
 
 use super::UNKNOWN_AGENT_NAME;
@@ -613,9 +613,13 @@ where
     tool_span.record("gen_ai.tool.call.id", &tool_call.id);
     tool_span.record("gen_ai.tool.call.arguments", &args);
 
-    // The effective arguments the tool runs with — the model's, or a hook's
-    // `RewriteArgs` replacement. Captured so the effective tool call can be
-    // surfaced in the execution-start event (what actually ran).
+    // The `ToolCall` hook decides whether the tool runs. On `Skip` the body does
+    // not run and the structured outcome is `Skipped`; otherwise the tool
+    // executes into a structured `ToolExecutionResult`. `effective_args` is what
+    // the tool actually ran with (the model's, or a hook's `RewriteArgs`
+    // replacement) — surfaced in the execution-start event so a redaction rewrite
+    // does not leak. It is unused for a skip.
+    let mut skipped: Option<ToolExecutionResult> = None;
     let effective_args: serde_json::Value = match flow_into_tool_call(
         hooks
             .on_event(
@@ -637,16 +641,10 @@ where
         }
         ToolCallDecision::Skip(reason) => {
             tracing::info!(tool_name = tool_name, reason = reason, "Tool call rejected");
-            // Synthetic rejection message: emit verbatim, never re-parsed. The
-            // tool did not run, so there is no execution-start event.
-            return Ok(ToolCallOutcome {
-                content: tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    reason,
-                ),
-                execution: ToolExecution::Skipped,
-            });
+            // Synthetic rejection: `Skipped` outcome, message delivered verbatim.
+            // Still fires the `ToolResult` hook so a policy observes the skip.
+            skipped = Some(ToolExecutionResult::skipped(reason));
+            serde_json::Value::Null
         }
         ToolCallDecision::ProceedWith(replacement) => {
             // Run the tool with the hook's rewritten arguments. Re-record the
@@ -663,30 +661,33 @@ where
         ToolCallDecision::Proceed => tool_call.function.arguments.clone(),
     };
 
-    // The tool call as actually executed: the model's call with any `RewriteArgs`
-    // rewrite applied. This — not the model's original call — is what the
-    // execution-start event reports (so a redaction rewrite does not leak).
-    let mut effective_tool_call = tool_call.clone();
-    effective_tool_call.function.arguments = effective_args;
-
-    let output = match tool_server
-        .call_tool_with_extensions(tool_name, &args, tool_extensions)
-        .await
-    {
-        Ok(res) => res,
-        Err(e) => {
-            tracing::warn!("Error while executing tool: {e}");
-            e.to_string()
+    // Resolve the structured execution result and how the call surfaced. A skip
+    // produces no execution-start event; a real execution carries the effective
+    // tool call (the model's call with any `RewriteArgs` applied).
+    let (exec, execution) = match skipped {
+        Some(exec) => (exec, ToolExecution::Skipped),
+        None => {
+            let mut effective_tool_call = tool_call.clone();
+            effective_tool_call.function.arguments = effective_args;
+            let exec = tool_server
+                .call_tool_structured(tool_name, &args, tool_extensions)
+                .await;
+            (exec, ToolExecution::Executed(Box::new(effective_tool_call)))
         }
     };
+    // A synthetic (skip) result is delivered verbatim; a real tool output is
+    // parsed (it may be multimodal).
+    let synthetic = matches!(execution, ToolExecution::Skipped);
 
-    // The tool's raw output is deliberately NOT recorded on the span yet: a
-    // `ToolResult` hook may redact it. Recording is deferred until after the hook
-    // runs — the redacted replacement on `Replace`, the raw output on `Keep`, and
-    // nothing on `Terminate` — so a redaction guardrail never leaks the original
-    // via the trace. (OpenAI Agents applies tool-output guardrails before
-    // tracing / tool-end / model-visible output for the same reason.) The hook
-    // still observes the tool's actual output via the event's `result` field.
+    // The tool's raw output/outcome are deliberately NOT recorded on the span
+    // yet: a `ToolResult` hook may redact or terminate first. Recording is
+    // deferred until after the hook runs — the redacted replacement on `Replace`,
+    // the raw output on `Keep`, and nothing on `Terminate` — so a redaction
+    // guardrail never leaks the original (raw output or error message) via the
+    // trace. (OpenAI Agents applies tool-output guardrails before tracing /
+    // tool-end / model-visible output for the same reason.) The hook still
+    // observes the tool's actual output via `result` and the structured
+    // classification via `outcome` / `extensions`.
     match flow_into_tool_result(
         hooks
             .on_event(
@@ -698,60 +699,87 @@ where
                     // The first result hook observes the tool's actual output,
                     // before any `RewriteResult` replacement is applied below.
                     args: &args,
-                    result: &output,
+                    result: &exec.model_output,
+                    outcome: &exec.outcome,
+                    extensions: &exec.extensions,
                 },
             )
             .await,
     ) {
         ToolResultDecision::Terminate(reason) => {
-            // Do not record or log the raw output: the model never sees it (the
-            // run is terminating) and a result hook may have terminated to prevent
-            // exactly that leak.
-            tracing::info!(
-                "executed tool {tool_name} with args {args}; run terminated by a result hook"
-            );
+            // Do not record or log the raw output/outcome: the model never sees it
+            // (the run is terminating) and a result hook may have terminated to
+            // prevent exactly that leak.
+            tracing::info!("tool {tool_name} with args {args}; run terminated by a result hook");
             Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
                 reason,
             ))
         }
         ToolResultDecision::Replace(replacement) => {
-            // The hook replaced the model-visible result. Record the replacement
-            // (the raw output was never recorded on the span before the hook ran)
-            // and log only that a rewrite happened — never the tool's raw output —
-            // so a redaction hook does not leak the original via the trace or the
-            // log. The replacement is hook-supplied content, so it is delivered
-            // verbatim (like a `Skip` reason via [`tool_result_message`]) rather
-            // than re-parsed as tool output, which would let a JSON-shaped
-            // replacement be reinterpreted as a structured/multimodal result.
+            // The hook replaced the model-visible result. Record the outcome and
+            // the replacement (the raw output was never recorded on the span
+            // before the hook ran) and log only that a rewrite happened — never
+            // the tool's raw output — so a redaction hook does not leak the
+            // original via the trace or the log. The replacement is hook-supplied
+            // content, so it is delivered verbatim (like a `Skip` reason via
+            // [`tool_result_message`]) rather than re-parsed as tool output.
+            record_tool_outcome(&tool_span, &exec.outcome);
             tool_span.record("gen_ai.tool.call.result", &replacement);
-            tracing::info!(
-                "executed tool {tool_name} with args {args}; result rewritten by a hook"
-            );
+            tracing::info!("tool {tool_name} with args {args}; result rewritten by a hook");
             Ok(ToolCallOutcome {
                 content: tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     replacement,
                 ),
-                execution: ToolExecution::Executed(Box::new(effective_tool_call)),
+                execution,
             })
         }
         ToolResultDecision::Keep => {
             // No redaction requested: now that the hook has run without replacing
-            // the output, record the tool's real result on the span.
-            tool_span.record("gen_ai.tool.call.result", &output);
-            tracing::info!("executed tool {tool_name} with args {args}. result: {output}");
-            // Real tool output: parsed (may be multimodal).
-            Ok(ToolCallOutcome {
-                content: tool_result_output(
+            // the output, record the outcome and the tool's real result.
+            record_tool_outcome(&tool_span, &exec.outcome);
+            tool_span.record("gen_ai.tool.call.result", &exec.model_output);
+            if synthetic {
+                tracing::info!(
+                    "tool {tool_name} skipped by a hook; result: {}",
+                    exec.model_output
+                );
+            } else {
+                tracing::info!(
+                    "executed tool {tool_name} with args {args}. outcome: {}; result: {}",
+                    exec.outcome.as_str(),
+                    exec.model_output
+                );
+            }
+            let content = if synthetic {
+                tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
-                    output,
-                ),
-                execution: ToolExecution::Executed(Box::new(effective_tool_call)),
-            })
+                    exec.model_output,
+                )
+            } else {
+                tool_result_output(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    exec.model_output,
+                )
+            };
+            Ok(ToolCallOutcome { content, execution })
         }
+    }
+}
+
+/// Record the structured tool [`ToolOutcome`] onto the `execute_tool` span. Kept
+/// separate from `gen_ai.tool.call.result` so it can be recorded (post-hook,
+/// alongside the model-visible result) without being part of the raw-output
+/// redaction surface — the outcome kind is a classification, not sensitive
+/// output.
+fn record_tool_outcome(span: &tracing::Span, outcome: &ToolOutcome) {
+    span.record("gen_ai.tool.call.outcome", outcome.as_str());
+    if let ToolOutcome::Error(failure) = outcome {
+        span.record("gen_ai.tool.error.type", failure.kind.as_str());
     }
 }
 
@@ -768,7 +796,9 @@ pub(crate) fn new_execute_tool_span() -> tracing::Span {
         gen_ai.tool.name = tracing::field::Empty,
         gen_ai.tool.call.id = tracing::field::Empty,
         gen_ai.tool.call.arguments = tracing::field::Empty,
-        gen_ai.tool.call.result = tracing::field::Empty
+        gen_ai.tool.call.result = tracing::field::Empty,
+        gen_ai.tool.call.outcome = tracing::field::Empty,
+        gen_ai.tool.error.type = tracing::field::Empty
     )
 }
 
@@ -1210,6 +1240,476 @@ mod tests {
             serde_json::to_value(&blocking_messages).expect("serialize blocking"),
             serde_json::to_value(&streaming_messages).expect("serialize streaming"),
         );
+    }
+
+    /// Structured tool-execution results reach `StepEvent::ToolResult` as machine
+    /// metadata (outcome + extensions), on both the blocking and streaming paths,
+    /// so hooks can steer on a classified failure without parsing the result
+    /// string.
+    mod structured_tool_results {
+        use std::sync::{Arc, Mutex};
+
+        use futures::StreamExt;
+        use serde_json::json;
+
+        use crate::agent::{AgentBuilder, AgentHook, Flow, HookContext, StepEvent};
+        use crate::completion::CompletionModel;
+        use crate::test_utils::{
+            MockAddTool, MockCompletionModel, MockFailingTool, MockHandledFailureTool,
+            MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
+        };
+        use crate::tool::{ToolFailureKind, ToolOutcome};
+
+        /// Records, for every `ToolResult` event, a compact outcome label and the
+        /// model-visible result string — the machine metadata a policy reads.
+        #[derive(Clone, Default)]
+        struct OutcomeHook {
+            outcomes: Arc<Mutex<Vec<String>>>,
+            results: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl OutcomeHook {
+            fn outcomes(&self) -> Vec<String> {
+                self.outcomes.lock().expect("outcomes").clone()
+            }
+
+            fn results(&self) -> Vec<String> {
+                self.results.lock().expect("results").clone()
+            }
+        }
+
+        /// A compact string label for an outcome, e.g. `error:timeout`.
+        fn outcome_label(outcome: &ToolOutcome) -> String {
+            match outcome {
+                ToolOutcome::Success => "success".to_string(),
+                ToolOutcome::Error(failure) => format!("error:{}", failure.kind.as_str()),
+                ToolOutcome::Skipped => "skipped".to_string(),
+                ToolOutcome::Denied => "denied".to_string(),
+            }
+        }
+
+        impl<M: CompletionModel> AgentHook<M> for OutcomeHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolResult {
+                    result, outcome, ..
+                } = event
+                {
+                    self.outcomes
+                        .lock()
+                        .expect("outcomes")
+                        .push(outcome_label(outcome));
+                    self.results
+                        .lock()
+                        .expect("results")
+                        .push(result.to_string());
+                }
+                Flow::cont()
+            }
+        }
+
+        /// A blocking model that calls `tool` once, then answers.
+        fn model_one_tool_then_text(tool: &str) -> MockCompletionModel {
+            MockCompletionModel::from_turns([
+                MockTurn::tool_call("tc1", tool, json!({})),
+                MockTurn::text("done"),
+            ])
+        }
+
+        /// A streaming model that calls `tool` once, then answers.
+        fn stream_model_one_tool_then_text(tool: &str) -> MockCompletionModel {
+            MockCompletionModel::from_stream_turns([
+                vec![
+                    MockStreamEvent::tool_call_name_delta("tc1", "ic1", tool),
+                    MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{}"),
+                    MockStreamEvent::tool_call("tc1", tool, json!({})),
+                    MockStreamEvent::final_response_with_total_tokens(0),
+                ],
+                vec![
+                    MockStreamEvent::text("done"),
+                    MockStreamEvent::final_response_with_total_tokens(0),
+                ],
+            ])
+        }
+
+        // (1) A `Timeout` failure reaches `StepEvent::ToolResult` as structured
+        // metadata (not just a string), with the model-visible feedback intact.
+        #[tokio::test]
+        async fn timeout_failure_surfaces_structured_outcome() {
+            let hook = OutcomeHook::default();
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .add_hook(hook.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("run should succeed; a tool timeout is model-visible feedback, not fatal");
+
+            assert_eq!(hook.outcomes(), vec!["error:timeout".to_string()]);
+            // (4) The model still receives useful text for the handled failure.
+            assert_eq!(hook.results(), vec!["mock tool call failed".to_string()]);
+        }
+
+        // (2) A hook counts timeout failures in the run scratchpad and terminates
+        // the run after a threshold — the motivating use case.
+        #[tokio::test]
+        async fn hook_terminates_after_repeated_timeouts() {
+            #[derive(Clone, Default)]
+            struct TimeoutCount(usize);
+
+            struct TimeoutTerminator;
+            impl<M: CompletionModel> AgentHook<M> for TimeoutTerminator {
+                async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolResult { outcome, .. } = event
+                        && outcome.is_error_kind(ToolFailureKind::Timeout)
+                    {
+                        let count = ctx.scratchpad().update(|c: &mut TimeoutCount| {
+                            c.0 += 1;
+                            c.0
+                        });
+                        if count >= 2 {
+                            return Flow::terminate("aborting after repeated tool timeouts");
+                        }
+                    }
+                    Flow::cont()
+                }
+            }
+
+            let observer = OutcomeHook::default();
+            let err = AgentBuilder::new(MockCompletionModel::from_turns([
+                MockTurn::tool_call("tc1", "flaky_tool", json!({})),
+                MockTurn::tool_call("tc2", "flaky_tool", json!({})),
+                MockTurn::text("unreachable"),
+            ]))
+            .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+            // Observer first so it records both timeouts before the terminator fires.
+            .add_hook(observer.clone())
+            .add_hook(TimeoutTerminator)
+            .build()
+            .runner("go")
+            .max_turns(5)
+            .run()
+            .await
+            .expect_err("the run must terminate after two timeouts");
+
+            assert!(
+                err.to_string()
+                    .contains("aborting after repeated tool timeouts"),
+                "unexpected error: {err}"
+            );
+            assert_eq!(
+                observer.outcomes(),
+                vec!["error:timeout".to_string(), "error:timeout".to_string()],
+                "both timeout outcomes must be observed before termination"
+            );
+        }
+
+        // (3) A not-found (404) failure surfaces as structured `NotFound` metadata
+        // but does not terminate the run by default — the model may try another path.
+        #[tokio::test]
+        async fn not_found_outcome_is_structured_and_non_fatal() {
+            let hook = OutcomeHook::default();
+            let status: Arc<Mutex<Option<u16>>> = Arc::new(Mutex::new(None));
+
+            struct StatusProbe(Arc<Mutex<Option<u16>>>);
+            impl<M: CompletionModel> AgentHook<M> for StatusProbe {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolResult { outcome, .. } = event
+                        && let ToolOutcome::Error(failure) = outcome
+                    {
+                        *self.0.lock().expect("status") = failure.http_status;
+                    }
+                    Flow::cont()
+                }
+            }
+
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+                .tool(MockFailingTool::new(ToolFailureKind::NotFound))
+                .add_hook(hook.clone())
+                .add_hook(StatusProbe(status.clone()))
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("a 404 must not terminate the run by default");
+
+            assert_eq!(hook.outcomes(), vec!["error:not_found".to_string()]);
+            assert_eq!(
+                *status.lock().expect("status"),
+                Some(404),
+                "the structured failure must carry the HTTP status"
+            );
+        }
+
+        // (4) A tool that returns a handled failure via `ToolReturn` shows the
+        // model useful output while the outcome is a classified error.
+        #[tokio::test]
+        async fn handled_failure_delivers_model_output_and_error_outcome() {
+            let hook = OutcomeHook::default();
+            AgentBuilder::new(model_one_tool_then_text("lookup"))
+                .tool(MockHandledFailureTool)
+                .add_hook(hook.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("a handled failure is not fatal");
+
+            assert_eq!(hook.outcomes(), vec!["error:not_found".to_string()]);
+            assert_eq!(
+                hook.results(),
+                vec!["no record found for id 42; try a different id".to_string()],
+                "the tool's model-visible output must survive alongside the error outcome"
+            );
+        }
+
+        // (7) `Flow::Skip` on the tool-call produces a structured `Skipped`
+        // outcome that the result hook observes.
+        #[tokio::test]
+        async fn flow_skip_produces_skipped_outcome() {
+            struct SkipHook;
+            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolCall { .. } = event {
+                        Flow::skip("not executed (denied by policy); do not retry")
+                    } else {
+                        Flow::cont()
+                    }
+                }
+            }
+
+            let observer = OutcomeHook::default();
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .add_hook(SkipHook)
+                .add_hook(observer.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("run should succeed after skipping the tool");
+
+            assert_eq!(observer.outcomes(), vec!["skipped".to_string()]);
+            assert_eq!(
+                observer.results(),
+                vec!["not executed (denied by policy); do not retry".to_string()]
+            );
+        }
+
+        // (8) Invalid JSON arguments are classified as a structured `InvalidArgs`
+        // failure rather than surfacing as an opaque string.
+        #[tokio::test]
+        async fn invalid_args_are_classified_as_invalid_args() {
+            let hook = OutcomeHook::default();
+            AgentBuilder::new(MockCompletionModel::from_turns([
+                // `add` needs integers; a string is a hard parse failure.
+                MockTurn::tool_call("tc1", "add", json!({ "x": "not-a-number", "y": 1 })),
+                MockTurn::text("done"),
+            ]))
+            .tool(MockAddTool)
+            .add_hook(hook.clone())
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("an invalid-args failure is model-visible feedback, not fatal");
+
+            assert_eq!(hook.outcomes(), vec!["error:invalid_args".to_string()]);
+        }
+
+        // Result extensions a tool attaches reach the hook but never appear in the
+        // model-visible output.
+        #[tokio::test]
+        async fn success_extensions_reach_hook_but_not_model() {
+            let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+            let model_output: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
+            struct ExtProbe {
+                seen: Arc<Mutex<Option<String>>>,
+                model_output: Arc<Mutex<Option<String>>>,
+            }
+            impl<M: CompletionModel> AgentHook<M> for ExtProbe {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolResult {
+                        result, extensions, ..
+                    } = event
+                    {
+                        *self.seen.lock().expect("seen") =
+                            extensions.get::<MockRequestId>().map(|id| id.0.clone());
+                        *self.model_output.lock().expect("model_output") = Some(result.to_string());
+                    }
+                    Flow::cont()
+                }
+            }
+
+            AgentBuilder::new(model_one_tool_then_text("with_meta"))
+                .tool(MockMetadataTool)
+                .add_hook(ExtProbe {
+                    seen: seen.clone(),
+                    model_output: model_output.clone(),
+                })
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("run should succeed");
+
+            assert_eq!(
+                *seen.lock().expect("seen"),
+                Some("req-7".to_string()),
+                "the tool's result extension must reach the hook"
+            );
+            let output = model_output
+                .lock()
+                .expect("model_output")
+                .clone()
+                .expect("output");
+            assert_eq!(output, "done");
+            assert!(
+                !output.contains("req-7"),
+                "result extensions must never leak into the model-visible output"
+            );
+        }
+
+        // (6) A `RewriteResult` hook redacts the model-visible text, but a later
+        // policy hook still sees the tool's *raw* structured outcome — a rewrite
+        // changes only what the model sees, not the classification.
+        #[tokio::test]
+        async fn rewrite_result_does_not_mask_the_structured_outcome() {
+            struct Redact;
+            impl<M: CompletionModel> AgentHook<M> for Redact {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolResult { .. } = event {
+                        Flow::rewrite_result("[REDACTED]")
+                    } else {
+                        Flow::cont()
+                    }
+                }
+            }
+
+            let observer = OutcomeHook::default();
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+                .tool(MockFailingTool::new(ToolFailureKind::NotFound))
+                // Observer AFTER the redactor: it still sees the true outcome, and
+                // the chained (redacted) model-visible result.
+                .add_hook(Redact)
+                .add_hook(observer.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("run should succeed");
+
+            assert_eq!(observer.outcomes(), vec!["error:not_found".to_string()]);
+            assert_eq!(observer.results(), vec!["[REDACTED]".to_string()]);
+        }
+
+        // (9) The blocking and streaming surfaces observe identical structured
+        // outcomes for the same scenario.
+        #[tokio::test]
+        async fn streaming_and_blocking_outcomes_match() {
+            let blocking = OutcomeHook::default();
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .add_hook(blocking.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("blocking run should succeed");
+
+            let streaming = OutcomeHook::default();
+            let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("flaky_tool"))
+                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .add_hook(streaming.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .stream()
+                .await;
+            while let Some(item) = stream.next().await {
+                if let Err(err) = item {
+                    panic!("stream item errored: {err}");
+                }
+            }
+
+            assert_eq!(blocking.outcomes(), vec!["error:timeout".to_string()]);
+            assert_eq!(blocking.outcomes(), streaming.outcomes());
+            assert_eq!(blocking.results(), streaming.results());
+        }
+
+        // (10) With two tools in one turn at `concurrency > 1`, both structured
+        // outcomes are observed and the persisted tool results keep call order.
+        #[tokio::test]
+        async fn concurrent_tools_preserve_order_and_both_outcomes() {
+            use crate::message::{AssistantContent, ToolCall, ToolFunction, UserContent};
+
+            let turn = MockTurn::from_contents([
+                AssistantContent::ToolCall(ToolCall::new(
+                    "tc_add".to_string(),
+                    ToolFunction::new("add".to_string(), json!({ "x": 2, "y": 3 })),
+                )),
+                AssistantContent::ToolCall(ToolCall::new(
+                    "tc_flaky".to_string(),
+                    ToolFunction::new("flaky_tool".to_string(), json!({})),
+                )),
+            ])
+            .expect("two tool calls");
+
+            let observer = OutcomeHook::default();
+            let response = AgentBuilder::new(MockCompletionModel::from_turns([
+                turn,
+                MockTurn::text("done"),
+            ]))
+            .tool(MockAddTool)
+            .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+            .add_hook(observer.clone())
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .run()
+            .await
+            .expect("run should succeed");
+
+            // Hook order may interleave under concurrency, so compare as a set.
+            let mut outcomes = observer.outcomes();
+            outcomes.sort();
+            assert_eq!(
+                outcomes,
+                vec!["error:timeout".to_string(), "success".to_string()]
+            );
+
+            // The persisted tool results must keep tool-call order regardless of
+            // completion timing: `add` (tc_add) before `flaky_tool` (tc_flaky).
+            let messages = response.messages.expect("messages");
+            let tool_result_ids: Vec<String> = messages
+                .iter()
+                .flat_map(|message| match message {
+                    crate::completion::Message::User { content } => content
+                        .iter()
+                        .filter_map(|c| match c {
+                            UserContent::ToolResult(result) => Some(result.id.clone()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>(),
+                    _ => Vec::new(),
+                })
+                .collect();
+            assert_eq!(
+                tool_result_ids,
+                vec!["tc_add".to_string(), "tc_flaky".to_string()],
+                "tool results must be persisted in call order"
+            );
+        }
     }
 
     /// Safety net for the streaming/non-streaming unification: pins the blocking
@@ -3823,14 +4323,14 @@ mod tests {
             blocking_hook.shared_events(),
             streaming_hook.shared_events()
         );
-        // A skipped valid tool call does not fire the `ToolResult` hook
-        // (`run_single_tool` returns the synthetic result before it), so the hook
-        // records no tool result on either driver — the verbatim skip reason
-        // lands in the message history instead (asserted below).
+        // A skipped valid tool call fires the `ToolResult` hook carrying a
+        // structured `Skipped` outcome (the redesign surfaces the skip to result
+        // hooks), so both drivers record the verbatim skip reason as the result.
         assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-        assert!(
-            blocking_hook.tool_results().is_empty(),
-            "a skipped tool executes nothing, so no ToolResult hook fires"
+        assert_eq!(
+            blocking_hook.tool_results(),
+            vec!["skipped by policy".to_string()],
+            "a skipped tool fires a ToolResult hook with the verbatim skip reason"
         );
 
         let blocking_messages = blocking.messages.expect("blocking messages");
@@ -5114,10 +5614,16 @@ mod tests {
         let final_response = final_response.expect("stream should yield a final response");
 
         // Approved (5) and edited (101) tools executed, in call order; the denied
-        // call executed nothing, so it fired no ToolResult — on both drivers.
+        // call executed nothing but now fires a ToolResult carrying its verbatim
+        // denial reason (structured `Skipped` outcome) — identically on both
+        // drivers.
         assert_eq!(
             blocking_recorder.tool_results(),
-            vec!["5".to_string(), "101".to_string()]
+            vec![
+                "5".to_string(),
+                "denied by reviewer: amount too large".to_string(),
+                "101".to_string()
+            ]
         );
         assert_eq!(
             blocking_recorder.tool_results(),
@@ -5125,8 +5631,8 @@ mod tests {
         );
 
         // The denied call (10 + 20) never executed, so its result 30 is absent —
-        // this, with tool_results == [5, 101], rules out the test passing if deny
-        // were silently treated as approve.
+        // the denial reason stands in its place, ruling out deny being silently
+        // treated as approve.
         assert!(
             !blocking_recorder.tool_results().contains(&"30".to_string()),
             "the denied call must not have executed"
@@ -5326,10 +5832,15 @@ mod tests {
 
         assert_eq!(out.output, "done");
         // `add` ran twice (auto-approved, then sticky-reused); `subtract` was denied
-        // and executed nothing.
+        // and executed nothing, but its denial reason now surfaces as a ToolResult
+        // (structured `Skipped` outcome) between the two `add` results.
         assert_eq!(
             recorder.tool_results(),
-            vec!["5".to_string(), "5".to_string()]
+            vec![
+                "5".to_string(),
+                "denied by policy: `subtract` not allowed".to_string(),
+                "5".to_string()
+            ]
         );
         // The policy evaluated each distinct tool once; the second `add` reused the
         // cached decision rather than being re-evaluated.

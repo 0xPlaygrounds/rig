@@ -105,6 +105,7 @@ where
                 internal_call_id,
                 args,
                 result,
+                ..
             } => {
                 println!("\n=== tool result: tool returned ===");
                 println!("tool_name: {tool_name}");

@@ -56,9 +56,10 @@ use rmcp::model::RawContent;
 use tokio::sync::RwLock;
 
 use crate::completion::ToolDefinition;
-use crate::tool::ToolError;
 use crate::tool::server::{ToolServerError, ToolServerHandle};
-use crate::tool::{ToolCallExtensions, ToolDyn};
+use crate::tool::{
+    ToolCallExtensions, ToolDyn, ToolError, ToolExecutionResult, ToolFailure, ToolFailureKind,
+};
 use crate::wasm_compat::WasmBoxedFuture;
 
 /// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolCallExtensions`] to have
@@ -150,9 +151,39 @@ impl From<rmcp::model::Tool> for ToolDefinition {
     }
 }
 
+/// Error returned by an [`McpTool`] call.
+///
+/// Carries a structured [`ToolFailureKind`] so an MCP timeout, transport
+/// failure, or tool-reported error reaches hooks and telemetry as a classified
+/// [`ToolFailure`] (via [`McpTool`]'s
+/// [`ToolDyn::call_structured`](crate::tool::ToolDyn::call_structured)) instead
+/// of an opaque string.
 #[derive(Debug, thiserror::Error)]
-#[error("MCP tool error: {0}")]
-pub struct McpToolError(String);
+#[error("MCP tool error: {message}")]
+pub struct McpToolError {
+    message: String,
+    kind: ToolFailureKind,
+}
+
+impl McpToolError {
+    fn new(kind: ToolFailureKind, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            kind,
+        }
+    }
+
+    /// The structured classification of this MCP error.
+    pub fn kind(&self) -> ToolFailureKind {
+        self.kind
+    }
+
+    /// Convert into a structured [`ToolFailure`] carrying the kind's default
+    /// `retryable` hint (e.g. an MCP timeout is retryable).
+    fn into_failure(self) -> ToolFailure {
+        ToolFailure::of_kind(self.kind, self.message)
+    }
+}
 
 impl From<McpToolError> for ToolError {
     fn from(e: McpToolError) -> Self {
@@ -172,7 +203,7 @@ impl McpTool {
         &self,
         args: String,
         meta: Option<rmcp::model::Meta>,
-    ) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
+    ) -> WasmBoxedFuture<'_, Result<String, McpToolError>> {
         let name = self.definition.name.clone();
         let arguments: Option<rmcp::model::JsonObject> =
             serde_json::from_str(&args).unwrap_or_default();
@@ -193,16 +224,24 @@ impl McpTool {
                     crate::wasm_compat::timeout(timeout, call)
                         .await
                         .map_err(|_| {
-                            McpToolError(format!(
-                                "MCP tool '{}' timed out after {timeout:?}",
-                                self.definition.name
-                            ))
+                            McpToolError::new(
+                                ToolFailureKind::Timeout,
+                                format!(
+                                    "MCP tool '{}' timed out after {timeout:?}",
+                                    self.definition.name
+                                ),
+                            )
                         })?
                 }
                 None => call.await,
             };
-            let result =
-                call_result.map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
+            // A transport/service error before the tool produced a result.
+            let result = call_result.map_err(|e| {
+                McpToolError::new(
+                    ToolFailureKind::Provider,
+                    format!("Tool returned an error: {e}"),
+                )
+            })?;
 
             if let Some(true) = result.is_error {
                 let error_msg = result
@@ -212,11 +251,16 @@ impl McpTool {
                     .map(|x| x.map(|x| x.clone().text))
                     .collect::<Option<Vec<String>>>();
 
+                // The MCP tool ran and reported its own error result — a handled
+                // tool failure rather than a transport/timeout condition.
                 let error_message = error_msg.map(|x| x.join("\n"));
                 if let Some(error_message) = error_message {
-                    return Err(McpToolError(error_message).into());
+                    return Err(McpToolError::new(ToolFailureKind::Other, error_message));
                 } else {
-                    return Err(McpToolError("No message returned".to_string()).into());
+                    return Err(McpToolError::new(
+                        ToolFailureKind::Other,
+                        "No message returned".to_string(),
+                    ));
                 }
             };
 
@@ -252,17 +296,17 @@ impl McpTool {
                         ),
                     },
                     RawContent::Audio(_) => {
-                        return Err(McpToolError(
+                        return Err(McpToolError::new(
+                            ToolFailureKind::Other,
                             "MCP tool returned audio content, which Rig does not support yet"
                                 .to_string(),
-                        )
-                        .into());
+                        ));
                     }
                     thing => {
-                        return Err(McpToolError(format!(
-                            "MCP tool returned unsupported content: {thing:?}"
-                        ))
-                        .into());
+                        return Err(McpToolError::new(
+                            ToolFailureKind::Other,
+                            format!("MCP tool returned unsupported content: {thing:?}"),
+                        ));
                     }
                 };
 
@@ -295,7 +339,7 @@ impl ToolDyn for McpTool {
     }
 
     fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
-        self.execute(args, None)
+        Box::pin(async move { self.execute(args, None).await.map_err(ToolError::from) })
     }
 
     /// Forwards an [`rmcp::model::Meta`] from the [`ToolCallExtensions`], if present,
@@ -309,7 +353,29 @@ impl ToolDyn for McpTool {
         extensions: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         let meta = extensions.get::<rmcp::model::Meta>().cloned();
-        self.execute(args, meta)
+        Box::pin(async move { self.execute(args, meta).await.map_err(ToolError::from) })
+    }
+
+    /// Surfaces MCP failures as structured outcomes: a per-call timeout (issue
+    /// #1914) becomes a [`Timeout`](ToolFailureKind::Timeout) failure, a
+    /// transport error a [`Provider`](ToolFailureKind::Provider) failure, and a
+    /// tool-reported error result an [`Other`](ToolFailureKind::Other) failure —
+    /// all with the MCP error text as the model-visible output.
+    fn call_structured<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        let meta = extensions.get::<rmcp::model::Meta>().cloned();
+        Box::pin(async move {
+            match self.execute(args, meta).await {
+                Ok(output) => ToolExecutionResult::success(output),
+                Err(err) => {
+                    let failure = err.into_failure();
+                    ToolExecutionResult::failed(failure.message.clone(), failure)
+                }
+            }
+        })
     }
 }
 

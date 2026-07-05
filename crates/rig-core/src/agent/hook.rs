@@ -84,7 +84,7 @@
 //! | `on_completion_response` | [`CompletionResponse`](StepEvent::CompletionResponse) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_invalid_tool_call` | [`InvalidToolCall`](StepEvent::InvalidToolCall)`(ctx)` | [`fail`](Flow::fail) (default) / [`retry`](Flow::retry) / [`repair`](Flow::repair) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call` | [`ToolCall`](StepEvent::ToolCall) `{ tool_name, tool_call_id, internal_call_id, args }` | [`cont`](Flow::cont) / [`rewrite_args`](Flow::rewrite_args) / [`skip`](Flow::skip) / [`terminate`](Flow::terminate) |
-//! | `on_tool_result` | [`ToolResult`](StepEvent::ToolResult) `{ tool_name, .., result }` | [`cont`](Flow::cont) / [`rewrite_result`](Flow::rewrite_result) / [`terminate`](Flow::terminate) |
+//! | `on_tool_result` | [`ToolResult`](StepEvent::ToolResult) `{ tool_name, .., result, outcome, extensions }` | [`cont`](Flow::cont) / [`rewrite_result`](Flow::rewrite_result) / [`terminate`](Flow::terminate) |
 //! | `on_text_delta` | [`TextDelta`](StepEvent::TextDelta) `{ delta, aggregated }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_tool_call_delta` | [`ToolCallDelta`](StepEvent::ToolCallDelta) `{ tool_call_id, internal_call_id, tool_name, delta }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
 //! | `on_stream_completion_response_finish` | [`StreamResponseFinish`](StepEvent::StreamResponseFinish) `{ prompt, response }` | [`cont`](Flow::cont) / [`terminate`](Flow::terminate) |
@@ -100,6 +100,45 @@
 //! - For per-delta hooks, override [`AgentHook::observes`] to skip the
 //!   high-frequency [`TextDelta`](StepEvent::TextDelta) /
 //!   [`ToolCallDelta`](StepEvent::ToolCallDelta) events you don't consume.
+//!
+//! # Steering on structured tool outcomes
+//!
+//! [`StepEvent::ToolResult`] carries a structured
+//! [`ToolOutcome`](crate::tool::ToolOutcome) alongside the model-visible
+//! `result`, so a hook can branch on *why* a tool failed — a timeout vs. a 404 —
+//! without parsing strings. The motivating case: abort after repeated timeouts,
+//! but let a not-found flow back to the model as recoverable feedback.
+//!
+//! ```rust,ignore
+//! use rig_core::agent::{AgentHook, Flow, HookContext, StepEvent};
+//! use rig_core::completion::CompletionModel;
+//! use rig_core::tool::ToolFailureKind;
+//!
+//! #[derive(Clone, Default)]
+//! struct TimeoutCount(usize);
+//!
+//! struct OutcomePolicy;
+//!
+//! impl<M: CompletionModel> AgentHook<M> for OutcomePolicy {
+//!     async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+//!         if let StepEvent::ToolResult { outcome, .. } = event {
+//!             // Repeated timeouts abort the run; a 404 does not.
+//!             if outcome.is_error_kind(ToolFailureKind::Timeout) {
+//!                 let count = ctx.scratchpad().update(|c: &mut TimeoutCount| {
+//!                     c.0 += 1;
+//!                     c.0
+//!                 });
+//!                 if count >= 10 {
+//!                     return Flow::terminate("aborting after repeated tool timeouts");
+//!                 }
+//!             }
+//!             // `NotFound` falls through to `Flow::cont`: the model sees the
+//!             // error text and may try another path.
+//!         }
+//!         Flow::cont()
+//!     }
+//! }
+//! ```
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -109,7 +148,7 @@ use crate::{
     completion::{CompletionModel, Document, Usage},
     json_utils,
     message::{AssistantContent, Message, ToolChoice},
-    tool::ToolCallExtensions,
+    tool::{ToolCallExtensions, ToolOutcome, ToolResultExtensions},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -484,12 +523,27 @@ pub enum StepEvent<'a, M: CompletionModel> {
         /// JSON arguments for the call.
         args: &'a str,
     },
-    /// After a tool has been executed and produced a result. Honors
-    /// [`Flow::Continue`], [`Flow::RewriteResult`] (substitute the result the
-    /// model sees) and [`Flow::Terminate`]. `result` is the tool's actual
-    /// output for the first hook; across a [`HookStack`],
+    /// After a tool has produced a result (or a [`ToolCall`](Self::ToolCall) hook
+    /// [skipped](Flow::Skip) it). Honors [`Flow::Continue`],
+    /// [`Flow::RewriteResult`] (substitute the result the model sees) and
+    /// [`Flow::Terminate`].
+    ///
+    /// `result` is the model-visible output, and `outcome` / `extensions` are the
+    /// **structured** execution result — the machine-visible half a hook inspects
+    /// without parsing `result`. `outcome` distinguishes success from a classified
+    /// [`ToolFailure`](crate::tool::ToolFailure) (timeout, not-found, …), a
+    /// [`Skipped`](crate::tool::ToolOutcome::Skipped) call, or a
+    /// [`Denied`](crate::tool::ToolOutcome::Denied) one; `extensions` carries
+    /// provider/application metadata the tool attached that is never sent to the
+    /// model.
+    ///
+    /// For the first hook, `result` is the tool's actual output and `outcome` its
+    /// raw structured outcome; across a [`HookStack`],
     /// [`RewriteResult`](Flow::RewriteResult) is chained so a later hook sees the
-    /// prior hook's replacement (see the module docs).
+    /// prior hook's replacement in `result`. A rewrite changes only `result` (the
+    /// model-visible text) — `outcome` and `extensions` are the tool's raw
+    /// structured result throughout, so a redaction hook cannot mask the true
+    /// outcome from a later policy hook (see the module docs).
     ToolResult {
         /// Name of the tool that was called.
         tool_name: &'a str,
@@ -499,8 +553,15 @@ pub enum StepEvent<'a, M: CompletionModel> {
         internal_call_id: &'a str,
         /// JSON arguments for the call.
         args: &'a str,
-        /// The tool result, as returned to the model.
+        /// The model-visible tool result. Reflects any earlier hook's
+        /// [`RewriteResult`](Flow::RewriteResult); the first hook sees the tool's
+        /// actual output.
         result: &'a str,
+        /// The structured outcome of the execution (success / classified error /
+        /// skipped / denied). The raw outcome, unaffected by `RewriteResult`.
+        outcome: &'a ToolOutcome,
+        /// Metadata the tool attached to its result, never sent to the model.
+        extensions: &'a ToolResultExtensions,
     },
     /// Streaming only: a text delta was received. `aggregated` is the full text
     /// accumulated for the turn so far. Honors [`Flow::Continue`] and
@@ -1339,14 +1400,19 @@ where
                     None => Flow::Continue,
                 }
             }
-            // Chain tool-result rewrites: thread the effective result through
-            // each hook (the first hook sees the tool's real output).
+            // Chain tool-result rewrites: thread the effective (model-visible)
+            // result through each hook (the first hook sees the tool's real
+            // output). The structured `outcome`/`extensions` are the tool's raw
+            // result and are passed unchanged to every hook — a rewrite alters
+            // only the model-visible text, never the outcome a later policy sees.
             StepEvent::ToolResult {
                 tool_name,
                 tool_call_id,
                 internal_call_id,
                 args,
                 result,
+                outcome,
+                extensions,
             } => {
                 let mut effective: Option<String> = None;
                 for hook in &self.hooks {
@@ -1357,6 +1423,8 @@ where
                         internal_call_id,
                         args,
                         result: result_for_hook,
+                        outcome,
+                        extensions,
                     };
                     match hook.on_event_boxed(ctx, per_hook).await {
                         Flow::Continue => {}

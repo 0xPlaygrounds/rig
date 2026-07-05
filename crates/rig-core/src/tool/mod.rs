@@ -8,11 +8,24 @@
 //!
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
+//!
+//! # Structured tool results
+//!
+//! A tool call resolves to a structured [`ToolExecutionResult`] — model-visible
+//! output, a machine-readable [`ToolOutcome`] (success, a classified
+//! [`ToolFailure`], skipped, or denied), and [`ToolResultExtensions`] metadata
+//! that is never sent to the model. This is what flows to the
+//! [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook so a
+//! policy can steer on *why* a tool failed without parsing strings. A tool
+//! classifies its own error type via [`Tool::classify_error`] and can return
+//! richer outcomes/metadata via [`Tool::call_structured`] and [`ToolReturn`].
 
 mod extensions;
+mod result;
 pub mod server;
 
-pub use extensions::{MissingExtension, ToolCallExtensions};
+pub use extensions::{MissingExtension, ToolCallExtensions, ToolResultExtensions};
+pub use result::{ToolExecutionResult, ToolFailure, ToolFailureKind, ToolOutcome, ToolReturn};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -151,21 +164,81 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// injected by the caller via [`ToolCallExtensions`]. The default ignores
     /// the extensions and delegates to [`Tool::call`].
     ///
-    /// **Override contract:** when you override this method it becomes the
-    /// single entry point for the tool under *dynamic dispatch* — every
-    /// [`ToolDyn`] path (the extension-free [`ToolDyn::call`] and the agent
-    /// loop) routes here, with an empty [`ToolCallExtensions`] when no caller
-    /// supplied one. So put your logic here and treat a missing value as the
-    /// no-extensions case (e.g. via [`ToolCallExtensions::get`] returning
-    /// `None`); do not split behavior between `call` and `call_with_extensions`,
-    /// as `call`'s body is then unreachable through dynamic dispatch (a direct
-    /// `Tool::call` call still runs its own body).
+    /// **Override contract:** the default [`Tool::call_structured`] delegates
+    /// here, so overriding this method is how you read extensions for the common
+    /// case — the agent loop drives [`call_structured`](Self::call_structured),
+    /// which reaches your override (with an empty [`ToolCallExtensions`] when no
+    /// caller supplied one). Under dynamic dispatch this then becomes the single
+    /// execution entry point (`call`'s body is unreachable that way; a direct
+    /// `Tool::call` still runs it), so put your logic here and treat a missing
+    /// value as the no-extensions case (e.g. [`ToolCallExtensions::get`]
+    /// returning `None`). If you *also* override
+    /// [`call_structured`](Self::call_structured), that override supersedes this
+    /// method on the agent's structured path — put your logic there instead.
     fn call_with_extensions(
         &self,
         args: Self::Args,
         _extensions: &ToolCallExtensions,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend {
         self.call(args)
+    }
+
+    /// Classify an error returned by this tool into a structured [`ToolFailure`].
+    ///
+    /// This is how a tool's own error type reaches a hook, policy, or telemetry
+    /// pipeline as a machine-readable [`ToolFailureKind`] — with no string
+    /// parsing. The default classifies every error as
+    /// [`ToolFailureKind::Other`] with the error's `Display` as the message;
+    /// override it to map your error variants onto the standard kinds (timeout,
+    /// not-found, rate-limited, …) and attach a `code` / `http_status` /
+    /// `retryable` hint:
+    ///
+    /// ```rust,ignore
+    /// fn classify_error(&self, error: &Self::Error) -> ToolFailure {
+    ///     match error {
+    ///         MyError::Timeout => ToolFailure::timeout(error.to_string()),
+    ///         MyError::Http { status: 404, .. } => {
+    ///             ToolFailure::not_found(error.to_string()).with_http_status(404)
+    ///         }
+    ///         other => ToolFailure::other(other.to_string()),
+    ///     }
+    /// }
+    /// ```
+    fn classify_error(&self, error: &Self::Error) -> ToolFailure {
+        ToolFailure::other(error.to_string())
+    }
+
+    /// Execute the tool, returning a structured [`ToolReturn`] instead of a bare
+    /// output.
+    ///
+    /// The richest tool-execution entry point. The default calls
+    /// [`call_with_extensions`](Self::call_with_extensions) and wraps the output
+    /// as a plain [`ToolReturn::success`] with no metadata, so a tool that only
+    /// implements [`call`](Self::call) needs nothing extra. Override it to:
+    ///
+    /// - attach result metadata to a success
+    ///   (`ToolReturn::success(out).with_extension(..)`);
+    /// - report a handled failure that still shows output to the model
+    ///   ([`ToolReturn::failed`]);
+    /// - mark the call [`denied`](ToolReturn::denied) / [`skipped`](ToolReturn::skipped).
+    ///
+    /// **Override contract:** this is the single entry point under *structured
+    /// dynamic dispatch* — the agent loop routes every tool call here via the
+    /// blanket [`ToolDyn`] impl. If you override it, the `call` /
+    /// `call_with_extensions` bodies are unreachable on that structured path (a
+    /// direct call still runs them), so put your logic here. A returned
+    /// `Err(Self::Error)` is still classified via
+    /// [`classify_error`](Self::classify_error).
+    fn call_structured(
+        &self,
+        args: Self::Args,
+        extensions: &ToolCallExtensions,
+    ) -> impl Future<Output = Result<ToolReturn<Self::Output>, Self::Error>> + WasmCompatSend {
+        async move {
+            self.call_with_extensions(args, extensions)
+                .await
+                .map(ToolReturn::success)
+        }
     }
 }
 
@@ -220,6 +293,37 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         self.call(args)
     }
+
+    /// Execute the tool with per-call extensions, returning a structured
+    /// [`ToolExecutionResult`] (model output + [`ToolOutcome`] + result
+    /// extensions).
+    ///
+    /// This is the structured dynamic boundary the agent loop drives: the result
+    /// flows through to the
+    /// [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event.
+    /// Unlike [`call`](Self::call) it never returns a bare error — a failure is
+    /// carried as [`ToolOutcome::Error`] inside the result, with the
+    /// model-visible message on [`ToolExecutionResult::model_output`].
+    ///
+    /// The default wraps [`call_with_extensions`](Self::call_with_extensions): an
+    /// `Ok` output becomes a [`ToolOutcome::Success`]; a [`ToolError`] is
+    /// classified ([`ToolError::JsonError`] as
+    /// [`ToolFailureKind::InvalidArgs`], otherwise [`ToolFailureKind::Other`]).
+    /// The blanket impl for [`Tool`] types overrides this to route through
+    /// [`Tool::call_structured`] and [`Tool::classify_error`]; a manual `ToolDyn`
+    /// impl should override it to emit precise outcomes (e.g. a real timeout).
+    fn call_structured<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        Box::pin(async move {
+            match self.call_with_extensions(args, extensions).await {
+                Ok(model_output) => ToolExecutionResult::success(model_output),
+                Err(err) => tool_error_to_execution_result(err),
+            }
+        })
+    }
 }
 
 fn serialize_tool_output(output: impl Serialize) -> serde_json::Result<String> {
@@ -227,6 +331,38 @@ fn serialize_tool_output(output: impl Serialize) -> serde_json::Result<String> {
         serde_json::Value::String(text) => Ok(text),
         value => Ok(value.to_string()),
     }
+}
+
+/// Deserialize JSON tool arguments, normalizing a bare `null` (which LLMs
+/// frequently send for tools whose arguments are all optional) to `{}`.
+///
+/// `serde_json::from_str::<T>("null")` fails for struct types even when every
+/// field is `Option<_>`, because JSON null does not deserialize to an empty
+/// object. Any args type that already accepts `null` (such as `()` or
+/// `Option<T>`) is preserved; the fallback to `{}` only applies after the
+/// original parse fails.
+fn parse_tool_args<A>(args: &str) -> serde_json::Result<A>
+where
+    A: for<'de> Deserialize<'de>,
+{
+    match serde_json::from_str(args) {
+        Ok(parsed) => Ok(parsed),
+        Err(err) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| err),
+        Err(err) => Err(err),
+    }
+}
+
+/// Map a [`ToolError`] surfaced by a string-returning [`ToolDyn`] path into a
+/// structured [`ToolExecutionResult`], classifying a JSON error as invalid
+/// arguments. Used by the default [`ToolDyn::call_structured`] for manual
+/// implementations that only provide the string [`ToolDyn::call`].
+fn tool_error_to_execution_result(err: ToolError) -> ToolExecutionResult {
+    let message = err.to_string();
+    let failure = match err {
+        ToolError::JsonError(_) => ToolFailure::invalid_args(message.clone()),
+        ToolError::ToolCallError(_) => ToolFailure::other(message.clone()),
+    };
+    ToolExecutionResult::failed(message, failure)
 }
 
 impl<T: Tool> ToolDyn for T {
@@ -248,23 +384,43 @@ impl<T: Tool> ToolDyn for T {
         extensions: &'a ToolCallExtensions,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
-            // LLMs frequently send `null` for tools whose arguments are all optional.
-            // `serde_json::from_str::<T>("null")` fails for struct types even when
-            // every field is `Option<_>`, because JSON null does not deserialize to an
-            // empty object. Preserve any args type that already accepts `null` (such as
-            // `()` or `Option<T>`) and fall back to `{}` only after the original parse
-            // fails.
-            let args = match serde_json::from_str(&args) {
-                Ok(args) => Ok(args),
-                Err(err) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| err),
-                Err(err) => Err(err),
-            };
-            match args {
+            match parse_tool_args::<T::Args>(&args) {
                 Ok(args) => <Self as Tool>::call_with_extensions(self, args, extensions)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| serialize_tool_output(output).map_err(ToolError::JsonError)),
                 Err(e) => Err(ToolError::JsonError(e)),
+            }
+        })
+    }
+
+    /// Routes through [`Tool::call_structured`] so rich returns
+    /// ([`ToolReturn`]) and [`Tool::classify_error`] are honored: a JSON
+    /// argument parse failure becomes an
+    /// [`InvalidArgs`](ToolFailureKind::InvalidArgs) outcome, a returned
+    /// `Err(Self::Error)` is classified, and a successful [`ToolReturn`] is
+    /// serialized while preserving its outcome and extensions.
+    fn call_structured<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        Box::pin(async move {
+            let parsed = match parse_tool_args::<T::Args>(&args) {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    return ToolExecutionResult::failed(
+                        format!("failed to parse tool arguments: {err}"),
+                        ToolFailure::invalid_args(err.to_string()),
+                    );
+                }
+            };
+            match <Self as Tool>::call_structured(self, parsed, extensions).await {
+                Ok(tool_return) => tool_return.into_execution_result(),
+                Err(err) => {
+                    let failure = self.classify_error(&err);
+                    ToolExecutionResult::failed(err.to_string(), failure)
+                }
             }
         })
     }
@@ -325,6 +481,18 @@ impl ToolType {
         match self {
             ToolType::Simple(tool) => tool.call_with_extensions(args, extensions).await,
             ToolType::Embedding(tool) => tool.call_with_extensions(args, extensions).await,
+        }
+    }
+
+    /// Execute the tool, returning the structured [`ToolExecutionResult`].
+    pub async fn call_structured(
+        &self,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> ToolExecutionResult {
+        match self {
+            ToolType::Simple(tool) => tool.call_structured(args, extensions).await,
+            ToolType::Embedding(tool) => tool.call_structured(args, extensions).await,
         }
     }
 }
@@ -476,6 +644,31 @@ impl ToolSet {
             Ok(tool.call_with_extensions(args, extensions).await?)
         } else {
             Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
+        }
+    }
+
+    /// Call a tool by name, returning the structured [`ToolExecutionResult`].
+    ///
+    /// The structured counterpart of [`call`](Self::call): a failure is carried
+    /// as [`ToolOutcome::Error`] inside the result rather than a `Result::Err`,
+    /// and an unknown tool name resolves to a
+    /// [`NotFound`](ToolFailureKind::NotFound) outcome. This is the path the
+    /// agent loop drives so hooks and telemetry observe the structured outcome.
+    pub async fn call_structured(
+        &self,
+        toolname: &str,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> ToolExecutionResult {
+        match self.tools.get(toolname) {
+            Some(tool) => {
+                tracing::debug!(target: "rig", "Calling tool {toolname} with args:\n{args}");
+                tool.call_structured(args, extensions).await
+            }
+            None => ToolExecutionResult::failed(
+                format!("tool `{toolname}` not found"),
+                ToolFailure::not_found(format!("no tool named `{toolname}` is registered")),
+            ),
         }
     }
 

@@ -4,7 +4,9 @@ use tokio::sync::RwLock;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{Tool, ToolCallExtensions, ToolDyn, ToolSet, ToolSetError},
+    tool::{
+        Tool, ToolCallExtensions, ToolDyn, ToolExecutionResult, ToolFailure, ToolSet, ToolSetError,
+    },
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
@@ -220,6 +222,42 @@ impl ToolServerHandle {
             None => Err(ToolServerError::ToolsetError(
                 ToolSetError::ToolNotFoundError(tool_name.to_string()),
             )),
+        }
+    }
+
+    /// Look up and execute a tool by name, returning the structured
+    /// [`ToolExecutionResult`] (model output + [`ToolOutcome`](crate::tool::ToolOutcome)
+    /// + result extensions).
+    ///
+    /// The structured counterpart of [`call_tool_with_extensions`](Self::call_tool_with_extensions),
+    /// and the path the agent loop drives so hooks, tracing, and policies observe
+    /// the structured outcome. A missing tool resolves to a
+    /// [`NotFound`](crate::tool::ToolFailureKind::NotFound) outcome rather than a
+    /// `Result::Err`. The tool handle is cloned under a brief read lock so that
+    /// long-running tool executions never block writers.
+    pub async fn call_tool_structured(
+        &self,
+        tool_name: &str,
+        args: &str,
+        extensions: &ToolCallExtensions,
+    ) -> ToolExecutionResult {
+        let tool = {
+            let state = self.0.read().await;
+            state.toolset.get(tool_name).cloned()
+        };
+
+        match tool {
+            Some(tool) => {
+                tracing::debug!(target: "rig",
+                    "Calling tool {tool_name} with args:\n{}",
+                    serde_json::to_string_pretty(&args).unwrap_or_default()
+                );
+                tool.call_structured(args.to_string(), extensions).await
+            }
+            None => ToolExecutionResult::failed(
+                format!("tool `{tool_name}` not found"),
+                ToolFailure::not_found(format!("no tool named `{tool_name}` is registered")),
+            ),
         }
     }
 
