@@ -40,6 +40,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `discord_bot` | See source. |
 | `enum_dispatch` | See source. |
 | `extractor` | Demonstrates typed extraction and extraction with usage metadata. |
+| `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so an `AgentHook` gates the patch on `ctx.turn() == 1` to force the tool only up front. |
 | `gemini_deep_research` | See source. |
 | `gemini_default_api_recovery` | Demonstrates recovering from Gemini emitting a legacy `default_api` tool name. |
 | `gemini_extractor_with_rag` | See source. |
