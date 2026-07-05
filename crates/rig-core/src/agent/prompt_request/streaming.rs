@@ -759,7 +759,8 @@ where
     //   - `Preresolved`: neither (an invalid-recovery result, already surfaced
     //     during the model turn); committed to history only.
     enum ToolSurface {
-        Executed(crate::message::ToolCall),
+        // Boxed to keep this enum small next to the empty `Skipped`/`Preresolved`.
+        Executed(Box<crate::message::ToolCall>),
         Skipped,
         Preresolved,
     }
@@ -979,7 +980,7 @@ where
                 let surface_result = match surface {
                     ToolSurface::Executed(tool_call) => {
                         yield Ok(MultiTurnStreamItem::ToolExecutionStart {
-                            tool_call,
+                            tool_call: *tool_call,
                             internal_call_id: internal_call_id.clone(),
                         });
                         true

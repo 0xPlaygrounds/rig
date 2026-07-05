@@ -563,8 +563,9 @@ pub(crate) enum ToolExecution {
     /// call with any [`Flow::RewriteArgs`](crate::agent::Flow::RewriteArgs) hook
     /// rewrite applied — so the driver can surface it in the
     /// [`ToolExecutionStart`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionStart)
-    /// event (what actually ran, not the model's original arguments).
-    Executed(ToolCall),
+    /// event (what actually ran, not the model's original arguments). Boxed to
+    /// keep this enum small (a `ToolCall` is large next to the empty `Skipped`).
+    Executed(Box<ToolCall>),
     /// A `ToolCall` hook returned [`Flow::Skip`](crate::agent::Flow::Skip): the
     /// body did not run, so no execution-start is surfaced — but the skip result
     /// is still delivered to the model (and surfaced as a `ToolResult`).
@@ -732,7 +733,7 @@ where
                     tool_call.call_id.clone(),
                     replacement,
                 ),
-                execution: ToolExecution::Executed(effective_tool_call),
+                execution: ToolExecution::Executed(Box::new(effective_tool_call)),
             })
         }
         ToolResultDecision::Keep => {
@@ -747,7 +748,7 @@ where
                     tool_call.call_id.clone(),
                     output,
                 ),
-                execution: ToolExecution::Executed(effective_tool_call),
+                execution: ToolExecution::Executed(Box::new(effective_tool_call)),
             })
         }
     }
