@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"<file id: harbor>\nThe harbor code is ALPHA-11.\n</file>\n","thought":false},{"text":"<file id: orchard>\nThe orchard code is BETA-22.\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Tell me both the harbor code and the orchard code.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a helpful assistant. Consult the provided context for any facts you are asked about; use a tool for arithmetic.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The harbor code is ALPHA-11 and the orchard code is BETA-22.","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":130,"promptTokensDetails":[{"modality":"TEXT","tokenCount":130}],"serviceTier":"standard","thoughtsTokenCount":99,"totalTokenCount":247}}'

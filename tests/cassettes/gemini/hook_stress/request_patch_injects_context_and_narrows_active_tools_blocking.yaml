@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"<file id: vault-note>\nOperational note: the vault access code is CINNABAR-42.\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Two things: (1) tell me the vault access code, and (2) use a tool to compute 41 + 1.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a helpful assistant. Use a tool for any arithmetic. Consult the provided context for any facts you are asked about.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":41,"y":1},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":19,"promptTokenCount":137,"promptTokensDetails":[{"modality":"TEXT","tokenCount":137}],"serviceTier":"standard","thoughtsTokenCount":121,"totalTokenCount":277}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"<file id: vault-note>\nOperational note: the vault access code is CINNABAR-42.\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Two things: (1) tell me the vault access code, and (2) use a tool to compute 41 + 1.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":41,"y":1},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a helpful assistant. Use a tool for any arithmetic. Consult the provided context for any facts you are asked about.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The vault access code is CINNABAR-42. 41 + 1 = 42."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":24,"promptTokenCount":170,"promptTokensDetails":[{"modality":"TEXT","tokenCount":170}],"serviceTier":"standard","totalTokenCount":194}}'
