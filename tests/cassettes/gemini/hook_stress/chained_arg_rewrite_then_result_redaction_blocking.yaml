@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 2 and 2, then report the exact tool result.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the add tool for the addition. After the tool result is available, report the exact tool result text verbatim as your final answer.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":2,"y":2},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":106,"promptTokensDetails":[{"modality":"TEXT","tokenCount":106}],"serviceTier":"standard","thoughtsTokenCount":50,"totalTokenCount":174}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 2 and 2, then report the exact tool result.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":2,"y":2},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":"REDACTED-SUM-ZK7"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the add tool for the addition. After the tool result is available, report the exact tool result text verbatim as your final answer.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"{\"add_response\": {\"result\": \"REDACTED-SUM-ZK7\"}}"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","totalTokenCount":162}}'
