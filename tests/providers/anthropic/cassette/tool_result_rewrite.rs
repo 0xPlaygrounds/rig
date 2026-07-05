@@ -109,7 +109,7 @@ fn redact_ssn(record: &str) -> String {
 struct RedactSsnFromResult;
 
 impl<M: CompletionModel> AgentHook<M> for RedactSsnFromResult {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         if let StepEvent::ToolResult {
             tool_name, result, ..
         } = event

@@ -105,7 +105,9 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
 }
 
 #[tokio::test]
-async fn streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order() {
+async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles() {
+    // The cassette file name predates the atomic-batch semantics; the recorded
+    // provider interaction is unchanged, only the assertions below.
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
@@ -145,8 +147,9 @@ async fn streaming_tool_concurrency_emits_results_as_completed_but_persists_call
         );
         assert_eq!(
             observation.streamed_tool_results,
-            ["lookup_orchard_label", "lookup_harbor_label"],
-            "tool-result stream items should surface in local completion order"
+            ["lookup_harbor_label", "lookup_orchard_label"],
+            "tool-result stream items surface in call order, atomically after the \
+             whole batch settles (not local completion order)"
         );
         assert_eq!(
             observation.history_tool_results,
@@ -258,6 +261,9 @@ async fn collect_concurrent_tool_observation<R>(
                 tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.clone());
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
+            }
+            Ok(MultiTurnStreamItem::ToolExecutionStart { .. }) => {
+                observation.events.push("tool_execution_start");
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,

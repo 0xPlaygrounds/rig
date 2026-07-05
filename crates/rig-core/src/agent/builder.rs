@@ -270,8 +270,11 @@ where
 
     /// Attach a default hook to the agent. Each call appends to the agent's hook
     /// stack; hooks run for every prompt request (unless more are added per
-    /// request) in registration order, and the first to return a non-`Continue`
-    /// result short-circuits the rest.
+    /// request) in registration order. How their results compose is
+    /// event-dependent: `CompletionCall` request patches accumulate and merge,
+    /// `ToolCall`/`ToolResult` rewrites chain, and only observe-only/recovery
+    /// events use first-non-`Continue`-wins. See the
+    /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook<M> + 'static,

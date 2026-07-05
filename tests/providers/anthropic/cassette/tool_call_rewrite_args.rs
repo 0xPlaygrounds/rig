@@ -105,7 +105,7 @@ impl Tool for GetWeather {
 struct PinUnitsToCelsius;
 
 impl<M: CompletionModel> AgentHook<M> for PinUnitsToCelsius {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         if let StepEvent::ToolCall {
             tool_name, args, ..
         } = event

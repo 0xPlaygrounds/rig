@@ -152,10 +152,28 @@ Use `WasmCompatSend` and `WasmCompatSync` bounds.
 
 ## Agent Hook Changes
 
-Agent hooks are per-run lifecycle observers: a single
-`AgentHook<M>::on_event(StepEvent) -> Flow` method, composed in registration
-order via `HookStack` (the first hook to return a non-`Continue` `Flow`
-short-circuits the rest).
+Agent hooks are per-run lifecycle observers and steerers: a single
+`AgentHook<M>::on_event(&HookContext, StepEvent) -> Flow` method, composed in
+registration order via `HookStack`. Every `on_event` receives a run-scoped
+`HookContext` (run id, turn, streaming flag, agent name, shared `Scratchpad`).
+
+How a `HookStack` combines several hooks' `Flow` results depends on the event —
+this is the central contract:
+
+- **`CompletionCall` — accumulate & merge.** Every hook runs; each hook's
+  `Flow::PatchRequest(RequestPatch)` is merged in registration order into one
+  effective patch (a mergeable patch does **not** short-circuit later hooks).
+  `Flow::Terminate` stops the stack; any unsupported flow fails closed.
+- **`ToolCall` / `ToolResult` — chain.** Every hook runs; a
+  `Flow::RewriteArgs` / `Flow::RewriteResult` is threaded into the next hook's
+  event so rewrites compose. `Flow::Skip` / `Flow::Terminate` are terminal.
+- **Every other event — first non-`Continue` wins** (observe-only / recovery
+  events: `CompletionResponse`, `ModelTurnFinished`, `InvalidToolCall`, the
+  streamed deltas).
+
+Register observe-only hooks (telemetry) before steering hooks, since
+`Flow::Terminate` short-circuits the stack. A `HookStack` pushed as a hook into
+another stack composes correctly (it returns its own net flow).
 
 When modifying hook behavior, preserve the intended control flow. `Flow` is
 **fail-closed** — an action an event cannot honor terminates the run rather than
@@ -163,11 +181,17 @@ silently proceeding:
 
 - `Flow::Continue` (observe only)
 - `Flow::Terminate`
+- `Flow::PatchRequest` (completion call only; per-turn, non-sticky, mergeable)
+- `Flow::RewriteArgs` (tool call only) / `Flow::RewriteResult` (tool result only)
 - `Flow::Skip` (tool call / invalid tool call only)
 - `Flow::Fail` / `Flow::Retry` / `Flow::Repair` (invalid tool call only)
 
-Check both streaming and non-streaming paths (`AgentRunner::stream` and
-`AgentRunner::run` share one drive loop).
+`RequestPatch` is per-turn and non-sticky (it never mutates the agent baseline);
+its per-field merge rules (append `extra_context`, shallow-merge
+`additional_params`, intersect `active_tools`, last-writer-wins scalars/`history`
+with a warning) are documented on the type. Every new hook semantic must behave
+identically on both surfaces — check streaming and non-streaming paths
+(`AgentRunner::stream` and `AgentRunner::run` share one drive loop, `drive_agent`).
 
 ## Style
 

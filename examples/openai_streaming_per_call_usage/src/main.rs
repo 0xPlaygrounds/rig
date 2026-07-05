@@ -113,11 +113,19 @@ async fn main() -> Result<()> {
                 io::stdout().flush()?;
                 printed_streamed_text = true;
             }
+            // The tool call the *model emitted* (reported when the turn commits,
+            // whether or not rig goes on to execute it).
             MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
                 tool_call,
                 ..
             }) => {
                 println!("\n\nmodel requested tool: {}", tool_call.function.name);
+            }
+            // Rig has started *executing* a tool (after hook checks) — distinct
+            // from the model's tool call above, and never emitted for a dropped or
+            // hook-skipped call.
+            MultiTurnStreamItem::ToolExecutionStart { tool_call, .. } => {
+                println!("rig executing tool: {}", tool_call.function.name);
             }
             MultiTurnStreamItem::StreamUserItem(_) => {
                 println!("tool result sent back to model");

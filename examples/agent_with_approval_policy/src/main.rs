@@ -20,7 +20,7 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, StepEvent};
+use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
 use rig::providers::openai;
@@ -111,7 +111,7 @@ struct ApprovalPolicy {
 }
 
 impl<M: CompletionModel> AgentHook<M> for ApprovalPolicy {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
         let StepEvent::ToolCall {
             tool_name, args, ..
         } = event

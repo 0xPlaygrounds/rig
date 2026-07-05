@@ -6,8 +6,8 @@
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, FinalResponse, Flow, InvalidToolCallContext, MultiTurnStreamItem, StepEvent,
-    StreamingResult,
+    AgentHook, FinalResponse, Flow, HookContext, InvalidToolCallContext, MultiTurnStreamItem,
+    StepEvent, StreamingResult,
 };
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, ToolDefinition};
@@ -149,7 +149,7 @@ impl<M> AgentHook<M> for DefaultApiRepairHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::InvalidToolCall(context) => {
                 let context: &InvalidToolCallContext = context;

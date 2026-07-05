@@ -1,14 +1,16 @@
 use crate::{
     OneOrMany,
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
-    agent::hook::{AgentHook, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind},
+    agent::hook::{
+        AgentHook, HookContext, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind,
+    },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
         AgentRun, AgentRunStep, PendingToolCall,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, InvalidDecision, acquire_agent_span,
+        AgentRunner, CompletionCallOutcome, InvalidDecision, ToolExecution, acquire_agent_span,
         append_run_messages, build_chat_span, flow_into_invalid, new_execute_tool_span,
         observe_flow, resolve_completion_call, run_single_tool,
     },
@@ -43,9 +45,49 @@ pub type StreamingResult<R> =
 #[serde(tag = "type", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum MultiTurnStreamItem<R> {
-    /// A streamed assistant content item.
+    /// A streamed assistant content item — the content the **model emitted**:
+    /// text/reasoning deltas, tool-call deltas, and, when the model turn is
+    /// committed, the complete [`StreamedAssistantContent::ToolCall`] for each
+    /// tool call Rig routes to execution. Such a call is reported here whether or
+    /// not the tool body ultimately runs (a hook `Flow::Skip` still reports it);
+    /// it is **not** an execution-lifecycle event (see
+    /// [`ToolExecutionStart`](Self::ToolExecutionStart)).
+    ///
+    /// Two kinds of model tool call are **not** re-emitted as a complete
+    /// `ToolCall` item here (their arguments still stream as tool-call deltas):
+    /// a call rejected and handled by invalid-tool-call recovery (surfaced via
+    /// that recovery path), and a structured-output Tool-mode output-tool call,
+    /// which finalizes the run directly — its structured result is surfaced in
+    /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
+    /// `ToolCall` item.
     StreamAssistantItem(StreamedAssistantContent<R>),
-    /// A streamed user content item (mostly for tool results).
+    /// Rig **executed** a tool call. Surfaced only for a tool whose body actually
+    /// ran (it passed its `ToolCall` hook checks) — never for a model tool call
+    /// that was dropped by a sibling's termination, skipped by a hook
+    /// (`Flow::Skip`), or resolved by invalid-tool-call recovery. The tool batch
+    /// commits and surfaces **atomically at every `tool_concurrency`** (including
+    /// the sequential default): this event is surfaced together with its
+    /// `ToolResult` once the whole batch has settled successfully, so a run that
+    /// terminates mid-batch produces **no** `ToolExecutionStart` (hence no orphan
+    /// start without a result). Correlate with the model tool call and the result
+    /// via `internal_call_id`.
+    ToolExecutionStart {
+        /// The tool call as **executed**: the model's call with any
+        /// [`Flow::RewriteArgs`](crate::agent::Flow::RewriteArgs) hook rewrite
+        /// applied (so a redaction rewrite is reflected here, not leaked). The
+        /// model's *original* call is reported via
+        /// [`StreamAssistantItem`](Self::StreamAssistantItem).
+        tool_call: crate::message::ToolCall,
+        /// Rig-generated id correlating this execution with the model tool call
+        /// ([`StreamedAssistantContent::ToolCall::internal_call_id`]) and the
+        /// resulting [`StreamedUserContent::ToolResult`].
+        internal_call_id: String,
+    },
+    /// A streamed user content item: the **result** of an executed (or
+    /// hook-skipped) tool call. The tool batch commits and surfaces atomically at
+    /// every `tool_concurrency` (including the sequential default): results are
+    /// surfaced (in call order) only after the whole batch settles successfully —
+    /// a run that terminates mid-batch surfaces no successful tool results.
     StreamUserItem(StreamedUserContent),
     /// Details for one successfully completed completion request made by this agent stream.
     ///
@@ -333,11 +375,12 @@ where
     }
 
     /// Execute up to `concurrency` of a turn's tool calls at once (1 by default,
-    /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: the streamed
-    /// message history is unchanged at any `concurrency`, but at `concurrency >
-    /// 1` the stream emits all of a turn's `ToolCall` items (call order) and
-    /// then emits `ToolResult` items as each tool completes, which may be
-    /// completion order rather than call order.
+    /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: at any
+    /// `concurrency` the stream emits the model's `ToolCall` items (call order),
+    /// then — atomically, after the whole tool batch settles successfully — the
+    /// per-tool `ToolExecutionStart` + `ToolResult` items in **call order** (not
+    /// completion order). The streamed message history is unchanged at any
+    /// `concurrency`.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.runner = self.runner.tool_concurrency(concurrency);
         self
@@ -365,8 +408,11 @@ where
     }
 
     /// Append a hook to this request's hook stack (on top of any the agent
-    /// already carries). Hooks run in registration order; the first to return a
-    /// non-`Continue` result short-circuits the rest.
+    /// already carries). Hooks run in registration order; how their results
+    /// compose is event-dependent (`CompletionCall` request patches accumulate
+    /// and merge, `ToolCall`/`ToolResult` rewrites chain, and only
+    /// observe-only/recovery events use first-non-`Continue`-wins). See the
+    /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook<M> + 'static,
@@ -458,9 +504,11 @@ where
     /// Run one model turn: issue the provider call, feed the result into the
     /// sans-IO machine, and yield any intermediate items. Returning normally
     /// advances the loop; yielding an `Err` terminates the run.
+    #[allow(clippy::too_many_arguments)]
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest<M>,
         chat_span: tracing::Span,
@@ -473,6 +521,7 @@ where
     fn run_tool_calls<'a>(
         &'a self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, Self::Raw>;
@@ -516,12 +565,18 @@ pub(crate) fn drive_agent<M, S>(
     agent_span: tracing::Span,
     created_agent_span: bool,
     memory_handle: Option<(Arc<dyn crate::memory::ConversationMemory>, String)>,
+    is_streaming: bool,
 ) -> impl Stream<Item = Result<DriveItem<S::Raw>, StreamingError>>
 where
     M: CompletionModel,
     S: TurnSource<M>,
 {
     async_stream::stream! {
+        // Run-scoped hook context: minted once, shared by every hook event on
+        // both surfaces. `is_streaming` records which surface is driving; the
+        // per-turn index is advanced on each `CallModel` step below.
+        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+
         'outer: loop {
             let step = match run.next_step() {
                 Ok(step) => step,
@@ -536,21 +591,22 @@ where
                     if runner.max_turns > 1 {
                         tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
                     }
+                    hook_ctx.set_turn(turn);
 
-                    let request_override =
-                        match resolve_completion_call(&runner.hooks, &prompt, &history, turn).await {
+                    let request_patch =
+                        match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
-                            CompletionCallOutcome::Proceed(request_override) => request_override,
+                            CompletionCallOutcome::Proceed(request_patch) => request_patch,
                         };
 
-                    // Record this turn's base system prompt — the override-or-baseline
+                    // Record this turn's base system prompt — the patched-or-baseline
                     // preamble, before any output-mode augmentation the request builder
                     // appends. Borrow rather than clone since it only needs to outlive
                     // span creation.
-                    let effective_preamble = request_override
+                    let effective_preamble = request_patch
                         .as_ref()
                         .and_then(|o| o.preamble.as_deref())
                         .or(runner.preamble.as_deref());
@@ -575,7 +631,7 @@ where
                         runner.output_schema.as_ref(),
                         &runner.output_mode,
                         committed_output_tool.as_deref(),
-                        request_override.as_ref(),
+                        request_patch.as_ref(),
                     )
                     .await
                     {
@@ -589,6 +645,7 @@ where
 
                     let mut turn_stream = source.run_model_turn(
                         &runner,
+                        &hook_ctx,
                         &mut run,
                         prepared,
                         chat_span,
@@ -612,7 +669,7 @@ where
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let mut tool_stream = source.run_tool_calls(&runner, &mut run, calls);
+                    let mut tool_stream = source.run_tool_calls(&runner, &hook_ctx, &mut run, calls);
                     let mut errored = false;
                     while let Some(item) = tool_stream.next().await {
                         match item {
@@ -658,20 +715,32 @@ where
     }
 }
 
-/// Execute a turn's tool calls, shared by both surfaces.
+/// Execute a turn's tool calls **atomically per batch**, shared by both surfaces.
 ///
-/// Feeds the (call-ordered) results back into the machine. When `forward_items`
-/// is set (streaming), a `ToolCall` item is emitted before each tool runs and a
-/// `ToolResult` item as each finishes; the blocking fold passes `false` to skip
-/// building those items — and the per-tool `tool_call`/result clones they need —
-/// since it discards them (the same "blocking opts out" gating as
-/// `TurnSource::final_item`). Tool execution and hook firing are identical either
-/// way. The tool items carry no raw provider response, so this is generic over
-/// the surface's `R`. `chain_tool_span` lets the blocking surface chain spans into
-/// its linear `follows_from` sequence (the streaming surface returns the span
-/// unchanged).
+/// The batch commits and surfaces all-or-nothing:
+///
+/// - The model tool-call events ([`StreamedAssistantContent::ToolCall`]) are
+///   emitted up front — they report what the model emitted at turn commit.
+/// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
+///   concurrently bounded by it), with outcomes **collected, not surfaced**.
+/// - On the first hook termination / fail-closed error the batch fails fast: no
+///   new tool starts, not-yet-started concurrent siblings are dropped,
+///   already-started ones are drained, and the deterministic lowest call-index
+///   error is surfaced with **no** successful [`ToolExecutionStart`] /
+///   [`StreamUserItem`](MultiTurnStreamItem::StreamUserItem) items and **no**
+///   history commit.
+/// - Only if the whole batch settles successfully are the per-tool
+///   [`ToolExecutionStart`](MultiTurnStreamItem::ToolExecutionStart) + result
+///   items surfaced (in call order, only for tools whose body actually ran) and
+///   the results committed to run history.
+///
+/// When `forward_items` is `false` (the blocking fold) no stream items are built,
+/// but the collect/commit and fail-fast behavior is identical, so `run()` and
+/// `stream()` return the same terminal reason. `chain_tool_span` lets the
+/// blocking surface chain spans into its linear `follows_from` sequence.
 pub(crate) fn drive_tool_calls<'a, M, R, F>(
     runner: &'a AgentRunner<M>,
+    hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
     chain_tool_span: F,
@@ -682,208 +751,228 @@ where
     R: WasmCompatSend + 'a,
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
+    // Per-call working state: a stable internal_call_id and the execute span,
+    // paired with the model's tool call. `span` is `Span::none()` for a
+    // preresolved (invalid-recovery) call, which never executes.
+    struct PreparedToolCall {
+        tool_call: crate::message::ToolCall,
+        preresolved_result: Option<UserContent>,
+        internal_call_id: String,
+        span: tracing::Span,
+    }
+    // How a settled tool call is surfaced on the stream once the batch succeeds:
+    //   - `Executed`: `ToolExecutionStart` (with the effective, hook-rewritten
+    //     call) + the `ToolResult`.
+    //   - `Skipped`: the `ToolResult` only (a `ToolCall` hook returned `Skip`, so
+    //     nothing ran — no execution-start — but the model still sees the result).
+    //   - `Preresolved`: neither (an invalid-recovery result, already surfaced
+    //     during the model turn); committed to history only.
+    enum ToolSurface {
+        // Boxed to keep this enum small next to the empty `Skipped`/`Preresolved`.
+        Executed(Box<crate::message::ToolCall>),
+        Skipped,
+        Preresolved,
+    }
+    // A collected tool outcome, held (not surfaced or committed) until the whole
+    // batch settles.
+    struct CollectedToolResult {
+        content: UserContent,
+        internal_call_id: String,
+        surface: ToolSurface,
+    }
+
     Box::pin(async_stream::stream! {
         let full_history_for_errors = run.full_history();
+        let call_count = calls.len();
+
+        // Assign each call a stable internal_call_id and, for calls that will
+        // actually execute, an execute span. Emit the MODEL tool-call events now,
+        // right after the turn committed: these report what the model emitted and
+        // are *not* execution-lifecycle events. A preresolved call emits no model
+        // tool-call event (its synthetic result was already surfaced during the
+        // model turn) and gets no execute span.
+        let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
+        for pending in calls {
+            let internal_call_id = pending.internal_call_id.unwrap_or_else(crate::id::generate);
+            let (span, preresolved_result) = match pending.preresolved_result {
+                Some(result) => (tracing::Span::none(), Some(result)),
+                None => {
+                    if forward_items {
+                        yield Ok(MultiTurnStreamItem::stream_item(
+                            StreamedAssistantContent::ToolCall {
+                                tool_call: pending.tool_call.clone(),
+                                internal_call_id: internal_call_id.clone(),
+                            },
+                        ));
+                    }
+                    (chain_tool_span(new_execute_tool_span()), None)
+                }
+            };
+            prepared.push(PreparedToolCall {
+                tool_call: pending.tool_call,
+                preresolved_result,
+                internal_call_id,
+                span,
+            });
+        }
+
+        // Run all tools, COLLECTING outcomes in call order — nothing is surfaced
+        // or committed until the whole batch settles (atomic per-batch). On the
+        // first hook termination / fail-closed error we stop starting new tools;
+        // already-started ones are drained; the lowest call-index error wins; and
+        // no successful result is surfaced or committed.
+        let mut collected: Vec<Option<CollectedToolResult>> =
+            (0..call_count).map(|_| None).collect();
+        let mut first_error: Option<(usize, PromptError)> = None;
 
         if runner.concurrency <= 1 {
-            // Sequential default: one ToolCall/ToolResult pair per tool, strictly
-            // interleaved. Run-all-then-decide (matching the concurrent branch and
-            // the pre-refactor blocking driver's collect-all): every tool in the
-            // turn executes and fires its hooks, then the lowest-call-index
-            // terminate error is surfaced. Once the run is known to terminate we
-            // stop *surfacing* further stream items, but keep running the
-            // remaining tools so both surfaces are lock-step at any concurrency.
-            let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
-            let mut first_error: Option<(usize, PromptError)> = None;
-
-            for (index, pending) in calls.into_iter().enumerate() {
-                let tool_call = pending.tool_call;
-                if let Some(result) = pending.preresolved_result {
-                    results.push(result);
+            // Sequential: run in call order, fail-fast on the first terminating
+            // error so the remaining tools never start.
+            for (index, call) in prepared.into_iter().enumerate() {
+                let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
+                if let Some(result) = preresolved_result {
+                    if let Some(slot) = collected.get_mut(index) {
+                        *slot = Some(CollectedToolResult {
+                            content: result,
+                            internal_call_id,
+                            surface: ToolSurface::Preresolved,
+                        });
+                    }
                     continue;
                 }
-                let internal_call_id =
-                    pending.internal_call_id.unwrap_or_else(crate::id::generate);
-
-                let tool_span = chain_tool_span(new_execute_tool_span());
-
-                if forward_items && first_error.is_none() {
-                    yield Ok(MultiTurnStreamItem::stream_item(
-                        StreamedAssistantContent::ToolCall {
-                            tool_call: tool_call.clone(),
-                            internal_call_id: internal_call_id.clone(),
-                        },
-                    ));
-                }
-
-                let result = run_single_tool(
+                let outcome = run_single_tool(
                     &runner.hooks,
+                    hook_ctx,
                     &runner.tool_server_handle,
                     &runner.tool_extensions,
                     &tool_call,
                     &internal_call_id,
                     &full_history_for_errors,
                 )
-                .instrument(tool_span)
+                .instrument(span)
                 .await;
-
-                match result {
-                    Ok(content) => {
-                        if forward_items
-                            && first_error.is_none()
-                            && let UserContent::ToolResult(tool_result) = &content
-                        {
-                            yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                StreamedUserContent::ToolResult {
-                                    tool_result: tool_result.clone(),
-                                    internal_call_id,
-                                },
-                            ));
+                match outcome {
+                    Ok(outcome) => {
+                        let surface = match outcome.execution {
+                            ToolExecution::Executed(effective) => ToolSurface::Executed(effective),
+                            ToolExecution::Skipped => ToolSurface::Skipped,
+                        };
+                        if let Some(slot) = collected.get_mut(index) {
+                            *slot = Some(CollectedToolResult {
+                                content: outcome.content,
+                                internal_call_id,
+                                surface,
+                            });
                         }
-                        results.push(content);
                     }
                     Err(err) => {
-                        if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
-                            first_error = Some((index, err));
-                        }
+                        first_error = Some((index, err));
+                        break;
                     }
                 }
             }
-
-            if let Some((_, err)) = first_error {
-                yield Err(StreamingError::Prompt(Box::new(err)));
-                return;
-            }
-
-            if let Err(err) = run.tool_results(results) {
-                yield Err(Box::new(err).into());
-                return;
-            }
         } else {
-            // Concurrent path: emit every ToolCall stream item eagerly in call
-            // order, then run tools concurrently and surface each ToolResult as
-            // soon as its tool finishes. Results are still stored by original
-            // call index, so persisted history remains deterministic.
-            let call_count = calls.len();
-            let mut indexed_calls: Vec<(usize, PendingToolCall, tracing::Span, Option<String>)> =
-                Vec::with_capacity(call_count);
-
-            for (index, mut pending) in calls.into_iter().enumerate() {
-                // Preresolved (invalid-tool-recovery) calls don't execute, so they
-                // emit and chain no tool span — matching the sequential branch,
-                // which `continue`s before span creation.
-                if pending.preresolved_result.is_some() {
-                    indexed_calls.push((index, pending, tracing::Span::none(), None));
-                    continue;
-                }
-
-                let tool_span = chain_tool_span(new_execute_tool_span());
-
-                let internal_call_id = pending
-                    .internal_call_id
-                    .clone()
-                    .unwrap_or_else(crate::id::generate);
-                pending.internal_call_id = Some(internal_call_id.clone());
-
-                let yield_id = if forward_items {
-                    yield Ok(MultiTurnStreamItem::stream_item(
-                        StreamedAssistantContent::ToolCall {
-                            tool_call: pending.tool_call.clone(),
-                            internal_call_id: internal_call_id.clone(),
-                        },
-                    ));
-                    Some(internal_call_id)
-                } else {
-                    None
-                };
-
-                indexed_calls.push((index, pending, tool_span, yield_id));
-            }
-
-            let unordered = stream::iter(indexed_calls)
-                .map(|(index, pending, tool_span, yield_id)| {
+            // Concurrent: bounded by `tool_concurrency`. A shared `terminating`
+            // flag makes a not-yet-started sibling skip (its side effect never
+            // runs) once any sibling terminates — avoiding the Semantic-Kernel
+            // fail-open — while already-in-flight siblings are drained so the
+            // lowest call-index terminator wins and no task is left detached.
+            let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let unordered = stream::iter(prepared.into_iter().enumerate())
+                .map(|(index, call)| {
+                    let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
                     let hooks = &runner.hooks;
                     let tool_server_handle = &runner.tool_server_handle;
                     let tool_extensions = &runner.tool_extensions;
                     let full_history_for_errors = &full_history_for_errors;
+                    let terminating = terminating.clone();
                     async move {
-                        if let Some(result) = pending.preresolved_result {
-                            return (index, yield_id, Ok(result));
+                        if let Some(result) = preresolved_result {
+                            return (
+                                index,
+                                Some(Ok(CollectedToolResult {
+                                    content: result,
+                                    internal_call_id,
+                                    surface: ToolSurface::Preresolved,
+                                })),
+                            );
                         }
-
-                        let internal_call_id =
-                            pending.internal_call_id.unwrap_or_else(crate::id::generate);
-                        let result = run_single_tool(
+                        // `None` marks a dropped (never-started) sibling.
+                        if terminating.load(std::sync::atomic::Ordering::SeqCst) {
+                            return (index, None);
+                        }
+                        let outcome = run_single_tool(
                             hooks,
+                            hook_ctx,
                             tool_server_handle,
                             tool_extensions,
-                            &pending.tool_call,
+                            &tool_call,
                             &internal_call_id,
                             full_history_for_errors,
                         )
                         .await;
-                        (index, yield_id, result)
+                        let mapped = outcome.map(|o| {
+                            let surface = match o.execution {
+                                ToolExecution::Executed(effective) => {
+                                    ToolSurface::Executed(effective)
+                                }
+                                ToolExecution::Skipped => ToolSurface::Skipped,
+                            };
+                            CollectedToolResult {
+                                content: o.content,
+                                internal_call_id,
+                                surface,
+                            }
+                        });
+                        (index, Some(mapped))
                     }
-                    .instrument(tool_span)
+                    .instrument(span)
                 })
                 .buffer_unordered(runner.concurrency);
             futures::pin_mut!(unordered);
 
-            let mut results: Vec<Option<UserContent>> = Vec::with_capacity(call_count);
-            results.resize_with(call_count, || None);
-            // Hold the *lowest-index* error (call order), not the first to
-            // complete, so the surfaced terminate reason is deterministic and
-            // matches the sequential branch's call-order behavior; keep draining
-            // so in-flight siblings finish and fire their hooks.
-            let mut first_error: Option<(usize, PromptError)> = None;
-            while let Some((index, yield_id, result)) = unordered.next().await {
+            while let Some((index, outcome)) = unordered.next().await {
+                // A dropped sibling records nothing.
+                let result = match outcome {
+                    Some(result) => result,
+                    None => continue,
+                };
                 match result {
-                    Ok(content) => match results.get_mut(index) {
-                        Some(slot) => {
-                            // Once any tool has errored the run will terminate, so
-                            // stop surfacing successful results (but keep draining).
-                            // `yield_id` is `None` when items aren't forwarded (the
-                            // blocking fold), so no clone happens there.
-                            if first_error.is_none()
-                                && let Some(internal_call_id) = yield_id
-                                && let UserContent::ToolResult(tool_result) = &content
-                            {
-                                yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                    StreamedUserContent::ToolResult {
-                                        tool_result: tool_result.clone(),
-                                        internal_call_id,
-                                    },
-                                ));
-                            }
-                            *slot = Some(content);
+                    Ok(collected_result) => {
+                        if let Some(slot) = collected.get_mut(index) {
+                            *slot = Some(collected_result);
                         }
-                        None => {
-                            if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
-                                first_error = Some((
-                                    index,
-                                    PromptError::CompletionError(CompletionError::ResponseError(
-                                        "tool execution returned an invalid result index"
-                                            .to_string(),
-                                    )),
-                                ));
-                            }
-                        }
-                    },
+                    }
                     Err(err) => {
+                        // Fail-fast: stop starting new siblings; keep draining
+                        // in-flight ones so the lowest call-index terminator wins.
+                        terminating.store(true, std::sync::atomic::Ordering::SeqCst);
                         if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
                             first_error = Some((index, err));
                         }
                     }
                 }
             }
+        }
 
-            if let Some((_, err)) = first_error {
-                yield Err(StreamingError::Prompt(Box::new(err)));
-                return;
-            }
+        // Settle. On termination: surface only the deterministic error — no
+        // execution-start, no result, no history commit (all-or-nothing).
+        if let Some((_, err)) = first_error {
+            yield Err(StreamingError::Prompt(Box::new(err)));
+            return;
+        }
 
-            let results: Vec<UserContent> = match results.into_iter().collect::<Option<Vec<_>>>() {
-                Some(results) => results,
+        // Success: surface each call's stream items in call order, then commit the
+        // results in call order. An executed call surfaces `ToolExecutionStart`
+        // (with the effective, hook-rewritten call) then its `ToolResult`; a
+        // hook-skipped call surfaces its `ToolResult` only (nothing ran); a
+        // preresolved call surfaces nothing (already surfaced during the model
+        // turn) but is still committed. Every non-dropped slot is filled; a
+        // dropped slot only occurs after a termination, handled above.
+        let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
+        for slot in collected {
+            let CollectedToolResult { content, internal_call_id, surface } = match slot {
+                Some(collected_result) => collected_result,
                 None => {
                     yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
                         CompletionError::ResponseError(
@@ -893,11 +982,38 @@ where
                     return;
                 }
             };
-
-            if let Err(err) = run.tool_results(results) {
-                yield Err(Box::new(err).into());
-                return;
+            if forward_items {
+                // An executed call also surfaces its execution-start; a skipped
+                // call surfaces only its result; a preresolved call surfaces
+                // nothing here.
+                let surface_result = match surface {
+                    ToolSurface::Executed(tool_call) => {
+                        yield Ok(MultiTurnStreamItem::ToolExecutionStart {
+                            tool_call: *tool_call,
+                            internal_call_id: internal_call_id.clone(),
+                        });
+                        true
+                    }
+                    ToolSurface::Skipped => true,
+                    ToolSurface::Preresolved => false,
+                };
+                if surface_result
+                    && let UserContent::ToolResult(tool_result) = &content
+                {
+                    yield Ok(MultiTurnStreamItem::StreamUserItem(
+                        StreamedUserContent::ToolResult {
+                            tool_result: tool_result.clone(),
+                            internal_call_id,
+                        },
+                    ));
+                }
             }
+            committed.push(content);
+        }
+
+        if let Err(err) = run.tool_results(committed) {
+            yield Err(Box::new(err).into());
+            return;
         }
     })
 }
@@ -960,6 +1076,7 @@ where
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest<M>,
         chat_span: tracing::Span,
@@ -979,6 +1096,9 @@ where
                     return;
                 }
             };
+            // Captured from each completion-call emission so the normalized
+            // `ModelTurnFinished` event carries the turn's usage.
+            let mut last_usage = crate::completion::Usage::new();
 
             let mut assembler = StreamedTurnAssembler::new(
                 prepared.executable_tool_names.clone(),
@@ -1001,6 +1121,7 @@ where
             macro_rules! emit_completion_call {
                 ($usage:expr) => {{
                     let usage = $usage;
+                    last_usage = usage;
                     if !completion_call_emitted {
                         if usage.has_values() {
                             record_usage_on_span(&chat_span, usage);
@@ -1045,7 +1166,7 @@ where
                                 && let Some(reason) = observe_flow(
                                     runner
                                         .hooks
-                                        .on_event(StepEvent::TextDelta {
+                                        .on_event(hook_ctx, StepEvent::TextDelta {
                                             delta: &text.text,
                                             aggregated: assembler.aggregated_text(),
                                         })
@@ -1074,7 +1195,7 @@ where
                                 if let Some(reason) = observe_flow(
                                     runner
                                         .hooks
-                                        .on_event(StepEvent::ToolCallDelta {
+                                        .on_event(hook_ctx, StepEvent::ToolCallDelta {
                                             tool_call_id: &id,
                                             internal_call_id: &internal_call_id,
                                             tool_name: delta_name,
@@ -1115,7 +1236,7 @@ where
                                     && let Some(reason) = observe_flow(
                                         runner
                                             .hooks
-                                            .on_event(StepEvent::StreamResponseFinish {
+                                            .on_event(hook_ctx, StepEvent::StreamResponseFinish {
                                                 prompt: &current_prompt,
                                                 response: final_resp,
                                             })
@@ -1143,7 +1264,7 @@ where
                                 match flow_into_invalid(
                                     runner
                                         .hooks
-                                        .on_event(StepEvent::InvalidToolCall(&context))
+                                        .on_event(hook_ctx, StepEvent::InvalidToolCall(&context))
                                         .await,
                                 ) {
                                     InvalidDecision::Action(action) => action,
@@ -1252,10 +1373,38 @@ where
 
             self.last_message_id = stream.message_id.clone();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            // The canonical (committed) assistant content: `finish` normalizes
+            // reasoning/text/tool ordering, so this can differ from the raw
+            // `stream.choice` aggregate. `ModelTurnFinished` — the normalized
+            // per-turn event — carries this, matching what is recorded into run
+            // history; the raw `stream.choice` is kept in `last_final_choice` for
+            // the raw/final streaming behavior.
+            let canonical_choice = streamed_turn.choice.clone();
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(Box::new(err).into());
                 return;
             }
+
+            // Normalized per-turn event, fired once the turn is committed on the
+            // streaming surface — including tool-only / reasoning-only turns that
+            // fire no `StreamResponseFinish`. Suppressed for recovered turns,
+            // mirroring the blocking surface's `Continue` arm.
+            if !turn_recovered
+                && let Some(reason) = observe_flow(
+                    runner
+                        .hooks
+                        .on_event(hook_ctx, StepEvent::ModelTurnFinished {
+                            turn: hook_ctx.turn(),
+                            content: &canonical_choice,
+                            usage: last_usage,
+                        })
+                        .await,
+                )
+            {
+                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                return;
+            }
+
             self.last_final_choice = final_turn_content;
         })
     }
@@ -1263,12 +1412,13 @@ where
     fn run_tool_calls<'a>(
         &'a self,
         runner: &'a AgentRunner<M>,
+        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
     ) -> DriveStream<'a, M::StreamingResponse> {
         // The streaming surface chains nothing onto its tool spans, and forwards
         // the ToolCall/ToolResult items to the consumer.
-        drive_tool_calls(runner, run, calls, |span| span, true)
+        drive_tool_calls(runner, hook_ctx, run, calls, |span| span, true)
     }
 
     fn record_run_level_telemetry(
@@ -1324,7 +1474,7 @@ where
     ///
     /// Shares the drive loop, run construction, tool execution and fail-closed
     /// hook handling with the blocking [`run`](AgentRunner::run) via
-    /// [`drive_agent`], so the two behave identically apart from the streamed
+    /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
     pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
         let (agent_span, created_agent_span) =
@@ -1372,6 +1522,7 @@ where
             agent_span.clone(),
             created_agent_span,
             memory_handle,
+            true,
         )
         .filter_map(|item| {
             std::future::ready(match item {
@@ -1442,7 +1593,7 @@ pub async fn stream_to_stdout<R>(
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{AgentHook, Flow, InvalidToolCallContext, StepEvent};
+    use crate::agent::hook::{AgentHook, Flow, HookContext, InvalidToolCallContext, StepEvent};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
@@ -1838,7 +1989,11 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::ToolCallDelta { .. } => {
                     panic!("unknown tool call delta should fail before delta hooks run")
@@ -2353,7 +2508,11 @@ mod tests {
     struct TerminateOnStreamFinish;
 
     impl AgentHook<MockCompletionModel> for TerminateOnStreamFinish {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::StreamResponseFinish { .. } => {
                     Flow::terminate("stop after completion call")
@@ -2369,7 +2528,11 @@ mod tests {
     struct RepairDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     assert_eq!(context.tool_name, "default_api");
@@ -2384,7 +2547,11 @@ mod tests {
     struct RetryDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     assert_eq!(context.tool_name, "default_api");
@@ -2402,7 +2569,11 @@ mod tests {
     struct SkipDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     assert_eq!(context.tool_name, "default_api");
@@ -2428,7 +2599,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::InvalidToolCall(context) => {
                     self.contexts
@@ -2457,7 +2632,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingToolCallDeltaHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::ToolCallDelta {
                     tool_call_id,
@@ -2497,7 +2676,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextDeltaHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::TextDelta { delta, aggregated } => {
                     let record = (delta.to_string(), aggregated.to_string());
@@ -2518,10 +2701,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    SkipDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2533,10 +2722,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    RetryDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2548,10 +2743,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    RetryDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2563,10 +2764,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
-                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
-                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(_ctx, event).await,
+                event @ StepEvent::InvalidToolCall(_) => {
+                    SkipDefaultApiHook.on_event(_ctx, event).await
+                }
                 _ => Flow::cont(),
             }
         }
@@ -2587,7 +2794,11 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
-        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
             match event {
                 StepEvent::ToolCallDelta {
                     tool_call_id,

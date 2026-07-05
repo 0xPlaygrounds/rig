@@ -1,4 +1,4 @@
-use super::hook::{HookStack, RequestOverride};
+use super::hook::{HookStack, RequestPatch};
 use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
@@ -54,6 +54,24 @@ fn tool_choice_permits_output_tool(tool_choice: Option<&ToolChoice>) -> bool {
     )
 }
 
+/// Whether the active [`ToolChoice`] can call the *named* synthetic output tool.
+///
+/// Unlike [`tool_choice_permits_output_tool`] — which runs during output-mode
+/// resolution, before the output-tool name is known, and so conservatively
+/// treats every `Specific` set as forbidding the call — this knows the committed
+/// output-tool name, so a `Specific` set that names it counts as callable. That
+/// matches [`allowed_tool_names_for_choice`], which advertises the output tool
+/// for exactly that choice. Only a `None` choice or a `Specific` set that omits
+/// the output tool genuinely cannot finalize a pinned Tool-mode turn.
+fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str) -> bool {
+    match tool_choice {
+        Some(ToolChoice::Specific { function_names }) => function_names
+            .iter()
+            .any(|name| name.as_str() == output_tool_name),
+        other => tool_choice_permits_output_tool(other),
+    }
+}
+
 /// Resolve the caller-facing [`OutputMode`] to a concrete mode for one request.
 ///
 /// With no schema there is nothing to enforce, so the result is always `Native`
@@ -104,12 +122,66 @@ fn pick_output_tool_name(executable_tool_names: &BTreeSet<String>) -> String {
     name
 }
 
+/// Compute the allowed tool names for a `tool_choice` **and** validate the
+/// effective request locally (no provider round-trip).
+///
+/// The effective advertised tool set for a turn is the executable tools (after
+/// any per-turn `active_tools` filtering) plus the synthetic output tool
+/// (`output_tool_name`) when structured output runs in Tool mode. Validation:
+///
+/// - [`ToolChoice::Required`] with **no** advertised tool (no executable tool and
+///   no output tool) is a local error — the model is forced to call a tool but
+///   none is advertised.
+/// - [`ToolChoice::Specific`] must name only advertised tools (executable tools
+///   or the output tool); an empty specific set is also an error.
+///
+/// `pre_filter_tool_names` is the full executable tool set *before* any per-turn
+/// `active_tools` filtering — `Some` only when an `active_tools` allow-list was
+/// applied. When the incompatibility was actually **caused** by that filter (a
+/// tool that would otherwise satisfy the choice was dropped), the error says so
+/// and suggests setting a compatible `tool_choice` in the same `RequestPatch`.
+/// A plain typo naming a tool that never existed is *not* blamed on the filter.
 pub(crate) fn allowed_tool_names_for_choice(
     executable_tool_names: &BTreeSet<String>,
     tool_choice: Option<&ToolChoice>,
+    output_tool_name: Option<&str>,
+    pre_filter_tool_names: Option<&BTreeSet<String>>,
 ) -> Result<BTreeSet<String>, CompletionError> {
+    let has_advertised_tool = !executable_tool_names.is_empty() || output_tool_name.is_some();
+    let hint = |active_tools_caused: bool| {
+        if active_tools_caused {
+            " A per-turn `active_tools` allow-list narrowed the advertised tools this turn; \
+             set a compatible `tool_choice` in the same `RequestPatch`, or widen `active_tools`."
+        } else {
+            ""
+        }
+    };
+    // The advertised tools the model may call: executable tools + the output tool.
+    let advertised = || {
+        executable_tool_names
+            .iter()
+            .map(String::as_str)
+            .chain(output_tool_name)
+            .collect::<Vec<_>>()
+    };
+
     let allowed = match tool_choice {
-        None | Some(ToolChoice::Auto | ToolChoice::Required) => executable_tool_names.clone(),
+        None | Some(ToolChoice::Auto) => executable_tool_names.clone(),
+        Some(ToolChoice::Required) => {
+            if !has_advertised_tool {
+                // The filter caused this only if there *were* tools before it ran.
+                let active_tools_caused = pre_filter_tool_names.is_some_and(|pf| !pf.is_empty());
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "ToolChoice::Required forces the model to call a tool, but no tools are \
+                         advertised this turn.{}",
+                        hint(active_tools_caused)
+                    )
+                    .into(),
+                ));
+            }
+            executable_tool_names.clone()
+        }
         Some(ToolChoice::None) => BTreeSet::new(),
         Some(ToolChoice::Specific { function_names }) => {
             if function_names.is_empty() {
@@ -119,16 +191,25 @@ pub(crate) fn allowed_tool_names_for_choice(
             }
 
             let requested = function_names.iter().cloned().collect::<BTreeSet<String>>();
-            let missing = requested
-                .difference(executable_tool_names)
-                .cloned()
+            let missing = function_names
+                .iter()
+                .map(String::as_str)
+                .filter(|name| {
+                    !executable_tool_names.contains(*name) && Some(*name) != output_tool_name
+                })
                 .collect::<Vec<_>>();
 
             if !missing.is_empty() {
+                // The filter caused this only if a missing name existed pre-filter
+                // (i.e. `active_tools` dropped it) — not for a plain typo.
+                let active_tools_caused = pre_filter_tool_names
+                    .is_some_and(|pf| missing.iter().any(|name| pf.contains(*name)));
                 return Err(CompletionError::RequestError(
                     format!(
-                        "ToolChoice::Specific requested unknown tool names: {missing:?}. Available tools: {:?}",
-                        executable_tool_names.iter().collect::<Vec<_>>()
+                        "ToolChoice::Specific requested tool names not advertised this turn: \
+                         {missing:?}. Advertised: {:?}.{}",
+                        advertised(),
+                        hint(active_tools_caused)
                     )
                     .into(),
                 ));
@@ -200,18 +281,19 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     output_schema: Option<&schemars::Schema>,
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
-    request_override: Option<&RequestOverride>,
+    request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest<M>, CompletionError> {
-    // Apply a per-turn request override (a partial patch from a `CompletionCall`
+    // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
-    // unset fields inherit it, and `additional_params` is shallow-merged. This is
-    // per-turn only — it never mutates the agent's baseline.
-    let preamble = request_override
+    // unset fields inherit it, `additional_params` is shallow-merged, and
+    // `extra_context`/`history` are applied below. This is per-turn only — it
+    // never mutates the agent's baseline.
+    let preamble = request_patch
         .and_then(|o| o.preamble.as_deref())
         .or(preamble);
-    let temperature = request_override.and_then(|o| o.temperature).or(temperature);
-    let max_tokens = request_override.and_then(|o| o.max_tokens).or(max_tokens);
-    let tool_choice = request_override
+    let temperature = request_patch.and_then(|o| o.temperature).or(temperature);
+    let max_tokens = request_patch.and_then(|o| o.max_tokens).or(max_tokens);
+    let tool_choice = request_patch
         .and_then(|o| o.tool_choice.as_ref())
         .or(tool_choice);
     // Provider passthrough params: when both the baseline and the override are
@@ -222,14 +304,14 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // when either side isn't an object.
     let additional_params: Option<serde_json::Value> = match (
         additional_params,
-        request_override.and_then(|o| o.additional_params.as_ref()),
+        request_patch.and_then(|o| o.additional_params.as_ref()),
     ) {
         (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
             Some(json_utils::merge(base.clone(), patch.clone()))
         }
         (base, patch) => patch.or(base).cloned(),
     };
-    let active_tools = request_override.and_then(|o| o.active_tools.as_deref());
+    let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
 
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
@@ -391,16 +473,20 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // In committed Tool mode the run can only finalize by calling the synthetic
     // output tool, and the mode is pinned (it cannot degrade to Native mid-run,
     // see #1928). A `tool_choice` that forbids the output-tool call — `None`, or
-    // a `Specific` set that excludes it, e.g. from a per-turn `RequestOverride` —
+    // a `Specific` set that excludes it, e.g. from a per-turn `RequestPatch` —
     // therefore produces a turn that cannot emit the structured result. The
     // non-committed path degrades to Native via `resolve_output_mode`, so this
     // only fires once a turn has committed Tool mode; warn rather than silently
-    // stall the run.
-    if output_tool_name.is_some() && !tool_choice_permits_output_tool(tool_choice) {
+    // stall the run. Use the name-aware check so a `Specific` set that *names*
+    // the output tool (which `allowed_tool_names_for_choice` accepts) is not
+    // falsely flagged as unable to finalize.
+    if let Some(name) = &output_tool_name
+        && !output_tool_callable(tool_choice, name)
+    {
         tracing::warn!(
             "the active tool_choice forbids calling the structured-output tool while the \
              run is pinned to Tool output mode; this turn cannot emit the structured \
-             result (check for a `RequestOverride` setting `tool_choice` to None or a \
+             result (check for a `RequestPatch` setting `tool_choice` to None or a \
              Specific set that excludes the output tool)"
         );
     }
@@ -435,12 +521,19 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         }
     };
 
+    // A per-turn `history` patch replaces the prior messages sent to the provider
+    // *this turn only* (context-window compaction / summarization). The RAG query
+    // text above deliberately still derives from the original `chat_history`, so
+    // this changes only what is sent, never what is retrieved or persisted.
+    let messages_history: &[Message] = request_patch
+        .and_then(|o| o.history.as_deref())
+        .unwrap_or(chat_history);
     let chat_history: Vec<Message> = if let Some(preamble) = &effective_preamble {
         std::iter::once(Message::system(preamble.clone()))
-            .chain(chat_history.iter().cloned())
+            .chain(messages_history.iter().cloned())
             .collect()
     } else {
-        chat_history.to_vec()
+        messages_history.to_vec()
     };
 
     // In Tool mode, advertise the synthetic output tool to the provider (its name
@@ -472,6 +565,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         completion_request = completion_request.documents(fetched_context);
     }
 
+    // Hook-supplied extra context documents (passive RAG) are appended last, so
+    // document order is static → dynamic (vector-store) → hook extras, with the
+    // extras in the hooks' registration order (they were merged in that order).
+    // Per-turn and non-sticky: the next turn re-resolves from the baseline.
+    if let Some(patch) = request_patch
+        && !patch.extra_context.is_empty()
+    {
+        completion_request = completion_request.documents(patch.extra_context.clone());
+    }
+
     // Only Native mode sets the provider's native structured-output constraint.
     if matches!(resolved_mode, OutputMode::Native) {
         completion_request = completion_request.output_schema_opt(output_schema.cloned());
@@ -483,8 +586,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         completion_request
     };
 
-    let mut allowed_tool_names =
-        allowed_tool_names_for_choice(&executable_tool_names, tool_choice)?;
+    // Validate the effective request locally (Required/Specific vs the effective
+    // advertised tool set, incl. the output tool) *before* building the send —
+    // so an impossible tool_choice/tool-set combination fails here with no
+    // provider round-trip, and names the `active_tools` filter when it caused it.
+    let mut allowed_tool_names = allowed_tool_names_for_choice(
+        &executable_tool_names,
+        tool_choice,
+        output_tool_name.as_deref(),
+        pre_filter_tool_names.as_ref(),
+    )?;
     // The output tool must be allowed (so it isn't flagged as an invalid tool
     // call) even though it is not executable.
     if let Some(name) = &output_tool_name {
@@ -819,7 +930,7 @@ mod tests {
         let executable = tool_names(&["add", "subtract"]);
 
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, None).unwrap(),
+            allowed_tool_names_for_choice(&executable, None, None, None).unwrap(),
             executable
         );
     }
@@ -829,11 +940,13 @@ mod tests {
         let executable = tool_names(&["add", "subtract"]);
 
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Auto)).unwrap(),
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Auto), None, None)
+                .unwrap(),
             executable
         );
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Required)).unwrap(),
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Required), None, None)
+                .unwrap(),
             executable
         );
     }
@@ -843,7 +956,7 @@ mod tests {
         let executable = tool_names(&["add", "subtract"]);
 
         assert!(
-            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::None))
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::None), None, None)
                 .unwrap()
                 .is_empty()
         );
@@ -857,7 +970,7 @@ mod tests {
         };
 
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, Some(&choice)).unwrap(),
+            allowed_tool_names_for_choice(&executable, Some(&choice), None, None).unwrap(),
             tool_names(&["add"])
         );
     }
@@ -869,7 +982,7 @@ mod tests {
             function_names: vec!["missing".to_string()],
         };
 
-        let err = allowed_tool_names_for_choice(&executable, Some(&choice))
+        let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, None)
             .expect_err("missing specific tool should fail before provider request");
 
         assert!(matches!(
@@ -887,7 +1000,7 @@ mod tests {
             function_names: vec![],
         };
 
-        let err = allowed_tool_names_for_choice(&executable, Some(&choice))
+        let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, None)
             .expect_err("empty specific tool choice should fail before provider request");
 
         assert!(matches!(
@@ -895,6 +1008,153 @@ mod tests {
             CompletionError::RequestError(err)
                 if err.to_string().contains("requires at least one function name")
         ));
+    }
+
+    #[test]
+    fn output_tool_callable_honors_specific_naming_the_output_tool() {
+        // Auto / Required / no explicit choice all permit the output-tool call.
+        assert!(output_tool_callable(None, "final_result"));
+        assert!(output_tool_callable(
+            Some(&ToolChoice::Auto),
+            "final_result"
+        ));
+        assert!(output_tool_callable(
+            Some(&ToolChoice::Required),
+            "final_result"
+        ));
+        // A `Specific` set that NAMES the output tool can call it — the case the
+        // pinned Tool-mode stall warning must not flag (it is accepted by
+        // `allowed_tool_names_for_choice`, which advertises the output tool).
+        assert!(output_tool_callable(
+            Some(&ToolChoice::Specific {
+                function_names: vec!["final_result".to_string()],
+            }),
+            "final_result",
+        ));
+        // A `Specific` set that omits it — or `ToolChoice::None` — genuinely cannot
+        // finalize a pinned Tool-mode turn, so the warning should still fire there.
+        assert!(!output_tool_callable(
+            Some(&ToolChoice::Specific {
+                function_names: vec!["search".to_string()],
+            }),
+            "final_result",
+        ));
+        assert!(!output_tool_callable(
+            Some(&ToolChoice::None),
+            "final_result"
+        ));
+    }
+
+    #[test]
+    fn required_with_no_advertised_tool_is_local_error() {
+        let empty = tool_names(&[]);
+        let err = allowed_tool_names_for_choice(&empty, Some(&ToolChoice::Required), None, None)
+            .expect_err("Required with no advertised tool must fail locally");
+        assert!(matches!(
+            err,
+            CompletionError::RequestError(err) if err.to_string().contains("Required")
+        ));
+    }
+
+    #[test]
+    fn required_with_only_the_output_tool_is_allowed() {
+        // Structured-output Tool mode with no real tools: the model can still be
+        // forced to call the synthetic output tool, so Required is valid.
+        let empty = tool_names(&[]);
+        let allowed = allowed_tool_names_for_choice(
+            &empty,
+            Some(&ToolChoice::Required),
+            Some("final_result"),
+            None,
+        )
+        .expect("Required is satisfiable by the output tool");
+        // The output tool is added to the allowed set by the caller, so the
+        // executable-derived allowed set is empty here.
+        assert!(allowed.is_empty());
+    }
+
+    #[test]
+    fn required_with_active_tools_filter_names_the_filter_in_the_error() {
+        let empty = tool_names(&[]);
+        let err = allowed_tool_names_for_choice(
+            &empty,
+            Some(&ToolChoice::Required),
+            None,
+            Some(&tool_names(&["add"])),
+        )
+        .expect_err("Required after active_tools filtered everything must fail locally");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("active_tools"),
+            "error should name active_tools: {msg}"
+        );
+        assert!(
+            msg.contains("RequestPatch"),
+            "error should suggest RequestPatch: {msg}"
+        );
+    }
+
+    #[test]
+    fn specific_naming_a_filtered_out_tool_is_a_local_error_with_hint() {
+        // active_tools narrowed the advertised set to {add}; Specific still names
+        // the now-filtered-out `subtract`.
+        let executable = tool_names(&["add"]);
+        let choice = ToolChoice::Specific {
+            function_names: vec!["subtract".to_string()],
+        };
+        let err = allowed_tool_names_for_choice(
+            &executable,
+            Some(&choice),
+            None,
+            Some(&tool_names(&["add", "subtract"])),
+        )
+        .expect_err("Specific naming a filtered-out tool must fail locally");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("subtract"),
+            "error should name the missing tool: {msg}"
+        );
+        assert!(
+            msg.contains("active_tools"),
+            "error should name active_tools: {msg}"
+        );
+    }
+
+    #[test]
+    fn specific_may_name_the_output_tool() {
+        // The effective advertised set includes the synthetic output tool.
+        let empty = tool_names(&[]);
+        let choice = ToolChoice::Specific {
+            function_names: vec!["final_result".to_string()],
+        };
+        let allowed =
+            allowed_tool_names_for_choice(&empty, Some(&choice), Some("final_result"), None)
+                .expect("Specific naming the output tool is valid");
+        assert_eq!(allowed, tool_names(&["final_result"]));
+    }
+
+    #[test]
+    fn specific_typo_is_not_blamed_on_active_tools() {
+        // Specific names a tool that never existed (a typo), even though an
+        // active_tools filter was applied. The error must NOT blame active_tools,
+        // because the filter never had that tool to drop.
+        let executable = tool_names(&["add"]);
+        let choice = ToolChoice::Specific {
+            function_names: vec!["nonexistent".to_string()],
+        };
+        let err = allowed_tool_names_for_choice(
+            &executable,
+            Some(&choice),
+            None,
+            Some(&tool_names(&["add"])),
+        )
+        .expect_err("Specific naming a non-existent tool must fail locally");
+        let msg = err.to_string();
+        assert!(msg.contains("nonexistent"), "error names the typo: {msg}");
+        assert!(
+            !msg.contains("active_tools"),
+            "a plain typo must not be blamed on active_tools: {msg}"
+        );
     }
 
     #[test]

@@ -110,7 +110,7 @@ struct PermissionHook {
 }
 
 impl<M: CompletionModel> AgentHook<M> for PermissionHook {
-    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             StepEvent::ToolCall { tool_name, .. } => {
                 let count = self.call_count.fetch_add(1, Ordering::SeqCst);
