@@ -54,6 +54,24 @@ fn tool_choice_permits_output_tool(tool_choice: Option<&ToolChoice>) -> bool {
     )
 }
 
+/// Whether the active [`ToolChoice`] can call the *named* synthetic output tool.
+///
+/// Unlike [`tool_choice_permits_output_tool`] — which runs during output-mode
+/// resolution, before the output-tool name is known, and so conservatively
+/// treats every `Specific` set as forbidding the call — this knows the committed
+/// output-tool name, so a `Specific` set that names it counts as callable. That
+/// matches [`allowed_tool_names_for_choice`], which advertises the output tool
+/// for exactly that choice. Only a `None` choice or a `Specific` set that omits
+/// the output tool genuinely cannot finalize a pinned Tool-mode turn.
+fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str) -> bool {
+    match tool_choice {
+        Some(ToolChoice::Specific { function_names }) => function_names
+            .iter()
+            .any(|name| name.as_str() == output_tool_name),
+        other => tool_choice_permits_output_tool(other),
+    }
+}
+
 /// Resolve the caller-facing [`OutputMode`] to a concrete mode for one request.
 ///
 /// With no schema there is nothing to enforce, so the result is always `Native`
@@ -459,8 +477,12 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // therefore produces a turn that cannot emit the structured result. The
     // non-committed path degrades to Native via `resolve_output_mode`, so this
     // only fires once a turn has committed Tool mode; warn rather than silently
-    // stall the run.
-    if output_tool_name.is_some() && !tool_choice_permits_output_tool(tool_choice) {
+    // stall the run. Use the name-aware check so a `Specific` set that *names*
+    // the output tool (which `allowed_tool_names_for_choice` accepts) is not
+    // falsely flagged as unable to finalize.
+    if let Some(name) = &output_tool_name
+        && !output_tool_callable(tool_choice, name)
+    {
         tracing::warn!(
             "the active tool_choice forbids calling the structured-output tool while the \
              run is pinned to Tool output mode; this turn cannot emit the structured \
@@ -985,6 +1007,41 @@ mod tests {
             err,
             CompletionError::RequestError(err)
                 if err.to_string().contains("requires at least one function name")
+        ));
+    }
+
+    #[test]
+    fn output_tool_callable_honors_specific_naming_the_output_tool() {
+        // Auto / Required / no explicit choice all permit the output-tool call.
+        assert!(output_tool_callable(None, "final_result"));
+        assert!(output_tool_callable(
+            Some(&ToolChoice::Auto),
+            "final_result"
+        ));
+        assert!(output_tool_callable(
+            Some(&ToolChoice::Required),
+            "final_result"
+        ));
+        // A `Specific` set that NAMES the output tool can call it — the case the
+        // pinned Tool-mode stall warning must not flag (it is accepted by
+        // `allowed_tool_names_for_choice`, which advertises the output tool).
+        assert!(output_tool_callable(
+            Some(&ToolChoice::Specific {
+                function_names: vec!["final_result".to_string()],
+            }),
+            "final_result",
+        ));
+        // A `Specific` set that omits it — or `ToolChoice::None` — genuinely cannot
+        // finalize a pinned Tool-mode turn, so the warning should still fire there.
+        assert!(!output_tool_callable(
+            Some(&ToolChoice::Specific {
+                function_names: vec!["search".to_string()],
+            }),
+            "final_result",
+        ));
+        assert!(!output_tool_callable(
+            Some(&ToolChoice::None),
+            "final_result"
         ));
     }
 

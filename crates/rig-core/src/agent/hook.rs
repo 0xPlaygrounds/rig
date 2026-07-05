@@ -134,9 +134,10 @@ impl std::fmt::Display for RunId {
 ///
 /// A type-map with interior mutability: cooperating hooks read and write typed
 /// values keyed by type, sharing per-run state (a turn counter, a running
-/// budget, a phase flag) without each rolling its own `Arc<Mutex<…>>`. All
-/// clones of a run's [`HookContext`] share one scratchpad; a fresh run starts
-/// with an empty one.
+/// budget, a phase flag) without each rolling its own `Arc<Mutex<…>>`. Every
+/// hook in a run receives the same [`HookContext`] by shared reference, so they
+/// all see one scratchpad (and cloning a `Scratchpad` shares its storage too); a
+/// fresh run starts with an empty one.
 ///
 /// Hooks receive `&HookContext` (shared), so every accessor here takes `&self`
 /// and mutates through an internal lock. Reads clone the stored value out (the

@@ -384,11 +384,12 @@ where
     /// **hook may fire in completion order** rather than call order — the
     /// per-tool side effects interleave even though the final history does not.
     ///
-    /// For the streaming path there is one additional caveat: at `concurrency >
-    /// 1` the driver emits *all* of a turn's `ToolCall` stream items eagerly (in
-    /// call order) and then emits each `ToolResult` stream item as its tool
-    /// finishes, which may be completion order rather than call order. The
-    /// persisted message history is unchanged.
+    /// For the streaming path: the driver emits *all* of a turn's `ToolCall`
+    /// stream items eagerly (in call order) when the model turn commits, then —
+    /// only after the whole tool batch settles successfully — surfaces the
+    /// per-tool `ToolExecutionStart` and `ToolResult` stream items in **call
+    /// order** (never completion order), for the tools whose body actually ran.
+    /// The persisted message history is unchanged.
     ///
     /// A `concurrency` of 0 is clamped to 1; `0` and `1` both run a turn's tools
     /// sequentially (the `buffer_unordered` path is used only at `concurrency > 1`).
