@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call fetch_motto and report exactly what it returns.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"Call the fetch_motto tool, then report the exact tool result text verbatim.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{},"name":"fetch_motto"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":11,"promptTokenCount":61,"promptTokensDetails":[{"modality":"TEXT","tokenCount":61}],"serviceTier":"standard","thoughtsTokenCount":31,"totalTokenCount":103}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call fetch_motto and report exactly what it returns.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"fetch_motto"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"fetch_motto","response":{"result":"steady"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"Call the fetch_motto tool, then report the exact tool result text verbatim.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The exact tool result text is: `{\"fetch_motto_response\": {\"result\": \"steady\"}}`"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":23,"promptTokenCount":88,"promptTokensDetails":[{"modality":"TEXT","tokenCount":88}],"serviceTier":"standard","totalTokenCount":111}}'

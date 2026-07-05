@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"<file id: depot>\nThe depot code is GAMMA-33.\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"What is the depot code? Keep it short.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a terse assistant. End every reply with the exact token ZULU-99.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"GAMMA-33 ZULU-99"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":9,"promptTokenCount":53,"promptTokensDetails":[{"modality":"TEXT","tokenCount":53}],"serviceTier":"standard","thoughtsTokenCount":47,"totalTokenCount":109}}'

@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"For this session, the passphrase is OMEGA-7. Acknowledge and remember it.","thought":false}],"role":"user"},{"parts":[{"text":"What is the passphrase?","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a helpful assistant. Use the conversation so far to answer.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The passphrase is OMEGA-7. I have acknowledged and remembered it."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":41,"promptTokensDetails":[{"modality":"TEXT","tokenCount":41}],"serviceTier":"standard","thoughtsTokenCount":36,"totalTokenCount":92}}'
