@@ -45,9 +45,35 @@ pub type StreamingResult<R> =
 #[serde(tag = "type", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum MultiTurnStreamItem<R> {
-    /// A streamed assistant content item.
+    /// A streamed assistant content item — the content the **model emitted**:
+    /// text/reasoning deltas, tool-call deltas, and, when the model turn is
+    /// committed, the complete [`StreamedAssistantContent::ToolCall`] for each
+    /// tool call the model made. A model tool call is reported here whether or
+    /// not Rig goes on to execute it; it is **not** an execution-lifecycle event
+    /// (see [`ToolExecutionStart`](Self::ToolExecutionStart)).
     StreamAssistantItem(StreamedAssistantContent<R>),
-    /// A streamed user content item (mostly for tool results).
+    /// Rig has started **executing** a tool call. Emitted only after the tool
+    /// passed its `ToolCall` hook checks and its body is actually going to run —
+    /// never for a model tool call that was dropped by a sibling's termination,
+    /// rejected by a hook (`Flow::Skip`), or resolved by invalid-tool-call
+    /// recovery. Under `tool_concurrency > 1` the whole tool batch is surfaced
+    /// atomically once it settles, so a run that terminates mid-batch produces
+    /// **no** `ToolExecutionStart` (hence no orphan start without a result).
+    /// Correlate with the model tool call and the result via `internal_call_id`.
+    ToolExecutionStart {
+        /// The tool call being executed (with any hook argument rewrite applied
+        /// at execution time; the model's original call is reported via
+        /// [`StreamAssistantItem`](Self::StreamAssistantItem)).
+        tool_call: crate::message::ToolCall,
+        /// Rig-generated id correlating this execution with the model tool call
+        /// ([`StreamedAssistantContent::ToolCall::internal_call_id`]) and the
+        /// resulting [`StreamedUserContent::ToolResult`].
+        internal_call_id: String,
+    },
+    /// A streamed user content item: the **result** of an executed tool call.
+    /// Under `tool_concurrency > 1` results are surfaced atomically after the
+    /// whole batch settles successfully — a run that terminates mid-batch
+    /// surfaces no successful tool results.
     StreamUserItem(StreamedUserContent),
     /// Details for one successfully completed completion request made by this agent stream.
     ///
@@ -674,18 +700,29 @@ where
     }
 }
 
-/// Execute a turn's tool calls, shared by both surfaces.
+/// Execute a turn's tool calls **atomically per batch**, shared by both surfaces.
 ///
-/// Feeds the (call-ordered) results back into the machine. When `forward_items`
-/// is set (streaming), a `ToolCall` item is emitted before each tool runs and a
-/// `ToolResult` item as each finishes; the blocking fold passes `false` to skip
-/// building those items — and the per-tool `tool_call`/result clones they need —
-/// since it discards them (the same "blocking opts out" gating as
-/// `TurnSource::final_item`). Tool execution and hook firing are identical either
-/// way. The tool items carry no raw provider response, so this is generic over
-/// the surface's `R`. `chain_tool_span` lets the blocking surface chain spans into
-/// its linear `follows_from` sequence (the streaming surface returns the span
-/// unchanged).
+/// The batch commits and surfaces all-or-nothing:
+///
+/// - The model tool-call events ([`StreamedAssistantContent::ToolCall`]) are
+///   emitted up front — they report what the model emitted at turn commit.
+/// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
+///   concurrently bounded by it), with outcomes **collected, not surfaced**.
+/// - On the first hook termination / fail-closed error the batch fails fast: no
+///   new tool starts, not-yet-started concurrent siblings are dropped,
+///   already-started ones are drained, and the deterministic lowest call-index
+///   error is surfaced with **no** successful [`ToolExecutionStart`] /
+///   [`StreamUserItem`](MultiTurnStreamItem::StreamUserItem) items and **no**
+///   history commit.
+/// - Only if the whole batch settles successfully are the per-tool
+///   [`ToolExecutionStart`](MultiTurnStreamItem::ToolExecutionStart) + result
+///   items surfaced (in call order, only for tools whose body actually ran) and
+///   the results committed to run history.
+///
+/// When `forward_items` is `false` (the blocking fold) no stream items are built,
+/// but the collect/commit and fail-fast behavior is identical, so `run()` and
+/// `stream()` return the same terminal reason. `chain_tool_span` lets the
+/// blocking surface chain spans into its linear `follows_from` sequence.
 pub(crate) fn drive_tool_calls<'a, M, R, F>(
     runner: &'a AgentRunner<M>,
     hook_ctx: &'a HookContext,
@@ -699,41 +736,80 @@ where
     R: WasmCompatSend + 'a,
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
+    // Per-call working state: a stable internal_call_id and the execute span,
+    // paired with the model's tool call. `span` is `Span::none()` for a
+    // preresolved (invalid-recovery) call, which never executes.
+    struct PreparedToolCall {
+        tool_call: crate::message::ToolCall,
+        preresolved_result: Option<UserContent>,
+        internal_call_id: String,
+        span: tracing::Span,
+    }
+    // A collected tool outcome, held (not surfaced) until the whole batch
+    // settles. `executed` carries the `(tool_call, internal_call_id)` needed to
+    // surface the execution-start + result items; it is `None` for a preresolved
+    // or hook-skipped call (its result is committed, but nothing actually ran).
+    struct CollectedToolResult {
+        content: UserContent,
+        executed: Option<(crate::message::ToolCall, String)>,
+    }
+
     Box::pin(async_stream::stream! {
         let full_history_for_errors = run.full_history();
+        let call_count = calls.len();
+
+        // Assign each call a stable internal_call_id and, for calls that will
+        // actually execute, an execute span. Emit the MODEL tool-call events now,
+        // right after the turn committed: these report what the model emitted and
+        // are *not* execution-lifecycle events. A preresolved call emits no model
+        // tool-call event (its synthetic result was already surfaced during the
+        // model turn) and gets no execute span.
+        let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
+        for pending in calls {
+            let internal_call_id = pending.internal_call_id.unwrap_or_else(crate::id::generate);
+            let (span, preresolved_result) = match pending.preresolved_result {
+                Some(result) => (tracing::Span::none(), Some(result)),
+                None => {
+                    if forward_items {
+                        yield Ok(MultiTurnStreamItem::stream_item(
+                            StreamedAssistantContent::ToolCall {
+                                tool_call: pending.tool_call.clone(),
+                                internal_call_id: internal_call_id.clone(),
+                            },
+                        ));
+                    }
+                    (chain_tool_span(new_execute_tool_span()), None)
+                }
+            };
+            prepared.push(PreparedToolCall {
+                tool_call: pending.tool_call,
+                preresolved_result,
+                internal_call_id,
+                span,
+            });
+        }
+
+        // Run all tools, COLLECTING outcomes in call order — nothing is surfaced
+        // or committed until the whole batch settles (atomic per-batch). On the
+        // first hook termination / fail-closed error we stop starting new tools;
+        // already-started ones are drained; the lowest call-index error wins; and
+        // no successful result is surfaced or committed.
+        let mut collected: Vec<Option<CollectedToolResult>> =
+            (0..call_count).map(|_| None).collect();
+        let mut first_error: Option<(usize, PromptError)> = None;
 
         if runner.concurrency <= 1 {
-            // Sequential default: one ToolCall/ToolResult pair per tool, strictly
-            // interleaved. Fail-fast on termination: a tool hook that terminates
-            // (`Flow::Terminate`, or a fail-closed misuse surfaced as an error)
-            // ends the turn immediately, so the *remaining* sibling tools never
-            // start and never run their side effects. Since tools run in call
-            // order, the first terminating tool is the lowest call-index one, so
-            // the surfaced reason is deterministic. Both drivers share this path,
-            // so `run()` and `stream()` stay lock-step.
-            let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
-
-            for pending in calls {
-                let tool_call = pending.tool_call;
-                if let Some(result) = pending.preresolved_result {
-                    results.push(result);
+            // Sequential: run in call order, fail-fast on the first terminating
+            // error so the remaining tools never start.
+            for (index, call) in prepared.into_iter().enumerate() {
+                let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
+                if let Some(result) = preresolved_result {
+                    if let Some(slot) = collected.get_mut(index) {
+                        *slot = Some(CollectedToolResult { content: result, executed: None });
+                    }
                     continue;
                 }
-                let internal_call_id =
-                    pending.internal_call_id.unwrap_or_else(crate::id::generate);
-
-                let tool_span = chain_tool_span(new_execute_tool_span());
-
-                if forward_items {
-                    yield Ok(MultiTurnStreamItem::stream_item(
-                        StreamedAssistantContent::ToolCall {
-                            tool_call: tool_call.clone(),
-                            internal_call_id: internal_call_id.clone(),
-                        },
-                    ));
-                }
-
-                let result = run_single_tool(
+                let outcome = run_single_tool(
                     &runner.hooks,
                     hook_ctx,
                     &runner.tool_server_handle,
@@ -742,168 +818,86 @@ where
                     &internal_call_id,
                     &full_history_for_errors,
                 )
-                .instrument(tool_span)
+                .instrument(span)
                 .await;
-
-                match result {
-                    Ok(content) => {
-                        if forward_items
-                            && let UserContent::ToolResult(tool_result) = &content
-                        {
-                            yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                StreamedUserContent::ToolResult {
-                                    tool_result: tool_result.clone(),
-                                    internal_call_id,
-                                },
-                            ));
+                match outcome {
+                    Ok(outcome) => {
+                        let executed = outcome.executed.then_some((tool_call, internal_call_id));
+                        if let Some(slot) = collected.get_mut(index) {
+                            *slot = Some(CollectedToolResult {
+                                content: outcome.content,
+                                executed,
+                            });
                         }
-                        results.push(content);
                     }
-                    // Fail-fast: surface the terminate reason and stop — the
-                    // subsequent sibling tools are never dispatched.
                     Err(err) => {
-                        yield Err(StreamingError::Prompt(Box::new(err)));
-                        return;
+                        first_error = Some((index, err));
+                        break;
                     }
                 }
-            }
-
-            if let Err(err) = run.tool_results(results) {
-                yield Err(Box::new(err).into());
-                return;
             }
         } else {
-            // Concurrent path: emit every ToolCall stream item eagerly in call
-            // order, then run tools concurrently and surface each ToolResult as
-            // soon as its tool finishes. Results are still stored by original
-            // call index, so persisted history remains deterministic.
-            let call_count = calls.len();
-            let mut indexed_calls: Vec<(usize, PendingToolCall, tracing::Span, Option<String>)> =
-                Vec::with_capacity(call_count);
-
-            for (index, mut pending) in calls.into_iter().enumerate() {
-                // Preresolved (invalid-tool-recovery) calls don't execute, so they
-                // emit and chain no tool span — matching the sequential branch,
-                // which `continue`s before span creation.
-                if pending.preresolved_result.is_some() {
-                    indexed_calls.push((index, pending, tracing::Span::none(), None));
-                    continue;
-                }
-
-                let tool_span = chain_tool_span(new_execute_tool_span());
-
-                let internal_call_id = pending
-                    .internal_call_id
-                    .clone()
-                    .unwrap_or_else(crate::id::generate);
-                pending.internal_call_id = Some(internal_call_id.clone());
-
-                let yield_id = if forward_items {
-                    yield Ok(MultiTurnStreamItem::stream_item(
-                        StreamedAssistantContent::ToolCall {
-                            tool_call: pending.tool_call.clone(),
-                            internal_call_id: internal_call_id.clone(),
-                        },
-                    ));
-                    Some(internal_call_id)
-                } else {
-                    None
-                };
-
-                indexed_calls.push((index, pending, tool_span, yield_id));
-            }
-
-            // Set once a tool hook terminates the turn. A sibling future checks it
-            // *before* executing its tool, so a not-yet-started sibling is dropped
-            // (its side effect never runs) — this avoids the Semantic-Kernel
-            // fail-open behavior of running every dispatched tool to completion.
-            // Already-in-flight siblings (past the check) are still drained, so the
-            // lowest call-index terminate reason wins deterministically and no
-            // detached task is left running.
+            // Concurrent: bounded by `tool_concurrency`. A shared `terminating`
+            // flag makes a not-yet-started sibling skip (its side effect never
+            // runs) once any sibling terminates — avoiding the Semantic-Kernel
+            // fail-open — while already-in-flight siblings are drained so the
+            // lowest call-index terminator wins and no task is left detached.
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let unordered = stream::iter(indexed_calls)
-                .map(|(index, pending, tool_span, yield_id)| {
+            let unordered = stream::iter(prepared.into_iter().enumerate())
+                .map(|(index, call)| {
+                    let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
                     let hooks = &runner.hooks;
                     let tool_server_handle = &runner.tool_server_handle;
                     let tool_extensions = &runner.tool_extensions;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
                     async move {
-                        // `None` marks a skipped (never-executed) sibling.
-                        if let Some(result) = pending.preresolved_result {
-                            return (index, yield_id, Some(Ok(result)));
+                        if let Some(result) = preresolved_result {
+                            return (
+                                index,
+                                Some(Ok(CollectedToolResult { content: result, executed: None })),
+                            );
                         }
+                        // `None` marks a dropped (never-started) sibling.
                         if terminating.load(std::sync::atomic::Ordering::SeqCst) {
-                            return (index, yield_id, None);
+                            return (index, None);
                         }
-
-                        let internal_call_id =
-                            pending.internal_call_id.unwrap_or_else(crate::id::generate);
-                        let result = run_single_tool(
+                        let outcome = run_single_tool(
                             hooks,
                             hook_ctx,
                             tool_server_handle,
                             tool_extensions,
-                            &pending.tool_call,
+                            &tool_call,
                             &internal_call_id,
                             full_history_for_errors,
                         )
                         .await;
-                        (index, yield_id, Some(result))
+                        let mapped = outcome.map(|o| {
+                            let executed = o.executed.then_some((tool_call, internal_call_id));
+                            CollectedToolResult { content: o.content, executed }
+                        });
+                        (index, Some(mapped))
                     }
-                    .instrument(tool_span)
+                    .instrument(span)
                 })
                 .buffer_unordered(runner.concurrency);
             futures::pin_mut!(unordered);
 
-            let mut results: Vec<Option<UserContent>> = Vec::with_capacity(call_count);
-            results.resize_with(call_count, || None);
-            // Hold the *lowest-index* error (call order), not the first to
-            // complete, so the surfaced terminate reason is deterministic and
-            // matches the sequential branch's call-order behavior.
-            let mut first_error: Option<(usize, PromptError)> = None;
-            while let Some((index, yield_id, outcome)) = unordered.next().await {
-                // A skipped sibling (dropped after termination) records nothing.
+            while let Some((index, outcome)) = unordered.next().await {
+                // A dropped sibling records nothing.
                 let result = match outcome {
                     Some(result) => result,
                     None => continue,
                 };
                 match result {
-                    Ok(content) => match results.get_mut(index) {
-                        Some(slot) => {
-                            // Once any tool has terminated the run will surface the
-                            // error, so a later successful result is not surfaced.
-                            // `yield_id` is `None` when items aren't forwarded (the
-                            // blocking fold), so no clone happens there.
-                            if first_error.is_none()
-                                && let Some(internal_call_id) = yield_id
-                                && let UserContent::ToolResult(tool_result) = &content
-                            {
-                                yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                    StreamedUserContent::ToolResult {
-                                        tool_result: tool_result.clone(),
-                                        internal_call_id,
-                                    },
-                                ));
-                            }
-                            *slot = Some(content);
+                    Ok(collected_result) => {
+                        if let Some(slot) = collected.get_mut(index) {
+                            *slot = Some(collected_result);
                         }
-                        None => {
-                            if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
-                                first_error = Some((
-                                    index,
-                                    PromptError::CompletionError(CompletionError::ResponseError(
-                                        "tool execution returned an invalid result index"
-                                            .to_string(),
-                                    )),
-                                ));
-                            }
-                        }
-                    },
+                    }
                     Err(err) => {
-                        // Fail-fast: stop starting new siblings (the flag makes
-                        // not-yet-started ones skip), but keep draining in-flight
-                        // ones so the lowest call-index terminator wins.
+                        // Fail-fast: stop starting new siblings; keep draining
+                        // in-flight ones so the lowest call-index terminator wins.
                         terminating.store(true, std::sync::atomic::Ordering::SeqCst);
                         if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
                             first_error = Some((index, err));
@@ -911,14 +905,23 @@ where
                     }
                 }
             }
+        }
 
-            if let Some((_, err)) = first_error {
-                yield Err(StreamingError::Prompt(Box::new(err)));
-                return;
-            }
+        // Settle. On termination: surface only the deterministic error — no
+        // execution-start, no result, no history commit (all-or-nothing).
+        if let Some((_, err)) = first_error {
+            yield Err(StreamingError::Prompt(Box::new(err)));
+            return;
+        }
 
-            let results: Vec<UserContent> = match results.into_iter().collect::<Option<Vec<_>>>() {
-                Some(results) => results,
+        // Success: surface execution-start + result per call in call order (only
+        // for calls whose body actually ran), then commit the results in call
+        // order. Every non-dropped slot is filled; a dropped slot only occurs
+        // after a termination, which is handled above.
+        let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
+        for slot in collected {
+            let CollectedToolResult { content, executed } = match slot {
+                Some(collected_result) => collected_result,
                 None => {
                     yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
                         CompletionError::ResponseError(
@@ -928,11 +931,28 @@ where
                     return;
                 }
             };
-
-            if let Err(err) = run.tool_results(results) {
-                yield Err(Box::new(err).into());
-                return;
+            if forward_items
+                && let Some((tool_call, internal_call_id)) = executed
+            {
+                yield Ok(MultiTurnStreamItem::ToolExecutionStart {
+                    tool_call,
+                    internal_call_id: internal_call_id.clone(),
+                });
+                if let UserContent::ToolResult(tool_result) = &content {
+                    yield Ok(MultiTurnStreamItem::StreamUserItem(
+                        StreamedUserContent::ToolResult {
+                            tool_result: tool_result.clone(),
+                            internal_call_id,
+                        },
+                    ));
+                }
             }
+            committed.push(content);
+        }
+
+        if let Err(err) = run.tool_results(committed) {
+            yield Err(Box::new(err).into());
+            return;
         }
     })
 }

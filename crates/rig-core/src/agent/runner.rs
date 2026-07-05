@@ -557,6 +557,19 @@ pub(crate) async fn append_run_messages(
     }
 }
 
+/// Outcome of [`run_single_tool`]: the tool-result content plus whether the
+/// tool's body actually ran.
+pub(crate) struct ToolCallOutcome {
+    /// The tool result delivered to the model (a real output, a redacted
+    /// replacement, or a hook skip reason).
+    pub content: UserContent,
+    /// Whether the tool's `call` actually executed. `false` when a `ToolCall`
+    /// hook returned [`Flow::Skip`](crate::agent::Flow::Skip), so the driver
+    /// surfaces no [`ToolExecutionStart`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionStart)
+    /// event for it (nothing actually ran).
+    pub executed: bool,
+}
+
 /// Execute a single tool call, firing the `ToolCall` and `ToolResult` hooks and
 /// shaping the result. **Shared by the blocking and streaming drivers** so a
 /// tool call behaves identically in both: same hook events, same fail-closed
@@ -564,6 +577,7 @@ pub(crate) async fn append_run_messages(
 /// emitted verbatim ([`tool_result_message`]) while a real tool output is parsed
 /// ([`tool_result_output`]). Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
+/// Returns whether the tool body executed via [`ToolCallOutcome::executed`].
 pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
     ctx: &HookContext,
@@ -572,7 +586,7 @@ pub(crate) async fn run_single_tool<M>(
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
-) -> Result<UserContent, PromptError>
+) -> Result<ToolCallOutcome, PromptError>
 where
     M: CompletionModel,
 {
@@ -607,12 +621,16 @@ where
         }
         ToolCallDecision::Skip(reason) => {
             tracing::info!(tool_name = tool_name, reason = reason, "Tool call rejected");
-            // Synthetic rejection message: emit verbatim, never re-parsed.
-            return Ok(tool_result_message(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                reason,
-            ));
+            // Synthetic rejection message: emit verbatim, never re-parsed. The
+            // tool did not run, so `executed` is false (no execution-start event).
+            return Ok(ToolCallOutcome {
+                content: tool_result_message(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    reason,
+                ),
+                executed: false,
+            });
         }
         ToolCallDecision::ProceedWith(replacement) => {
             // Run the tool with the hook's rewritten arguments. Re-record the
@@ -687,11 +705,14 @@ where
             tracing::info!(
                 "executed tool {tool_name} with args {args}; result rewritten by a hook"
             );
-            Ok(tool_result_message(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                replacement,
-            ))
+            Ok(ToolCallOutcome {
+                content: tool_result_message(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    replacement,
+                ),
+                executed: true,
+            })
         }
         ToolResultDecision::Keep => {
             // No redaction requested: now that the hook has run without replacing
@@ -699,11 +720,14 @@ where
             tool_span.record("gen_ai.tool.call.result", &output);
             tracing::info!("executed tool {tool_name} with args {args}. result: {output}");
             // Real tool output: parsed (may be multimodal).
-            Ok(tool_result_output(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                output,
-            ))
+            Ok(ToolCallOutcome {
+                content: tool_result_output(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    output,
+                ),
+                executed: true,
+            })
         }
     }
 }
@@ -1872,12 +1896,12 @@ mod tests {
         );
     }
 
-    /// The streaming driver under concurrency surfaces ToolResult stream items
-    /// as soon as each tool completes, while still persisting history in call
-    /// order. The second call completes first, so its streamed result must be
-    /// observed first.
+    /// Under concurrency the streaming driver surfaces tool results **atomically
+    /// after the whole batch settles**, in **call order** — not as each tool
+    /// completes. The second call completes first (via the gate), yet its result
+    /// is still surfaced second, matching persisted history order.
     #[tokio::test]
-    async fn stream_emits_tool_results_in_completion_order_under_concurrency() {
+    async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concurrency() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 0})),
@@ -1918,9 +1942,11 @@ mod tests {
         .await
         .expect("streamed tools must run concurrently, not deadlock on the first call");
 
+        // Call order, even though tc2 completed first — results are surfaced only
+        // after the whole batch settles.
         assert_eq!(
             streamed_result_ids,
-            vec!["tc2".to_string(), "tc1".to_string()]
+            vec!["tc1".to_string(), "tc2".to_string()]
         );
         let final_response = final_response.expect("stream should yield a final response");
         assert_eq!(
@@ -1965,13 +1991,14 @@ mod tests {
         .expect("streamed tools must run concurrently, not deadlock at the barrier");
     }
 
-    /// The documented stream-item ordering: at `tool_concurrency > 1` the
-    /// streaming driver emits *all* of a turn's `ToolCall` items first (call
-    /// order) before any `ToolResult`s, whereas the sequential default strictly
-    /// interleaves one pair per tool. (Both persist the same history — covered
-    /// above.)
+    /// The stream-item taxonomy and ordering: the driver emits *all* of a turn's
+    /// **model** tool-call items ([`StreamedAssistantContent::ToolCall`], one per
+    /// call the model made) first, then — after the whole tool batch settles —
+    /// the per-tool **execution** items (`ToolExecutionStart` then the
+    /// `ToolResult`) in call order. This holds identically at every concurrency
+    /// (the batch is atomic on both the sequential and concurrent paths).
     #[tokio::test]
-    async fn stream_concurrent_emits_all_tool_calls_before_results() {
+    async fn stream_emits_model_tool_calls_then_atomic_execution_items() {
         async fn markers(concurrency: usize) -> Vec<&'static str> {
             let model = MockCompletionModel::from_stream_turns([
                 vec![
@@ -1997,7 +2024,8 @@ mod tests {
                 match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
                     MultiTurnStreamItem::StreamAssistantItem(
                         StreamedAssistantContent::ToolCall { .. },
-                    ) => markers.push("call"),
+                    ) => markers.push("model-call"),
+                    MultiTurnStreamItem::ToolExecutionStart { .. } => markers.push("exec-start"),
                     MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         ..
                     }) => markers.push("result"),
@@ -2007,10 +2035,18 @@ mod tests {
             markers
         }
 
-        // Sequential default: one pair per tool, interleaved.
-        assert_eq!(markers(1).await, vec!["call", "result", "call", "result"]);
-        // Concurrent: all calls first, then all results.
-        assert_eq!(markers(4).await, vec!["call", "call", "result", "result"]);
+        // Both surfaces: all model tool calls first, then per-tool (start, result)
+        // in call order, surfaced atomically after the batch settles.
+        let expected = vec![
+            "model-call",
+            "model-call",
+            "exec-start",
+            "result",
+            "exec-start",
+            "result",
+        ];
+        assert_eq!(markers(1).await, expected);
+        assert_eq!(markers(4).await, expected);
     }
 
     /// Terminates from the `x == 1` tool's result, but only *after* the slow
@@ -2487,6 +2523,215 @@ mod tests {
             !called.contains(&0),
             "the terminator's own body never runs (its ToolCall hook terminated); \
              called args: {called:?}"
+        );
+    }
+
+    /// A tool that, for the `x == 1` call, records it ran and signals a gate; the
+    /// terminating sibling waits on that gate so the `x == 1` call completes
+    /// *before* the batch terminates.
+    #[derive(Clone)]
+    struct SignalOnRunTool {
+        a_ran: Arc<AtomicU32>,
+        a_done: Arc<tokio::sync::Notify>,
+    }
+    impl Tool for SignalOnRunTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = serde_json::Value;
+        type Output = i32;
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            MockAddTool.definition(String::new()).await
+        }
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            if args.get("x").and_then(serde_json::Value::as_i64) == Some(1) {
+                self.a_ran.fetch_add(1, SeqCst);
+                self.a_done.notify_one();
+            }
+            Ok(0)
+        }
+    }
+
+    /// The `x == 2` tool's `ToolCall` hook terminates, but only after the `x == 1`
+    /// sibling has finished (via the gate), so a *completed* sibling's result is
+    /// still suppressed by the atomic batch.
+    struct TerminateAfterSiblingDoneHook {
+        a_done: Arc<tokio::sync::Notify>,
+    }
+    impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingDoneHook {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { args, .. } = event
+                && serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                    == Some(2)
+            {
+                self.a_done.notified().await;
+                return Flow::terminate("stop");
+            }
+            Flow::cont()
+        }
+    }
+
+    /// Atomic concurrent batch: when the batch terminates, even a sibling that
+    /// completed **successfully** before the terminating sibling produces no
+    /// `ToolExecutionStart` and no `ToolResult` stream item (no orphan
+    /// execution-start), and its result is not committed. The `x == 1` tool runs
+    /// to completion (its side effect happens) and signals; the `x == 2` tool's
+    /// hook then terminates.
+    #[tokio::test]
+    async fn concurrent_termination_surfaces_no_execution_items() {
+        let a_ran = Arc::new(AtomicU32::new(0));
+        let a_done = Arc::new(tokio::sync::Notify::new());
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("unreachable"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(SignalOnRunTool {
+                a_ran: a_ran.clone(),
+                a_done: a_done.clone(),
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .add_hook(TerminateAfterSiblingDoneHook {
+                a_done: a_done.clone(),
+            })
+            .stream()
+            .await;
+
+        let (exec_starts, results, saw_error, saw_final) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+                let (mut exec_starts, mut results, mut saw_error, mut saw_final) =
+                    (0, 0, false, false);
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(MultiTurnStreamItem::ToolExecutionStart { .. }) => exec_starts += 1,
+                        Ok(MultiTurnStreamItem::StreamUserItem(
+                            StreamedUserContent::ToolResult { .. },
+                        )) => results += 1,
+                        Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
+                        Ok(_) => {}
+                        Err(_) => saw_error = true,
+                    }
+                }
+                (exec_starts, results, saw_error, saw_final)
+            })
+            .await
+            .expect("the concurrent tool drive must not hang");
+
+        assert!(saw_error, "the terminated run must surface an error");
+        assert!(
+            !saw_final,
+            "a terminated run must not yield a final response"
+        );
+        assert_eq!(
+            exec_starts, 0,
+            "a terminated batch surfaces no ToolExecutionStart (no orphan start events)"
+        );
+        assert_eq!(
+            results, 0,
+            "a terminated batch surfaces no successful ToolResult"
+        );
+        assert_eq!(
+            a_ran.load(SeqCst),
+            1,
+            "the fast sibling did run (its side effect happened), but its result was suppressed"
+        );
+    }
+
+    /// `ToolChoice::Required` + a hook whose `active_tools([])` advertises no tools
+    /// is a **local** error: the run fails before any provider round-trip.
+    #[tokio::test]
+    async fn required_with_empty_active_tools_errors_locally_without_provider_call() {
+        struct EmptyActiveToolsHook;
+        impl<M: CompletionModel> AgentHook<M> for EmptyActiveToolsHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::CompletionCall { .. } = event {
+                    Flow::patch_request(RequestPatch::new().active_tools(Vec::<String>::new()))
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
+        let probe = model.clone();
+        let err = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::Required)
+            .add_hook(EmptyActiveToolsHook)
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .expect_err("Required with an empty active_tools filter must fail locally");
+
+        assert!(
+            probe.requests().is_empty(),
+            "the request must fail locally, with no provider round-trip"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Required"),
+            "error should mention Required: {msg}"
+        );
+        assert!(
+            msg.contains("active_tools"),
+            "error should name active_tools: {msg}"
+        );
+    }
+
+    /// `ToolChoice::Specific` naming a tool that a hook's `active_tools` filtered
+    /// out is a **local** error naming the filter, before any provider round-trip.
+    #[tokio::test]
+    async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call() {
+        struct FilterToAddHook;
+        impl<M: CompletionModel> AgentHook<M> for FilterToAddHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::CompletionCall { .. } = event {
+                    Flow::patch_request(RequestPatch::new().active_tools(["add"]))
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
+        let probe = model.clone();
+        let err = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["subtract".to_string()],
+            })
+            .add_hook(FilterToAddHook)
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .expect_err("Specific naming a filtered-out tool must fail locally");
+
+        assert!(
+            probe.requests().is_empty(),
+            "the request must fail locally, with no provider round-trip"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("subtract"),
+            "error should name the missing tool: {msg}"
+        );
+        assert!(
+            msg.contains("active_tools"),
+            "error should name active_tools: {msg}"
         );
     }
 
