@@ -557,17 +557,28 @@ pub(crate) async fn append_run_messages(
     }
 }
 
+/// Whether (and how) a tool call executed, for [`run_single_tool`].
+pub(crate) enum ToolExecution {
+    /// The tool's body ran. Carries the **effective** tool call — the model's
+    /// call with any [`Flow::RewriteArgs`](crate::agent::Flow::RewriteArgs) hook
+    /// rewrite applied — so the driver can surface it in the
+    /// [`ToolExecutionStart`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionStart)
+    /// event (what actually ran, not the model's original arguments).
+    Executed(ToolCall),
+    /// A `ToolCall` hook returned [`Flow::Skip`](crate::agent::Flow::Skip): the
+    /// body did not run, so no execution-start is surfaced — but the skip result
+    /// is still delivered to the model (and surfaced as a `ToolResult`).
+    Skipped,
+}
+
 /// Outcome of [`run_single_tool`]: the tool-result content plus whether the
-/// tool's body actually ran.
+/// tool's body ran (and the effective call) or a hook skipped it.
 pub(crate) struct ToolCallOutcome {
     /// The tool result delivered to the model (a real output, a redacted
     /// replacement, or a hook skip reason).
     pub content: UserContent,
-    /// Whether the tool's `call` actually executed. `false` when a `ToolCall`
-    /// hook returned [`Flow::Skip`](crate::agent::Flow::Skip), so the driver
-    /// surfaces no [`ToolExecutionStart`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionStart)
-    /// event for it (nothing actually ran).
-    pub executed: bool,
+    /// How the call resolved: executed (with the effective tool call) or skipped.
+    pub execution: ToolExecution,
 }
 
 /// Execute a single tool call, firing the `ToolCall` and `ToolResult` hooks and
@@ -600,7 +611,10 @@ where
     tool_span.record("gen_ai.tool.call.id", &tool_call.id);
     tool_span.record("gen_ai.tool.call.arguments", &args);
 
-    match flow_into_tool_call(
+    // The effective arguments the tool runs with — the model's, or a hook's
+    // `RewriteArgs` replacement. Captured so the effective tool call can be
+    // surfaced in the execution-start event (what actually ran).
+    let effective_args: serde_json::Value = match flow_into_tool_call(
         hooks
             .on_event(
                 ctx,
@@ -622,14 +636,14 @@ where
         ToolCallDecision::Skip(reason) => {
             tracing::info!(tool_name = tool_name, reason = reason, "Tool call rejected");
             // Synthetic rejection message: emit verbatim, never re-parsed. The
-            // tool did not run, so `executed` is false (no execution-start event).
+            // tool did not run, so there is no execution-start event.
             return Ok(ToolCallOutcome {
                 content: tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     reason,
                 ),
-                executed: false,
+                execution: ToolExecution::Skipped,
             });
         }
         ToolCallDecision::ProceedWith(replacement) => {
@@ -642,9 +656,16 @@ where
                 tool_name = tool_name,
                 "tool-call arguments rewritten by a hook"
             );
+            replacement
         }
-        ToolCallDecision::Proceed => {}
-    }
+        ToolCallDecision::Proceed => tool_call.function.arguments.clone(),
+    };
+
+    // The tool call as actually executed: the model's call with any `RewriteArgs`
+    // rewrite applied. This — not the model's original call — is what the
+    // execution-start event reports (so a redaction rewrite does not leak).
+    let mut effective_tool_call = tool_call.clone();
+    effective_tool_call.function.arguments = effective_args;
 
     let output = match tool_server
         .call_tool_with_extensions(tool_name, &args, tool_extensions)
@@ -711,7 +732,7 @@ where
                     tool_call.call_id.clone(),
                     replacement,
                 ),
-                executed: true,
+                execution: ToolExecution::Executed(effective_tool_call),
             })
         }
         ToolResultDecision::Keep => {
@@ -726,7 +747,7 @@ where
                     tool_call.call_id.clone(),
                     output,
                 ),
-                executed: true,
+                execution: ToolExecution::Executed(effective_tool_call),
             })
         }
     }
@@ -1795,9 +1816,9 @@ mod tests {
     }
 
     /// The streaming driver under `tool_concurrency > 1` produces the **same
-    /// message history** as the blocking driver: streamed results may be
-    /// observed in completion order, but persisted results are reassembled in
-    /// tool-call order, so concurrency never reorders the final history.
+    /// message history** as the blocking driver: streamed results are surfaced in
+    /// call order after the batch settles, and persisted results stay in tool-call
+    /// order, so concurrency never reorders the final history.
     #[tokio::test]
     async fn stream_and_run_same_message_history_for_parallel_tool_calls_under_concurrency() {
         let blocking_model = MockCompletionModel::from_turns([
@@ -2645,6 +2666,130 @@ mod tests {
             a_ran.load(SeqCst),
             1,
             "the fast sibling did run (its side effect happened), but its result was suppressed"
+        );
+    }
+
+    /// The model tool-call event carries the model's **original** arguments; the
+    /// execution-start event carries the **effective** (hook-rewritten) arguments
+    /// — so a `RewriteArgs` rewrite (e.g. a redaction) is reflected in what
+    /// actually ran, not leaked as the original.
+    #[tokio::test]
+    async fn stream_tool_execution_start_carries_effective_rewritten_args() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .add_hook(RewriteToolArgsHook(json!({"x": 2, "y": 40})))
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .stream()
+            .await;
+
+        let mut model_args = None;
+        let mut exec_args = None;
+        while let Some(item) = stream.next().await {
+            match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
+                    tool_call,
+                    ..
+                }) => model_args = Some(tool_call.function.arguments),
+                MultiTurnStreamItem::ToolExecutionStart { tool_call, .. } => {
+                    exec_args = Some(tool_call.function.arguments)
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(
+            model_args,
+            Some(json!({"x": 2, "y": 3})),
+            "the model tool-call event carries the model's original arguments"
+        );
+        assert_eq!(
+            exec_args,
+            Some(json!({"x": 2, "y": 40})),
+            "the execution-start event carries the hook-rewritten (effective) arguments"
+        );
+    }
+
+    /// A `ToolCall` hook `Flow::Skip` surfaces the skip result as a `ToolResult`
+    /// (the model sees it, and it is committed to history) but produces **no**
+    /// `ToolExecutionStart` — nothing actually ran.
+    #[tokio::test]
+    async fn stream_hook_skip_surfaces_result_without_execution_start() {
+        struct SkipHook;
+        impl<M: CompletionModel> AgentHook<M> for SkipHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolCall { .. } = event {
+                    Flow::skip("blocked by policy")
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        let calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let stream = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: calls.clone(),
+            })
+            .add_hook(SkipHook)
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .stream()
+            .await;
+
+        let mut exec_starts = 0;
+        let mut results = 0;
+        let mut final_response = None;
+        let mut stream = stream;
+        while let Some(item) = stream.next().await {
+            match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
+                MultiTurnStreamItem::ToolExecutionStart { .. } => exec_starts += 1,
+                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
+                    results += 1
+                }
+                MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
+                _ => {}
+            }
+        }
+
+        assert_eq!(calls.load(SeqCst), 0, "a skipped tool's body never runs");
+        assert_eq!(
+            exec_starts, 0,
+            "a hook-skipped tool produces no execution-start"
+        );
+        assert_eq!(
+            results, 1,
+            "the skip result is still surfaced to the consumer"
+        );
+        let final_response = final_response.expect("stream should yield a final response");
+        // The skip result is committed to history (the model sees the reason).
+        let history = final_response.history().expect("history");
+        assert!(
+            history.iter().any(|m| serde_json::to_string(m)
+                .map(|s| s.contains("blocked by policy"))
+                .unwrap_or(false)),
+            "the skip result is committed to history"
         );
     }
 

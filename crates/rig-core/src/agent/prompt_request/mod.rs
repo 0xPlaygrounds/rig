@@ -21,9 +21,10 @@ macro_rules! forward_prompt_setters {
     ($recv:ident) => {
         /// Execute up to `concurrency` of a turn's tool calls at once.
         ///
-        /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: persisted
-        /// history remains in tool-call order, while streaming requests may surface
-        /// tool results in completion order.
+        /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: the tool
+        /// batch commits and surfaces atomically, so persisted history and streamed
+        /// tool results are both in tool-call order (results are surfaced only after
+        /// the whole batch settles successfully).
         pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
             self.$recv = self.$recv.tool_concurrency(concurrency);
             self

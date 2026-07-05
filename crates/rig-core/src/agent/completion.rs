@@ -117,21 +117,26 @@ fn pick_output_tool_name(executable_tool_names: &BTreeSet<String>) -> String {
 /// - [`ToolChoice::Specific`] must name only advertised tools (executable tools
 ///   or the output tool); an empty specific set is also an error.
 ///
-/// When a per-turn `active_tools` allow-list caused the incompatibility
-/// (`active_tools_applied`), the error says so and suggests setting a compatible
-/// `tool_choice` in the same `RequestPatch`.
+/// `pre_filter_tool_names` is the full executable tool set *before* any per-turn
+/// `active_tools` filtering — `Some` only when an `active_tools` allow-list was
+/// applied. When the incompatibility was actually **caused** by that filter (a
+/// tool that would otherwise satisfy the choice was dropped), the error says so
+/// and suggests setting a compatible `tool_choice` in the same `RequestPatch`.
+/// A plain typo naming a tool that never existed is *not* blamed on the filter.
 pub(crate) fn allowed_tool_names_for_choice(
     executable_tool_names: &BTreeSet<String>,
     tool_choice: Option<&ToolChoice>,
     output_tool_name: Option<&str>,
-    active_tools_applied: bool,
+    pre_filter_tool_names: Option<&BTreeSet<String>>,
 ) -> Result<BTreeSet<String>, CompletionError> {
     let has_advertised_tool = !executable_tool_names.is_empty() || output_tool_name.is_some();
-    let active_tools_hint = if active_tools_applied {
-        " A per-turn `active_tools` allow-list narrowed the advertised tools this turn; \
-         set a compatible `tool_choice` in the same `RequestPatch`, or widen `active_tools`."
-    } else {
-        ""
+    let hint = |active_tools_caused: bool| {
+        if active_tools_caused {
+            " A per-turn `active_tools` allow-list narrowed the advertised tools this turn; \
+             set a compatible `tool_choice` in the same `RequestPatch`, or widen `active_tools`."
+        } else {
+            ""
+        }
     };
     // The advertised tools the model may call: executable tools + the output tool.
     let advertised = || {
@@ -146,10 +151,13 @@ pub(crate) fn allowed_tool_names_for_choice(
         None | Some(ToolChoice::Auto) => executable_tool_names.clone(),
         Some(ToolChoice::Required) => {
             if !has_advertised_tool {
+                // The filter caused this only if there *were* tools before it ran.
+                let active_tools_caused = pre_filter_tool_names.is_some_and(|pf| !pf.is_empty());
                 return Err(CompletionError::RequestError(
                     format!(
                         "ToolChoice::Required forces the model to call a tool, but no tools are \
-                         advertised this turn.{active_tools_hint}"
+                         advertised this turn.{}",
+                        hint(active_tools_caused)
                     )
                     .into(),
                 ));
@@ -174,11 +182,16 @@ pub(crate) fn allowed_tool_names_for_choice(
                 .collect::<Vec<_>>();
 
             if !missing.is_empty() {
+                // The filter caused this only if a missing name existed pre-filter
+                // (i.e. `active_tools` dropped it) — not for a plain typo.
+                let active_tools_caused = pre_filter_tool_names
+                    .is_some_and(|pf| missing.iter().any(|name| pf.contains(*name)));
                 return Err(CompletionError::RequestError(
                     format!(
                         "ToolChoice::Specific requested tool names not advertised this turn: \
-                         {missing:?}. Advertised: {:?}.{active_tools_hint}",
-                        advertised()
+                         {missing:?}. Advertised: {:?}.{}",
+                        advertised(),
+                        hint(active_tools_caused)
                     )
                     .into(),
                 ));
@@ -559,7 +572,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         &executable_tool_names,
         tool_choice,
         output_tool_name.as_deref(),
-        active_tools.is_some(),
+        pre_filter_tool_names.as_ref(),
     )?;
     // The output tool must be allowed (so it isn't flagged as an invalid tool
     // call) even though it is not executable.
@@ -895,7 +908,7 @@ mod tests {
         let executable = tool_names(&["add", "subtract"]);
 
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, None, None, false).unwrap(),
+            allowed_tool_names_for_choice(&executable, None, None, None).unwrap(),
             executable
         );
     }
@@ -905,12 +918,12 @@ mod tests {
         let executable = tool_names(&["add", "subtract"]);
 
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Auto), None, false)
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Auto), None, None)
                 .unwrap(),
             executable
         );
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Required), None, false)
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Required), None, None)
                 .unwrap(),
             executable
         );
@@ -921,7 +934,7 @@ mod tests {
         let executable = tool_names(&["add", "subtract"]);
 
         assert!(
-            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::None), None, false)
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::None), None, None)
                 .unwrap()
                 .is_empty()
         );
@@ -935,7 +948,7 @@ mod tests {
         };
 
         assert_eq!(
-            allowed_tool_names_for_choice(&executable, Some(&choice), None, false).unwrap(),
+            allowed_tool_names_for_choice(&executable, Some(&choice), None, None).unwrap(),
             tool_names(&["add"])
         );
     }
@@ -947,7 +960,7 @@ mod tests {
             function_names: vec!["missing".to_string()],
         };
 
-        let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, false)
+        let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, None)
             .expect_err("missing specific tool should fail before provider request");
 
         assert!(matches!(
@@ -965,7 +978,7 @@ mod tests {
             function_names: vec![],
         };
 
-        let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, false)
+        let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, None)
             .expect_err("empty specific tool choice should fail before provider request");
 
         assert!(matches!(
@@ -978,7 +991,7 @@ mod tests {
     #[test]
     fn required_with_no_advertised_tool_is_local_error() {
         let empty = tool_names(&[]);
-        let err = allowed_tool_names_for_choice(&empty, Some(&ToolChoice::Required), None, false)
+        let err = allowed_tool_names_for_choice(&empty, Some(&ToolChoice::Required), None, None)
             .expect_err("Required with no advertised tool must fail locally");
         assert!(matches!(
             err,
@@ -995,7 +1008,7 @@ mod tests {
             &empty,
             Some(&ToolChoice::Required),
             Some("final_result"),
-            false,
+            None,
         )
         .expect("Required is satisfiable by the output tool");
         // The output tool is added to the allowed set by the caller, so the
@@ -1006,8 +1019,13 @@ mod tests {
     #[test]
     fn required_with_active_tools_filter_names_the_filter_in_the_error() {
         let empty = tool_names(&[]);
-        let err = allowed_tool_names_for_choice(&empty, Some(&ToolChoice::Required), None, true)
-            .expect_err("Required after active_tools filtered everything must fail locally");
+        let err = allowed_tool_names_for_choice(
+            &empty,
+            Some(&ToolChoice::Required),
+            None,
+            Some(&tool_names(&["add"])),
+        )
+        .expect_err("Required after active_tools filtered everything must fail locally");
         let msg = err.to_string();
         assert!(
             msg.contains("active_tools"),
@@ -1027,8 +1045,13 @@ mod tests {
         let choice = ToolChoice::Specific {
             function_names: vec!["subtract".to_string()],
         };
-        let err = allowed_tool_names_for_choice(&executable, Some(&choice), None, true)
-            .expect_err("Specific naming a filtered-out tool must fail locally");
+        let err = allowed_tool_names_for_choice(
+            &executable,
+            Some(&choice),
+            None,
+            Some(&tool_names(&["add", "subtract"])),
+        )
+        .expect_err("Specific naming a filtered-out tool must fail locally");
         let msg = err.to_string();
         assert!(
             msg.contains("subtract"),
@@ -1048,9 +1071,33 @@ mod tests {
             function_names: vec!["final_result".to_string()],
         };
         let allowed =
-            allowed_tool_names_for_choice(&empty, Some(&choice), Some("final_result"), false)
+            allowed_tool_names_for_choice(&empty, Some(&choice), Some("final_result"), None)
                 .expect("Specific naming the output tool is valid");
         assert_eq!(allowed, tool_names(&["final_result"]));
+    }
+
+    #[test]
+    fn specific_typo_is_not_blamed_on_active_tools() {
+        // Specific names a tool that never existed (a typo), even though an
+        // active_tools filter was applied. The error must NOT blame active_tools,
+        // because the filter never had that tool to drop.
+        let executable = tool_names(&["add"]);
+        let choice = ToolChoice::Specific {
+            function_names: vec!["nonexistent".to_string()],
+        };
+        let err = allowed_tool_names_for_choice(
+            &executable,
+            Some(&choice),
+            None,
+            Some(&tool_names(&["add"])),
+        )
+        .expect_err("Specific naming a non-existent tool must fail locally");
+        let msg = err.to_string();
+        assert!(msg.contains("nonexistent"), "error names the typo: {msg}");
+        assert!(
+            !msg.contains("active_tools"),
+            "a plain typo must not be blamed on active_tools: {msg}"
+        );
     }
 
     #[test]
