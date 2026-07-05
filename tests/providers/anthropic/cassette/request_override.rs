@@ -1,4 +1,4 @@
-//! Verifies that a `Flow::OverrideRequest` hook steers the model request per
+//! Verifies that a `Flow::PatchRequest` hook steers the model request per
 //! turn, end-to-end through a real Anthropic round-trip.
 //!
 //! The agent registers two tools (`get_weather` and `get_time`). On the first

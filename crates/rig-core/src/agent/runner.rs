@@ -639,10 +639,13 @@ where
         }
     };
 
-    // Record the result on the span before consulting the result hook, so the
-    // trace keeps the output even if a hook then terminates the run.
-    tool_span.record("gen_ai.tool.call.result", &output);
-
+    // The tool's raw output is deliberately NOT recorded on the span yet: a
+    // `ToolResult` hook may redact it. Recording is deferred until after the hook
+    // runs — the redacted replacement on `Replace`, the raw output on `Keep`, and
+    // nothing on `Terminate` — so a redaction guardrail never leaks the original
+    // via the trace. (OpenAI Agents applies tool-output guardrails before
+    // tracing / tool-end / model-visible output for the same reason.) The hook
+    // still observes the tool's actual output via the event's `result` field.
     match flow_into_tool_result(
         hooks
             .on_event(
@@ -660,16 +663,22 @@ where
             .await,
     ) {
         ToolResultDecision::Terminate(reason) => {
-            tracing::info!("executed tool {tool_name} with args {args}. result: {output}");
+            // Do not record or log the raw output: the model never sees it (the
+            // run is terminating) and a result hook may have terminated to prevent
+            // exactly that leak.
+            tracing::info!(
+                "executed tool {tool_name} with args {args}; run terminated by a result hook"
+            );
             Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
                 reason,
             ))
         }
         ToolResultDecision::Replace(replacement) => {
-            // The hook replaced the model-visible result. Re-record the span and
-            // log only that a rewrite happened — never the tool's raw output — so
-            // a redaction hook does not leak the original via the trace or the
+            // The hook replaced the model-visible result. Record the replacement
+            // (the raw output was never recorded on the span before the hook ran)
+            // and log only that a rewrite happened — never the tool's raw output —
+            // so a redaction hook does not leak the original via the trace or the
             // log. The replacement is hook-supplied content, so it is delivered
             // verbatim (like a `Skip` reason via [`tool_result_message`]) rather
             // than re-parsed as tool output, which would let a JSON-shaped
@@ -685,6 +694,9 @@ where
             ))
         }
         ToolResultDecision::Keep => {
+            // No redaction requested: now that the hook has run without replacing
+            // the output, record the tool's real result on the span.
+            tool_span.record("gen_ai.tool.call.result", &output);
             tracing::info!("executed tool {tool_name} with args {args}. result: {output}");
             // Real tool output: parsed (may be multimodal).
             Ok(tool_result_output(
@@ -1434,6 +1446,124 @@ mod tests {
                 "run-level completion must not be recorded onto a caller-supplied outer span"
             );
         }
+
+        // --- Tool-result redaction: raw output must not leak to the span ---
+
+        /// A tool that returns a secret; a redaction hook replaces it before the
+        /// model — and the trace — sees it.
+        struct SecretTool;
+        impl crate::tool::Tool for SecretTool {
+            const NAME: &'static str = "leak";
+            type Error = crate::test_utils::MockToolError;
+            type Args = serde_json::Value;
+            type Output = String;
+            async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
+                crate::completion::ToolDefinition {
+                    name: Self::NAME.to_string(),
+                    description: "returns a secret".to_string(),
+                    parameters: serde_json::json!({ "type": "object", "properties": {} }),
+                }
+            }
+            async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+                Ok("SUPER_SECRET_TOKEN_42".to_string())
+            }
+        }
+
+        /// Redacts every tool result before the model sees it.
+        struct RedactResultHook;
+        impl<M: crate::completion::CompletionModel> crate::agent::AgentHook<M> for RedactResultHook {
+            async fn on_event(
+                &self,
+                _ctx: &crate::agent::HookContext,
+                event: crate::agent::StepEvent<'_, M>,
+            ) -> crate::agent::Flow {
+                if let crate::agent::StepEvent::ToolResult { .. } = event {
+                    crate::agent::Flow::rewrite_result("[REDACTED]")
+                } else {
+                    crate::agent::Flow::cont()
+                }
+            }
+        }
+
+        /// Captures every value recorded into the `gen_ai.tool.call.result` span
+        /// field, so a test can assert the raw secret never reaches the trace.
+        #[derive(Default)]
+        struct ResultValueVisitor {
+            values: Vec<String>,
+        }
+        impl Visit for ResultValueVisitor {
+            fn record_str(&mut self, field: &Field, value: &str) {
+                if field.name() == "gen_ai.tool.call.result" {
+                    self.values.push(value.to_string());
+                }
+            }
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "gen_ai.tool.call.result" {
+                    self.values.push(format!("{value:?}"));
+                }
+            }
+        }
+
+        struct ResultValueLayer {
+            values: Arc<Mutex<Vec<String>>>,
+        }
+        impl<S> Layer<S> for ResultValueLayer
+        where
+            S: Subscriber + for<'l> LookupSpan<'l>,
+        {
+            fn on_record(&self, _span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
+                let mut visitor = ResultValueVisitor::default();
+                values.record(&mut visitor);
+                if !visitor.values.is_empty() {
+                    self.values.lock().expect("values").extend(visitor.values);
+                }
+            }
+        }
+
+        /// A `ToolResult` hook that redacts the tool's output must prevent the raw
+        /// secret from ever reaching the `gen_ai.tool.call.result` span field: the
+        /// result is recorded only AFTER the hook runs, so only the redacted
+        /// replacement is traced.
+        #[tokio::test]
+        async fn tool_result_redaction_does_not_leak_raw_output_to_the_span() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let subscriber = Registry::default().with(ResultValueLayer {
+                values: values.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            // Warm the `execute_tool` result callsite under this subscriber, then
+            // reset — mirroring the usage tests' interest-cache warm-up.
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            values.lock().expect("values").clear();
+
+            let model = MockCompletionModel::from_turns([
+                MockTurn::tool_call("tc1", "leak", serde_json::json!({})),
+                MockTurn::text("ok"),
+            ]);
+            let response = AgentBuilder::new(model)
+                .tool(SecretTool)
+                .add_hook(RedactResultHook)
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("run should succeed");
+            assert_eq!(response.output, "ok");
+
+            let captured = values.lock().expect("values").clone();
+            assert!(
+                !captured.iter().any(|v| v.contains("SUPER_SECRET_TOKEN_42")),
+                "the raw tool output must never be recorded on the span; captured: {captured:?}"
+            );
+            assert!(
+                captured.iter().any(|v| v.contains("[REDACTED]")),
+                "only the redacted replacement is recorded on the span; captured: {captured:?}"
+            );
+        }
     }
 
     fn tool_call_content(id: &str, args: serde_json::Value) -> AssistantContent {
@@ -1883,29 +2013,39 @@ mod tests {
         assert_eq!(markers(4).await, vec!["call", "call", "result", "result"]);
     }
 
-    /// A hook that terminates the run the first time it observes a tool result.
-    struct TerminateOnToolResultHook;
-    impl<M: CompletionModel> AgentHook<M> for TerminateOnToolResultHook {
+    /// Terminates from the `x == 1` tool's result, but only *after* the slow
+    /// `x == 2` sibling has signalled it started executing — so that sibling is
+    /// genuinely in flight when the terminate fires (not merely not-yet-started).
+    struct TerminateAfterSiblingStartedHook {
+        sibling_started: Arc<tokio::sync::Notify>,
+    }
+    impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingStartedHook {
         async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolResult { .. } = event {
-                Flow::terminate("stop after a tool result")
-            } else {
-                Flow::cont()
+            if let StepEvent::ToolResult { args, .. } = event
+                && serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                    == Some(1)
+            {
+                self.sibling_started.notified().await;
+                return Flow::terminate("stop after a tool result");
             }
+            Flow::cont()
         }
     }
 
-    /// A probe tool for the concurrent error path: records how many calls
-    /// `started` and how many `completed`. The call whose `x` argument is 2
-    /// suspends across several polls *after* recording `started` but *before*
-    /// recording `completed`, so it is still in flight when the (fast) first
-    /// call's result terminates the run. A driver that **drains** the concurrent
-    /// tool stream polls it to completion (`completed == 2`); one that **cancels**
-    /// in-flight siblings on error would drop it mid-poll (`completed == 1`).
+    /// A probe tool for the concurrent drain path: records how many calls
+    /// `started` and `completed`. The `x == 2` call signals it has started, then
+    /// stays pending across several polls, so it is genuinely in flight — not
+    /// merely not-yet-started — when the `x == 1` call's result terminates the
+    /// run. A driver that **drains** the concurrent tool stream polls it to
+    /// completion (`completed == 2`); one that **cancels** in-flight siblings
+    /// would drop it mid-poll (`completed == 1`).
     #[derive(Clone)]
     struct DrainProbeTool {
         started: Arc<AtomicU32>,
         completed: Arc<AtomicU32>,
+        slow_started: Arc<tokio::sync::Notify>,
     }
 
     impl Tool for DrainProbeTool {
@@ -1921,9 +2061,9 @@ mod tests {
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             self.started.fetch_add(1, SeqCst);
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(2) {
-                // Stay pending across several polls so this sibling is still
-                // executing when the first call's ToolResult terminates the
-                // run; only a draining driver keeps polling it to completion.
+                // Signal that the slow sibling has started, then stay pending so
+                // it is still executing when the fast call's result terminates.
+                self.slow_started.notify_one();
                 for _ in 0..8 {
                     tokio::task::yield_now().await;
                 }
@@ -1933,18 +2073,17 @@ mod tests {
         }
     }
 
-    /// On the concurrent streaming path, a hook that terminates from a tool
-    /// result surfaces a `StreamingError` and ends the run with no final
-    /// response. And, like the blocking driver, every tool already dispatched
-    /// under `tool_concurrency` still runs to completion: the driver **drains**
-    /// the concurrent tool stream on error rather than cancelling in-flight
-    /// siblings. The slow sibling (`x == 2`) is still pending when the fast call
-    /// (`tc1`) terminates the run, so `completed == 2` holds only if the driver
-    /// drains it — a cancelling driver would leave `completed == 1`.
+    /// On the concurrent path, a terminate surfaces a `StreamingError`, ends the
+    /// run with no final response, and — for a sibling that is **already in
+    /// flight** — drains it to completion rather than cancelling it mid-poll (so
+    /// no detached task is left running and the deterministic terminate reason
+    /// still surfaces). The `x == 2` sibling signals it started before the
+    /// `x == 1` result terminates, so `completed == 2` holds only under drain.
     #[tokio::test]
     async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
         let started = Arc::new(AtomicU32::new(0));
         let completed = Arc::new(AtomicU32::new(0));
+        let slow_started = Arc::new(tokio::sync::Notify::new());
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
@@ -1960,12 +2099,15 @@ mod tests {
             .tool(DrainProbeTool {
                 started: started.clone(),
                 completed: completed.clone(),
+                slow_started: slow_started.clone(),
             })
             .build()
             .runner("add two pairs")
             .max_turns(3)
             .tool_concurrency(2)
-            .add_hook(TerminateOnToolResultHook)
+            .add_hook(TerminateAfterSiblingStartedHook {
+                sibling_started: slow_started,
+            })
             .stream()
             .await;
 
@@ -1994,10 +2136,13 @@ mod tests {
             !saw_final_response,
             "a terminated run must not yield a final response"
         );
-        // Both tools were dispatched, and — crucially — both ran to completion:
-        // the slow sibling finished under drain rather than being cancelled when
-        // the fast call terminated the run (cancel would leave completed == 1).
-        assert_eq!(started.load(SeqCst), 2, "both tools should be dispatched");
+        // The already-in-flight slow sibling is drained to completion, not
+        // cancelled mid-poll (which would leave `completed == 1`).
+        assert_eq!(
+            started.load(SeqCst),
+            2,
+            "both tools started (both in flight)"
+        );
         assert_eq!(
             completed.load(SeqCst),
             2,
@@ -2147,16 +2292,14 @@ mod tests {
         }
     }
 
-    /// Run-all-then-decide, lock-step across surfaces: on a multi-tool turn whose
-    /// first tool's hook terminates the run, both run() and stream() still
-    /// execute the remaining tools (each tool is independently hook-gated), then
-    /// surface the first-called terminate reason. The terminating tool's own body
-    /// never runs (its `ToolCall` hook fired first), so only the second tool's
-    /// `call` increments — identically on both surfaces and at any concurrency.
-    /// This restores the pre-refactor blocking `collect`-all semantics and
-    /// matches the dominant agent-framework behavior.
+    /// Fail-fast, lock-step across surfaces: on a multi-tool turn whose first
+    /// tool's hook terminates the run, the SEQUENTIAL default (`tool_concurrency`
+    /// == 1) surfaces the terminate immediately and does **not** start the
+    /// remaining sibling tools — so tool B's side effect never runs. The
+    /// terminating tool's own body never runs either (its `ToolCall` hook fired
+    /// first), so `calls == 0` on both drivers, which share the tool driver.
     #[tokio::test]
-    async fn default_concurrency_terminate_runs_remaining_tools_on_both_drivers() {
+    async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
         let blocking_calls = Arc::new(AtomicU32::new(0));
         AgentBuilder::new(two_terminating_tools_blocking_model())
             .tool(CountingAddTool {
@@ -2171,8 +2314,8 @@ mod tests {
             .expect_err("the run terminates");
         assert_eq!(
             blocking_calls.load(SeqCst),
-            1,
-            "blocking run() must still run the second tool before surfacing the terminate"
+            0,
+            "fail-fast: blocking run() must not start the second tool after the first terminates"
         );
 
         let streaming_calls = Arc::new(AtomicU32::new(0));
@@ -2200,9 +2343,128 @@ mod tests {
         assert!(saw_error, "stream() must surface the terminate error");
         assert_eq!(
             streaming_calls.load(SeqCst),
-            1,
-            "stream() must still run the second tool before surfacing the terminate"
+            0,
+            "fail-fast: stream() must not start the second tool after the first terminates"
         );
+    }
+
+    /// Records the `x` arg of every tool call that reaches its body. The `x == 1`
+    /// sibling stays pending across several polls (so it holds its concurrency
+    /// slot in flight), which lets the synchronous terminator free the *other*
+    /// slot first and drop the not-yet-started `x == 2` sibling.
+    #[derive(Clone)]
+    struct RecordingArgsTool {
+        called: Arc<Mutex<Vec<i64>>>,
+    }
+
+    impl Tool for RecordingArgsTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = serde_json::Value;
+        type Output = i32;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            MockAddTool.definition(String::new()).await
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            let x = args.get("x").and_then(serde_json::Value::as_i64);
+            if let Some(x) = x {
+                self.called.lock().expect("called").push(x);
+            }
+            if x == Some(1) {
+                for _ in 0..8 {
+                    tokio::task::yield_now().await;
+                }
+            }
+            Ok(0)
+        }
+    }
+
+    fn three_tools_first_terminates_streaming_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([
+            vec![
+                // tc0 (x==0) terminates on its ToolCall hook (no execution); tc1
+                // (x==1) is slow/in-flight; tc2 (x==2) is not-yet-started at
+                // concurrency 2 and must be dropped once tc0 terminates.
+                MockStreamEvent::tool_call("tc0", "add", json!({"x": 0, "y": 0})),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 1})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("unreachable"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ])
+    }
+
+    /// Concurrent fail-fast: when a tool terminates the turn under
+    /// `tool_concurrency > 1`, a sibling *beyond* the concurrency window — not yet
+    /// started when the terminate is observed — is dropped and its side effect
+    /// never runs. With concurrency 2 and three tools, tc0 (`x == 0`) terminates
+    /// synchronously on its `ToolCall` hook, and tc1 (`x == 1`) stays in flight
+    /// holding its slot, so tc2 (`x == 2`) is pulled only after tc0 frees a slot —
+    /// by which time the run is terminating, so tc2 is deterministically dropped.
+    /// The pre-fix run-all-then-decide would have executed tc2 anyway.
+    #[tokio::test]
+    async fn concurrent_terminate_drops_not_yet_started_siblings() {
+        let called = Arc::new(Mutex::new(Vec::new()));
+        let mut stream = AgentBuilder::new(three_tools_first_terminates_streaming_model())
+            .tool(RecordingArgsTool {
+                called: called.clone(),
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .add_hook(TerminateOnArgZeroHook)
+            .stream()
+            .await;
+
+        let (saw_error, saw_final) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+                let mut saw_error = false;
+                let mut saw_final = false;
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
+                        Ok(_) => {}
+                        Err(_) => saw_error = true,
+                    }
+                }
+                (saw_error, saw_final)
+            })
+            .await
+            .expect("the concurrent tool drive must not hang");
+
+        assert!(saw_error, "the terminated run must surface an error");
+        assert!(
+            !saw_final,
+            "a terminated run must not yield a final response"
+        );
+        let called = called.lock().expect("called").clone();
+        assert!(
+            !called.contains(&2),
+            "the not-yet-started sibling beyond the concurrency window (x==2) must be \
+             dropped, not executed; called args: {called:?}"
+        );
+    }
+
+    /// Terminates the run from the `ToolCall` event of the tool whose `x` arg is 0.
+    struct TerminateOnArgZeroHook;
+    impl<M: CompletionModel> AgentHook<M> for TerminateOnArgZeroHook {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ToolCall { args, .. } = event
+                && serde_json::from_str::<serde_json::Value>(args)
+                    .ok()
+                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                    == Some(0)
+            {
+                return Flow::terminate("stop");
+            }
+            Flow::cont()
+        }
     }
 
     /// `tool_concurrency(0)` is clamped to 1 and runs to completion. The timeout
@@ -3789,18 +4051,21 @@ mod tests {
         let streaming_model =
             MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
         let streaming_probe = streaming_model.clone();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let stream = AgentBuilder::new(streaming_model)
             .add_hook(HistoryOverrideHook)
             .build()
             .runner("real prompt")
             .stream()
             .await;
-        while let Some(item) = stream.next().await {
-            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
-        }
+        let final_response = drive_to_final_response(stream).await;
         assert!(
             request_has_sentinel(streaming_probe.requests().first().expect("one request")),
             "the overridden history reaches the provider on the streaming surface too"
+        );
+        assert!(
+            !messages_have_sentinel(final_response.history().expect("history")),
+            "the persisted transcript is untouched by the per-turn history override on \
+             the streaming surface too"
         );
     }
 
@@ -3848,6 +4113,71 @@ mod tests {
             streaming_hook.count(StepEventKind::StreamResponseFinish),
             1,
             "the tool-only turn fires no StreamResponseFinish"
+        );
+    }
+
+    /// Records the content kinds of the first turn's `ModelTurnFinished`.
+    #[derive(Clone, Default)]
+    struct CaptureFirstTurnContent {
+        kinds: Arc<Mutex<Option<Vec<&'static str>>>>,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for CaptureFirstTurnContent {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ModelTurnFinished { turn, content, .. } = event
+                && turn == 1
+            {
+                let kinds = content
+                    .iter()
+                    .map(|c| match c {
+                        AssistantContent::Reasoning(_) => "reasoning",
+                        AssistantContent::Text(_) => "text",
+                        AssistantContent::ToolCall(_) => "tool_call",
+                        _ => "other",
+                    })
+                    .collect();
+                *self.kinds.lock().expect("kinds") = Some(kinds);
+            }
+            Flow::cont()
+        }
+    }
+
+    /// On the streaming surface, `ModelTurnFinished.content` carries the
+    /// **canonical** committed content from `StreamedTurn::finish` (reasoning →
+    /// text → tool calls), not the raw `stream.choice` aggregate. The turn streams
+    /// reasoning, then a tool call, then text (a non-canonical emission order), so
+    /// a raw-choice implementation would surface `reasoning, tool_call, text` —
+    /// the canonical event instead reports `reasoning, text, tool_call`.
+    #[tokio::test]
+    async fn streaming_model_turn_finished_carries_canonical_committed_content() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::reasoning("think"),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::text("answer"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let hook = CaptureFirstTurnContent::default();
+        let stream = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .add_hook(hook.clone())
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .stream()
+            .await;
+        let _ = drive_to_final_response(stream).await;
+
+        assert_eq!(
+            hook.kinds.lock().expect("kinds").clone(),
+            Some(vec!["reasoning", "text", "tool_call"]),
+            "ModelTurnFinished carries the canonical reasoning->text->tool ordering \
+             from StreamedTurn::finish, not the raw stream.choice emission order"
         );
     }
 

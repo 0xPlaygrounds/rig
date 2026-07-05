@@ -142,6 +142,21 @@ impl std::fmt::Display for RunId {
 /// and mutates through an internal lock. Reads clone the stored value out (the
 /// lock cannot hand out a borrow), so store cheaply-cloneable values.
 ///
+/// # Concurrency
+///
+/// Most events are dispatched sequentially within a run, but at
+/// [`tool_concurrency`](crate::agent::AgentRunner::tool_concurrency)` > 1` the
+/// [`ToolCall`](StepEvent::ToolCall) / [`ToolResult`](StepEvent::ToolResult)
+/// hooks for *different* tools in the same turn may run **concurrently**, all
+/// sharing this one scratchpad. Each accessor ([`insert`](Self::insert),
+/// [`update`](Self::update), …) is race-free *per operation* (it holds the lock
+/// for the whole read-modify-write), but the framework imposes **no
+/// deterministic ordering** across those concurrent tool hooks — the order in
+/// which two tools' hooks touch the scratchpad depends on tool completion
+/// timing. Prefer commutative / idempotent state (a counter, a set union), or
+/// key per-tool state by the tool call id / internal call id, rather than
+/// relying on the order of concurrent updates.
+///
 /// # Example
 /// ```
 /// # use rig_core::agent::hook::Scratchpad;
@@ -155,8 +170,9 @@ impl std::fmt::Display for RunId {
 #[derive(Clone, Default)]
 pub struct Scratchpad {
     // Reuses the tested `ToolCallExtensions` type-map as the storage, wrapped in
-    // a shared lock so `&HookContext` hooks can mutate it. Sequential within a
-    // run (the driver awaits each hook), so this never actually contends.
+    // a shared lock so `&HookContext` hooks can mutate it. Under
+    // `tool_concurrency > 1` several tools' `ToolCall`/`ToolResult` hooks may
+    // touch this concurrently, so the lock is load-bearing, not decorative.
     inner: Arc<std::sync::Mutex<ToolCallExtensions>>,
 }
 
@@ -194,6 +210,9 @@ impl Scratchpad {
     /// starting from [`Default`] when absent. The value is stored back and the
     /// closure's return value is returned.
     ///
+    /// The whole read-modify-write is atomic (no lost updates), but at
+    /// `tool_concurrency > 1` it imposes **no ordering** across concurrent tool
+    /// hooks — see the [type-level concurrency note](Scratchpad#concurrency).
     /// This is the race-free way to bump a counter or accumulate:
     /// ```
     /// # use rig_core::agent::hook::Scratchpad;
@@ -229,6 +248,13 @@ impl std::fmt::Debug for Scratchpad {
 /// nothing here reaches the sans-IO [`AgentRun`](crate::agent::run::AgentRun)
 /// state machine. Hooks hold it by `&`, so all fields are read via accessors and
 /// run-scoped mutation goes through [`scratchpad`](Self::scratchpad).
+///
+/// One `HookContext` is shared by every hook invocation in a run. At
+/// [`tool_concurrency`](crate::agent::AgentRunner::tool_concurrency)` > 1` the
+/// [`ToolCall`](StepEvent::ToolCall) / [`ToolResult`](StepEvent::ToolResult)
+/// hooks for different tools in a turn can run concurrently against this shared
+/// context — see the [`Scratchpad` concurrency note](Scratchpad#concurrency) for
+/// how to store run-scoped state safely under that concurrency.
 #[derive(Debug)]
 pub struct HookContext {
     run_id: RunId,
@@ -1058,7 +1084,16 @@ where
 }
 
 /// The no-op hook: observes nothing, never alters control flow.
-impl<M> AgentHook<M> for () where M: CompletionModel {}
+impl<M> AgentHook<M> for ()
+where
+    M: CompletionModel,
+{
+    /// Observe nothing, so the runner skips building/dispatching every event
+    /// (including the high-frequency streaming deltas) for a `()` hook.
+    fn observes(&self, _kind: StepEventKind) -> bool {
+        false
+    }
+}
 
 /// Object-safe shim over [`AgentHook`] so a [`HookStack`] can hold a
 /// heterogeneous list of hooks behind `Arc`.

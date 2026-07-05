@@ -704,16 +704,16 @@ where
 
         if runner.concurrency <= 1 {
             // Sequential default: one ToolCall/ToolResult pair per tool, strictly
-            // interleaved. Run-all-then-decide (matching the concurrent branch and
-            // the pre-refactor blocking driver's collect-all): every tool in the
-            // turn executes and fires its hooks, then the lowest-call-index
-            // terminate error is surfaced. Once the run is known to terminate we
-            // stop *surfacing* further stream items, but keep running the
-            // remaining tools so both surfaces are lock-step at any concurrency.
+            // interleaved. Fail-fast on termination: a tool hook that terminates
+            // (`Flow::Terminate`, or a fail-closed misuse surfaced as an error)
+            // ends the turn immediately, so the *remaining* sibling tools never
+            // start and never run their side effects. Since tools run in call
+            // order, the first terminating tool is the lowest call-index one, so
+            // the surfaced reason is deterministic. Both drivers share this path,
+            // so `run()` and `stream()` stay lock-step.
             let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
-            let mut first_error: Option<(usize, PromptError)> = None;
 
-            for (index, pending) in calls.into_iter().enumerate() {
+            for pending in calls {
                 let tool_call = pending.tool_call;
                 if let Some(result) = pending.preresolved_result {
                     results.push(result);
@@ -724,7 +724,7 @@ where
 
                 let tool_span = chain_tool_span(new_execute_tool_span());
 
-                if forward_items && first_error.is_none() {
+                if forward_items {
                     yield Ok(MultiTurnStreamItem::stream_item(
                         StreamedAssistantContent::ToolCall {
                             tool_call: tool_call.clone(),
@@ -748,7 +748,6 @@ where
                 match result {
                     Ok(content) => {
                         if forward_items
-                            && first_error.is_none()
                             && let UserContent::ToolResult(tool_result) = &content
                         {
                             yield Ok(MultiTurnStreamItem::StreamUserItem(
@@ -760,17 +759,13 @@ where
                         }
                         results.push(content);
                     }
+                    // Fail-fast: surface the terminate reason and stop — the
+                    // subsequent sibling tools are never dispatched.
                     Err(err) => {
-                        if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
-                            first_error = Some((index, err));
-                        }
+                        yield Err(StreamingError::Prompt(Box::new(err)));
+                        return;
                     }
                 }
-            }
-
-            if let Some((_, err)) = first_error {
-                yield Err(StreamingError::Prompt(Box::new(err)));
-                return;
             }
 
             if let Err(err) = run.tool_results(results) {
@@ -818,15 +813,28 @@ where
                 indexed_calls.push((index, pending, tool_span, yield_id));
             }
 
+            // Set once a tool hook terminates the turn. A sibling future checks it
+            // *before* executing its tool, so a not-yet-started sibling is dropped
+            // (its side effect never runs) — this avoids the Semantic-Kernel
+            // fail-open behavior of running every dispatched tool to completion.
+            // Already-in-flight siblings (past the check) are still drained, so the
+            // lowest call-index terminate reason wins deterministically and no
+            // detached task is left running.
+            let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let unordered = stream::iter(indexed_calls)
                 .map(|(index, pending, tool_span, yield_id)| {
                     let hooks = &runner.hooks;
                     let tool_server_handle = &runner.tool_server_handle;
                     let tool_extensions = &runner.tool_extensions;
                     let full_history_for_errors = &full_history_for_errors;
+                    let terminating = terminating.clone();
                     async move {
+                        // `None` marks a skipped (never-executed) sibling.
                         if let Some(result) = pending.preresolved_result {
-                            return (index, yield_id, Ok(result));
+                            return (index, yield_id, Some(Ok(result)));
+                        }
+                        if terminating.load(std::sync::atomic::Ordering::SeqCst) {
+                            return (index, yield_id, None);
                         }
 
                         let internal_call_id =
@@ -841,7 +849,7 @@ where
                             full_history_for_errors,
                         )
                         .await;
-                        (index, yield_id, result)
+                        (index, yield_id, Some(result))
                     }
                     .instrument(tool_span)
                 })
@@ -852,15 +860,19 @@ where
             results.resize_with(call_count, || None);
             // Hold the *lowest-index* error (call order), not the first to
             // complete, so the surfaced terminate reason is deterministic and
-            // matches the sequential branch's call-order behavior; keep draining
-            // so in-flight siblings finish and fire their hooks.
+            // matches the sequential branch's call-order behavior.
             let mut first_error: Option<(usize, PromptError)> = None;
-            while let Some((index, yield_id, result)) = unordered.next().await {
+            while let Some((index, yield_id, outcome)) = unordered.next().await {
+                // A skipped sibling (dropped after termination) records nothing.
+                let result = match outcome {
+                    Some(result) => result,
+                    None => continue,
+                };
                 match result {
                     Ok(content) => match results.get_mut(index) {
                         Some(slot) => {
-                            // Once any tool has errored the run will terminate, so
-                            // stop surfacing successful results (but keep draining).
+                            // Once any tool has terminated the run will surface the
+                            // error, so a later successful result is not surfaced.
                             // `yield_id` is `None` when items aren't forwarded (the
                             // blocking fold), so no clone happens there.
                             if first_error.is_none()
@@ -889,6 +901,10 @@ where
                         }
                     },
                     Err(err) => {
+                        // Fail-fast: stop starting new siblings (the flag makes
+                        // not-yet-started ones skip), but keep draining in-flight
+                        // ones so the lowest call-index terminator wins.
+                        terminating.store(true, std::sync::atomic::Ordering::SeqCst);
                         if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
                             first_error = Some((index, err));
                         }
@@ -1276,6 +1292,13 @@ where
 
             self.last_message_id = stream.message_id.clone();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            // The canonical (committed) assistant content: `finish` normalizes
+            // reasoning/text/tool ordering, so this can differ from the raw
+            // `stream.choice` aggregate. `ModelTurnFinished` — the normalized
+            // per-turn event — carries this, matching what is recorded into run
+            // history; the raw `stream.choice` is kept in `last_final_choice` for
+            // the raw/final streaming behavior.
+            let canonical_choice = streamed_turn.choice.clone();
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(Box::new(err).into());
                 return;
@@ -1291,7 +1314,7 @@ where
                         .hooks
                         .on_event(hook_ctx, StepEvent::ModelTurnFinished {
                             turn: hook_ctx.turn(),
-                            content: &final_turn_content,
+                            content: &canonical_choice,
                             usage: last_usage,
                         })
                         .await,
