@@ -1049,8 +1049,14 @@ where
 {
     /// Called at every observable point of the agent run (subject to
     /// [`observes`](Self::observes)). Receives the run-scoped [`HookContext`] and
-    /// the [`StepEvent`]. The default implementation observes nothing and returns
-    /// [`Flow::Continue`].
+    /// the [`StepEvent`]. The default implementation is a no-op: it ignores every
+    /// event and returns [`Flow::Continue`]. It does **not** narrow
+    /// [`observes`](Self::observes) (which defaults to `true`), so a hook that
+    /// takes this default is still dispatched every event — override `observes`
+    /// to skip the high-frequency delta events. (The `()` no-op hook overrides
+    /// `observes` to `false`, so the runner skips dispatching those delta events
+    /// to it; it still receives, and returns [`Flow::Continue`] for, every other
+    /// event.)
     fn on_event(
         &self,
         ctx: &HookContext,
@@ -1445,7 +1451,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn first_terminate_short_circuits_on_observe_only_events() {
+    async fn first_terminate_short_circuits_on_chained_tool_call() {
         // For a tool-call (a chained event), `Terminate` is terminal mid-chain,
         // so a later hook must not run once an earlier hook terminates.
         let log = Arc::new(Mutex::new(Vec::new()));
@@ -1467,6 +1473,41 @@ mod tests {
             *log.lock().expect("log"),
             vec![1],
             "a later hook must not run after an earlier hook terminates"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_terminate_short_circuits_on_observe_only_events() {
+        // For an observe-only event (the `_ =>` first-non-`Continue`-wins arm,
+        // here a `TextDelta`), the first hook to terminate must short-circuit the
+        // rest — this exercises the arm the chained tool-call test does not.
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut stack = HookStack::<M>::with(Recorder {
+            label: 1,
+            log: log.clone(),
+            stop: true,
+        });
+        stack.push(Recorder {
+            label: 2,
+            log: log.clone(),
+            stop: false,
+        });
+
+        let flow = stack
+            .on_event(
+                &ctx(),
+                StepEvent::TextDelta {
+                    delta: "hi",
+                    aggregated: "hi",
+                },
+            )
+            .await;
+
+        assert!(matches!(flow, Flow::Terminate { .. }));
+        assert_eq!(
+            *log.lock().expect("log"),
+            vec![1],
+            "a later hook must not run after an earlier hook terminates an observe-only event"
         );
     }
 
@@ -1596,6 +1637,39 @@ mod tests {
             stack.on_event(&ctx(), tool_call_event()).await,
             Flow::Continue
         ));
+    }
+
+    #[test]
+    fn unit_hook_observes_no_event_kind() {
+        // `impl AgentHook for ()` is the no-op hook: it must report interest in
+        // *no* event kind, so the runner can skip building and dispatching even
+        // the high-frequency delta events for it. The trait-default `observes`
+        // returns `true`; `()` deliberately overrides it to `false`, so this is
+        // the regression guard that the override stays in place.
+        let all_kinds = [
+            StepEventKind::CompletionCall,
+            StepEventKind::CompletionResponse,
+            StepEventKind::ModelTurnFinished,
+            StepEventKind::InvalidToolCall,
+            StepEventKind::ToolCall,
+            StepEventKind::ToolResult,
+            StepEventKind::TextDelta,
+            StepEventKind::ToolCallDelta,
+            StepEventKind::StreamResponseFinish,
+        ];
+        let unit_stack = HookStack::<M>::with(());
+        for kind in all_kinds {
+            assert!(
+                !<() as AgentHook<M>>::observes(&(), kind),
+                "the `()` no-op hook must not observe {kind:?}"
+            );
+            // A stack wrapping only `()` inherits that: it observes nothing, so
+            // the runner skips delta dispatch for it too.
+            assert!(
+                !unit_stack.observes(kind),
+                "a HookStack::with(()) must not observe {kind:?} either"
+            );
+        }
     }
 
     // --- RequestPatch merge unit tests ---

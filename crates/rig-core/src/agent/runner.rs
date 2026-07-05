@@ -589,7 +589,7 @@ pub(crate) struct ToolCallOutcome {
 /// emitted verbatim ([`tool_result_message`]) while a real tool output is parsed
 /// ([`tool_result_output`]). Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
-/// Returns whether the tool body executed via [`ToolCallOutcome::executed`].
+/// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
 pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
     ctx: &HookContext,
@@ -3686,6 +3686,69 @@ mod tests {
         assert_eq!(
             blocking_hook.count(StepEventKind::CompletionResponse),
             streaming_hook.count(StepEventKind::StreamResponseFinish),
+        );
+
+        // The normalized per-turn `ModelTurnFinished` is suppressed on the
+        // recovered turn 1 on BOTH surfaces too (its own guard, separate from the
+        // medium-specific response-finish guards above), so only the accepted turn
+        // 2 fires it — count is 1, not 2, on each driver. Without the suppression
+        // this would be 2, and a per-turn accounting hook would double-count the
+        // recovered turn.
+        assert_eq!(
+            blocking_hook.count(StepEventKind::ModelTurnFinished),
+            1,
+            "the recovered turn must not fire ModelTurnFinished"
+        );
+        assert_eq!(
+            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            1,
+            "the recovered turn must not fire ModelTurnFinished on the streaming surface either"
+        );
+        // Parity: the normalized per-turn event fires the same number of times on
+        // both drivers even when a turn is recovered.
+        assert_eq!(
+            blocking_hook.count(StepEventKind::ModelTurnFinished),
+            streaming_hook.count(StepEventKind::ModelTurnFinished),
+        );
+    }
+
+    /// A prompt/runner-level `add_hook` APPENDS to the agent's default hooks
+    /// rather than replacing them (the `with_hook` → `add_hook` semantic change):
+    /// a hook registered on the builder and a hook registered on the runner both
+    /// observe the same run.
+    #[tokio::test]
+    async fn runner_add_hook_appends_to_agent_default_hooks() {
+        let agent_hook = RecordingHook::default();
+        let runner_hook = RecordingHook::default();
+
+        // `agent_hook` is registered on the builder; `runner_hook` is registered
+        // on the runner obtained from that agent. `AgentRunner::from_agent` clones
+        // the agent's hook stack and `add_hook` pushes on top, so both must fire.
+        AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .add_hook(agent_hook.clone())
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(3)
+            .add_hook(runner_hook.clone())
+            .run()
+            .await
+            .expect("run should succeed");
+
+        assert!(
+            agent_hook.count(StepEventKind::CompletionCall) >= 1,
+            "the agent-default hook must still observe the run after a runner-level add_hook"
+        );
+        assert!(
+            runner_hook.count(StepEventKind::CompletionCall) >= 1,
+            "the runner-level hook must also observe the run"
+        );
+        // Both saw the same number of completion calls — the runner-level hook
+        // appended to the agent stack; it did not replace it.
+        assert_eq!(
+            agent_hook.count(StepEventKind::CompletionCall),
+            runner_hook.count(StepEventKind::CompletionCall),
+            "add_hook appends (both hooks observe every turn); it does not replace"
         );
     }
 
