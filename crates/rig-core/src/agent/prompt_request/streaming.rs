@@ -48,9 +48,18 @@ pub enum MultiTurnStreamItem<R> {
     /// A streamed assistant content item — the content the **model emitted**:
     /// text/reasoning deltas, tool-call deltas, and, when the model turn is
     /// committed, the complete [`StreamedAssistantContent::ToolCall`] for each
-    /// tool call the model made. A model tool call is reported here whether or
-    /// not Rig goes on to execute it; it is **not** an execution-lifecycle event
-    /// (see [`ToolExecutionStart`](Self::ToolExecutionStart)).
+    /// tool call Rig routes to execution. Such a call is reported here whether or
+    /// not the tool body ultimately runs (a hook `Flow::Skip` still reports it);
+    /// it is **not** an execution-lifecycle event (see
+    /// [`ToolExecutionStart`](Self::ToolExecutionStart)).
+    ///
+    /// Two kinds of model tool call are **not** re-emitted as a complete
+    /// `ToolCall` item here (their arguments still stream as tool-call deltas):
+    /// a call rejected and handled by invalid-tool-call recovery (surfaced via
+    /// that recovery path), and a structured-output Tool-mode output-tool call,
+    /// which finalizes the run directly — its structured result is surfaced in
+    /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
+    /// `ToolCall` item.
     StreamAssistantItem(StreamedAssistantContent<R>),
     /// Rig **executed** a tool call. Surfaced only for a tool whose body actually
     /// ran (it passed its `ToolCall` hook checks) — never for a model tool call

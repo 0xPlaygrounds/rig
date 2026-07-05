@@ -442,7 +442,13 @@ pub enum StepEvent<'a, M: CompletionModel> {
     ModelTurnFinished {
         /// One-based index of this model call within the run.
         turn: usize,
-        /// The turn's assistant content, as recorded into the run.
+        /// The model's assistant content for this turn — the canonical committed
+        /// model output. For an ordinary turn this is exactly what is recorded
+        /// into the run. On a structured-output Tool-mode turn that finalizes by
+        /// calling the output tool, this is the model-emitted content **including**
+        /// that output-tool call; the run then persists the turn as assistant text
+        /// (the structured output) with the tool call dropped, so the persisted
+        /// message differs from this content.
         content: &'a OneOrMany<AssistantContent>,
         /// Token usage for this turn (zeroed if the provider reported none).
         usage: Usage,

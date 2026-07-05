@@ -4860,6 +4860,126 @@ mod tests {
         );
     }
 
+    /// Captures whether any `ModelTurnFinished.content` carried a tool call named
+    /// `final_result` — the model-emitted structured-output output-tool call.
+    #[derive(Clone, Default)]
+    struct CaptureOutputToolInModelTurn {
+        saw_output_tool_call: Arc<Mutex<bool>>,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for CaptureOutputToolInModelTurn {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::ModelTurnFinished { content, .. } = event
+                && content.iter().any(|c| {
+                    matches!(c, AssistantContent::ToolCall(tc) if tc.function.name == "final_result")
+                })
+            {
+                *self.saw_output_tool_call.lock().expect("lock") = true;
+            }
+            Flow::cont()
+        }
+    }
+
+    /// `ModelTurnFinished.content` carries the **model-emitted** content — including
+    /// a structured-output Tool-mode output-tool call — on both surfaces, even though
+    /// the run persists that turn as assistant text (the structured output) with the
+    /// tool call dropped. Guards the documented `content` contract: it is the model's
+    /// committed turn content, not the finalized/persisted content, in Tool mode.
+    #[tokio::test]
+    async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
+        // Blocking surface.
+        let hook = CaptureOutputToolInModelTurn::default();
+        let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
+            "out1",
+            "final_result",
+            json!({ "answer": "done" }),
+        )]))
+        .output_schema::<Answer>()
+        .output_mode(OutputMode::Tool)
+        .add_hook(hook.clone())
+        .build()
+        .runner("go")
+        .max_turns(2)
+        .run()
+        .await
+        .expect("run should finalize via the output tool");
+        assert!(
+            *hook.saw_output_tool_call.lock().expect("lock"),
+            "ModelTurnFinished.content must carry the model-emitted output-tool call (blocking)"
+        );
+        assert!(
+            response.output.contains("done"),
+            "the run finalizes with the structured output, not the raw tool call: {:?}",
+            response.output
+        );
+
+        // Streaming surface — same content contract.
+        let s_hook = CaptureOutputToolInModelTurn::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::tool_call("out1", "final_result", json!({ "answer": "done" })),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ]]))
+        .output_schema::<Answer>()
+        .output_mode(OutputMode::Tool)
+        .add_hook(s_hook.clone())
+        .build()
+        .runner("go")
+        .max_turns(2)
+        .stream()
+        .await;
+        while stream.next().await.is_some() {}
+        assert!(
+            *s_hook.saw_output_tool_call.lock().expect("lock"),
+            "ModelTurnFinished.content must carry the model-emitted output-tool call (streaming)"
+        );
+    }
+
+    /// A structured-output Tool-mode output-tool call finalizes the run directly, so
+    /// on the streaming surface it is **not** re-emitted as a complete
+    /// `StreamAssistantItem(StreamedAssistantContent::ToolCall)` item (it bypasses
+    /// `drive_tool_calls`); its structured result is surfaced in the `FinalResponse`.
+    /// Guards the narrowed `StreamAssistantItem` contract.
+    #[tokio::test]
+    async fn output_tool_finalization_emits_no_complete_tool_call_stream_item() {
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::tool_call("out1", "final_result", json!({ "answer": "done" })),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ]]))
+        .output_schema::<Answer>()
+        .output_mode(OutputMode::Tool)
+        .build()
+        .runner("go")
+        .max_turns(2)
+        .stream()
+        .await;
+
+        let mut saw_complete_output_tool_call = false;
+        let mut final_has_output = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item") {
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
+                    tool_call,
+                    ..
+                }) if tool_call.function.name == "final_result" => {
+                    saw_complete_output_tool_call = true;
+                }
+                MultiTurnStreamItem::FinalResponse(res) => {
+                    final_has_output = res.response().contains("done");
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            !saw_complete_output_tool_call,
+            "the output-tool call finalizes the run, so no complete \
+             StreamAssistantItem::ToolCall item must be emitted for it"
+        );
+        assert!(
+            final_has_output,
+            "the structured output must be surfaced via the FinalResponse"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Human-in-the-loop (HITL): one hook gates each tool call behind a human
     // decision, mapping approve/deny/edit/abort onto the existing Flow actions
