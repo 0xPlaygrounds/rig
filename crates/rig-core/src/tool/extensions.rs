@@ -1,11 +1,17 @@
-//! Per-call runtime extensions for tool execution.
+//! Type-erased extension maps for tool execution.
 //!
-//! This module provides [`ToolCallExtensions`], a type-map that allows callers
-//! to attach arbitrary typed values and tools to extract them at call time.
-//! Tools that don't need any extensions simply ignore them.
+//! This module provides two type-maps built on the same storage primitive:
 //!
-//! The implementation follows the `AnyClone` pattern from the [`http::Extensions`]
-//! type in the `http` crate, including the no-op [`IdHasher`] over `TypeId` keys.
+//! - [`ToolCallExtensions`] — attached by a *caller* before a run and read by a
+//!   tool at call time (auth tokens, session IDs, …). It travels *into* a tool.
+//! - [`ToolResultExtensions`] — attached by a *tool* to its structured
+//!   [`ToolExecutionResult`](crate::tool::ToolExecutionResult) and read by hooks,
+//!   tracing, and policies. It travels *out of* a tool and is **never** sent to
+//!   the model.
+//!
+//! Both wrap the private [`TypeMap`], which follows the `AnyClone` pattern from
+//! the [`http::Extensions`] type in the `http` crate, including the no-op
+//! [`IdHasher`] over `TypeId` keys.
 //!
 //! [`http::Extensions`]: https://docs.rs/http/latest/http/struct.Extensions.html
 
@@ -57,9 +63,9 @@ impl Hasher for IdHasher {
 // `WasmCompatSend`/`WasmCompatSync` are `Send`/`Sync` on every non-wasm target
 // and unconstrained on `wasm`, so a single trait definition covers both targets
 // (no `cfg`-duplicated copies). On non-wasm this transitively makes
-// `dyn AnyClone` — and therefore `ToolCallExtensions` — `Send + Sync`, which is
-// required because the extensions map is borrowed across `.await` points in async tool
-// execution. The `assert_send_sync` check below pins that property.
+// `dyn AnyClone` — and therefore both extension maps — `Send + Sync`, which is
+// required because they are borrowed across `.await` points in async tool
+// execution. The `assert_send_sync` checks below pin that property.
 
 trait AnyClone: Any + WasmCompatSend + WasmCompatSync {
     fn clone_box(&self) -> Box<dyn AnyClone>;
@@ -95,16 +101,105 @@ impl Clone for Box<dyn AnyClone> {
     }
 }
 
+// --- TypeMap: shared storage for the two public extension maps ---
+
+/// A `TypeId`-keyed map of cloneable, type-erased values.
+///
+/// The storage primitive shared by [`ToolCallExtensions`] and
+/// [`ToolResultExtensions`]. Uses `Option<Box<HashMap>>` internally so that an
+/// empty map (the common case) requires zero allocation.
+#[derive(Default, Clone)]
+pub(crate) struct TypeMap {
+    map: Option<Box<AnyMap>>,
+}
+
+impl TypeMap {
+    /// A `'static`, allocation-free empty map, so dispatch layers can hand out a
+    /// borrow of a default without owning a fresh value.
+    pub(crate) const EMPTY: TypeMap = TypeMap { map: None };
+
+    pub(crate) fn insert<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(
+        &mut self,
+        val: T,
+    ) -> Option<T> {
+        self.map
+            .get_or_insert_with(Default::default)
+            .insert(TypeId::of::<T>(), Box::new(val))
+            .and_then(|prev| prev.into_any().downcast::<T>().ok())
+            .map(|boxed| *boxed)
+    }
+
+    pub(crate) fn get<T: WasmCompatSend + WasmCompatSync + 'static>(&self) -> Option<&T> {
+        self.map
+            .as_ref()
+            .and_then(|map| map.get(&TypeId::of::<T>()))
+            // Explicit deref to dispatch via the trait object's vtable, not the
+            // blanket `AnyClone` impl that `Box` itself satisfies.
+            .and_then(|boxed| (**boxed).as_any().downcast_ref::<T>())
+    }
+
+    pub(crate) fn require<T: WasmCompatSend + WasmCompatSync + 'static>(
+        &self,
+    ) -> Result<&T, MissingExtension> {
+        self.get::<T>().ok_or(MissingExtension(type_name::<T>()))
+    }
+
+    pub(crate) fn get_mut<T: WasmCompatSend + WasmCompatSync + 'static>(
+        &mut self,
+    ) -> Option<&mut T> {
+        self.map
+            .as_mut()
+            .and_then(|map| map.get_mut(&TypeId::of::<T>()))
+            .and_then(|boxed| (**boxed).as_any_mut().downcast_mut::<T>())
+    }
+
+    pub(crate) fn remove<T: WasmCompatSend + WasmCompatSync + 'static>(&mut self) -> Option<T> {
+        self.map
+            .as_mut()
+            .and_then(|map| map.remove(&TypeId::of::<T>()))
+            .and_then(|boxed| boxed.into_any().downcast::<T>().ok())
+            .map(|boxed| *boxed)
+    }
+
+    pub(crate) fn contains<T: WasmCompatSend + WasmCompatSync + 'static>(&self) -> bool {
+        self.map
+            .as_ref()
+            .is_some_and(|map| map.contains_key(&TypeId::of::<T>()))
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.map.as_ref().map_or(0, |map| map.len())
+    }
+
+    /// The type names currently stored, for `Debug` output.
+    fn type_names(&self) -> Vec<&'static str> {
+        self.map
+            .as_ref()
+            .map(|map| map.values().map(|v| (**v).type_name()).collect())
+            .unwrap_or_default()
+    }
+}
+
+/// Write a `Debug` representation of a [`TypeMap`]-backed extension map.
+fn debug_type_map(f: &mut std::fmt::Formatter<'_>, name: &str, map: &TypeMap) -> std::fmt::Result {
+    let mut dbg = f.debug_struct(name);
+    dbg.field("entries", &map.len());
+    if map.len() > 0 {
+        dbg.field("types", &map.type_names());
+    }
+    dbg.finish()
+}
+
 // --- ToolCallExtensions ---
 
-/// Per-call runtime extensions for tools.
+/// Per-call runtime extensions supplied to a tool *by its caller*.
 ///
 /// A type-map that allows callers to attach arbitrary typed values and tools to
 /// extract them. Tools that don't need any extensions ignore them.
 ///
 /// Inspired by [`http::Extensions`](https://docs.rs/http/latest/http/struct.Extensions.html).
-/// Uses `Option<Box<HashMap>>` internally so that empty extensions (the common
-/// case when no caller-provided values are needed) require zero allocation.
+/// Backed by the shared internal `TypeMap`, so empty extensions (the common case when no
+/// caller-provided values are needed) require zero allocation.
 ///
 /// Tools receive these by shared reference, so a tool reads values with
 /// [`get`](Self::get) / [`require`](Self::require) / [`contains`](Self::contains);
@@ -118,6 +213,9 @@ impl Clone for Box<dyn AnyClone> {
 /// [`require`](Self::require), which returns a descriptive error instead of a
 /// silent `None`.
 ///
+/// The result-side counterpart — metadata a tool attaches to its output — is
+/// [`ToolResultExtensions`](crate::tool::ToolResultExtensions).
+///
 /// # Example
 /// ```
 /// use rig_core::tool::ToolCallExtensions;
@@ -129,14 +227,16 @@ impl Clone for Box<dyn AnyClone> {
 /// ```
 #[derive(Default, Clone)]
 pub struct ToolCallExtensions {
-    map: Option<Box<AnyMap>>,
+    inner: TypeMap,
 }
 
 impl ToolCallExtensions {
     /// Shared empty instance. Lets dispatch layers that need a default value
     /// hand out a `'static` reference instead of constructing (and having to
     /// own) a fresh value just to borrow it.
-    pub(crate) const EMPTY: ToolCallExtensions = ToolCallExtensions { map: None };
+    pub(crate) const EMPTY: ToolCallExtensions = ToolCallExtensions {
+        inner: TypeMap::EMPTY,
+    };
 
     /// Create an empty set of extensions.
     pub const fn new() -> Self {
@@ -152,21 +252,12 @@ impl ToolCallExtensions {
         &mut self,
         val: T,
     ) -> Option<T> {
-        self.map
-            .get_or_insert_with(Default::default)
-            .insert(TypeId::of::<T>(), Box::new(val))
-            .and_then(|prev| prev.into_any().downcast::<T>().ok())
-            .map(|boxed| *boxed)
+        self.inner.insert(val)
     }
 
     /// Get a reference to a value by type. Returns `None` if not present.
     pub fn get<T: WasmCompatSend + WasmCompatSync + 'static>(&self) -> Option<&T> {
-        self.map
-            .as_ref()
-            .and_then(|map| map.get(&TypeId::of::<T>()))
-            // Explicit deref to dispatch via the trait object's vtable, not the
-            // blanket `AnyClone` impl that `Box` itself satisfies.
-            .and_then(|boxed| (**boxed).as_any().downcast_ref::<T>())
+        self.inner.get::<T>()
     }
 
     /// Get a reference to a value by type, returning a descriptive error instead
@@ -178,36 +269,27 @@ impl ToolCallExtensions {
     pub fn require<T: WasmCompatSend + WasmCompatSync + 'static>(
         &self,
     ) -> Result<&T, MissingExtension> {
-        self.get::<T>().ok_or(MissingExtension(type_name::<T>()))
+        self.inner.require::<T>()
     }
 
     /// Get a mutable reference to a value by type. Returns `None` if not present.
     pub fn get_mut<T: WasmCompatSend + WasmCompatSync + 'static>(&mut self) -> Option<&mut T> {
-        self.map
-            .as_mut()
-            .and_then(|map| map.get_mut(&TypeId::of::<T>()))
-            .and_then(|boxed| (**boxed).as_any_mut().downcast_mut::<T>())
+        self.inner.get_mut::<T>()
     }
 
     /// Remove a value by type, returning it if present.
     pub fn remove<T: WasmCompatSend + WasmCompatSync + 'static>(&mut self) -> Option<T> {
-        self.map
-            .as_mut()
-            .and_then(|map| map.remove(&TypeId::of::<T>()))
-            .and_then(|boxed| boxed.into_any().downcast::<T>().ok())
-            .map(|boxed| *boxed)
+        self.inner.remove::<T>()
     }
 
     /// Check if a value of the given type is present.
     pub fn contains<T: WasmCompatSend + WasmCompatSync + 'static>(&self) -> bool {
-        self.map
-            .as_ref()
-            .is_some_and(|map| map.contains_key(&TypeId::of::<T>()))
+        self.inner.contains::<T>()
     }
 
     /// Number of values currently stored.
     pub fn len(&self) -> usize {
-        self.map.as_ref().map_or(0, |map| map.len())
+        self.inner.len()
     }
 
     /// Whether no values are stored.
@@ -218,31 +300,121 @@ impl ToolCallExtensions {
 
 impl std::fmt::Debug for ToolCallExtensions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut dbg = f.debug_struct("ToolCallExtensions");
-        if let Some(map) = &self.map {
-            dbg.field("entries", &map.len());
-            let type_names: Vec<&'static str> = map.values().map(|v| (**v).type_name()).collect();
-            dbg.field("types", &type_names);
-        } else {
-            dbg.field("entries", &0);
-        }
-        dbg.finish()
+        debug_type_map(f, "ToolCallExtensions", &self.inner)
     }
 }
 
-/// Error returned by [`ToolCallExtensions::require`] when the requested value is
-/// not present in the extensions.
+// --- ToolResultExtensions ---
+
+/// Type-erased metadata a *tool* attaches to its structured result.
+///
+/// The result-side counterpart of [`ToolCallExtensions`]. A tool builds these on
+/// its [`ToolReturn`](crate::tool::ToolReturn) (or directly on a
+/// [`ToolExecutionResult`](crate::tool::ToolExecutionResult)) to carry
+/// provider-specific or application-specific values — raw HTTP headers, a
+/// provider response id, retry hints — alongside the model-visible output.
+///
+/// These are **machine-visible only**: they are surfaced to hooks (via
+/// [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult)), tracing, and
+/// policies, but are **never** serialized into the tool result the model sees.
+/// This is the same "not sent to the model" contract as Pydantic AI's tool-return
+/// `metadata` and the Vercel AI SDK's `toolMetadata`.
+///
+/// Backed by the same internal `TypeMap` as [`ToolCallExtensions`], so an empty set (the
+/// common case) allocates nothing.
+///
+/// # Example
+/// ```
+/// use rig_core::tool::ToolResultExtensions;
+///
+/// #[derive(Clone, Debug, PartialEq)]
+/// struct HttpStatus(u16);
+///
+/// let mut extensions = ToolResultExtensions::new();
+/// extensions.insert(HttpStatus(404));
+/// assert_eq!(extensions.get::<HttpStatus>(), Some(&HttpStatus(404)));
+/// ```
+#[derive(Default, Clone)]
+pub struct ToolResultExtensions {
+    inner: TypeMap,
+}
+
+impl ToolResultExtensions {
+    /// Create an empty set of result extensions (allocation-free).
+    pub const fn new() -> Self {
+        Self {
+            inner: TypeMap::EMPTY,
+        }
+    }
+
+    /// Insert a typed value, returning the previous value of the same type if
+    /// one was present.
+    pub fn insert<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(
+        &mut self,
+        val: T,
+    ) -> Option<T> {
+        self.inner.insert(val)
+    }
+
+    /// Get a reference to a value by type. Returns `None` if not present.
+    pub fn get<T: WasmCompatSend + WasmCompatSync + 'static>(&self) -> Option<&T> {
+        self.inner.get::<T>()
+    }
+
+    /// Get a reference to a value by type, returning a descriptive error naming
+    /// the missing type instead of a silent `None`.
+    pub fn require<T: WasmCompatSend + WasmCompatSync + 'static>(
+        &self,
+    ) -> Result<&T, MissingExtension> {
+        self.inner.require::<T>()
+    }
+
+    /// Get a mutable reference to a value by type. Returns `None` if not present.
+    pub fn get_mut<T: WasmCompatSend + WasmCompatSync + 'static>(&mut self) -> Option<&mut T> {
+        self.inner.get_mut::<T>()
+    }
+
+    /// Remove a value by type, returning it if present.
+    pub fn remove<T: WasmCompatSend + WasmCompatSync + 'static>(&mut self) -> Option<T> {
+        self.inner.remove::<T>()
+    }
+
+    /// Check if a value of the given type is present.
+    pub fn contains<T: WasmCompatSend + WasmCompatSync + 'static>(&self) -> bool {
+        self.inner.contains::<T>()
+    }
+
+    /// Number of values currently stored.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Whether no values are stored.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl std::fmt::Debug for ToolResultExtensions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        debug_type_map(f, "ToolResultExtensions", &self.inner)
+    }
+}
+
+/// Error returned by [`ToolCallExtensions::require`] and
+/// [`ToolResultExtensions::require`] when the requested value is not present.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("required tool-call extension of type `{0}` was not found")]
+#[error("required tool extension of type `{0}` was not found")]
 pub struct MissingExtension(pub &'static str);
 
-// `ToolCallExtensions` must stay `Send + Sync` on native targets: the agent loop
-// borrows it across `.await` while executing tools. This fails to compile if a
+// Both extension maps must stay `Send + Sync` on native targets: the agent loop
+// borrows them across `.await` while executing tools. This fails to compile if a
 // future change (e.g. relaxing the `AnyClone` bounds) drops the property.
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<ToolCallExtensions>();
+    assert_send_sync::<ToolResultExtensions>();
 };
 
 #[cfg(test)]
@@ -331,7 +503,7 @@ mod tests {
     #[test]
     fn empty_extensions_has_no_allocation() {
         let extensions = ToolCallExtensions::new();
-        assert!(extensions.map.is_none());
+        assert!(extensions.inner.map.is_none());
     }
 
     #[test]
@@ -418,5 +590,28 @@ mod tests {
         assert_eq!(extensions.get::<i64>(), Some(&6));
         assert_eq!(extensions.get::<String>(), Some(&"seven".to_string()));
         assert_eq!(extensions.get::<f64>(), Some(&8.0));
+    }
+
+    // --- ToolResultExtensions: shares the TypeMap, so a couple of checks
+    // suffice to confirm the wrapper delegates correctly and stays independent
+    // of the call-side map. ---
+
+    #[test]
+    fn result_extensions_round_trip_and_require() {
+        #[derive(Clone, Debug, PartialEq)]
+        struct RawHeaders(Vec<(String, String)>);
+
+        let mut extensions = ToolResultExtensions::new();
+        assert!(extensions.is_empty());
+        extensions.insert(RawHeaders(vec![("x-req-id".into(), "abc".into())]));
+        assert_eq!(
+            extensions.get::<RawHeaders>(),
+            Some(&RawHeaders(vec![("x-req-id".into(), "abc".into())]))
+        );
+        assert!(extensions.require::<u32>().is_err());
+        assert_eq!(extensions.len(), 1);
+        let debug = format!("{extensions:?}");
+        assert!(debug.contains("ToolResultExtensions"));
+        assert!(debug.contains("entries: 1"));
     }
 }

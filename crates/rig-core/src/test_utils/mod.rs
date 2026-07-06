@@ -21,10 +21,11 @@ pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use model_listing::MockModelLister;
 pub use streaming::{MockResponse, MockStreamEvent};
 pub use tools::{
-    BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockControlledTool, MockExampleTool,
-    MockExtensionsProbeTool, MockImageGeneratorTool, MockImageOutputTool, MockObjectOutputTool,
-    MockOperationArgs, MockStringOutputTool, MockSubtractTool, MockToolError, MockToolIndex,
-    SessionId, mock_math_toolset,
+    BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockControlledTool, MockDeniedTool,
+    MockExampleTool, MockExtensionsProbeTool, MockFailingTool, MockFailure, MockHandledFailureTool,
+    MockImageGeneratorTool, MockImageOutputTool, MockMetadataTool, MockObjectOutputTool,
+    MockOperationArgs, MockRequestId, MockStringOutputTool, MockSubtractTool, MockToolError,
+    MockToolIndex, SessionId, mock_math_toolset,
 };
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,

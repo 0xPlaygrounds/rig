@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::{
     completion::ToolDefinition,
-    tool::{Tool, ToolCallExtensions, ToolSet},
+    tool::{Tool, ToolCallExtensions, ToolFailure, ToolFailureKind, ToolReturn, ToolSet},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
 };
@@ -469,5 +469,169 @@ impl VectorStoreIndex for BarrierMockToolIndex {
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
         self.barrier.wait().await;
         Ok(vec![(1.0, self.tool_id.clone())])
+    }
+}
+
+/// Error type for [`MockFailingTool`], carrying a fixed message.
+#[derive(Debug, thiserror::Error)]
+#[error("mock tool call failed")]
+pub struct MockFailure;
+
+/// A tool that always fails, classifying its error as a configured
+/// [`ToolFailureKind`] via [`Tool::classify_error`]. Used to exercise structured
+/// tool-failure surfacing (timeout, not-found, rate-limited, …) without a live
+/// provider. Registered under the name `flaky_tool`.
+#[derive(Clone)]
+pub struct MockFailingTool {
+    kind: ToolFailureKind,
+}
+
+impl MockFailingTool {
+    /// A tool that fails with the given classification every call.
+    pub fn new(kind: ToolFailureKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl Tool for MockFailingTool {
+    const NAME: &'static str = "flaky_tool";
+    type Error = MockFailure;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "A tool that always fails".to_string(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Err(MockFailure)
+    }
+
+    fn classify_error(&self, error: &Self::Error) -> ToolFailure {
+        let message = error.to_string();
+        match self.kind {
+            ToolFailureKind::Timeout => ToolFailure::timeout(message),
+            ToolFailureKind::NotFound => ToolFailure::not_found(message).with_http_status(404),
+            ToolFailureKind::RateLimited => {
+                ToolFailure::rate_limited(message).with_http_status(429)
+            }
+            other => ToolFailure::new(other, message),
+        }
+    }
+}
+
+/// A tool that reports a *handled* failure via [`ToolReturn`]: the Rust call
+/// succeeds, but the returned outcome is a classified [`ToolFailure`] while the
+/// model still receives useful output. Registered under the name `lookup`.
+#[derive(Clone)]
+pub struct MockHandledFailureTool;
+
+impl Tool for MockHandledFailureTool {
+    const NAME: &'static str = "lookup";
+    type Error = MockToolError;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Looks up a record".to_string(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Overridden by `call_structured` under dynamic dispatch; present so the
+        // trait is satisfied for direct callers.
+        Ok("no record found for id 42".to_string())
+    }
+
+    async fn call_structured(
+        &self,
+        _args: Self::Args,
+        _extensions: &ToolCallExtensions,
+    ) -> Result<ToolReturn<Self::Output>, Self::Error> {
+        Ok(ToolReturn::failed(
+            "no record found for id 42; try a different id".to_string(),
+            ToolFailure::not_found("record id 42 is missing").with_http_status(404),
+        ))
+    }
+}
+
+/// A tool that declares the call denied from inside the tool (via
+/// [`ToolReturn::denied`]), producing a [`ToolOutcome::Denied`](crate::tool::ToolOutcome::Denied)
+/// outcome — as opposed to a hook `Flow::Skip`, which is `Skipped`. Registered
+/// under the name `guarded`.
+#[derive(Clone)]
+pub struct MockDeniedTool;
+
+impl Tool for MockDeniedTool {
+    const NAME: &'static str = "guarded";
+    type Error = MockToolError;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "A tool with an internal authorization check".to_string(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Ok("ok".to_string())
+    }
+
+    async fn call_structured(
+        &self,
+        _args: Self::Args,
+        _extensions: &ToolCallExtensions,
+    ) -> Result<ToolReturn<Self::Output>, Self::Error> {
+        Ok(ToolReturn::denied(
+            "access to this resource is not permitted".to_string(),
+        ))
+    }
+}
+
+/// A cloneable extension value a [`MockMetadataTool`] attaches to its result, to
+/// verify result extensions reach hooks without being sent to the model.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MockRequestId(pub String);
+
+/// A tool whose success carries a [`MockRequestId`] in its result extensions.
+/// Registered under the name `with_meta`.
+#[derive(Clone)]
+pub struct MockMetadataTool;
+
+impl Tool for MockMetadataTool {
+    const NAME: &'static str = "with_meta";
+    type Error = MockToolError;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Succeeds and attaches request metadata".to_string(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Ok("done".to_string())
+    }
+
+    async fn call_structured(
+        &self,
+        _args: Self::Args,
+        _extensions: &ToolCallExtensions,
+    ) -> Result<ToolReturn<Self::Output>, Self::Error> {
+        Ok(ToolReturn::success("done".to_string())
+            .with_extension(MockRequestId("req-7".to_string())))
     }
 }
