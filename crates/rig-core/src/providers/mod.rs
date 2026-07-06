@@ -10,6 +10,7 @@
 //! - Groq
 //! - Hugging Face
 //! - Hyperbolic
+//! - LiteLLM
 //! - Llamafile
 //! - MiniMax
 //! - Mira
@@ -99,6 +100,7 @@ pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
 pub(crate) mod internal;
+pub mod litellm;
 pub mod llamafile;
 pub mod minimax;
 pub mod mira;
