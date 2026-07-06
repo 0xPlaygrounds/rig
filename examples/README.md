@@ -32,17 +32,15 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_with_tools_otel` | Agent multi-turn with tools, but with a tracing subscriber that sends all logs/traces to an OTel collector. |
 | `agent_with_tools` | Demonstrates registering boxed tools on an agent. |
 | `agent` | Demonstrates the smallest useful agent setup with OpenAI. |
-| `calculator_chatbot` | See source. |
-| `chain` | Demonstrates a retrieval-augmented pipeline with `parallel!` and `lookup`. |
-| `complex_agentic_loop_claude` | See source. |
-| `custom_vector_store` | Example: Implementing a custom vector store backend |
+| `deferred_tools` | Registers a hidden tool catalog with `.deferred_tool(...)` and lets the model discover tools on demand via the built-in `tool_search` meta-tool. |
+| `hook_passive_rag` | Always-on RAG: an `AgentHook` reads the prompt and injects retrieved context via `RequestPatch::extra_context` before each model call (no vector store). |
+| `tool_active_rag` | RAG as an ordinary tool the model chooses to call — the canonical retrieval pattern, with retrieval owned by the tool's `call`. |
 | `debate` | See source. |
 | `discord_bot` | See source. |
 | `enum_dispatch` | See source. |
 | `extractor` | Demonstrates typed extraction and extraction with usage metadata. |
 | `gemini_deep_research` | See source. |
 | `gemini_default_api_recovery` | Demonstrates recovering from Gemini emitting a legacy `default_api` tool name. |
-| `gemini_extractor_with_rag` | See source. |
 | `gemini_nanobanana_image_generation` | See source. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
@@ -54,17 +52,9 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `openai_agent_completions_api_otel` | This example shows how you can use OpenAI's Completions API. |
 | `openai_streaming_per_call_usage` | Shows how to inspect per-completion-call usage in an agent stream. |
 | `openai_streaming_with_tools_otel` | See source. |
-| `pdf_agent` | See source. |
-| `rag_dynamic_tools_multi_turn` | See source. |
-| `rag_dynamic_tools` | See source. |
-| `rag_ollama` | See source. |
-| `rag` | See source. |
 | `reasoning_loop` | See source. |
 | `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking two `AgentHook`s with `add_hook`. |
 | `reqwest_middleware` | Demonstrates supplying a custom reqwest client with retry middleware. |
 | `rmcp_example` | An example of how you can use `rmcp` with Rig to create an MCP friendly agent. |
 | `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |
 | `transcription` | See source. |
-| `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embeddings. |
-| `vector_search_ollama` | Demonstrates vector search against a local Ollama embedding model. |
-| `vector_search` | Demonstrates embedding documents and querying an in-memory vector index with OpenAI. |

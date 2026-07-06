@@ -3,11 +3,10 @@
 //! The [Tool] trait defines a simple interface for creating tools that can be used
 //! by [Agents](crate::agent::Agent).
 //!
-//! The [ToolEmbedding] trait extends the [Tool] trait to allow for tools that can be
-//! stored in a vector store and RAGged.
-//!
-//! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
-//! and optionally RAGged.
+//! The [ToolSet] struct is a collection of tools that can be used by an
+//! [Agent](crate::agent::Agent). Tools too numerous to advertise every turn can be
+//! registered as deferred tools and discovered on demand via the built-in
+//! `tool_search` meta-tool (see [`ToolServer::deferred_tool`](crate::tool::ToolServer::deferred_tool)).
 //!
 //! # Structured tool results
 //!
@@ -38,7 +37,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::{self, ToolDefinition},
-    embeddings::{embed::EmbedError, tool::ToolSchema},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -245,34 +243,6 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     }
 }
 
-/// Trait that represents an LLM tool that can be stored in a vector store and RAGged
-pub trait ToolEmbedding: Tool {
-    /// Error returned when reconstructing a dynamic tool from stored context.
-    type InitError: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
-
-    /// Type of the tool' context. This context will be saved and loaded from the
-    /// vector store when ragging the tool.
-    /// This context can be used to store the tool's static configuration and local
-    /// context.
-    type Context: for<'a> Deserialize<'a> + Serialize;
-
-    /// Type of the tool's state. This state will be passed to the tool when initializing it.
-    /// This state can be used to pass runtime arguments to the tool such as clients,
-    /// API keys and other configuration.
-    type State: WasmCompatSend;
-
-    /// A method returning the documents that will be used as embeddings for the tool.
-    /// This allows for a tool to be retrieved from multiple embedding "directions".
-    /// If the tool will not be RAGged, this method should return an empty vector.
-    fn embedding_docs(&self) -> Vec<String>;
-
-    /// A method returning the context of the tool.
-    fn context(&self) -> Self::Context;
-
-    /// A method to initialize the tool from the context, and a state.
-    fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
-}
-
 /// Wrapper trait to allow for dynamic dispatch of simple tools
 pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     /// Returns the tool name used for dispatch.
@@ -433,46 +403,21 @@ impl<T: Tool> ToolDyn for T {
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 pub mod rmcp;
 
-/// Wrapper trait to allow for dynamic dispatch of raggable tools
-pub trait ToolEmbeddingDyn: ToolDyn {
-    /// Serializes context needed to reconstruct this dynamic tool.
-    fn context(&self) -> serde_json::Result<serde_json::Value>;
-
-    /// Returns text fragments used to retrieve this tool from a vector store.
-    fn embedding_docs(&self) -> Vec<String>;
-}
-
-impl<T> ToolEmbeddingDyn for T
-where
-    T: ToolEmbedding + 'static,
-{
-    fn context(&self) -> serde_json::Result<serde_json::Value> {
-        serde_json::to_value(self.context())
-    }
-
-    fn embedding_docs(&self) -> Vec<String> {
-        self.embedding_docs()
-    }
-}
-
 #[derive(Clone)]
 pub(crate) enum ToolType {
     Simple(Arc<dyn ToolDyn>),
-    Embedding(Arc<dyn ToolEmbeddingDyn>),
 }
 
 impl ToolType {
     pub fn name(&self) -> String {
         match self {
             ToolType::Simple(tool) => tool.name(),
-            ToolType::Embedding(tool) => tool.name(),
         }
     }
 
     pub async fn definition(&self, prompt: String) -> ToolDefinition {
         match self {
             ToolType::Simple(tool) => tool.definition(prompt).await,
-            ToolType::Embedding(tool) => tool.definition(prompt).await,
         }
     }
 
@@ -483,7 +428,6 @@ impl ToolType {
     ) -> Result<String, ToolError> {
         match self {
             ToolType::Simple(tool) => tool.call_with_extensions(args, extensions).await,
-            ToolType::Embedding(tool) => tool.call_with_extensions(args, extensions).await,
         }
     }
 
@@ -495,7 +439,6 @@ impl ToolType {
     ) -> ToolExecutionResult {
         match self {
             ToolType::Simple(tool) => tool.call_structured(args, extensions).await,
-            ToolType::Embedding(tool) => tool.call_structured(args, extensions).await,
         }
     }
 }
@@ -695,44 +638,14 @@ impl ToolSet {
                         additional_props: HashMap::new(),
                     });
                 }
-                ToolType::Embedding(tool) => {
-                    docs.push(completion::Document {
-                        id: tool.name(),
-                        text: format!(
-                            "\
-                            Tool: {}\n\
-                            Definition: \n\
-                            {}\
-                        ",
-                            tool.name(),
-                            serde_json::to_string_pretty(&tool.definition("".to_string()).await)?
-                        ),
-                        additional_props: HashMap::new(),
-                    });
-                }
             }
         }
         Ok(docs)
     }
-
-    /// Convert tools in self to objects of type ToolSchema.
-    /// This is necessary because when adding tools to the EmbeddingBuilder because all
-    /// documents added to the builder must all be of the same type.
-    pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
-        self.ordered_tools()
-            .filter_map(|tool_type| {
-                if let ToolType::Embedding(tool) = tool_type {
-                    Some(ToolSchema::try_from(&**tool))
-                } else {
-                    None
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()
-    }
 }
 
 #[derive(Default)]
-/// Builder for constructing a [`ToolSet`] with static and dynamic tools.
+/// Builder for constructing a [`ToolSet`].
 pub struct ToolSetBuilder {
     tools: Vec<ToolType>,
 }
@@ -741,12 +654,6 @@ impl ToolSetBuilder {
     /// Add a regular tool that is always available when the set is used.
     pub fn static_tool(mut self, tool: impl ToolDyn + 'static) -> Self {
         self.tools.push(ToolType::Simple(Arc::new(tool)));
-        self
-    }
-
-    /// Add a tool that can be represented as embeddings for dynamic retrieval.
-    pub fn dynamic_tool(mut self, tool: impl ToolEmbeddingDyn + 'static) -> Self {
-        self.tools.push(ToolType::Embedding(Arc::new(tool)));
         self
     }
 

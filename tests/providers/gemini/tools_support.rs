@@ -1,5 +1,5 @@
 //! Shared fixtures for the tool-pipeline cassette suites: counting tools,
-//! deliberately failing tools, prompt hooks, and embeddable tools. These
+//! deliberately failing tools, and prompt hooks. These
 //! suites lock in the externally observable behavior of the handrolled tool
 //! plumbing (`ToolSet`, `ToolServer`, hook dispatch, result shaping) ahead of
 //! the planned migration onto `rmcp`.
@@ -25,8 +25,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{AgentHook, Flow, StepEvent};
 use rig::completion::{CompletionModel, ToolDefinition};
+use rig::tool::Tool;
 use rig::tool::server::ToolServerHandle;
-use rig::tool::{Tool, ToolEmbedding};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -481,72 +481,3 @@ where
         }
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error("init error")]
-pub(crate) struct InitError;
-
-macro_rules! embeddable_operation {
-    ($name:ident, $tool_name:literal, $description:literal, $embedding_doc:literal, $op:expr) => {
-        #[derive(Clone, Default, Deserialize, Serialize)]
-        pub(crate) struct $name {
-            #[serde(skip)]
-            pub(crate) counter: CallCounter,
-        }
-
-        impl Tool for $name {
-            const NAME: &'static str = $tool_name;
-            type Error = MathError;
-            type Args = OperationArgs;
-            type Output = i64;
-
-            async fn definition(&self, _prompt: String) -> ToolDefinition {
-                operation_definition(Self::NAME, $description)
-            }
-
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                self.counter.bump();
-                let op: fn(i64, i64) -> i64 = $op;
-                Ok(op(args.x, args.y))
-            }
-        }
-
-        impl ToolEmbedding for $name {
-            type InitError = InitError;
-            type Context = ();
-            type State = ();
-
-            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self::default())
-            }
-
-            fn embedding_docs(&self) -> Vec<String> {
-                vec![$embedding_doc.into()]
-            }
-
-            fn context(&self) -> Self::Context {}
-        }
-    };
-}
-
-embeddable_operation!(
-    EmbedAdd,
-    "add",
-    "Add x and y together",
-    "Add two numbers together to get their sum",
-    |x, y| x + y
-);
-embeddable_operation!(
-    EmbedSubtract,
-    "subtract",
-    "Subtract y from x (i.e. x - y)",
-    "Subtract one number from another to get their difference",
-    |x, y| x - y
-);
-embeddable_operation!(
-    EmbedMultiply,
-    "multiply",
-    "Multiply x and y together",
-    "Multiply two numbers together to get their product",
-    |x, y| x * y
-);

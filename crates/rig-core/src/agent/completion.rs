@@ -11,23 +11,12 @@ use crate::{
     json_utils,
     message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
-    tool::server::ToolServerHandle,
-    vector_store::{VectorStoreError, request::VectorSearchRequest},
+    tool::server::{ToolServerHandle, revealed_deferred_tools},
     wasm_compat::WasmCompatSend,
 };
-use std::{
-    collections::{BTreeSet, HashMap},
-    sync::Arc,
-};
+use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
-
-pub type DynamicContextStore = Arc<
-    Vec<(
-        usize,
-        Arc<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
-    )>,
->;
 
 /// A prepared completion request plus the executable Rig tool names advertised
 /// to the provider for this turn.
@@ -236,7 +225,6 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     additional_params: Option<&serde_json::Value>,
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
-    dynamic_context: &DynamicContextStore,
     output_schema: Option<&schemars::Schema>,
 ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
     Ok(build_prepared_completion_request(
@@ -250,7 +238,6 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         additional_params,
         tool_choice,
         tool_server_handle,
-        dynamic_context,
         output_schema,
         // The single-shot `Agent::completion()` API has no run loop to consume an
         // output-tool call, so it always uses native structured output (#1928).
@@ -277,7 +264,6 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     additional_params: Option<&serde_json::Value>,
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
-    dynamic_context: &DynamicContextStore,
     output_schema: Option<&schemars::Schema>,
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
@@ -313,76 +299,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     };
     let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
 
-    // Find the latest message in the chat history that contains RAG text
-    let rag_text = prompt.rag_text();
-    let rag_text = rag_text.or_else(|| {
-        chat_history
-            .iter()
-            .rev()
-            .find_map(|message| message.rag_text())
-    });
-
-    // Fetch dynamic (RAG) documents and the real executable tool set first, so we
-    // can resolve the output mode (which depends on whether tools exist) before
-    // building the preamble and request.
-    let (mut tooldefs, fetched_context): (Vec<crate::completion::ToolDefinition>, Vec<Document>) =
-        match &rag_text {
-            Some(text) => {
-                let search_futures = dynamic_context.iter().map(|(num_sample, index)| {
-                    let text = text.clone();
-                    let num_sample = *num_sample;
-                    let index = index.clone();
-
-                    async move {
-                        let req = VectorSearchRequest::builder()
-                            .query(text)
-                            .samples(num_sample as u64)
-                            .build();
-
-                        let docs = index
-                            .top_n(req)
-                            .await?
-                            .into_iter()
-                            .map(|(_, id, doc)| {
-                                let text = serde_json::to_string_pretty(&doc)
-                                    .unwrap_or_else(|_| doc.to_string());
-
-                                Document {
-                                    id,
-                                    text,
-                                    additional_props: HashMap::new(),
-                                }
-                            })
-                            .collect::<Vec<_>>();
-
-                        Ok::<_, VectorStoreError>(docs)
-                    }
-                });
-
-                let fetched_context: Vec<Document> = futures::future::try_join_all(search_futures)
-                    .await
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?
-                    .into_iter()
-                    .flatten()
-                    .collect();
-
-                let tooldefs = tool_server_handle
-                    .get_tool_defs(Some(text.to_string()))
-                    .await
-                    .map_err(|_| {
-                        CompletionError::RequestError("Failed to get tool definitions".into())
-                    })?;
-
-                (tooldefs, fetched_context)
-            }
-            None => {
-                let tooldefs = tool_server_handle.get_tool_defs(None).await.map_err(|_| {
-                    CompletionError::RequestError("Failed to get tool definitions".into())
-                })?;
-
-                (tooldefs, Vec::new())
-            }
-        };
+    // Resolve the advertised tool set. Deferred tools are withheld until the model
+    // reveals them via `tool_search`; the reveal set is reconstructed from the real
+    // transcript (`chat_history`, not the compaction-patched view below), so a
+    // compaction hook can't hide a reveal. The current prompt carries no
+    // `tool_search` result, so scanning history is sufficient.
+    let revealed = revealed_deferred_tools(chat_history);
+    let mut tooldefs = tool_server_handle
+        .get_tool_defs(&revealed)
+        .await
+        .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
 
     // When a per-turn `active_tools` allow-list is present, capture the full tool
     // set BEFORE filtering: the synthetic output-tool name must avoid colliding
@@ -561,12 +487,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         .documents(static_context.to_vec())
         .tools(tooldefs);
 
-    if !fetched_context.is_empty() {
-        completion_request = completion_request.documents(fetched_context);
-    }
-
-    // Hook-supplied extra context documents (passive RAG) are appended last, so
-    // document order is static → dynamic (vector-store) → hook extras, with the
+    // Hook-supplied extra context documents (passive RAG) are appended after the
+    // agent's static context, so document order is static → hook extras, with the
     // extras in the hooks' registration order (they were merged in that order).
     // Per-turn and non-sticky: the next turn re-resolves from the baseline.
     if let Some(patch) = request_patch
@@ -661,8 +583,6 @@ where
     /// Additional parameters to be passed to the model
     pub additional_params: Option<serde_json::Value>,
     pub tool_server_handle: ToolServerHandle,
-    /// List of vector store, with the sample number
-    pub dynamic_context: DynamicContextStore,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub tool_choice: Option<ToolChoice>,
     /// Default maximum depth for recursive agent calls
@@ -724,7 +644,6 @@ where
             self.additional_params.as_ref(),
             self.tool_choice.as_ref(),
             &self.tool_server_handle,
-            &self.dynamic_context,
             self.output_schema.as_ref(),
         )
         .await

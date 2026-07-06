@@ -65,12 +65,16 @@
 //! The [Agent](crate::agent::Agent) type can be used to create anything from simple agents that use vanilla models to full blown
 //! RAG systems that can be used to answer questions using a knowledge base.
 //!
-//! ## Vector stores and indexes
-//! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! trait, which can be implemented to define vector stores and indices respectively.
-//! Those can then be used as the knowledge base for a RAG enabled [Agent](crate::agent::Agent), or
-//! as a source of context documents in a custom architecture that use multiple LLMs or agents.
+//! ## Retrieval (RAG)
+//! Rig does not ship a built-in vector-store abstraction. Retrieval is a user-land
+//! pattern: expose it as a normal [tool](crate::tool) the model chooses to call, or
+//! inject retrieved context before each model call from an
+//! [AgentHook](crate::agent::AgentHook) via
+//! [RequestPatch::extra_context](crate::agent::RequestPatch). Embedding
+//! models/builders remain in [embeddings](crate::embeddings). For catalogs with more
+//! tools than fit in a prompt, register the extras as deferred tools and let the model
+//! discover them with the built-in `tool_search` meta-tool
+//! (see [`ToolServer::deferred_tool`](crate::tool::ToolServer::deferred_tool)).
 //!
 //! ## Conversation memory
 //! Rig can transparently load and persist per-conversation history through the
@@ -115,23 +119,6 @@
 //!
 //! You can also implement your own model provider integration by defining types that
 //! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
-//!
-//! Vector stores are available as separate companion-crates:
-//!
-//! - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)
-//! - LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb)
-//! - Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j)
-//! - Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-qdrant)
-//! - SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite)
-//! - SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb)
-//! - Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus)
-//! - ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb)
-//! - AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors)
-//! - HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
-//! - Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
-//!
-//! You can also implement your own vector store integration by defining types that
-//! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
 //!
 //! The following providers are available as separate companion-crates:
 //!
@@ -179,7 +166,6 @@ pub mod test_utils;
 pub mod tool;
 pub mod tools;
 pub mod transcription;
-pub mod vector_store;
 pub mod wasm_compat;
 
 // Re-export commonly used types and traits

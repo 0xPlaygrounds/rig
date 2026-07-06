@@ -3,29 +3,38 @@
 //!
 //! The `rig` crate is the user-facing entry point for Rig. It re-exports the
 //! full public API of `rig_core`, so core traits, builders, providers, tools,
-//! vector-store abstractions, and request/response types are available through
-//! `rig::...` paths.
+//! and request/response types are available through `rig::...` paths.
 //!
 //! # Companion integrations
 //!
-//! Companion provider and vector-store crates are exposed as feature-gated
-//! modules on this facade. Enable only the integrations your application uses:
+//! Companion provider crates are exposed as feature-gated modules on this
+//! facade. Enable only the integrations your application uses:
 //!
 //! ```toml
 //! [dependencies]
-//! rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+//! rig = { version = "0.36.0", features = ["bedrock", "fastembed"] }
 //! ```
 //!
-//! This enables modules such as `rig::lancedb` and `rig::fastembed`. Other
+//! This enables modules such as `rig::bedrock` and `rig::fastembed`. Other
 //! companion integrations follow the same pattern, with feature names aligned to
 //! their facade module paths wherever Rust module naming allows it.
+//!
+//! # Retrieval (RAG)
+//!
+//! Rig does not ship a built-in vector-store abstraction. Retrieval is a
+//! user-land pattern: expose it as a normal [`tool`](rig_core::tool) the model
+//! calls, or inject retrieved context before each model call from an
+//! [`AgentHook`](rig_core::agent::AgentHook) via
+//! [`RequestPatch::extra_context`](rig_core::agent::RequestPatch). Embedding
+//! models/builders remain in [`rig_core::embeddings`]. See the `tool_active_rag`
+//! and `hook_passive_rag` examples.
 //!
 //! # When to use `rig-core` directly
 //!
 //! Depend on the `rig-core` package directly when you only need the core Rig
 //! implementation crate, including provider abstractions, built-in core
-//! providers, tools, memory traits, and vector-store traits, without the root
-//! facade's companion integration feature surface.
+//! providers, tools, and memory traits, without the root facade's companion
+//! integration feature surface.
 
 pub use rig_core::*;
 
@@ -70,78 +79,6 @@ pub mod fastembed {
 #[cfg_attr(docsrs, doc(cfg(feature = "gemini-grpc")))]
 pub mod gemini_grpc {
     pub use rig_gemini_grpc::*;
-}
-
-#[cfg(feature = "helixdb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "helixdb")))]
-pub mod helixdb {
-    pub use rig_helixdb::*;
-}
-
-#[cfg(feature = "lancedb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "lancedb")))]
-pub mod lancedb {
-    pub use rig_lancedb::*;
-}
-
-#[cfg(feature = "milvus")]
-#[cfg_attr(docsrs, doc(cfg(feature = "milvus")))]
-pub mod milvus {
-    pub use rig_milvus::*;
-}
-
-#[cfg(feature = "mongodb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mongodb")))]
-pub mod mongodb {
-    pub use rig_mongodb::*;
-}
-
-#[cfg(feature = "neo4j")]
-#[cfg_attr(docsrs, doc(cfg(feature = "neo4j")))]
-pub mod neo4j {
-    pub use rig_neo4j::*;
-}
-
-#[cfg(feature = "postgres")]
-#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
-pub mod postgres {
-    pub use rig_postgres::*;
-}
-
-#[cfg(feature = "qdrant")]
-#[cfg_attr(docsrs, doc(cfg(feature = "qdrant")))]
-pub mod qdrant {
-    pub use rig_qdrant::*;
-}
-
-#[cfg(feature = "s3vectors")]
-#[cfg_attr(docsrs, doc(cfg(feature = "s3vectors")))]
-pub mod s3vectors {
-    pub use rig_s3vectors::*;
-}
-
-#[cfg(feature = "scylladb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "scylladb")))]
-pub mod scylladb {
-    pub use rig_scylladb::*;
-}
-
-#[cfg(feature = "sqlite")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sqlite")))]
-pub mod sqlite {
-    pub use rig_sqlite::*;
-}
-
-#[cfg(feature = "surrealdb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "surrealdb")))]
-pub mod surrealdb {
-    pub use rig_surrealdb::*;
-}
-
-#[cfg(feature = "vectorize")]
-#[cfg_attr(docsrs, doc(cfg(feature = "vectorize")))]
-pub mod vectorize {
-    pub use rig_vectorize::*;
 }
 
 #[cfg(feature = "vertexai")]

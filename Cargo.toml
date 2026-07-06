@@ -55,7 +55,6 @@ edition = "2024"
 # `rig.workspace = true` (add per-example features at the use site).
 rig = { path = ".", version = "0.39.0" }
 anyhow = "1.0.102"
-arrow-array = "58"
 as-any = "0.3.2"
 assert_fs = "1.1.3"
 async-stream = "0.3.6"
@@ -87,50 +86,35 @@ httpmock = "0.8.3"
 hyper-util = "0.1.14"
 indexmap = "2.14.0"
 indoc = "2.0.6"
-lancedb = { version = "0.30", default-features = false }
 log = "0.4.27"
 lopdf = "0.41.0"
 mime = "0.3.17"
 mime_guess = "2.0.5"
-mongodb = "3.7.0"
-neo4rs = "0.8.0"
 opentelemetry = "0.32.0"
 opentelemetry-otlp = "0.32.0"
 opentelemetry_sdk = "0.32.1"
 ordered-float = "5.0.0"
-pgvector = "0.4.2"
 pin-project-lite = "0.2.16"
 proc-macro2 = "1.0.95"
-qdrant-client = { version = "1.14.0", default-features = false, features = [
-    "serde",
-] }
 quick-xml = "0.40.1"
 quote = "1.0.40"
 rayon = "1.10.0"
-redis = "1.2.1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5.2", default-features = false }
 reqwest-retry = "0.9"
 rmcp = "1.7.0"
 url = "2.5"
-rusqlite = "0.32"
-scylla = "1.2.0"
 schemars = "1.0.4"
 serde = "1.0.219"
 serde_yaml = "0.9.34"
 serde_json = "1.0.150"
 serde_path_to_error = "0.1.17"
-sqlite-vec = "0.1"
-sqlx = "0.9.0"
-surrealdb = "3.0.2"
 syn = "2.0.104"
 serenity = "0.12.4"
 term_size = "0.3.2"
-testcontainers = "0.27"
 textwrap = "0.16.2"
 thiserror = "2.0.12"
 tokio = "1.52.3"
-tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
 tokio-tungstenite = { version = "0.28.0", default-features = false }
@@ -159,24 +143,11 @@ rig-core = { path = "crates/rig-core", version = "0.39.0", default-features = fa
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.39.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.39.0", optional = true, default-features = false }
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.39.0", optional = true, default-features = false }
-rig-helixdb = { path = "crates/rig-helixdb", version = "0.39.0", optional = true, default-features = false }
-rig-lancedb = { path = "crates/rig-lancedb", version = "0.39.0", optional = true, default-features = false }
 rig-memory = { path = "crates/rig-memory", version = "0.39.0", optional = true, default-features = false }
-rig-milvus = { path = "crates/rig-milvus", version = "0.39.0", optional = true, default-features = false }
-rig-mongodb = { path = "crates/rig-mongodb", version = "0.39.0", optional = true, default-features = false }
-rig-neo4j = { path = "crates/rig-neo4j", version = "0.39.0", optional = true, default-features = false }
-rig-postgres = { path = "crates/rig-postgres", version = "0.39.0", optional = true, default-features = false }
-rig-qdrant = { path = "crates/rig-qdrant", version = "0.39.0", optional = true, default-features = false }
-rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.39.0", optional = true, default-features = false }
-rig-scylladb = { path = "crates/rig-scylladb", version = "0.39.0", optional = true, default-features = false }
-rig-sqlite = { path = "crates/rig-sqlite", version = "0.39.0", optional = true, default-features = false }
-rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.39.0", optional = true, default-features = false }
-rig-vectorize = { path = "crates/rig-vectorize", version = "0.39.0", optional = true, default-features = false }
 rig-vertexai = { path = "crates/rig-vertexai", version = "0.39.0", optional = true, default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
-arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
 rig-core = { path = "crates/rig-core", version = "0.39.0", default-features = false, features = [
@@ -185,15 +156,10 @@ rig-core = { path = "crates/rig-core", version = "0.39.0", default-features = fa
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
-redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true, features = ["record", "proxy"] }
-lancedb = { workspace = true }
-mongodb = { workspace = true }
-neo4rs = { workspace = true }
-qdrant-client = { workspace = true }
 reqwest-retry = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 reqwest-middleware = { workspace = true, features = [
@@ -208,12 +174,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
-rusqlite = { workspace = true, features = ["bundled"] }
-sqlite-vec = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
-testcontainers = { workspace = true }
 thiserror = { workspace = true }
-tokio-rusqlite = { workspace = true, features = ["bundled"] }
 hyper-util = { workspace = true, features = ["service", "server"] }
 rmcp = { workspace = true, features = [
   "client",
@@ -245,19 +206,7 @@ fastembed = [
 fastembed-hf-hub = ["dep:rig-fastembed", "rig-fastembed/hf-hub"]
 fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-download-binaries"]
 gemini-grpc = ["dep:rig-gemini-grpc"]
-helixdb = ["dep:rig-helixdb"]
-lancedb = ["dep:rig-lancedb"]
 memory = ["dep:rig-memory"]
-milvus = ["dep:rig-milvus"]
-mongodb = ["dep:rig-mongodb"]
-neo4j = ["dep:rig-neo4j"]
-postgres = ["dep:rig-postgres"]
-qdrant = ["dep:rig-qdrant"]
-s3vectors = ["dep:rig-s3vectors"]
-scylladb = ["dep:rig-scylladb"]
-sqlite = ["dep:rig-sqlite"]
-surrealdb = ["dep:rig-surrealdb"]
-vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
@@ -278,16 +227,10 @@ rustls = [
   "rig-core/rustls",
   "rig-bedrock?/bedrock-rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
-  "rig-helixdb?/rustls",
-  "rig-lancedb?/rig-rustls",
-  "rig-milvus?/rustls",
 ]
 native-tls = [
   "rig-core/native-tls",
   "rig-fastembed?/hf-hub-native-tls",
-  "rig-helixdb?/native-tls",
-  "rig-lancedb?/rig-native-tls",
-  "rig-milvus?/native-tls",
 ]
 reqwest-middleware = ["rig-core/reqwest-middleware"]
 reqwest-middleware-rustls = ["rig-core/reqwest-middleware-rustls"]

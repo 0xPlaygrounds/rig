@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
                 let response = agent.completion(prompt, history).await?.send().await?;
                 let tool_names: BTreeSet<String> = agent
                     .tool_server_handle
-                    .get_tool_defs(None)
+                    .get_tool_defs(&BTreeSet::new())
                     .await?
                     .into_iter()
                     .map(|def| def.name)

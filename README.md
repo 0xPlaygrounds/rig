@@ -64,8 +64,9 @@ More information about this crate can be found in the [official](https://docs.ri
 - Agentic workflows that can handle multi-turn streaming and prompting
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
-- 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
+- Retrieval (RAG) as a composable pattern — expose it as a tool or inject context from a hook, with no built-in vector-store abstraction to buy into
+- Deferred tools + a built-in `tool_search` meta-tool for catalogs too large to advertise every turn
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
 - Full WASM compatibility (core library only)
@@ -136,31 +137,25 @@ You can find more examples in each crate's `examples` directory (for example, [`
 The root `rig` facade exposes companion crates behind one feature per integration:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.36.0", features = ["bedrock", "fastembed"] }
 ```
 
 | Integration | Crate | Feature | Module path |
 | --- | --- | --- | --- |
 | AWS Bedrock | [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock) | `bedrock` | `rig::bedrock` |
-| AWS S3Vectors | [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors) | `s3vectors` | `rig::s3vectors` |
-| Cloudflare Vectorize | [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize) | `vectorize` | `rig::vectorize` |
 | FastEmbed | [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed) | `fastembed` | `rig::fastembed` |
 | Google Gemini gRPC | [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc) | `gemini-grpc` | `rig::gemini_grpc` |
 | Google Vertex AI | [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai) | `vertexai` | `rig::vertexai` |
-| HelixDB | [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb) | `helixdb` | `rig::helixdb` |
-| LanceDB | [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb) | `lancedb` | `rig::lancedb` |
 | Memory policies | [`rig-memory`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-memory) | `memory` | `rig::memory` |
-| Milvus | [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus) | `milvus` | `rig::milvus` |
-| MongoDB | [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb) | `mongodb` | `rig::mongodb` |
-| Neo4j | [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j) | `neo4j` | `rig::neo4j` |
-| PostgreSQL | [`rig-postgres`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-postgres) | `postgres` | `rig::postgres` |
-| Qdrant | [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-qdrant) | `qdrant` | `rig::qdrant` |
-| ScyllaDB | [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb) | `scylladb` | `rig::scylladb` |
-| SQLite | [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite) | `sqlite` | `rig::sqlite` |
-| SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
 
 `rig::memory` is available without the `memory` feature; it contains the core
 conversation memory traits and in-memory backend re-exported from `rig-core`.
+
+> **Retrieval (RAG):** Rig no longer ships a built-in vector-store abstraction.
+> Retrieval is a user-land pattern — expose it as an ordinary tool the model
+> calls (see the `tool_active_rag` example) or inject retrieved context before
+> each model call from an `AgentHook` (see `hook_passive_rag`). Embedding
+> models/builders remain in `rig::embeddings`.
 Enabling `features = ["memory"]` adds reusable history-shaping policy types from
 the `rig-memory` companion crate to the same module.
 

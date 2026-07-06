@@ -11,7 +11,6 @@ use crate::{
         Tool, ToolDyn, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
-    vector_store::VectorStoreIndexDyn,
 };
 
 #[cfg(feature = "rmcp")]
@@ -43,7 +42,7 @@ fn build_rmcp_tools(
 ///
 /// This is the default state for a new `AgentBuilder`. From this state,
 /// you can either:
-/// - Add tools via `.tool()`, `.tools()`, `.dynamic_tools()`, etc. (transitions to `WithBuilderTools`)
+/// - Add tools via `.tool()`, `.tools()`, `.deferred_tool()`, etc. (transitions to `WithBuilderTools`)
 /// - Set a pre-existing `ToolServerHandle` via `.tool_server_handle()` (transitions to `WithToolServerHandle`)
 /// - Call `.build()` to create an agent with no tools
 #[derive(Default)]
@@ -60,12 +59,14 @@ pub struct WithToolServerHandle {
 /// Typestate indicating tools are being configured via the builder API.
 ///
 /// In this state, you can continue adding tools via `.tool()`, `.tools()`,
-/// `.dynamic_tools()`, etc. When `.build()` is called, a new `ToolServer`
+/// `.deferred_tool()`, etc. When `.build()` is called, a new `ToolServer`
 /// will be created with all the configured tools.
 pub struct WithBuilderTools {
     static_tools: Vec<String>,
     tools: ToolSet,
-    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    /// Names of deferred tools (registered in `tools` but withheld from the
+    /// advertised set until revealed via `tool_search`).
+    deferred_tools: Vec<String>,
 }
 
 /// A builder for creating an agent
@@ -111,8 +112,6 @@ where
     additional_params: Option<serde_json::Value>,
     /// Maximum number of tokens for the completion
     max_tokens: Option<u64>,
-    /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
@@ -174,18 +173,6 @@ where
             text: doc.into(),
             additional_props: HashMap::new(),
         });
-        self
-    }
-
-    /// Add some dynamic context to the agent. On each prompt, `sample` documents from the
-    /// dynamic context will be inserted in the request.
-    pub fn dynamic_context(
-        mut self,
-        sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
-    ) -> Self {
-        self.dynamic_context
-            .push((sample, Arc::new(dynamic_context)));
         self
     }
 
@@ -299,7 +286,6 @@ where
             temperature: None,
             max_tokens: None,
             additional_params: None,
-            dynamic_context: vec![],
             tool_choice: None,
             default_max_turns: None,
             tool_state: NoToolConfig,
@@ -333,7 +319,6 @@ where
             static_context: self.static_context,
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -360,14 +345,13 @@ where
             static_context: self.static_context,
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
                 tools: ToolSet::from_tools(vec![tool]),
-                dynamic_tools: vec![],
+                deferred_tools: vec![],
             },
             hooks: self.hooks,
             output_schema: self.output_schema,
@@ -393,7 +377,6 @@ where
             static_context: self.static_context,
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -405,7 +388,7 @@ where
             tool_state: WithBuilderTools {
                 static_tools,
                 tools,
-                dynamic_tools: vec![],
+                deferred_tools: vec![],
             },
         }
     }
@@ -494,7 +477,6 @@ where
             static_context: self.static_context,
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -506,21 +488,18 @@ where
             tool_state: WithBuilderTools {
                 static_tools,
                 tools: ToolSet::from_tools(toolset),
-                dynamic_tools: vec![],
+                deferred_tools: vec![],
             },
         }
     }
 
-    /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
-    /// dynamic toolset will be inserted in the request.
+    /// Register a deferred tool: executable but withheld from the advertised set
+    /// until the model discovers it via the built-in `tool_search` meta-tool.
+    /// Use this for tool catalogs too large to advertise every turn.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn dynamic_tools(
-        self,
-        sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
-        toolset: ToolSet,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    pub fn deferred_tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
+        let toolname = tool.name();
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -529,7 +508,6 @@ where
             static_context: self.static_context,
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -540,8 +518,8 @@ where
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools: vec![],
-                tools: toolset,
-                dynamic_tools: vec![(sample, Arc::new(dynamic_tools))],
+                tools: ToolSet::from_tools(vec![tool]),
+                deferred_tools: vec![toolname],
             },
         }
     }
@@ -562,7 +540,6 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hooks: self.hooks,
@@ -590,7 +567,6 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle: self.tool_state.handle,
             default_max_turns: self.default_max_turns,
             hooks: self.hooks,
@@ -664,30 +640,25 @@ where
         self
     }
 
-    /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
-    /// dynamic toolset will be inserted in the request.
-    pub fn dynamic_tools(
-        mut self,
-        sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
-        toolset: ToolSet,
-    ) -> Self {
-        self.tool_state
-            .dynamic_tools
-            .push((sample, Arc::new(dynamic_tools)));
-        self.tool_state.tools.add_tools(toolset);
+    /// Register a deferred tool: executable but withheld from the advertised set
+    /// until the model discovers it via the built-in `tool_search` meta-tool.
+    /// Use this for tool catalogs too large to advertise every turn.
+    pub fn deferred_tool(mut self, tool: impl Tool + 'static) -> Self {
+        let toolname = tool.name();
+        self.tool_state.tools.add_tool(tool);
+        self.tool_state.deferred_tools.push(toolname);
         self
     }
 
     /// Build the agent with the configured tools.
     ///
     /// A new `ToolServer` will be created containing all tools added via
-    /// `.tool()`, `.tools()`, `.dynamic_tools()`, etc.
+    /// `.tool()`, `.tools()`, `.deferred_tool()`, etc.
     pub fn build(self) -> Agent<M> {
         let tool_server_handle = ToolServer::new()
             .static_tool_names(self.tool_state.static_tools)
             .add_tools(self.tool_state.tools)
-            .add_dynamic_tools(self.tool_state.dynamic_tools)
+            .add_deferred_tool_names(self.tool_state.deferred_tools)
             .run();
 
         Agent {
@@ -700,7 +671,6 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hooks: self.hooks,

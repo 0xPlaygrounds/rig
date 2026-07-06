@@ -8,8 +8,6 @@ use serde_json::json;
 use crate::{
     completion::ToolDefinition,
     tool::{Tool, ToolCallExtensions, ToolFailure, ToolFailureKind, ToolReturn, ToolSet},
-    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
-    wasm_compat::WasmCompatSend,
 };
 
 /// Shared error type for mock tools.
@@ -397,78 +395,6 @@ impl Tool for MockControlledTool {
         self.started.notify_one();
         self.allow_finish.notified().await;
         Ok(42)
-    }
-}
-
-/// A vector index that returns a predefined list of tool IDs from `top_n_ids`.
-pub struct MockToolIndex {
-    tool_ids: Vec<String>,
-}
-
-impl MockToolIndex {
-    /// Create a tool index that returns the given IDs in order.
-    pub fn new(tool_ids: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        Self {
-            tool_ids: tool_ids.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl VectorStoreIndex for MockToolIndex {
-    type Filter = Filter<serde_json::Value>;
-
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-        &self,
-        _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        Ok(vec![])
-    }
-
-    async fn top_n_ids(
-        &self,
-        _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        Ok(self
-            .tool_ids
-            .iter()
-            .enumerate()
-            .map(|(i, id)| (1.0 - (i as f64 * 0.1), id.clone()))
-            .collect())
-    }
-}
-
-/// A vector index that waits at a barrier before returning one tool ID.
-pub struct BarrierMockToolIndex {
-    barrier: Arc<tokio::sync::Barrier>,
-    tool_id: String,
-}
-
-impl BarrierMockToolIndex {
-    /// Create a barrier-backed tool index.
-    pub fn new(barrier: Arc<tokio::sync::Barrier>, tool_id: impl Into<String>) -> Self {
-        Self {
-            barrier,
-            tool_id: tool_id.into(),
-        }
-    }
-}
-
-impl VectorStoreIndex for BarrierMockToolIndex {
-    type Filter = Filter<serde_json::Value>;
-
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-        &self,
-        _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        Ok(vec![])
-    }
-
-    async fn top_n_ids(
-        &self,
-        _req: VectorSearchRequest,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        self.barrier.wait().await;
-        Ok(vec![(1.0, self.tool_id.clone())])
     }
 }
 

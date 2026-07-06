@@ -4,7 +4,7 @@ version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
-description = "Rig vector store index integration for Fastembed. https://github.com/Anush008/fastembed-rs"
+description = "Rig embedding model integration for Fastembed. https://github.com/Anush008/fastembed-rs"
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
@@ -29,11 +29,3 @@ hf-hub = ["fastembed/hf-hub"]
 ort-download-binaries = ["fastembed/ort-download-binaries"]
 hf-hub-rustls-tls = ["fastembed/hf-hub-rustls-tls"]
 hf-hub-native-tls = ["fastembed/hf-hub-native-tls"]
-
-[[example]]
-name = "vector_search_fastembed"
-required-features = ["rig-core/derive"]
-
-[[example]]
-name = "vector_search_fastembed_local"
-required-features = ["rig-core/derive"]

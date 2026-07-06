@@ -19,7 +19,7 @@ agents must follow while reading, editing, testing, and documenting code.
 
 - Root facade crate: `rig`
 - Core crate: `crates/rig-core`
-- Companion provider and vector-store crates: `crates/rig-*`
+- Companion provider crates: `crates/rig-*`
 - Derive macros: `crates/rig-derive`
 - Workspace example packages: `examples/*`
 - Per-crate examples: `crates/<crate>/examples/`
@@ -31,7 +31,7 @@ agents must follow while reading, editing, testing, and documenting code.
 The root `rig` crate re-exports `rig-core` and exposes companion crates behind
 feature flags. Check `Cargo.toml` and `src/lib.rs` before documenting or changing
 exposed features, integrations, or module paths. If adding or exposing a
-companion provider/vector-store crate, update the root dependency, feature,
+companion provider crate, update the root dependency, feature,
 facade re-export, examples, README, and crate docs as applicable.
 
 ## Core Architecture
@@ -40,8 +40,7 @@ Rig is built around provider-agnostic traits:
 
 - `CompletionModel` for text completion and chat models
 - `EmbeddingModel` for embedding generation
-- `VectorStoreIndex` for vector similarity search
-- `Tool` for callable tools
+- `Tool` for callable tools (register large catalogs as deferred tools discovered via the built-in `tool_search` meta-tool)
 
 Use these traits instead of creating parallel abstractions.
 

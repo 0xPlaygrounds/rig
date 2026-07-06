@@ -1,12 +1,12 @@
-//! Migrated from `examples/mistral_embeddings.rs`.
+//! Migrated from `examples/mistral_embeddings.rs`. Vector search was removed with
+//! the core vector-store abstraction, so this now covers embedding generation
+//! only (retrieval is a user-land concern — see the `tool_active_rag` /
+//! `hook_passive_rag` examples).
 
 use rig::Embed;
 use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::mistral;
-use rig::vector_store::VectorStoreIndex;
-use rig::vector_store::in_memory_store::InMemoryVectorStore;
-use rig::vector_store::request::VectorSearchRequest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Embed, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -17,10 +17,10 @@ struct Greetings {
 
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY and --features derive"]
-async fn derive_embeddings_and_vector_search() {
+async fn derive_embeddings() {
     let client = mistral::Client::from_env().expect("client should build");
     let embedding_model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
+    let embeddings = EmbeddingsBuilder::new(embedding_model)
         .document(Greetings {
             message: "Hello, world!".to_string(),
         })
@@ -33,20 +33,11 @@ async fn derive_embeddings_and_vector_search() {
         .await
         .expect("embedding request should succeed");
 
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
-    let index = vector_store.index(embedding_model);
-    let request = VectorSearchRequest::builder()
-        .query("Hello world")
-        .samples(1)
-        .build();
-    let results = index
-        .top_n::<Greetings>(request)
-        .await
-        .expect("vector search should succeed");
-
-    assert_eq!(results.len(), 1);
-    assert!(
-        results[0].2.message.contains("Hello"),
-        "expected the hello document to be the closest match"
-    );
+    assert_eq!(embeddings.len(), 2, "one embedding set per document");
+    for (doc, embeds) in &embeddings {
+        assert!(
+            !embeds.first().vec.is_empty(),
+            "embedding vector for {doc:?} should be non-empty"
+        );
+    }
 }

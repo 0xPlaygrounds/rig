@@ -12,7 +12,6 @@ mod cassette {
     mod agent_tools_e2e;
     mod chat_history;
     mod document_ordering;
-    mod dynamic_tools;
     mod embeddings;
     mod extractor;
     mod generate_behaviors;

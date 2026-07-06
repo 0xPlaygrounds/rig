@@ -40,7 +40,6 @@ use crate::{
     completion::{Completion, CompletionError, CompletionModel, ToolDefinition, Usage},
     message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
     tool::Tool,
-    vector_store::VectorStoreIndexDyn,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -385,19 +384,6 @@ where
             _t: PhantomData,
             retries: self.retries.unwrap_or(0),
         }
-    }
-
-    /// Add dynamic context (RAG) to the extractor.
-    ///
-    /// On each prompt, `sample` documents will be retrieved from the index based on the RAG text
-    /// and inserted in the request.
-    pub fn dynamic_context(
-        mut self,
-        sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
-    ) -> Self {
-        self.agent_builder = self.agent_builder.dynamic_context(sample, dynamic_context);
-        self
     }
 }
 

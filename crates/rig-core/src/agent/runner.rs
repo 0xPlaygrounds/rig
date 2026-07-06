@@ -34,7 +34,7 @@ use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
+    completion::{Agent, PreparedCompletionRequest},
     hook::{
         AgentHook, Flow, HookContext, HookStack, InvalidToolCallHookAction, RequestPatch, StepEvent,
     },
@@ -283,7 +283,6 @@ where
     /// Empty by default; set with the [`tool_extensions`](Self::tool_extensions())
     /// builder.
     pub(crate) tool_extensions: ToolCallExtensions,
-    pub(crate) dynamic_context: DynamicContextStore,
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
     pub(crate) output_mode: OutputMode,
@@ -314,7 +313,6 @@ where
             additional_params: agent.additional_params.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_extensions: ToolCallExtensions::new(),
-            dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             output_mode: agent.output_mode.clone(),
@@ -5289,6 +5287,79 @@ mod tests {
             "the persisted transcript is untouched by the per-turn history override on \
              the streaming surface too"
         );
+    }
+
+    /// Extract user query text from a prompt message using only public API
+    /// (`Message`/`UserContent` variants + `Text::text()`), the way a hook-RAG
+    /// author would — no `rag_text`/`rag_query_text` core helper exists.
+    fn user_query_text(msg: &Message) -> Option<&str> {
+        let Message::User { content } = msg else {
+            return None;
+        };
+        content.iter().find_map(|item| match item {
+            UserContent::Text(text) => Some(text.text()),
+            _ => None,
+        })
+    }
+
+    /// A passive-RAG hook that reads the query from the prompt inline and injects
+    /// a query-derived document via `extra_context`.
+    struct QueryRagHook;
+
+    impl<M: CompletionModel> AgentHook<M> for QueryRagHook {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if let StepEvent::CompletionCall { prompt, turn, .. } = event
+                && turn == 1
+                && let Some(query) = user_query_text(prompt)
+            {
+                return Flow::patch_request(
+                    RequestPatch::new().context(hook_doc("kb-hit", &format!("match:{query}"))),
+                );
+            }
+            Flow::cont()
+        }
+    }
+
+    /// End-to-end hook-RAG proof: a hook builds the query from the `CompletionCall`
+    /// event payload and the retrieval result lands in `CompletionRequest.documents`
+    /// before the provider call, on both `run()` and `stream()`.
+    #[tokio::test]
+    async fn hook_rag_query_derived_from_prompt_lands_in_documents() {
+        fn assert_docs(req: &crate::completion::CompletionRequest) {
+            assert!(
+                req.documents.iter().any(|d| d.text == "match:go"),
+                "the query-derived retrieval result lands in the request documents: {:?}",
+                req.documents
+                    .iter()
+                    .map(|d| d.text.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let blocking_probe = blocking_model.clone();
+        AgentBuilder::new(blocking_model)
+            .add_hook(QueryRagHook)
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_docs(blocking_probe.requests().first().expect("one request"));
+
+        let streaming_model =
+            MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
+        let streaming_probe = streaming_model.clone();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .add_hook(QueryRagHook)
+            .build()
+            .runner("go")
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert_docs(streaming_probe.requests().first().expect("one request"));
     }
 
     /// `ModelTurnFinished` fires exactly once per accepted turn on both surfaces,
