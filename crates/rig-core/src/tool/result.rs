@@ -475,6 +475,20 @@ impl ToolExecutionResult {
         self
     }
 
+    /// Insert a single value into the result extensions, returning the updated
+    /// result. The single-value counterpart to [`with_extensions`](Self::with_extensions),
+    /// mirroring [`ToolReturn::with_extension`] for manual
+    /// [`ToolDyn`](crate::tool::ToolDyn) implementations.
+    pub fn with_extension<
+        E: Clone + crate::wasm_compat::WasmCompatSend + crate::wasm_compat::WasmCompatSync + 'static,
+    >(
+        mut self,
+        extension: E,
+    ) -> Self {
+        self.extensions.insert(extension);
+        self
+    }
+
     /// The text delivered to the model as the tool result. Present even for a
     /// failure, so the model gets useful feedback (a handled error message).
     pub fn model_output(&self) -> &str {
@@ -605,23 +619,46 @@ impl<T> ToolReturn<T> {
 
 impl<T: Serialize> ToolReturn<T> {
     /// Serialize `output` to the model-visible string and assemble a
-    /// [`ToolExecutionResult`], preserving the outcome and extensions.
+    /// [`ToolExecutionResult`], preserving the declared outcome and extensions.
     ///
     /// A `String` output is delivered verbatim; anything else is JSON-encoded —
-    /// the same shaping a bare tool output receives. If serialization fails the
-    /// result is an [`Other`](ToolFailureKind::Other) failure whose model output
-    /// explains the serialization error.
+    /// the same shaping a bare tool output receives.
+    ///
+    /// If serialization fails, the tool's [`extensions`](Self::extensions) and its
+    /// declared *classification* are still preserved — a serialization failure is
+    /// a rendering problem, independent of whether the tool succeeded, failed, or
+    /// [`denied`](ToolReturnOutcome::Denied) the call — and only the `model_output`
+    /// falls back to a string explaining the error. The one exception is a declared
+    /// [`Success`](ToolReturnOutcome::Success): a success whose output cannot be
+    /// rendered *is* an internal fault, so it becomes an
+    /// [`Other`](ToolFailureKind::Other) failure.
     pub(crate) fn into_execution_result(self) -> ToolExecutionResult {
-        match super::serialize_tool_output(&self.output) {
+        let ToolReturn {
+            output,
+            outcome,
+            extensions,
+        } = self;
+        match super::serialize_tool_output(&output) {
             Ok(model_output) => ToolExecutionResult {
                 model_output,
-                outcome: self.outcome.into(),
-                extensions: self.extensions,
+                outcome: outcome.into(),
+                extensions,
             },
-            Err(err) => ToolExecutionResult::failed(
-                format!("failed to serialize tool output: {err}"),
-                ToolFailure::other(err.to_string()),
-            ),
+            Err(err) => {
+                let outcome = match outcome {
+                    // A success we cannot render is an internal serialization fault.
+                    ToolReturnOutcome::Success => {
+                        ToolOutcome::Error(ToolFailure::other(err.to_string()))
+                    }
+                    // A declared failure/denial keeps its classification.
+                    other => other.into(),
+                };
+                ToolExecutionResult {
+                    model_output: format!("failed to serialize tool output: {err}"),
+                    outcome,
+                    extensions,
+                }
+            }
         }
     }
 }
@@ -771,5 +808,59 @@ mod tests {
         assert_eq!(result.model_output(), "refused");
         assert!(result.outcome().is_denied());
         assert!(!result.outcome().is_skipped());
+    }
+
+    #[test]
+    fn serialize_failure_preserves_declared_outcome_and_extensions() {
+        // An output whose `Serialize` impl always errors, so `into_execution_result`
+        // hits the fallback path.
+        struct Unserializable;
+        impl serde::Serialize for Unserializable {
+            fn serialize<S: serde::Serializer>(&self, _s: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("cannot serialize"))
+            }
+        }
+
+        #[derive(Clone, Debug, PartialEq)]
+        struct ReqId(String);
+
+        // A declared *handled failure* keeps its classification and extensions;
+        // only `model_output` falls back to the serialization-error string. It must
+        // NOT be silently reclassified to `Error(Other)`.
+        let failed = ToolReturn::failed(Unserializable, ToolFailure::rate_limited("slow"))
+            .with_extension(ReqId("req-1".into()))
+            .into_execution_result();
+        assert!(
+            failed.outcome().is_error_kind(ToolFailureKind::RateLimited),
+            "declared failure classification must survive serialize failure; got {:?}",
+            failed.outcome()
+        );
+        assert_eq!(
+            failed.outcome().failure().and_then(|f| f.retryable),
+            Some(true),
+            "the declared failure's retryable hint must survive"
+        );
+        assert_eq!(
+            failed.extensions().get::<ReqId>(),
+            Some(&ReqId("req-1".into())),
+            "extensions must survive serialize failure"
+        );
+        assert!(failed.model_output().contains("failed to serialize"));
+
+        // A declared *denial* is preserved (not turned into an error).
+        let denied = ToolReturn::denied(Unserializable).into_execution_result();
+        assert!(
+            denied.outcome().is_denied(),
+            "declared denial must survive serialize failure; got {:?}",
+            denied.outcome()
+        );
+
+        // A declared *success* that cannot be rendered IS an internal fault.
+        let ok = ToolReturn::success(Unserializable).into_execution_result();
+        assert!(
+            ok.outcome().is_error_kind(ToolFailureKind::Other),
+            "a success whose output cannot serialize becomes Other; got {:?}",
+            ok.outcome()
+        );
     }
 }

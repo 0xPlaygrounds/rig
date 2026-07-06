@@ -17,8 +17,12 @@
 //!   terminates** after a threshold, while letting a **404 flow back to the model
 //!   as recoverable feedback** so it can try another path.
 //!
-//! This is the motivating use case: repeated HTTP timeouts should abort the
-//! agent; a 404 should not.
+//! This is the motivating contrast: repeated HTTP timeouts should abort the
+//! agent; a 404 should not. `main` drives the **404-recovery** half (it prompts a
+//! `missing` URL and the run continues); the timeout-abort branch is implemented
+//! and ready but not exercised by this single prompt — reaching the threshold
+//! would require the model to repeatedly fetch a `slow` URL, which is left out to
+//! keep the example deterministic. Point the prompt at a `slow` URL to see it fire.
 //!
 //! Requires `OPENAI_API_KEY`.
 
