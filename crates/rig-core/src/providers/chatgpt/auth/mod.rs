@@ -100,10 +100,15 @@ impl Authenticator {
         source: AuthSource,
         auth_file: Option<PathBuf>,
         device_code_handler: DeviceCodeHandler,
+        allow_device_flow: bool,
     ) -> Self {
         Self {
             source,
-            platform: platform::PlatformAuthenticator::new(auth_file, device_code_handler),
+            platform: platform::PlatformAuthenticator::new(
+                auth_file,
+                device_code_handler,
+                allow_device_flow,
+            ),
             state_lock: Arc::new(Mutex::new(())),
         }
     }

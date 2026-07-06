@@ -98,6 +98,7 @@ impl Authenticator {
         access_token_file: Option<PathBuf>,
         api_key_file: Option<PathBuf>,
         device_code_handler: DeviceCodeHandler,
+        allow_device_flow: bool,
     ) -> Self {
         Self {
             source,
@@ -105,6 +106,7 @@ impl Authenticator {
                 access_token_file,
                 api_key_file,
                 device_code_handler,
+                allow_device_flow,
             ),
             state_lock: Arc::new(Mutex::new(())),
         }
