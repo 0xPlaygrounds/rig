@@ -1268,7 +1268,7 @@ mod tests {
         use futures::StreamExt;
         use serde_json::json;
 
-        use crate::agent::{AgentBuilder, AgentHook, Flow, HookContext, StepEvent};
+        use crate::agent::{AgentBuilder, AgentHook, Flow, HookContext, HookStack, StepEvent};
         use crate::completion::CompletionModel;
         use crate::test_utils::{
             MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool,
@@ -1642,6 +1642,104 @@ mod tests {
                     json!({ "x": 41, "y": 1 }),
                     "the skipped ToolResult must report the rewritten args, not the model's \
                      original {{}} (streaming={streaming}); got {args}"
+                );
+            }
+        }
+
+        // End-to-end nesting: a *nested* `HookStack` that rewrites args then skips
+        // must still report the rewritten args on the skipped `ToolResult` — the
+        // inner rewrite is not lost behind the inner skip when the stack is added
+        // as a single composed hook. Guards the nested-composition fix.
+        #[tokio::test]
+        async fn nested_hook_stack_rewrite_then_skip_reports_rewritten_args() {
+            struct RewriteHook;
+            impl<M: CompletionModel> AgentHook<M> for RewriteHook {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolCall { .. } = event {
+                        Flow::rewrite_args(json!({ "x": 41, "y": 1 }))
+                    } else {
+                        Flow::cont()
+                    }
+                }
+            }
+            struct SkipHook;
+            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolCall { .. } = event {
+                        Flow::skip("denied after nested rewrite")
+                    } else {
+                        Flow::cont()
+                    }
+                }
+            }
+            #[derive(Clone, Default)]
+            struct ArgsProbe {
+                args: Arc<Mutex<Option<String>>>,
+                outcome: Arc<Mutex<Option<String>>>,
+            }
+            impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolResult { args, outcome, .. } = event {
+                        *self.args.lock().expect("args") = Some(args.to_string());
+                        *self.outcome.lock().expect("outcome") = Some(outcome_label(outcome));
+                    }
+                    Flow::cont()
+                }
+            }
+
+            // The rewrite + skip live inside a *nested* stack added as one hook.
+            fn nested_stack() -> HookStack<MockCompletionModel> {
+                let mut nested = HookStack::<MockCompletionModel>::new();
+                nested.push(RewriteHook);
+                nested.push(SkipHook);
+                nested
+            }
+
+            // Verified on both surfaces: run_single_tool (shared) drives the same
+            // nested resolution, so blocking and streaming must agree.
+            for streaming in [false, true] {
+                let probe = ArgsProbe::default();
+                if streaming {
+                    let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("add"))
+                        .tool(MockAddTool)
+                        .add_hook(nested_stack())
+                        .add_hook(probe.clone())
+                        .build()
+                        .runner("go")
+                        .max_turns(3)
+                        .stream()
+                        .await;
+                    while let Some(item) = stream.next().await {
+                        if let Err(err) = item {
+                            panic!("stream item errored: {err}");
+                        }
+                    }
+                } else {
+                    AgentBuilder::new(model_one_tool_then_text("add"))
+                        .tool(MockAddTool)
+                        .add_hook(nested_stack())
+                        .add_hook(probe.clone())
+                        .build()
+                        .runner("go")
+                        .max_turns(3)
+                        .run()
+                        .await
+                        .expect("run should succeed after the nested stack skips the tool");
+                }
+
+                assert_eq!(
+                    probe.outcome.lock().expect("outcome").clone(),
+                    Some("skipped".to_string()),
+                    "streaming={streaming}"
+                );
+                let args = probe.args.lock().expect("args").clone().expect("args seen");
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&args).expect("valid JSON args");
+                assert_eq!(
+                    parsed,
+                    json!({ "x": 41, "y": 1 }),
+                    "the nested stack's rewrite must survive its skip and reach the ToolResult \
+                     (streaming={streaming}); got {args}"
                 );
             }
         }

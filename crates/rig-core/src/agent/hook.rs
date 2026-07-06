@@ -1171,6 +1171,45 @@ where
         async { Flow::Continue }
     }
 
+    /// Resolve a [`ToolCall`](StepEvent::ToolCall) for this hook, returning its
+    /// [`Flow`] plus any tool-argument rewrite that must be **salvaged** when the
+    /// hook short-circuits — so a nested [`HookStack`] never loses an inner
+    /// [`Flow::RewriteArgs`] behind a later inner
+    /// [`Flow::Skip`]/[`Flow::Terminate`].
+    ///
+    /// The default — correct for any leaf hook — dispatches the `ToolCall` event
+    /// to [`on_event`](Self::on_event) and reports **no** salvaged rewrite: a
+    /// single hook returns exactly one [`Flow`], so it can either rewrite (via
+    /// [`Flow::RewriteArgs`]) or short-circuit, never both. [`HookStack`]
+    /// overrides this to compose its members' resolutions, preserving an inner
+    /// rewrite across a short-circuit. This is an internal composition hook;
+    /// implementing it is only necessary for a custom composite hook that wraps
+    /// other hooks and needs the same rewrite-preserving behavior.
+    #[doc(hidden)]
+    fn resolve_tool_call(
+        &self,
+        ctx: &HookContext,
+        tool_name: &str,
+        tool_call_id: Option<&str>,
+        internal_call_id: &str,
+        args: &str,
+    ) -> impl Future<Output = (Flow, Option<serde_json::Value>)> + WasmCompatSend {
+        async move {
+            let flow = self
+                .on_event(
+                    ctx,
+                    StepEvent::ToolCall {
+                        tool_name,
+                        tool_call_id,
+                        internal_call_id,
+                        args,
+                    },
+                )
+                .await;
+            (flow, None)
+        }
+    }
+
     /// Whether this hook observes events of the given [`StepEventKind`].
     ///
     /// This is a **performance hint for the high-frequency streaming
@@ -1221,6 +1260,20 @@ where
     where
         M: 'a;
 
+    /// Object-safe [`AgentHook::resolve_tool_call`]. Preserves an inner
+    /// [`Flow::RewriteArgs`] across a short-circuit so nested [`HookStack`]s
+    /// compose correctly.
+    fn resolve_tool_call_boxed<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        tool_name: &'a str,
+        tool_call_id: Option<&'a str>,
+        internal_call_id: &'a str,
+        args: &'a str,
+    ) -> WasmBoxedFuture<'a, (Flow, Option<serde_json::Value>)>
+    where
+        M: 'a;
+
     fn observes_dyn(&self, kind: StepEventKind) -> bool;
 }
 
@@ -1238,6 +1291,20 @@ where
         M: 'a,
     {
         Box::pin(self.on_event(ctx, event))
+    }
+
+    fn resolve_tool_call_boxed<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        tool_name: &'a str,
+        tool_call_id: Option<&'a str>,
+        internal_call_id: &'a str,
+        args: &'a str,
+    ) -> WasmBoxedFuture<'a, (Flow, Option<serde_json::Value>)>
+    where
+        M: 'a,
+    {
+        Box::pin(self.resolve_tool_call(ctx, tool_name, tool_call_id, internal_call_id, args))
     }
 
     fn observes_dyn(&self, kind: StepEventKind) -> bool {
@@ -1337,24 +1404,32 @@ where
     pub fn len(&self) -> usize {
         self.hooks.len()
     }
+}
 
-    /// Run the [`ToolCall`](StepEvent::ToolCall) hook chain, returning the
-    /// terminal control-flow action and — **only when a hook short-circuits the
-    /// chain** — the effective (rewritten) arguments accumulated by earlier
-    /// [`Flow::RewriteArgs`] hooks that would otherwise be lost.
+impl<M> AgentHook<M> for HookStack<M>
+where
+    M: CompletionModel,
+{
+    /// Compose the stack's members' [`ToolCall`](StepEvent::ToolCall)
+    /// resolutions, threading tool-arg rewrites through the chain **and**
+    /// preserving them across a short-circuit — including for a member that is
+    /// itself a [`HookStack`], which is why members are consulted via
+    /// [`resolve_tool_call`](AgentHook::resolve_tool_call) rather than
+    /// [`on_event`](AgentHook::on_event) (the latter can only return a single
+    /// [`Flow`], losing an inner rewrite behind an inner `Skip`/`Terminate`).
     ///
     /// When the chain proceeds, any rewrite is carried by the returned [`Flow`]
     /// itself ([`RewriteArgs`](Flow::RewriteArgs) for a rewriting chain,
     /// [`Continue`](Flow::Continue) otherwise) and the second element is `None`.
-    /// When a hook short-circuits with [`Flow::Skip`] / [`Flow::Terminate`] (or a
-    /// fail-closed action), that action is returned in the first element while the
-    /// accumulated rewrite is salvaged into the second element, so the caller can
-    /// still report the rewritten args on the resulting
+    /// When a member short-circuits with [`Flow::Skip`] / [`Flow::Terminate`] (or
+    /// a fail-closed action), that action is returned in the first element while
+    /// the accumulated rewrite is salvaged into the second element, so the caller
+    /// (`run_single_tool`) can still report the rewritten args on the resulting
     /// [`ToolResult`](StepEvent::ToolResult) event and in tracing rather than
     /// leaking the model's original (pre-rewrite) args. The two are therefore
     /// mutually exclusive: the [`Flow`] is [`RewriteArgs`](Flow::RewriteArgs) only
     /// when the second element is `None`.
-    pub(crate) async fn resolve_tool_call(
+    async fn resolve_tool_call(
         &self,
         ctx: &HookContext,
         tool_name: &str,
@@ -1366,13 +1441,21 @@ where
         for hook in &self.hooks {
             let rewritten = effective.as_ref().map(json_utils::value_to_json_string);
             let args_for_hook = rewritten.as_deref().unwrap_or(args);
-            let per_hook = StepEvent::ToolCall {
-                tool_name,
-                tool_call_id,
-                internal_call_id,
-                args: args_for_hook,
-            };
-            match hook.on_event_boxed(ctx, per_hook).await {
+            let (flow, salvaged) = hook
+                .resolve_tool_call_boxed(
+                    ctx,
+                    tool_name,
+                    tool_call_id,
+                    internal_call_id,
+                    args_for_hook,
+                )
+                .await;
+            // A member (e.g. a nested `HookStack`) may have rewritten the args
+            // before short-circuiting; adopt that rewrite so it is not lost.
+            if let Some(rewrite) = salvaged {
+                effective = Some(rewrite);
+            }
+            match flow {
                 Flow::Continue => {}
                 Flow::RewriteArgs { args } => effective = Some(args),
                 // A short-circuit drops the accumulated rewrite from the returned
@@ -1386,12 +1469,7 @@ where
             None => (Flow::Continue, None),
         }
     }
-}
 
-impl<M> AgentHook<M> for HookStack<M>
-where
-    M: CompletionModel,
-{
     async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
         match event {
             // Accumulate mergeable request patches from every hook (registration
@@ -1915,5 +1993,190 @@ mod tests {
         ctx.set_turn(3);
         assert_eq!(ctx.turn(), 3);
         assert!(!ctx.run_id().as_str().is_empty());
+    }
+
+    /// Nested `HookStack` composition of the `ToolCall` chain: a rewrite inside an
+    /// inner stack must survive a later short-circuit even though the inner stack
+    /// is dispatched as a single hook. Regression coverage for the bug where
+    /// `resolve_tool_call` consulted members via `on_event` (one `Flow`, so an
+    /// inner rewrite was dropped behind an inner `Skip`/`Terminate`).
+    mod nested_tool_call_resolution {
+        use super::super::{AgentHook, Flow, HookContext, HookStack, StepEvent};
+        use super::{M, ctx};
+        use serde_json::{Value, json};
+
+        /// Rewrites the tool args to a fixed value on `ToolCall`.
+        struct RewriteHook(Value);
+        impl AgentHook<M> for RewriteHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolCall { .. } = event {
+                    Flow::rewrite_args(self.0.clone())
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        /// Skips on `ToolCall`.
+        struct SkipHook;
+        impl AgentHook<M> for SkipHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolCall { .. } = event {
+                    Flow::skip("denied")
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        /// Terminates on `ToolCall`.
+        struct TerminateHook;
+        impl AgentHook<M> for TerminateHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolCall { .. } = event {
+                    Flow::terminate("stop")
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        /// Returns `Flow::Fail` on `ToolCall` — not honored there, so it is
+        /// fail-closed by `run_single_tool`; `resolve_tool_call` returns it verbatim.
+        struct FailHook;
+        impl AgentHook<M> for FailHook {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolCall { .. } = event {
+                    Flow::fail()
+                } else {
+                    Flow::cont()
+                }
+            }
+        }
+
+        /// Records the `args` each hook observes on `ToolCall`, to prove the
+        /// rewritten args are threaded to hooks *after* the rewrite.
+        #[derive(Clone, Default)]
+        struct ArgsSpy(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+        impl AgentHook<M> for ArgsSpy {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ToolCall { args, .. } = event {
+                    self.0.lock().expect("spy").push(args.to_string());
+                }
+                Flow::cont()
+            }
+        }
+
+        async fn resolve(stack: &HookStack<M>) -> (Flow, Option<Value>) {
+            stack
+                .resolve_tool_call(&ctx(), "add", Some("tc1"), "ic1", "{}")
+                .await
+        }
+
+        #[tokio::test]
+        async fn nested_rewrite_then_skip_preserves_rewrite() {
+            // Inner stack: rewrite args, then skip. The rewrite must be salvaged.
+            let mut inner = HookStack::<M>::new();
+            inner.push(RewriteHook(json!({ "x": 41 })));
+            inner.push(SkipHook);
+
+            let mut outer = HookStack::<M>::new();
+            outer.push(inner);
+
+            let (flow, salvaged) = resolve(&outer).await;
+            assert!(matches!(flow, Flow::Skip { .. }), "got {flow:?}");
+            assert_eq!(
+                salvaged,
+                Some(json!({ "x": 41 })),
+                "the inner rewrite must survive the inner skip through a nested stack"
+            );
+        }
+
+        #[tokio::test]
+        async fn nested_rewrite_then_terminate_preserves_rewrite() {
+            let mut inner = HookStack::<M>::new();
+            inner.push(RewriteHook(json!({ "x": 7 })));
+            inner.push(TerminateHook);
+            let mut outer = HookStack::<M>::new();
+            outer.push(inner);
+
+            let (flow, salvaged) = resolve(&outer).await;
+            assert!(matches!(flow, Flow::Terminate { .. }), "got {flow:?}");
+            assert_eq!(salvaged, Some(json!({ "x": 7 })));
+        }
+
+        #[tokio::test]
+        async fn nested_rewrite_then_fail_closed_preserves_rewrite() {
+            let mut inner = HookStack::<M>::new();
+            inner.push(RewriteHook(json!({ "x": 9 })));
+            inner.push(FailHook);
+            let mut outer = HookStack::<M>::new();
+            outer.push(inner);
+
+            let (flow, salvaged) = resolve(&outer).await;
+            // `Fail` is not honored for a tool call, but resolution returns it
+            // verbatim (run_single_tool fail-closes it); the rewrite still survives.
+            assert!(matches!(flow, Flow::Fail), "got {flow:?}");
+            assert_eq!(salvaged, Some(json!({ "x": 9 })));
+        }
+
+        #[tokio::test]
+        async fn outer_rewrite_then_nested_skip_preserves_outer_rewrite() {
+            // Outer rewrite, then a nested stack that skips (without its own
+            // rewrite). The outer rewrite must be salvaged, and the nested stack
+            // must observe the outer-rewritten args.
+            let spy = ArgsSpy::default();
+            let mut inner = HookStack::<M>::new();
+            inner.push(spy.clone());
+            inner.push(SkipHook);
+
+            let mut outer = HookStack::<M>::new();
+            outer.push(RewriteHook(json!({ "x": 1, "y": 2 })));
+            outer.push(inner);
+
+            let (flow, salvaged) = resolve(&outer).await;
+            assert!(matches!(flow, Flow::Skip { .. }), "got {flow:?}");
+            assert_eq!(salvaged, Some(json!({ "x": 1, "y": 2 })));
+            // The nested stack saw the outer-rewritten args, not the original `{}`.
+            assert_eq!(
+                spy.0.lock().expect("spy").as_slice(),
+                [serde_json::to_string(&json!({ "x": 1, "y": 2 })).unwrap()],
+            );
+        }
+
+        #[tokio::test]
+        async fn deeply_nested_rewrite_then_skip_preserves_rewrite() {
+            // Three levels: level3 rewrites+skips, wrapped twice.
+            let mut level3 = HookStack::<M>::new();
+            level3.push(RewriteHook(json!({ "deep": true })));
+            level3.push(SkipHook);
+            let mut level2 = HookStack::<M>::new();
+            level2.push(level3);
+            let mut level1 = HookStack::<M>::new();
+            level1.push(level2);
+
+            let (flow, salvaged) = resolve(&level1).await;
+            assert!(matches!(flow, Flow::Skip { .. }), "got {flow:?}");
+            assert_eq!(salvaged, Some(json!({ "deep": true })));
+        }
+
+        #[tokio::test]
+        async fn nested_proceeding_rewrite_surfaces_as_rewrite_args() {
+            // An inner stack that only rewrites (no short-circuit) surfaces the
+            // rewrite through the flow itself, with no salvaged second element.
+            let mut inner = HookStack::<M>::new();
+            inner.push(RewriteHook(json!({ "x": 5 })));
+            let mut outer = HookStack::<M>::new();
+            outer.push(inner);
+
+            let (flow, salvaged) = resolve(&outer).await;
+            assert_eq!(
+                flow,
+                Flow::RewriteArgs {
+                    args: json!({ "x": 5 })
+                }
+            );
+            assert_eq!(salvaged, None);
+        }
     }
 }
