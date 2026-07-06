@@ -25,7 +25,9 @@ mod result;
 pub mod server;
 
 pub use extensions::{MissingExtension, ToolCallExtensions, ToolResultExtensions};
-pub use result::{ToolExecutionResult, ToolFailure, ToolFailureKind, ToolOutcome, ToolReturn};
+pub use result::{
+    ToolExecutionResult, ToolFailure, ToolFailureKind, ToolOutcome, ToolReturn, ToolReturnOutcome,
+};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -220,7 +222,8 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     ///   (`ToolReturn::success(out).with_extension(..)`);
     /// - report a handled failure that still shows output to the model
     ///   ([`ToolReturn::failed`]);
-    /// - mark the call [`denied`](ToolReturn::denied) / [`skipped`](ToolReturn::skipped).
+    /// - mark the call [`denied`](ToolReturn::denied) — the tool refused it (a
+    ///   framework hook `Flow::Skip` is what yields a *skipped* outcome, not the tool).
     ///
     /// **Override contract:** this is the single entry point under *structured
     /// dynamic dispatch* — the agent loop routes every tool call here via the

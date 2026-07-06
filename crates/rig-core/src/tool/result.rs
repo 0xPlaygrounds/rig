@@ -228,20 +228,28 @@ impl std::error::Error for ToolFailure {}
 ///
 /// # `Skipped` vs `Denied`
 ///
-/// These are distinct sources, not synonyms:
+/// Both mean the tool body did not run, but they come from opposite sides — the
+/// framework vs. the tool — and are not synonyms:
 ///
-/// - [`Skipped`](Self::Skipped) is produced by the framework when a
+/// - [`Skipped`](Self::Skipped) is produced **by the framework** when a
 ///   [`ToolCall`](crate::agent::StepEvent::ToolCall) hook returns
 ///   [`Flow::Skip`](crate::agent::Flow::Skip). **Approval-policy denials use
 ///   `Flow::Skip`, so they surface as `Skipped`, not `Denied`** — there is no
-///   `Flow::Deny`. A policy that wants to distinguish its denials can key off the
-///   skip reason it supplied, or attach its own metadata.
-/// - [`Denied`](Self::Denied) is only ever produced by a *tool author* returning
-///   [`ToolReturn::denied`] / [`ToolExecutionResult::denied`] — a tool declaring
-///   that it refused the call itself (e.g. an internal authorization check).
+///   `Flow::Deny`. A policy that wants to distinguish its denials from other
+///   skips can key off the skip reason it supplied, or attach its own metadata.
+/// - [`Denied`](Self::Denied) is authored **by the tool**, via
+///   [`ToolReturn::denied`] / [`ToolExecutionResult::denied`] — the tool ran its
+///   own check and refused the call (e.g. an internal authorization check). This
+///   is the tool-side counterpart to a hook skip: **tools express refusal as
+///   `Denied`, not `Skipped`** (there is no tool-authored skip constructor).
 ///
-/// So [`is_denied`](Self::is_denied) matches tool-authored denials only; use
-/// [`is_skipped`](Self::is_skipped) for hook/approval-policy skips.
+/// So [`is_skipped`](Self::is_skipped) means "a hook skipped the call" and
+/// [`is_denied`](Self::is_denied) means "the tool refused it" — unambiguously,
+/// because the split is enforced by the type system: a tool authors a
+/// [`ToolReturnOutcome`], which has no `Skipped` variant, and the observed
+/// `Skipped` outcome can be produced only inside the crate (the framework). A
+/// tool cannot construct a return or a [`ToolExecutionResult`] that claims to
+/// have been skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToolOutcome {
@@ -250,15 +258,17 @@ pub enum ToolOutcome {
     /// The tool failed. Carries the structured [`ToolFailure`]; the model still
     /// receives [`ToolExecutionResult::model_output`] as feedback.
     Error(ToolFailure),
-    /// A [`ToolCall`](crate::agent::StepEvent::ToolCall) hook returned
-    /// [`Flow::Skip`](crate::agent::Flow::Skip) and the tool body did not run.
-    /// This includes approval-policy denials, which are expressed as
-    /// `Flow::Skip` (see the [type-level note](ToolOutcome#skipped-vs-denied)).
+    /// The tool body did not run because a
+    /// [`ToolCall`](crate::agent::StepEvent::ToolCall) hook returned
+    /// [`Flow::Skip`](crate::agent::Flow::Skip). This is a **framework** outcome
+    /// and includes approval-policy denials, which are expressed as `Flow::Skip`
+    /// (see the [type-level note](ToolOutcome#skipped-vs-denied)).
     Skipped,
-    /// A *tool* declared the call denied by returning [`ToolReturn::denied`] /
-    /// [`ToolExecutionResult::denied`]; the tool body did not run to completion.
-    /// This is **not** produced by a hook `Flow::Skip` — those are
-    /// [`Skipped`](Self::Skipped) (see the [type-level note](ToolOutcome#skipped-vs-denied)).
+    /// A **tool** declared the call denied by returning [`ToolReturn::denied`] /
+    /// [`ToolExecutionResult::denied`] — it ran its own check and refused. This is
+    /// **not** produced by a hook `Flow::Skip` (those are
+    /// [`Skipped`](Self::Skipped)); it is the tool-side counterpart to a skip (see
+    /// the [type-level note](ToolOutcome#skipped-vs-denied)).
     Denied,
 }
 
@@ -283,16 +293,16 @@ impl ToolOutcome {
         matches!(self, ToolOutcome::Error(_))
     }
 
-    /// Whether the call was skipped by a hook (`Flow::Skip`) before execution.
-    /// This includes approval-policy denials (see the [type-level
-    /// note](ToolOutcome#skipped-vs-denied)).
+    /// Whether a hook skipped the call (`Flow::Skip`) before execution — a
+    /// **framework** outcome that includes approval-policy denials (see the
+    /// [type-level note](ToolOutcome#skipped-vs-denied)).
     pub const fn is_skipped(&self) -> bool {
         matches!(self, ToolOutcome::Skipped)
     }
 
-    /// Whether a *tool* declared the call denied (via [`ToolReturn::denied`]).
-    /// Hook / approval-policy `Flow::Skip` denials are [`Skipped`](Self::Skipped),
-    /// not `Denied` (see the [type-level note](ToolOutcome#skipped-vs-denied)).
+    /// Whether a **tool** refused the call (via [`ToolReturn::denied`]). Hook /
+    /// approval-policy `Flow::Skip` denials are [`Skipped`](Self::Skipped), not
+    /// `Denied` (see the [type-level note](ToolOutcome#skipped-vs-denied)).
     pub const fn is_denied(&self) -> bool {
         matches!(self, ToolOutcome::Denied)
     }
@@ -329,6 +339,61 @@ impl ToolOutcome {
     }
 }
 
+/// The outcome a *tool* declares for a call it executed.
+///
+/// A strict subset of [`ToolOutcome`]: a tool that ran can report
+/// [`Success`](Self::Success), a handled [`Error`](Self::Error), or a
+/// [`Denied`](Self::Denied) refusal — but it **cannot** be
+/// [`Skipped`](ToolOutcome::Skipped). A skip is a *framework* decision made
+/// before the tool runs (a [`ToolCall`](crate::agent::StepEvent::ToolCall) hook
+/// returning [`Flow::Skip`](crate::agent::Flow::Skip)), so it has no
+/// tool-authored representation. Because [`ToolReturn`] carries this type — not
+/// [`ToolOutcome`] — it is *impossible* to construct a tool return (or a
+/// tool-built [`ToolExecutionResult`]) that claims to have been skipped while
+/// having actually run. Converts into the observed [`ToolOutcome`] via [`From`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ToolReturnOutcome {
+    /// The tool ran and produced output normally. Maps to [`ToolOutcome::Success`].
+    Success,
+    /// The tool ran and failed; carries the structured [`ToolFailure`]. The model
+    /// still receives the return's output as feedback. Maps to [`ToolOutcome::Error`].
+    Error(ToolFailure),
+    /// The tool ran its own check and refused the call (e.g. an internal
+    /// authorization check). Maps to [`ToolOutcome::Denied`].
+    Denied,
+}
+
+impl ToolReturnOutcome {
+    /// A stable, machine-friendly identifier, matching the [`ToolOutcome`] this
+    /// maps to (`"success"` / `"error"` / `"denied"`).
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            ToolReturnOutcome::Success => "success",
+            ToolReturnOutcome::Error(_) => "error",
+            ToolReturnOutcome::Denied => "denied",
+        }
+    }
+
+    /// The [`ToolFailure`] if this is an [`Error`](Self::Error), else `None`.
+    pub const fn failure(&self) -> Option<&ToolFailure> {
+        match self {
+            ToolReturnOutcome::Error(failure) => Some(failure),
+            _ => None,
+        }
+    }
+}
+
+impl From<ToolReturnOutcome> for ToolOutcome {
+    fn from(outcome: ToolReturnOutcome) -> Self {
+        match outcome {
+            ToolReturnOutcome::Success => ToolOutcome::Success,
+            ToolReturnOutcome::Error(failure) => ToolOutcome::Error(failure),
+            ToolReturnOutcome::Denied => ToolOutcome::Denied,
+        }
+    }
+}
+
 /// The full structured result of a single tool execution.
 ///
 /// This is what the dynamic tool boundary ([`ToolDyn`](crate::tool::ToolDyn))
@@ -336,30 +401,38 @@ impl ToolOutcome {
 /// [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event. It
 /// keeps the three concerns separate:
 ///
-/// - [`model_output`](Self::model_output): the text delivered to the model;
-/// - [`outcome`](Self::outcome): the structured [`ToolOutcome`];
-/// - [`extensions`](Self::extensions): metadata never sent to the model.
+/// - [`model_output`](Self::model_output()): the text delivered to the model;
+/// - [`outcome`](Self::outcome()): the structured [`ToolOutcome`];
+/// - [`extensions`](Self::extensions()): metadata never sent to the model.
 ///
 /// Tool authors rarely build this directly — they return a [`ToolReturn`] and the
-/// boundary assembles it. Construct one explicitly only in a manual
-/// [`ToolDyn`](crate::tool::ToolDyn) implementation.
+/// boundary assembles it. In a manual [`ToolDyn`](crate::tool::ToolDyn)
+/// implementation construct one with [`success`](Self::success) /
+/// [`failed`](Self::failed) / [`denied`](Self::denied); read it back with the
+/// [`model_output`](Self::model_output()) / [`outcome`](Self::outcome()) /
+/// [`extensions`](Self::extensions()) accessors.
+///
+/// The fields are crate-private on purpose: [`Skipped`](ToolOutcome::Skipped) is a
+/// framework-only outcome (a hook [`Flow::Skip`](crate::agent::Flow::Skip)), and
+/// there is no public constructor or setter that yields it — a tool that ran was
+/// not skipped. See the [`ToolOutcome` note](ToolOutcome#skipped-vs-denied).
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ToolExecutionResult {
-    /// The text delivered to the model as the tool result. Present even for a
-    /// failure, so the model gets useful feedback (a handled error message).
-    pub model_output: String,
-    /// The structured outcome of the call.
-    pub outcome: ToolOutcome,
-    /// Metadata attached by the tool, surfaced to hooks/tracing but never sent
-    /// to the model.
-    pub extensions: ToolResultExtensions,
+    pub(crate) model_output: String,
+    pub(crate) outcome: ToolOutcome,
+    pub(crate) extensions: ToolResultExtensions,
 }
 
 impl ToolExecutionResult {
     /// Construct a result with the given model output and outcome, and no
     /// extensions.
-    pub fn new(model_output: impl Into<String>, outcome: ToolOutcome) -> Self {
+    ///
+    /// Crate-internal because `outcome` is the full [`ToolOutcome`], including the
+    /// framework-only [`Skipped`](ToolOutcome::Skipped). Tool authors use
+    /// [`success`](Self::success) / [`failed`](Self::failed) /
+    /// [`denied`](Self::denied), which cannot produce `Skipped`.
+    pub(crate) fn new(model_output: impl Into<String>, outcome: ToolOutcome) -> Self {
         Self {
             model_output: model_output.into(),
             outcome,
@@ -379,11 +452,19 @@ impl ToolExecutionResult {
     }
 
     /// A [`Skipped`](ToolOutcome::Skipped) result (the body did not run).
-    pub fn skipped(model_output: impl Into<String>) -> Self {
+    ///
+    /// Framework-internal: `Skipped` is produced only when a `ToolCall` hook
+    /// returns [`Flow::Skip`](crate::agent::Flow::Skip). A tool author expresses
+    /// refusal with [`denied`](Self::denied) instead — see the
+    /// [`ToolOutcome` note](ToolOutcome#skipped-vs-denied).
+    pub(crate) fn skipped(model_output: impl Into<String>) -> Self {
         Self::new(model_output, ToolOutcome::Skipped)
     }
 
-    /// A [`Denied`](ToolOutcome::Denied) result (the body did not run).
+    /// A [`Denied`](ToolOutcome::Denied) result: the tool refused the call (the
+    /// body did not run to completion). The tool-authored counterpart to a hook
+    /// [`Flow::Skip`](crate::agent::Flow::Skip); see the
+    /// [`ToolOutcome` note](ToolOutcome#skipped-vs-denied).
     pub fn denied(model_output: impl Into<String>) -> Self {
         Self::new(model_output, ToolOutcome::Denied)
     }
@@ -392,6 +473,23 @@ impl ToolExecutionResult {
     pub fn with_extensions(mut self, extensions: ToolResultExtensions) -> Self {
         self.extensions = extensions;
         self
+    }
+
+    /// The text delivered to the model as the tool result. Present even for a
+    /// failure, so the model gets useful feedback (a handled error message).
+    pub fn model_output(&self) -> &str {
+        &self.model_output
+    }
+
+    /// The structured [`ToolOutcome`] of the call.
+    pub fn outcome(&self) -> &ToolOutcome {
+        &self.outcome
+    }
+
+    /// Metadata attached by the tool, surfaced to hooks/tracing but never sent
+    /// to the model.
+    pub fn extensions(&self) -> &ToolResultExtensions {
+        &self.extensions
     }
 }
 
@@ -407,8 +505,10 @@ impl ToolExecutionResult {
 ///   success;
 /// - report a *handled failure* that still shows structured output to the model
 ///   ([`failed`](Self::failed));
-/// - mark the call [`denied`](Self::denied) or [`skipped`](Self::skipped) from
-///   inside the tool.
+/// - mark the call [`denied`](Self::denied) — the tool ran its own check and
+///   refused (the tool-side counterpart to a hook `Flow::Skip`; there is no
+///   tool-authored *skipped* — that outcome is the framework's, see
+///   [`ToolOutcome`]).
 ///
 /// The [`output`](Self::output) is serialized to the model exactly as a normal
 /// tool output would be (a `String` output stays verbatim; anything else becomes
@@ -434,8 +534,11 @@ impl ToolExecutionResult {
 pub struct ToolReturn<T> {
     /// The value serialized as the model-visible tool output.
     pub output: T,
-    /// The structured outcome. Defaults to [`ToolOutcome::Success`].
-    pub outcome: ToolOutcome,
+    /// The structured outcome the tool declares. A [`ToolReturnOutcome`] (not a
+    /// [`ToolOutcome`]), so it can never be the framework-only
+    /// [`Skipped`](ToolOutcome::Skipped). Defaults to
+    /// [`ToolReturnOutcome::Success`].
+    pub outcome: ToolReturnOutcome,
     /// Metadata surfaced to hooks/tracing but never sent to the model.
     pub extensions: ToolResultExtensions,
 }
@@ -447,13 +550,13 @@ impl<T> ToolReturn<T> {
     pub fn success(output: T) -> Self {
         Self {
             output,
-            outcome: ToolOutcome::Success,
+            outcome: ToolReturnOutcome::Success,
             extensions: ToolResultExtensions::new(),
         }
     }
 
-    /// A return wrapping `output` with an explicit `outcome`.
-    pub fn new(output: T, outcome: ToolOutcome) -> Self {
+    /// A return wrapping `output` with an explicit [`ToolReturnOutcome`].
+    pub fn new(output: T, outcome: ToolReturnOutcome) -> Self {
         Self {
             output,
             outcome,
@@ -462,23 +565,22 @@ impl<T> ToolReturn<T> {
     }
 
     /// A handled-failure return: `output` is still serialized to the model as
-    /// feedback, but the outcome is [`ToolOutcome::Error`] carrying `failure`.
+    /// feedback, but the outcome is [`ToolReturnOutcome::Error`] carrying `failure`.
     pub fn failed(output: T, failure: ToolFailure) -> Self {
-        Self::new(output, ToolOutcome::Error(failure))
+        Self::new(output, ToolReturnOutcome::Error(failure))
     }
 
-    /// A [`denied`](ToolOutcome::Denied) return (the model still sees `output`).
+    /// A [`denied`](ToolReturnOutcome::Denied) return: the tool ran its own check
+    /// and refused (the model still sees `output`). The tool-side counterpart to
+    /// a hook [`Flow::Skip`](crate::agent::Flow::Skip); there is no tool-authored
+    /// *skipped* — `Skipped` is a framework outcome (see
+    /// [`ToolReturnOutcome`](ToolReturnOutcome)).
     pub fn denied(output: T) -> Self {
-        Self::new(output, ToolOutcome::Denied)
-    }
-
-    /// A [`skipped`](ToolOutcome::Skipped) return (the model still sees `output`).
-    pub fn skipped(output: T) -> Self {
-        Self::new(output, ToolOutcome::Skipped)
+        Self::new(output, ToolReturnOutcome::Denied)
     }
 
     /// Replace the outcome.
-    pub fn with_outcome(mut self, outcome: ToolOutcome) -> Self {
+    pub fn with_outcome(mut self, outcome: ToolReturnOutcome) -> Self {
         self.outcome = outcome;
         self
     }
@@ -513,7 +615,7 @@ impl<T: Serialize> ToolReturn<T> {
         match super::serialize_tool_output(&self.output) {
             Ok(model_output) => ToolExecutionResult {
                 model_output,
-                outcome: self.outcome,
+                outcome: self.outcome.into(),
                 extensions: self.extensions,
             },
             Err(err) => ToolExecutionResult::failed(
@@ -624,5 +726,50 @@ mod tests {
             .with_extension(ReqId("abc".into()))
             .into_execution_result();
         assert_eq!(result.extensions.get::<ReqId>(), Some(&ReqId("abc".into())));
+    }
+
+    #[test]
+    fn tool_return_outcome_maps_to_observed_outcome() {
+        // The tool-authorable set is exactly { Success, Error, Denied } — there is
+        // no `ToolReturnOutcome::Skipped` variant, so a tool return can never
+        // claim it was skipped (that guarantee is enforced at compile time; there
+        // is nothing to test at runtime). Each authorable outcome maps to its
+        // observed `ToolOutcome`:
+        assert_eq!(
+            ToolOutcome::from(ToolReturnOutcome::Success),
+            ToolOutcome::Success
+        );
+        assert_eq!(
+            ToolOutcome::from(ToolReturnOutcome::Denied),
+            ToolOutcome::Denied
+        );
+        let failure = ToolFailure::not_found("x");
+        assert_eq!(
+            ToolOutcome::from(ToolReturnOutcome::Error(failure.clone())),
+            ToolOutcome::Error(failure)
+        );
+
+        assert_eq!(ToolReturnOutcome::Success.as_str(), "success");
+        assert_eq!(ToolReturnOutcome::Denied.as_str(), "denied");
+        assert_eq!(
+            ToolReturnOutcome::Error(ToolFailure::timeout("t")).as_str(),
+            "error"
+        );
+        assert_eq!(
+            ToolReturnOutcome::Error(ToolFailure::timeout("t"))
+                .failure()
+                .map(|f| f.kind),
+            Some(ToolFailureKind::Timeout)
+        );
+        assert_eq!(ToolReturnOutcome::Denied.failure(), None);
+    }
+
+    #[test]
+    fn tool_return_denied_surfaces_as_denied_observed_outcome() {
+        let result = ToolReturn::denied("refused".to_string()).into_execution_result();
+        assert_eq!(*result.outcome(), ToolOutcome::Denied);
+        assert_eq!(result.model_output(), "refused");
+        assert!(result.outcome().is_denied());
+        assert!(!result.outcome().is_skipped());
     }
 }
