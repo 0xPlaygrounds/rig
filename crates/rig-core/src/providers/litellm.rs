@@ -252,4 +252,95 @@ mod tests {
         assert_eq!(response.data[0].created, 0);
         assert_eq!(response.data[0].owned_by, "");
     }
+
+    #[test]
+    fn test_model_listing_empty_data() {
+        let data = r#"{"data": []}"#;
+        let response: ListModelsResponse = serde_json::from_str(data).unwrap();
+        assert_eq!(response.data.len(), 0);
+    }
+
+    #[test]
+    fn test_model_listing_malformed_json_errors() {
+        let data = r#"{"not_data": []}"#;
+        let result = serde_json::from_str::<ListModelsResponse>(data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_model_entry_to_model_conversion() {
+        let entry = ListModelEntry {
+            id: "anthropic/claude-sonnet-4-20250514".to_string(),
+            created: 1700000000,
+            owned_by: "anthropic".to_string(),
+        };
+        let model: crate::model::Model = entry.into();
+        assert_eq!(model.id, "anthropic/claude-sonnet-4-20250514");
+        assert_eq!(model.created_at, Some(1700000000));
+        assert_eq!(model.owned_by, Some("anthropic".to_string()));
+    }
+
+    #[test]
+    fn test_default_base_url_is_localhost() {
+        assert_eq!(LITELLM_API_BASE_URL, "http://localhost:4000/v1");
+    }
+
+    #[tokio::test]
+    async fn completion_http_error_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"invalid api key","code":"401"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNAUTHORIZED, body);
+        let client = super::Client::builder()
+            .api_key("bad-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with auth error");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_server_error_preserves_status() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"rate limit exceeded"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = super::Client::builder()
+            .api_key("key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with rate limit");
+
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
 }
