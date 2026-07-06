@@ -156,7 +156,7 @@ impl From<rmcp::model::Tool> for ToolDefinition {
 /// Carries a structured [`ToolFailureKind`] so an MCP timeout, transport
 /// failure, or tool-reported error reaches hooks and telemetry as a classified
 /// [`ToolFailure`] (via [`McpTool`]'s
-/// [`ToolDyn::call_structured`](crate::tool::ToolDyn::call_structured)) instead
+/// [`ToolDyn::call_structured`]) instead
 /// of an opaque string.
 #[derive(Debug, thiserror::Error)]
 #[error("MCP tool error: {message}")]
@@ -191,6 +191,26 @@ impl From<McpToolError> for ToolError {
     }
 }
 
+/// Parse the JSON `args` string into MCP call arguments.
+///
+/// Returns `Ok(None)` for empty input or valid-but-non-object JSON (`null`, an
+/// array, a scalar) — all of which carry no MCP arguments — and `Ok(Some(obj))`
+/// for a JSON object. **Malformed JSON is a hard error** (`Err`): LLMs
+/// occasionally emit invalid JSON, and it must surface as a
+/// [`ToolFailureKind::InvalidArgs`] failure rather than being silently coerced
+/// into a no-argument call that reaches the server.
+fn parse_mcp_arguments(args: &str) -> Result<Option<rmcp::model::JsonObject>, serde_json::Error> {
+    let trimmed = args.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed)?;
+    match value {
+        serde_json::Value::Object(_) => Ok(Some(serde_json::from_value(value)?)),
+        _ => Ok(None),
+    }
+}
+
 impl McpTool {
     /// Shared executor for [`ToolDyn::call`] and [`ToolDyn::call_with_extensions`].
     ///
@@ -205,10 +225,16 @@ impl McpTool {
         meta: Option<rmcp::model::Meta>,
     ) -> WasmBoxedFuture<'_, Result<String, McpToolError>> {
         let name = self.definition.name.clone();
-        let arguments: Option<rmcp::model::JsonObject> =
-            serde_json::from_str(&args).unwrap_or_default();
 
         Box::pin(async move {
+            // Validate the JSON arguments before contacting the server: malformed
+            // JSON must surface as an InvalidArgs failure, not a silent no-arg call.
+            let arguments = parse_mcp_arguments(&args).map_err(|err| {
+                McpToolError::new(
+                    ToolFailureKind::InvalidArgs,
+                    format!("MCP tool '{name}' received invalid JSON arguments: {err}"),
+                )
+            })?;
             let mut request = arguments
                 .map(|arguments| {
                     rmcp::model::CallToolRequestParams::new(name.clone()).with_arguments(arguments)
@@ -1141,6 +1167,117 @@ mod tests {
             received.0.get("authorization").is_none(),
             "no caller metadata should be forwarded when the context carries none"
         );
+
+        server_task.abort();
+    }
+
+    /// `parse_mcp_arguments` distinguishes malformed JSON (a hard error) from
+    /// valid-but-argument-free inputs (empty / `null` / non-object) which map to
+    /// `None`, while a JSON object round-trips.
+    #[test]
+    fn parse_mcp_arguments_classifies_inputs() {
+        use super::parse_mcp_arguments;
+
+        assert!(parse_mcp_arguments("").expect("empty is no-args").is_none());
+        assert!(
+            parse_mcp_arguments("   ")
+                .expect("whitespace is no-args")
+                .is_none()
+        );
+        assert!(
+            parse_mcp_arguments("null")
+                .expect("null is no-args")
+                .is_none()
+        );
+        assert!(
+            parse_mcp_arguments("[1,2]")
+                .expect("array is no-args")
+                .is_none()
+        );
+        assert!(parse_mcp_arguments("{}").expect("empty object").is_some());
+        let obj = parse_mcp_arguments("{\"a\":1}")
+            .expect("valid object")
+            .expect("object present");
+        assert_eq!(obj.get("a"), Some(&json!(1)));
+
+        // Malformed JSON is a hard error, not a silent no-arg call.
+        assert!(parse_mcp_arguments("{not valid json").is_err());
+        assert!(parse_mcp_arguments("{\"a\":").is_err());
+    }
+
+    /// Malformed JSON arguments are classified as [`ToolFailureKind::InvalidArgs`]
+    /// and short-circuit **before** the MCP server is contacted — proven by
+    /// pointing the tool at a server that never responds and asserting the call
+    /// returns fast with a structured invalid-args outcome instead of hanging.
+    #[tokio::test]
+    async fn mcp_tool_invalid_json_args_short_circuit_as_invalid_args() {
+        use super::McpTool;
+        use crate::tool::{ToolCallExtensions, ToolDyn, ToolFailureKind, ToolOutcome};
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        let server_task = tokio::spawn(async move {
+            let running = HangingToolServer
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+
+        let tools = client
+            .peer()
+            .list_all_tools()
+            .await
+            .expect("list_tools failed");
+
+        // A generous per-call timeout: if invalid args wrongly reached the hanging
+        // server, the call would take this long; the safety timeout below is much
+        // shorter, so the test fails fast on a regression rather than short-circuiting.
+        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone())
+            .with_timeout(Duration::from_secs(30));
+
+        let structured = tokio::time::timeout(
+            Duration::from_secs(2),
+            mcp_tool.call_structured("{not valid json".to_string(), &ToolCallExtensions::new()),
+        )
+        .await
+        .expect(
+            "invalid JSON args must be classified before contacting the (hanging) server; \
+             the call reached the server and hung",
+        );
+
+        match &structured.outcome {
+            ToolOutcome::Error(failure) => {
+                assert_eq!(
+                    failure.kind,
+                    ToolFailureKind::InvalidArgs,
+                    "malformed MCP args must classify as InvalidArgs, got {:?}",
+                    failure.kind
+                );
+            }
+            other => panic!("expected an InvalidArgs error outcome, got {other:?}"),
+        }
+        assert!(
+            structured.model_output.contains("invalid JSON"),
+            "the model-visible output should explain the parse failure, got {:?}",
+            structured.model_output
+        );
+
+        // The string `call` path surfaces the same failure as a `ToolError`.
+        let err = tokio::time::timeout(
+            Duration::from_secs(2),
+            mcp_tool.call("{not valid json".to_string()),
+        )
+        .await
+        .expect("invalid JSON args must short-circuit on the string path too")
+        .expect_err("malformed args must be an error");
+        assert!(err.to_string().contains("invalid JSON"), "got: {err}");
 
         server_task.abort();
     }

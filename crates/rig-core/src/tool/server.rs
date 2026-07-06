@@ -729,4 +729,34 @@ mod tests {
 
         assert_eq!(result, "10");
     }
+
+    #[tokio::test]
+    async fn call_tool_structured_returns_success_for_a_known_tool() {
+        use crate::tool::{ToolCallExtensions, ToolOutcome};
+
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let args = serde_json::to_string(&serde_json::json!({"x": 2, "y": 5})).unwrap();
+        let result = handle
+            .call_tool_structured("add", &args, &ToolCallExtensions::EMPTY)
+            .await;
+
+        assert!(matches!(result.outcome, ToolOutcome::Success));
+        assert_eq!(result.model_output, "7");
+    }
+
+    #[tokio::test]
+    async fn call_tool_structured_classifies_a_missing_tool_as_not_found() {
+        use crate::tool::{ToolCallExtensions, ToolFailureKind, ToolOutcome};
+
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let result = handle
+            .call_tool_structured("does_not_exist", "{}", &ToolCallExtensions::EMPTY)
+            .await;
+
+        match result.outcome {
+            ToolOutcome::Error(failure) => assert_eq!(failure.kind, ToolFailureKind::NotFound),
+            other => panic!("expected a NotFound error outcome, got {other:?}"),
+        }
+        assert!(result.model_output.contains("does_not_exist"));
+    }
 }

@@ -104,7 +104,7 @@
 //! # Steering on structured tool outcomes
 //!
 //! [`StepEvent::ToolResult`] carries a structured
-//! [`ToolOutcome`](crate::tool::ToolOutcome) alongside the model-visible
+//! [`ToolOutcome`] alongside the model-visible
 //! `result`, so a hook can branch on *why* a tool failed — a timeout vs. a 404 —
 //! without parsing strings. The motivating case: abort after repeated timeouts,
 //! but let a not-found flow back to the model as recoverable feedback.
@@ -1337,6 +1337,55 @@ where
     pub fn len(&self) -> usize {
         self.hooks.len()
     }
+
+    /// Run the [`ToolCall`](StepEvent::ToolCall) hook chain, returning the
+    /// terminal control-flow action and — **only when a hook short-circuits the
+    /// chain** — the effective (rewritten) arguments accumulated by earlier
+    /// [`Flow::RewriteArgs`] hooks that would otherwise be lost.
+    ///
+    /// When the chain proceeds, any rewrite is carried by the returned [`Flow`]
+    /// itself ([`RewriteArgs`](Flow::RewriteArgs) for a rewriting chain,
+    /// [`Continue`](Flow::Continue) otherwise) and the second element is `None`.
+    /// When a hook short-circuits with [`Flow::Skip`] / [`Flow::Terminate`] (or a
+    /// fail-closed action), that action is returned in the first element while the
+    /// accumulated rewrite is salvaged into the second element, so the caller can
+    /// still report the rewritten args on the resulting
+    /// [`ToolResult`](StepEvent::ToolResult) event and in tracing rather than
+    /// leaking the model's original (pre-rewrite) args. The two are therefore
+    /// mutually exclusive: the [`Flow`] is [`RewriteArgs`](Flow::RewriteArgs) only
+    /// when the second element is `None`.
+    pub(crate) async fn resolve_tool_call(
+        &self,
+        ctx: &HookContext,
+        tool_name: &str,
+        tool_call_id: Option<&str>,
+        internal_call_id: &str,
+        args: &str,
+    ) -> (Flow, Option<serde_json::Value>) {
+        let mut effective: Option<serde_json::Value> = None;
+        for hook in &self.hooks {
+            let rewritten = effective.as_ref().map(json_utils::value_to_json_string);
+            let args_for_hook = rewritten.as_deref().unwrap_or(args);
+            let per_hook = StepEvent::ToolCall {
+                tool_name,
+                tool_call_id,
+                internal_call_id,
+                args: args_for_hook,
+            };
+            match hook.on_event_boxed(ctx, per_hook).await {
+                Flow::Continue => {}
+                Flow::RewriteArgs { args } => effective = Some(args),
+                // A short-circuit drops the accumulated rewrite from the returned
+                // flow, so salvage it in the second element for the caller.
+                other => return (other, effective),
+            }
+        }
+        // The chain proceeded: surface any rewrite through the flow itself.
+        match effective {
+            Some(args) => (Flow::RewriteArgs { args }, None),
+            None => (Flow::Continue, None),
+        }
+    }
 }
 
 impl<M> AgentHook<M> for HookStack<M>
@@ -1371,34 +1420,21 @@ where
             }
             // Chain tool-arg rewrites: thread the effective arguments through
             // each hook so a later hook observes (and may further rewrite) the
-            // value produced by earlier hooks. `Skip`/`Terminate` are terminal;
-            // any other flow is returned for fail-closed handling.
+            // value produced by earlier hooks. A proceeding chain surfaces the
+            // rewrite as `RewriteArgs`; `Skip`/`Terminate` are terminal and any
+            // other flow is returned for fail-closed handling. The salvaged
+            // rewrite (second element) matters only to `run_single_tool`, which
+            // must report it on a short-circuited `ToolResult`; it is dropped
+            // here (this result is observe-only).
             StepEvent::ToolCall {
                 tool_name,
                 tool_call_id,
                 internal_call_id,
                 args,
             } => {
-                let mut effective: Option<serde_json::Value> = None;
-                for hook in &self.hooks {
-                    let rewritten = effective.as_ref().map(json_utils::value_to_json_string);
-                    let args_for_hook = rewritten.as_deref().unwrap_or(args);
-                    let per_hook = StepEvent::ToolCall {
-                        tool_name,
-                        tool_call_id,
-                        internal_call_id,
-                        args: args_for_hook,
-                    };
-                    match hook.on_event_boxed(ctx, per_hook).await {
-                        Flow::Continue => {}
-                        Flow::RewriteArgs { args } => effective = Some(args),
-                        other => return other,
-                    }
-                }
-                match effective {
-                    Some(args) => Flow::RewriteArgs { args },
-                    None => Flow::Continue,
-                }
+                self.resolve_tool_call(ctx, tool_name, tool_call_id, internal_call_id, args)
+                    .await
+                    .0
             }
             // Chain tool-result rewrites: thread the effective (model-visible)
             // result through each hook (the first hook sees the tool's real

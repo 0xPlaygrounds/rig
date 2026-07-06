@@ -562,6 +562,42 @@ impl Tool for MockHandledFailureTool {
     }
 }
 
+/// A tool that declares the call denied from inside the tool (via
+/// [`ToolReturn::denied`]), producing a [`ToolOutcome::Denied`](crate::tool::ToolOutcome::Denied)
+/// outcome — as opposed to a hook `Flow::Skip`, which is `Skipped`. Registered
+/// under the name `guarded`.
+#[derive(Clone)]
+pub struct MockDeniedTool;
+
+impl Tool for MockDeniedTool {
+    const NAME: &'static str = "guarded";
+    type Error = MockToolError;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "A tool with an internal authorization check".to_string(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Ok("ok".to_string())
+    }
+
+    async fn call_structured(
+        &self,
+        _args: Self::Args,
+        _extensions: &ToolCallExtensions,
+    ) -> Result<ToolReturn<Self::Output>, Self::Error> {
+        Ok(ToolReturn::denied(
+            "access to this resource is not permitted".to_string(),
+        ))
+    }
+}
+
 /// A cloneable extension value a [`MockMetadataTool`] attaches to its result, to
 /// verify result extensions reach hooks without being sent to the model.
 #[derive(Clone, Debug, PartialEq, Eq)]

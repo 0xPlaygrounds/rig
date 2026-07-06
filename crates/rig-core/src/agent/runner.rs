@@ -613,26 +613,40 @@ where
     tool_span.record("gen_ai.tool.call.id", &tool_call.id);
     tool_span.record("gen_ai.tool.call.arguments", &args);
 
-    // The `ToolCall` hook decides whether the tool runs. On `Skip` the body does
-    // not run and the structured outcome is `Skipped`; otherwise the tool
-    // executes into a structured `ToolExecutionResult`. `effective_args` is what
-    // the tool actually ran with (the model's, or a hook's `RewriteArgs`
-    // replacement) — surfaced in the execution-start event so a redaction rewrite
-    // does not leak. It is unused for a skip.
+    // Resolve the `ToolCall` hook chain. A proceeding chain carries any
+    // `Flow::RewriteArgs` in the flow itself (→ `ProceedWith`); a chain that a
+    // later hook short-circuits with `Skip`/`Terminate` salvages the accumulated
+    // rewrite into `salvaged_rewrite` so it is *not* lost — the rewritten args
+    // must still be reported on the skipped `ToolResult` and in tracing rather
+    // than leaking the model's original args (see [`HookStack::resolve_tool_call`]).
+    let (flow, salvaged_rewrite) = hooks
+        .resolve_tool_call(
+            ctx,
+            tool_name,
+            tool_call.call_id.as_deref(),
+            internal_call_id,
+            &args,
+        )
+        .await;
+
+    // Apply a salvaged rewrite (short-circuit path only) so `args` — what the
+    // `ToolResult` reports — and the span reflect the effective arguments.
+    if let Some(rewritten) = salvaged_rewrite.as_ref() {
+        args = json_utils::value_to_json_string(rewritten);
+        tool_span.record("gen_ai.tool.call.arguments", &args);
+        tracing::debug!(
+            tool_name = tool_name,
+            "tool-call arguments rewritten by a hook"
+        );
+    }
+
+    // On `Skip` the body does not run and the structured outcome is `Skipped`;
+    // otherwise the tool executes into a structured `ToolExecutionResult`.
+    // `effective_args` is what the tool actually ran with (the model's, a hook's
+    // `RewriteArgs` replacement, or a salvaged rewrite) — surfaced in the
+    // execution-start event so a redaction rewrite does not leak. Unused for a skip.
     let mut skipped: Option<ToolExecutionResult> = None;
-    let effective_args: serde_json::Value = match flow_into_tool_call(
-        hooks
-            .on_event(
-                ctx,
-                StepEvent::ToolCall {
-                    tool_name,
-                    tool_call_id: tool_call.call_id.as_deref(),
-                    internal_call_id,
-                    args: &args,
-                },
-            )
-            .await,
-    ) {
+    let effective_args: serde_json::Value = match flow_into_tool_call(flow) {
         ToolCallDecision::Terminate(reason) => {
             return Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
@@ -644,12 +658,14 @@ where
             // Synthetic rejection: `Skipped` outcome, message delivered verbatim.
             // Still fires the `ToolResult` hook so a policy observes the skip.
             skipped = Some(ToolExecutionResult::skipped(reason));
-            serde_json::Value::Null
+            // A skip runs nothing; its effective args are the salvaged rewrite
+            // (if any) so tracing/history stay consistent, though they go unused.
+            salvaged_rewrite.unwrap_or_else(|| tool_call.function.arguments.clone())
         }
         ToolCallDecision::ProceedWith(replacement) => {
-            // Run the tool with the hook's rewritten arguments. Re-record the
-            // span so the trace, and the downstream `ToolResult` event, reflect
-            // what the tool actually received rather than what the model emitted.
+            // Proceeding rewrite: re-record the span so the trace, and the
+            // downstream `ToolResult` event, reflect what the tool actually
+            // received rather than what the model emitted.
             args = json_utils::value_to_json_string(&replacement);
             tool_span.record("gen_ai.tool.call.arguments", &args);
             tracing::debug!(
@@ -1255,8 +1271,8 @@ mod tests {
         use crate::agent::{AgentBuilder, AgentHook, Flow, HookContext, StepEvent};
         use crate::completion::CompletionModel;
         use crate::test_utils::{
-            MockAddTool, MockCompletionModel, MockFailingTool, MockHandledFailureTool,
-            MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
+            MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool,
+            MockHandledFailureTool, MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
         };
         use crate::tool::{ToolFailureKind, ToolOutcome};
 
@@ -1498,6 +1514,136 @@ mod tests {
                 observer.results(),
                 vec!["not executed (denied by policy); do not retry".to_string()]
             );
+        }
+
+        // A *tool-authored* denial (`ToolReturn::denied`) surfaces as a `Denied`
+        // outcome — distinct from a hook `Flow::Skip`, which is `Skipped`. This
+        // pins the documented `Skipped` vs `Denied` split: `Denied` comes only
+        // from the tool, never from a hook skip.
+        #[tokio::test]
+        async fn tool_authored_denial_produces_denied_outcome() {
+            let hook = OutcomeHook::default();
+            AgentBuilder::new(model_one_tool_then_text("guarded"))
+                .tool(MockDeniedTool)
+                .add_hook(hook.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("a tool-authored denial is not fatal");
+
+            assert_eq!(hook.outcomes(), vec!["denied".to_string()]);
+            assert_eq!(
+                hook.results(),
+                vec!["access to this resource is not permitted".to_string()],
+                "the model still receives the tool's denial message"
+            );
+        }
+
+        // A `RewriteArgs` hook followed by a `Skip` hook: the tool must not run,
+        // the `ToolResult` reports the *rewritten* args (not the model's
+        // original), and the outcome is `Skipped` — the rewrite (e.g. a
+        // redaction) is not lost when a later hook short-circuits. Verified on
+        // both the blocking and streaming surfaces.
+        #[tokio::test]
+        async fn rewrite_args_then_skip_reports_rewritten_args() {
+            // Rewrites the tool args, replacing whatever the model emitted.
+            struct RewriteHook;
+            impl<M: CompletionModel> AgentHook<M> for RewriteHook {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolCall { .. } = event {
+                        Flow::rewrite_args(json!({ "x": 41, "y": 1 }))
+                    } else {
+                        Flow::cont()
+                    }
+                }
+            }
+            // Skips *after* the rewrite (registered second).
+            struct SkipHook;
+            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolCall { .. } = event {
+                        Flow::skip("denied after rewrite")
+                    } else {
+                        Flow::cont()
+                    }
+                }
+            }
+            // Records the args + outcome seen on the `ToolResult` event.
+            #[derive(Clone, Default)]
+            struct ArgsProbe {
+                args: Arc<Mutex<Option<String>>>,
+                outcome: Arc<Mutex<Option<String>>>,
+            }
+            impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
+                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                    if let StepEvent::ToolResult { args, outcome, .. } = event {
+                        *self.args.lock().expect("args") = Some(args.to_string());
+                        *self.outcome.lock().expect("outcome") = Some(outcome_label(outcome));
+                    }
+                    Flow::cont()
+                }
+            }
+
+            async fn run_surface(streaming: bool) -> (String, String) {
+                let probe = ArgsProbe::default();
+                // The tool must never execute; `MockAddTool` would produce a
+                // `Success` outcome with result "42" if it (wrongly) ran.
+                if streaming {
+                    let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("add"))
+                        .tool(MockAddTool)
+                        .add_hook(RewriteHook)
+                        .add_hook(SkipHook)
+                        .add_hook(probe.clone())
+                        .build()
+                        .runner("go")
+                        .max_turns(3)
+                        .stream()
+                        .await;
+                    while let Some(item) = stream.next().await {
+                        if let Err(err) = item {
+                            panic!("stream item errored: {err}");
+                        }
+                    }
+                } else {
+                    AgentBuilder::new(model_one_tool_then_text("add"))
+                        .tool(MockAddTool)
+                        .add_hook(RewriteHook)
+                        .add_hook(SkipHook)
+                        .add_hook(probe.clone())
+                        .build()
+                        .runner("go")
+                        .max_turns(3)
+                        .run()
+                        .await
+                        .expect("run should succeed after skipping the tool");
+                }
+                let args = probe.args.lock().expect("args").clone().expect("args seen");
+                let outcome = probe
+                    .outcome
+                    .lock()
+                    .expect("outcome")
+                    .clone()
+                    .expect("outcome seen");
+                (args, outcome)
+            }
+
+            for streaming in [false, true] {
+                let (args, outcome) = run_surface(streaming).await;
+                assert_eq!(
+                    outcome, "skipped",
+                    "the skipped tool must produce a Skipped outcome (streaming={streaming})"
+                );
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&args).expect("ToolResult args are valid JSON");
+                assert_eq!(
+                    parsed,
+                    json!({ "x": 41, "y": 1 }),
+                    "the skipped ToolResult must report the rewritten args, not the model's \
+                     original {{}} (streaming={streaming}); got {args}"
+                );
+            }
         }
 
         // (8) Invalid JSON arguments are classified as a structured `InvalidArgs`

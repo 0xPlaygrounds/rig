@@ -225,6 +225,23 @@ impl std::error::Error for ToolFailure {}
 /// This is Rig's answer to "was that a success or an error?" without inspecting
 /// the result string. It mirrors Pydantic AI's `outcome: 'success' | 'failed' |
 /// 'denied'` and the Vercel AI SDK's `tool-result` vs `tool-error` distinction.
+///
+/// # `Skipped` vs `Denied`
+///
+/// These are distinct sources, not synonyms:
+///
+/// - [`Skipped`](Self::Skipped) is produced by the framework when a
+///   [`ToolCall`](crate::agent::StepEvent::ToolCall) hook returns
+///   [`Flow::Skip`](crate::agent::Flow::Skip). **Approval-policy denials use
+///   `Flow::Skip`, so they surface as `Skipped`, not `Denied`** — there is no
+///   `Flow::Deny`. A policy that wants to distinguish its denials can key off the
+///   skip reason it supplied, or attach its own metadata.
+/// - [`Denied`](Self::Denied) is only ever produced by a *tool author* returning
+///   [`ToolReturn::denied`] / [`ToolExecutionResult::denied`] — a tool declaring
+///   that it refused the call itself (e.g. an internal authorization check).
+///
+/// So [`is_denied`](Self::is_denied) matches tool-authored denials only; use
+/// [`is_skipped`](Self::is_skipped) for hook/approval-policy skips.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToolOutcome {
@@ -234,9 +251,14 @@ pub enum ToolOutcome {
     /// receives [`ToolExecutionResult::model_output`] as feedback.
     Error(ToolFailure),
     /// A [`ToolCall`](crate::agent::StepEvent::ToolCall) hook returned
-    /// [`Flow::Skip`](crate::agent::Flow::Skip): the tool body did not run.
+    /// [`Flow::Skip`](crate::agent::Flow::Skip) and the tool body did not run.
+    /// This includes approval-policy denials, which are expressed as
+    /// `Flow::Skip` (see the [type-level note](ToolOutcome#skipped-vs-denied)).
     Skipped,
-    /// The call was denied (e.g. by an approval policy). The tool body did not run.
+    /// A *tool* declared the call denied by returning [`ToolReturn::denied`] /
+    /// [`ToolExecutionResult::denied`]; the tool body did not run to completion.
+    /// This is **not** produced by a hook `Flow::Skip` — those are
+    /// [`Skipped`](Self::Skipped) (see the [type-level note](ToolOutcome#skipped-vs-denied)).
     Denied,
 }
 
@@ -261,12 +283,16 @@ impl ToolOutcome {
         matches!(self, ToolOutcome::Error(_))
     }
 
-    /// Whether the call was skipped by a hook before execution.
+    /// Whether the call was skipped by a hook (`Flow::Skip`) before execution.
+    /// This includes approval-policy denials (see the [type-level
+    /// note](ToolOutcome#skipped-vs-denied)).
     pub const fn is_skipped(&self) -> bool {
         matches!(self, ToolOutcome::Skipped)
     }
 
-    /// Whether the call was denied before execution.
+    /// Whether a *tool* declared the call denied (via [`ToolReturn::denied`]).
+    /// Hook / approval-policy `Flow::Skip` denials are [`Skipped`](Self::Skipped),
+    /// not `Denied` (see the [type-level note](ToolOutcome#skipped-vs-denied)).
     pub const fn is_denied(&self) -> bool {
         matches!(self, ToolOutcome::Denied)
     }
@@ -497,6 +523,18 @@ impl<T: Serialize> ToolReturn<T> {
         }
     }
 }
+
+// The structured result crosses `.await` points and is the output of the
+// `WasmBoxedFuture` returned by `ToolDyn::call_structured`, so on native targets
+// it must stay `Send + Sync`. This fails to compile if a future change (e.g. a
+// non-`Send` field on `ToolResultExtensions`) drops the property.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<ToolExecutionResult>();
+    assert_send_sync::<ToolOutcome>();
+    assert_send_sync::<ToolFailure>();
+};
 
 #[cfg(test)]
 mod tests {

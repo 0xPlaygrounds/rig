@@ -198,7 +198,7 @@ fn debug_type_map(f: &mut std::fmt::Formatter<'_>, name: &str, map: &TypeMap) ->
 /// extract them. Tools that don't need any extensions ignore them.
 ///
 /// Inspired by [`http::Extensions`](https://docs.rs/http/latest/http/struct.Extensions.html).
-/// Backed by the shared [`TypeMap`], so empty extensions (the common case when no
+/// Backed by the shared internal `TypeMap`, so empty extensions (the common case when no
 /// caller-provided values are needed) require zero allocation.
 ///
 /// Tools receive these by shared reference, so a tool reads values with
@@ -320,7 +320,7 @@ impl std::fmt::Debug for ToolCallExtensions {
 /// This is the same "not sent to the model" contract as Pydantic AI's tool-return
 /// `metadata` and the Vercel AI SDK's `toolMetadata`.
 ///
-/// Backed by the same [`TypeMap`] as [`ToolCallExtensions`], so an empty set (the
+/// Backed by the same internal `TypeMap` as [`ToolCallExtensions`], so an empty set (the
 /// common case) allocates nothing.
 ///
 /// # Example
