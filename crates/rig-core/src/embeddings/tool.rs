@@ -1,6 +1,6 @@
 //! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::ToolEmbedding]
 
-use crate::{Embed, tool::ToolEmbeddingDyn};
+use crate::{Embed, tool::ToolDyn};
 use serde::Serialize;
 
 use super::embed::EmbedError;
@@ -23,14 +23,18 @@ impl Embed for ToolSchema {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("tool `{0}` does not expose embedding metadata")]
+struct MissingEmbeddingMetadata(String);
+
 impl ToolSchema {
-    /// Convert item that implements [ToolEmbeddingDyn] to an [ToolSchema].
+    /// Convert a dynamic tool to a schema using the tool's stored name.
     ///
     /// # Example
     /// ```rust
     /// use rig_core::{
     ///     embeddings::ToolSchema,
-    ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},
+    ///     tool::{Tool, ToolDyn, ToolEmbedding},
     /// };
     ///
     /// #[derive(Debug, thiserror::Error)]
@@ -78,28 +82,31 @@ impl ToolSchema {
     ///     fn context(&self) -> Self::Context {}
     /// }
     ///
-    /// let tool = ToolSchema::try_from(&Nothing).unwrap();
+    /// let tool_dyn = ToolDyn::from_embedding(Nothing);
+    /// let tool = ToolSchema::try_from(&tool_dyn).unwrap();
     ///
     /// assert_eq!(tool.name, "nothing".to_string());
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
-    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbedError> {
+    pub fn try_from(tool: &ToolDyn) -> Result<Self, EmbedError> {
         Self::from_tool(tool.name(), tool)
     }
 
     /// Convert a tool to a schema using an explicit registered name.
     ///
     /// Registry paths should pass the key under which the tool was registered so
-    /// vector-store IDs resolve back to the same entry even if `tool.name()` is
-    /// computed dynamically.
-    pub fn from_tool(
-        name: impl Into<String>,
-        tool: &dyn ToolEmbeddingDyn,
-    ) -> Result<Self, EmbedError> {
+    /// vector-store IDs resolve back to the same entry.
+    pub fn from_tool(name: impl Into<String>, tool: &ToolDyn) -> Result<Self, EmbedError> {
+        let name = name.into();
         Ok(ToolSchema {
-            name: name.into(),
-            context: tool.context().map_err(EmbedError::new)?,
-            embedding_docs: tool.embedding_docs(),
+            name: name.clone(),
+            context: tool
+                .embedding_context()
+                .ok_or_else(|| EmbedError::new(MissingEmbeddingMetadata(name.clone())))?
+                .map_err(EmbedError::new)?,
+            embedding_docs: tool
+                .embedding_docs()
+                .ok_or_else(|| EmbedError::new(MissingEmbeddingMetadata(name)))?,
         })
     }
 }

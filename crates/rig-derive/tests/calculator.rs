@@ -69,8 +69,9 @@ fn sync_calculator(x: i32, y: i32, operation: String) -> Result<i32, rig_core::t
 async fn test_calculator_tool() {
     let calculator = Calculator;
 
-    let definition = rig_core::tool::tool_definition(&calculator);
-    assert_eq!(calculator.name(), "calculator");
+    let dynamic_calculator = rig_core::tool::ToolDyn::from(Calculator);
+    let definition = rig_core::tool::tool_definition(&dynamic_calculator);
+    assert_eq!(dynamic_calculator.name(), "calculator");
     assert_eq!(
         definition.description,
         "Perform basic arithmetic operations"

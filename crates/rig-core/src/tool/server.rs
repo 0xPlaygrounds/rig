@@ -152,9 +152,9 @@ pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 impl ToolServerHandle {
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
-    pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
+    pub async fn add_tool(&self, tool: impl Into<ToolDyn>) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        let toolname = state.toolset.add_tool_boxed(Box::new(tool));
+        let toolname = state.toolset.add_tool_boxed(tool.into());
         push_unique_name(&mut state.static_tool_names, toolname);
         Ok(())
     }
@@ -376,13 +376,7 @@ pub enum ToolServerError {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        },
-        time::Duration,
-    };
+    use std::{sync::Arc, time::Duration};
 
     use crate::{
         test_utils::{
@@ -392,30 +386,19 @@ mod tests {
         tool::{Tool, ToolEmbedding, ToolSet, server::ToolServer},
     };
 
-    struct ChangingNameTool {
-        calls: AtomicUsize,
-    }
+    struct ChangingNameTool;
 
     impl ChangingNameTool {
         fn new() -> Self {
-            Self {
-                calls: AtomicUsize::new(0),
-            }
+            Self
         }
     }
 
     impl Tool for ChangingNameTool {
-        const NAME: &'static str = "unused";
+        const NAME: &'static str = "registered_changing";
         type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = String;
-
-        fn name(&self) -> String {
-            match self.calls.fetch_add(1, Ordering::SeqCst) {
-                0 => "registered_changing".to_string(),
-                _ => "changed_after_registration".to_string(),
-            }
-        }
 
         fn description(&self) -> String {
             "changes name after registration".to_string()

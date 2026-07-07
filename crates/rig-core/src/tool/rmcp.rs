@@ -59,6 +59,7 @@ use crate::completion::ToolDefinition;
 use crate::tool::server::{ToolServerError, ToolServerHandle};
 use crate::tool::{
     ToolCallExtensions, ToolDyn, ToolError, ToolExecutionResult, ToolFailure, ToolFailureKind,
+    ToolRuntime,
 };
 use crate::wasm_compat::WasmBoxedFuture;
 
@@ -344,11 +345,14 @@ impl McpTool {
     }
 }
 
-impl ToolDyn for McpTool {
-    fn name(&self) -> String {
-        self.definition.name.to_string()
+impl From<McpTool> for ToolDyn {
+    fn from(tool: McpTool) -> Self {
+        let name = tool.definition.name.to_string();
+        ToolDyn::from_runtime(name, Arc::new(tool))
     }
+}
 
+impl ToolRuntime for McpTool {
     fn description(&self) -> String {
         self.definition
             .description
@@ -369,7 +373,7 @@ impl ToolDyn for McpTool {
     /// as the MCP request's `_meta`. This lets callers attach per-call metadata
     /// (auth, session, A2A `context_id`/`task_id`) to MCP tool invocations
     /// without exposing it to the model. Absent a `Meta`, behaves like
-    /// [`call`](ToolDyn::call).
+    /// [`ToolDyn::call`].
     fn call_with_extensions<'a>(
         &'a self,
         args: String,
@@ -581,7 +585,7 @@ mod tests {
     use tokio::sync::RwLock;
 
     use super::McpClientHandler;
-    use crate::tool::server::ToolServer;
+    use crate::tool::{ToolDyn, ToolRuntime, server::ToolServer};
 
     /// An MCP server whose tool list can be swapped at runtime.
     #[derive(Clone)]
@@ -801,7 +805,7 @@ mod tests {
     #[tokio::test]
     async fn mcp_tool_exposes_flattened_metadata() {
         use super::McpTool;
-        use crate::tool::{ToolDyn, tool_definition};
+        use crate::tool::tool_definition;
 
         let mut schema = serde_json::Map::new();
         schema.insert("type".to_string(), json!("object"));
@@ -830,7 +834,7 @@ mod tests {
             .serve((client_from_server, client_to_server))
             .await
             .expect("client connect failed");
-        let mcp_tool = McpTool::from_mcp_server(server_tool, client.peer().clone());
+        let mcp_tool: ToolDyn = McpTool::from_mcp_server(server_tool, client.peer().clone()).into();
         let definition = tool_definition(&mcp_tool);
 
         assert_eq!(mcp_tool.name(), "search_docs");
@@ -862,7 +866,6 @@ mod tests {
     #[tokio::test]
     async fn mcp_tool_call_without_timeout_is_unbounded() {
         use super::McpTool;
-        use crate::tool::ToolDyn;
 
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
         let (server_to_client, client_from_server) = tokio::io::duplex(8192);
@@ -918,7 +921,6 @@ mod tests {
     #[tokio::test]
     async fn mcp_tool_call_with_timeout_errors_instead_of_hanging() {
         use super::McpTool;
-        use crate::tool::ToolDyn;
 
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
         let (server_to_client, client_from_server) = tokio::io::duplex(8192);
@@ -972,7 +974,6 @@ mod tests {
     #[tokio::test]
     async fn mcp_tool_call_returns_promptly_for_responsive_server() {
         use super::McpTool;
-        use crate::tool::ToolDyn;
 
         let server = DynamicToolServer::new(vec![make_tool("ping", "responds immediately")]);
 
@@ -1143,7 +1144,7 @@ mod tests {
     #[tokio::test]
     async fn mcp_tool_forwards_meta_from_context() {
         use super::McpTool;
-        use crate::tool::{ToolCallExtensions, ToolDyn};
+        use crate::tool::ToolCallExtensions;
 
         let seen_meta = Arc::new(RwLock::new(None));
         let server = MetaCapturingServer {
@@ -1256,7 +1257,7 @@ mod tests {
     #[tokio::test]
     async fn mcp_tool_invalid_json_args_short_circuit_as_invalid_args() {
         use super::McpTool;
-        use crate::tool::{ToolCallExtensions, ToolDyn, ToolFailureKind, ToolOutcome};
+        use crate::tool::{ToolCallExtensions, ToolFailureKind, ToolOutcome};
 
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
         let (server_to_client, client_from_server) = tokio::io::duplex(8192);

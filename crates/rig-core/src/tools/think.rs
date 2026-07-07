@@ -64,11 +64,11 @@ impl Tool for ThinkTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool::tool_definition;
+    use crate::tool::{ToolDyn, tool_definition};
 
     #[test]
     fn test_think_tool_definition() {
-        let tool = ThinkTool;
+        let tool = ToolDyn::from(ThinkTool);
         let definition = tool_definition(&tool);
 
         assert_eq!(definition.name, "think");

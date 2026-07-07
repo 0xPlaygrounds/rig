@@ -351,7 +351,8 @@ where
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
     pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
-        let toolname = tool.name();
+        let mut tools = ToolSet::default();
+        let toolname = tools.add_tool(tool);
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -366,7 +367,7 @@ where
             default_max_turns: self.default_max_turns,
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
-                tools: ToolSet::from_tools(vec![tool]),
+                tools,
                 dynamic_tools: vec![],
             },
             hooks: self.hooks,
@@ -377,13 +378,13 @@ where
         }
     }
 
-    /// Add a vector of boxed static tools to the agent.
+    /// Add a vector of complete dynamic static tools to the agent.
     ///
     /// This is useful when you need to dynamically add static tools to the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
-        let static_tools = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(self, tools: Vec<ToolDyn>) -> AgentBuilder<M, WithBuilderTools> {
+        let static_tools = tools.iter().map(|tool| tool.name().to_string()).collect();
+        let tools = ToolSet::from_tools_dyn(tools);
 
         AgentBuilder {
             name: self.name,
@@ -608,16 +609,15 @@ where
 {
     /// Add another static tool to the agent.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = tool.name();
-        self.tool_state.tools.add_tool(tool);
+        let toolname = self.tool_state.tools.add_tool(tool);
         self.tool_state.static_tools.push(toolname);
         self
     }
 
-    /// Add a vector of boxed static tools to the agent.
-    pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
-        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    /// Add a vector of complete dynamic static tools to the agent.
+    pub fn tools(mut self, tools: Vec<ToolDyn>) -> Self {
+        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name().to_string()).collect();
+        let tools = ToolSet::from_tools_dyn(tools);
         self.tool_state.tools.add_tools(tools);
         self.tool_state.static_tools.extend(toolnames);
         self
@@ -656,9 +656,9 @@ where
 
     #[cfg(feature = "rmcp")]
     fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
-        for (name, tool) in built {
+        for (_name, tool) in built {
+            let name = self.tool_state.tools.add_tool(tool);
             self.tool_state.static_tools.push(name);
-            self.tool_state.tools.add_tool(tool);
         }
 
         self
@@ -737,7 +737,7 @@ mod tests {
     #[cfg(feature = "rmcp")]
     #[tokio::test]
     async fn build_rmcp_tools_threads_timeout_into_built_tools() {
-        use crate::tool::ToolDyn;
+        use crate::tool::ToolRuntime;
         use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
         use rmcp::model::{
             CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,

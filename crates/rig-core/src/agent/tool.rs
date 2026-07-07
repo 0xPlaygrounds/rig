@@ -29,7 +29,7 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
             Agent description: {description}
             Agent system prompt: {sysprompt}
             ",
-            name = self.name(),
+            name = self.name.as_deref().unwrap_or(Self::NAME),
             description = self.description.clone().unwrap_or_default(),
             sysprompt = self.preamble.clone().unwrap_or_default()
         )
@@ -55,10 +55,6 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
         self.prompt(args.prompt)
             .tool_extensions(extensions.clone())
             .await
-    }
-
-    fn name(&self) -> String {
-        self.name.clone().unwrap_or_else(|| Self::NAME.to_string())
     }
 }
 
@@ -86,7 +82,7 @@ mod tests {
         // Outer agent: delegates to the inner agent (registered as the
         // "researcher" tool), then answers.
         let outer_model = MockCompletionModel::new([
-            MockTurn::tool_call("c2", "researcher", json!({"prompt": "do research"})),
+            MockTurn::tool_call("c2", "agent_tool", json!({"prompt": "do research"})),
             MockTurn::text("outer done"),
         ]);
         let outer = AgentBuilder::new(outer_model).tool(inner).build();
