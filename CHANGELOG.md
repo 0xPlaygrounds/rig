@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(tool)* [**breaking**] flatten `Tool` / `ToolDyn` metadata: tool authors now implement `description()` and `parameters()` directly, and `Tool::definition(prompt)` / `ToolDyn::definition(prompt)` are removed. `ToolDefinition` remains a provider/request artifact generated from registered tools, with `Tool::NAME` / `Tool::name()` / `ToolDyn::name()` as the single source of truth for advertised and dispatched tool names.
+- *(tool)* [**breaking**] make tool identity single-source: `Tool::name()`, the object-safe `ToolDyn` trait, and runtime `ToolType::name()` are removed. Typed tools use `Tool::NAME`; dynamic tools are complete `ToolDyn` values built with `ToolDyn::builder()`/`ToolDyn::from_tool()`, and once registered the `ToolSet` `IndexMap` key is the only source for provider definitions, schemas, and dispatch. `ToolDefinition` remains a provider/request artifact generated from registered tools.
 
 ## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/v0.38.2...v0.39.0) - 2026-06-19
 

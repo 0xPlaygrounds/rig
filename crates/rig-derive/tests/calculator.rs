@@ -70,7 +70,7 @@ async fn test_calculator_tool() {
     let calculator = Calculator;
 
     let definition = rig_core::tool::tool_definition(&calculator);
-    assert_eq!(calculator.name(), "calculator");
+    assert_eq!(Calculator::NAME, "calculator");
     assert_eq!(
         definition.description,
         "Perform basic arithmetic operations"

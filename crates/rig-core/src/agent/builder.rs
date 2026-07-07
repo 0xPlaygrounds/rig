@@ -8,7 +8,7 @@ use crate::{
     memory::ConversationMemory,
     message::ToolChoice,
     tool::{
-        Tool, ToolDyn, ToolSet,
+        IntoToolDyn, ToolDyn, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
@@ -21,20 +21,19 @@ use crate::tool::rmcp::McpTool as RmcpTool;
 use super::{Agent, OutputMode};
 
 /// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
-/// timeout to each (`None` disables it; see issue #1914). Returns
-/// `(tool_name, tool)` pairs.
+/// timeout to each (`None` disables it; see issue #1914).
 #[cfg(feature = "rmcp")]
 fn build_rmcp_tools(
     tools: Vec<rmcp::model::Tool>,
     client: rmcp::service::ServerSink,
     timeout: Option<std::time::Duration>,
-) -> Vec<(String, RmcpTool)> {
+) -> Vec<ToolDyn> {
     tools
         .into_iter()
         .map(|tool| {
-            let name = tool.name.to_string();
-            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
-            (name, rmcp_tool)
+            crate::tool::IntoToolDyn::into_tool_dyn(
+                RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout),
+            )
         })
         .collect()
 }
@@ -350,8 +349,9 @@ where
     ///
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
-    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
-        let toolname = tool.name();
+    pub fn tool(self, tool: impl IntoToolDyn) -> AgentBuilder<M, WithBuilderTools> {
+        let mut tools = ToolSet::default();
+        let toolname = tools.add_tool(tool);
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -366,7 +366,7 @@ where
             default_max_turns: self.default_max_turns,
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
-                tools: ToolSet::from_tools(vec![tool]),
+                tools,
                 dynamic_tools: vec![],
             },
             hooks: self.hooks,
@@ -377,13 +377,13 @@ where
         }
     }
 
-    /// Add a vector of boxed static tools to the agent.
+    /// Add a vector of dynamic static tools to the agent.
     ///
-    /// This is useful when you need to dynamically add static tools to the agent.
+    /// This is useful when you need to dynamically assemble static tools for the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
-        let static_tools = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(self, tools: Vec<ToolDyn>) -> AgentBuilder<M, WithBuilderTools> {
+        let tools = ToolSet::from_tools_dyn(tools);
+        let static_tools = tools.ordered_names().cloned().collect();
 
         AgentBuilder {
             name: self.name,
@@ -480,11 +480,9 @@ where
     /// Transition into the `WithBuilderTools` state carrying the given built
     /// MCP tools.
     #[cfg(feature = "rmcp")]
-    fn with_rmcp_toolset(
-        self,
-        built: Vec<(String, RmcpTool)>,
-    ) -> AgentBuilder<M, WithBuilderTools> {
-        let (static_tools, toolset): (Vec<String>, Vec<RmcpTool>) = built.into_iter().unzip();
+    fn with_rmcp_toolset(self, built: Vec<ToolDyn>) -> AgentBuilder<M, WithBuilderTools> {
+        let toolset = ToolSet::from_tools_dyn(built);
+        let static_tools = toolset.ordered_names().cloned().collect();
 
         AgentBuilder {
             name: self.name,
@@ -505,7 +503,7 @@ where
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
-                tools: ToolSet::from_tools(toolset),
+                tools: toolset,
                 dynamic_tools: vec![],
             },
         }
@@ -607,17 +605,16 @@ where
     M: CompletionModel,
 {
     /// Add another static tool to the agent.
-    pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = tool.name();
-        self.tool_state.tools.add_tool(tool);
+    pub fn tool(mut self, tool: impl IntoToolDyn) -> Self {
+        let toolname = self.tool_state.tools.add_tool(tool);
         self.tool_state.static_tools.push(toolname);
         self
     }
 
-    /// Add a vector of boxed static tools to the agent.
-    pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
-        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    /// Add a vector of dynamic static tools to the agent.
+    pub fn tools(mut self, tools: Vec<ToolDyn>) -> Self {
+        let tools = ToolSet::from_tools_dyn(tools);
+        let toolnames: Vec<String> = tools.ordered_names().cloned().collect();
         self.tool_state.tools.add_tools(tools);
         self.tool_state.static_tools.extend(toolnames);
         self
@@ -655,10 +652,10 @@ where
     }
 
     #[cfg(feature = "rmcp")]
-    fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
-        for (name, tool) in built {
+    fn add_rmcp_tools(mut self, built: Vec<ToolDyn>) -> Self {
+        for tool in built {
+            let name = self.tool_state.tools.add_tool(tool);
             self.tool_state.static_tools.push(name);
-            self.tool_state.tools.add_tool(tool);
         }
 
         self
@@ -737,8 +734,6 @@ mod tests {
     #[cfg(feature = "rmcp")]
     #[tokio::test]
     async fn build_rmcp_tools_threads_timeout_into_built_tools() {
-        use crate::tool::ToolDyn;
-        use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
         use rmcp::model::{
             CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
             ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
@@ -785,27 +780,15 @@ mod tests {
             .expect("client connect");
         let peer = client.peer().clone();
 
-        // The configured timeout (default, explicit, or disabled) is threaded
-        // onto each built tool.
-        let built_default = build_rmcp_tools(
-            vec![tool("a")],
-            peer.clone(),
-            Some(DEFAULT_MCP_TOOL_TIMEOUT),
-        );
-        assert_eq!(built_default[0].1.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
-        let built_none = build_rmcp_tools(vec![tool("b")], peer.clone(), None);
-        assert_eq!(built_none[0].1.timeout(), None);
-
-        // ...and the threaded timeout actually bounds a hanging call.
+        // The configured timeout is threaded onto the built tool and bounds a hanging call.
         let built = build_rmcp_tools(
             vec![tool("hang_forever")],
-            peer,
+            peer.clone(),
             Some(Duration::from_millis(200)),
         );
         assert_eq!(built.len(), 1);
-        assert_eq!(built[0].0, "hang_forever");
         let timed =
-            tokio::time::timeout(Duration::from_secs(5), built[0].1.call("{}".to_string())).await;
+            tokio::time::timeout(Duration::from_secs(5), built[0].call("{}".to_string())).await;
         let err = timed
             .expect("built tool hung past the safety timeout")
             .expect_err("call should time out");

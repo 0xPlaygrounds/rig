@@ -1,7 +1,7 @@
 use crate::{
     agent::Agent,
-    completion::{CompletionModel, Prompt, PromptError},
-    tool::{Tool, ToolCallExtensions},
+    completion::{CompletionModel, Prompt},
+    tool::{IntoToolDyn, ToolCallExtensions, ToolDyn, ToolError, ToolRuntime},
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -13,14 +13,14 @@ pub struct AgentToolArgs {
     prompt: String,
 }
 
-impl<M: CompletionModel + 'static> Tool for Agent<M> {
-    const NAME: &'static str = "agent_tool";
+impl<M: CompletionModel + 'static> Agent<M> {
+    fn agent_tool_name(&self) -> String {
+        self.name
+            .clone()
+            .unwrap_or_else(|| "agent_tool".to_string())
+    }
 
-    type Error = PromptError;
-    type Args = AgentToolArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
+    fn agent_tool_description(&self) -> String {
         format!(
             "
             Prompt a sub-agent to do a task for you.
@@ -35,30 +35,51 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
         )
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn agent_tool_parameters(&self) -> serde_json::Value {
         json!(schema_for!(AgentToolArgs))
     }
+}
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        self.prompt(args.prompt).await
+impl<M: CompletionModel + 'static> ToolRuntime for Agent<M> {
+    fn description(&self) -> String {
+        self.agent_tool_description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.agent_tool_parameters()
+    }
+
+    fn call<'a>(
+        &'a self,
+        args: String,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.call_with_extensions(args, &ToolCallExtensions::EMPTY)
     }
 
     /// Propagate the caller's [`ToolCallExtensions`] into the sub-agent run, so the
     /// inner agent's own tools observe them too (sub-agent delegation / A2A
     /// chains). Without this, a sub-agent invoked as a tool would start with
     /// empty extensions.
-    async fn call_with_extensions(
-        &self,
-        args: Self::Args,
-        extensions: &ToolCallExtensions,
-    ) -> Result<Self::Output, Self::Error> {
-        self.prompt(args.prompt)
-            .tool_extensions(extensions.clone())
-            .await
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<String, ToolError>> {
+        Box::pin(async move {
+            let args =
+                serde_json::from_str::<AgentToolArgs>(&args).map_err(ToolError::JsonError)?;
+            self.prompt(args.prompt)
+                .tool_extensions(extensions.clone())
+                .await
+                .map_err(|err| ToolError::ToolCallError(Box::new(err)))
+        })
     }
+}
 
-    fn name(&self) -> String {
-        self.name.clone().unwrap_or_else(|| Self::NAME.to_string())
+impl<M: CompletionModel + 'static> IntoToolDyn for Agent<M> {
+    fn into_tool_dyn(self) -> ToolDyn {
+        let name = self.agent_tool_name();
+        ToolDyn::from_runtime(name, self)
     }
 }
 
@@ -83,8 +104,7 @@ mod tests {
             .tool(probe.clone())
             .build();
 
-        // Outer agent: delegates to the inner agent (registered as the
-        // "researcher" tool), then answers.
+        // Outer agent invokes the inner agent as the named "researcher" tool), then answers.
         let outer_model = MockCompletionModel::new([
             MockTurn::tool_call("c2", "researcher", json!({"prompt": "do research"})),
             MockTurn::text("outer done"),
@@ -92,16 +112,14 @@ mod tests {
         let outer = AgentBuilder::new(outer_model).tool(inner).build();
 
         let mut extensions = ToolCallExtensions::new();
-        extensions.insert(SessionId("abc-123".to_string()));
-
-        let out = outer
+        extensions.insert(SessionId("abc".to_string()));
+        let response = outer
             .prompt("start")
             .tool_extensions(extensions)
-            .max_turns(5)
             .await
             .expect("run succeeds");
 
-        assert_eq!(out, "outer done");
-        assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
+        assert_eq!(response, "outer done");
+        assert_eq!(probe.observations(), vec!["session:abc".to_string()]);
     }
 }

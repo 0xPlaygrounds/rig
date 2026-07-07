@@ -12,11 +12,13 @@ use serde_json::json;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Mutex as AsyncMutex;
 
 use super::support::with_deepseek_cassette_result;
 use crate::support::assert_nonempty_response;
 
 const TEST_CONTENT: &str = "hello world\n";
+static PERMISSION_CONTROL_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
 /// A per-test fixture file. The two tests in this module run in parallel
 /// within one target, so a shared path would let one test's cleanup race the
@@ -157,6 +159,7 @@ impl<M: CompletionModel> AgentHook<M> for PermissionHook {
 
 #[tokio::test]
 async fn permission_control_prompt_example() -> Result<()> {
+    let _guard = PERMISSION_CONTROL_TEST_LOCK.lock().await;
     with_deepseek_cassette_result(
         "permission_control/permission_control_prompt_example",
         |client| async move {
@@ -207,6 +210,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 
 #[tokio::test]
 async fn permission_control_streaming_example() -> Result<()> {
+    let _guard = PERMISSION_CONTROL_TEST_LOCK.lock().await;
     with_deepseek_cassette_result(
         "permission_control/permission_control_streaming_example",
         |client| async move {

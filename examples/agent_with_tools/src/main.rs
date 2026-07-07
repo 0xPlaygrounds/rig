@@ -1,4 +1,4 @@
-//! Demonstrates registering boxed tools on an agent.
+//! Demonstrates registering dynamic tools on an agent.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
@@ -79,8 +79,8 @@ impl Tool for Subtract {
     }
 }
 
-fn boxed_tools() -> Vec<Box<dyn ToolDyn>> {
-    vec![Box::new(Add), Box::new(Subtract)]
+fn dynamic_tools() -> Vec<ToolDyn> {
+    vec![ToolDyn::from_tool(Add), ToolDyn::from_tool(Subtract)]
 }
 
 #[tokio::main]
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
             "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",
         )
-        .tools(boxed_tools())
+        .tools(dynamic_tools())
         .max_tokens(1024)
         .build();
 
