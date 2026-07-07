@@ -798,6 +798,53 @@ mod tests {
         assert_eq!(returned.client_info.version, "1.0.0");
     }
 
+    #[tokio::test]
+    async fn mcp_tool_exposes_flattened_metadata() {
+        use super::McpTool;
+        use crate::tool::{ToolDyn, tool_definition};
+
+        let mut schema = serde_json::Map::new();
+        schema.insert("type".to_string(), json!("object"));
+        schema.insert(
+            "properties".to_string(),
+            json!({ "query": { "type": "string" } }),
+        );
+        let server_tool = Tool::new(
+            "search_docs".to_string(),
+            "Search the docs".to_string(),
+            Arc::new(schema),
+        );
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+        let server = DynamicToolServer::new(vec![server_tool.clone()]);
+        let server_task = tokio::spawn(async move {
+            let running = server
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+        let mcp_tool = McpTool::from_mcp_server(server_tool, client.peer().clone());
+        let definition = tool_definition(&mcp_tool);
+
+        assert_eq!(mcp_tool.name(), "search_docs");
+        assert_eq!(definition.name, "search_docs");
+        assert_eq!(definition.description, "Search the docs");
+        assert_eq!(
+            definition.parameters["properties"]["query"]["type"],
+            "string"
+        );
+
+        client.cancel().await.expect("client cancel failed");
+        server_task.abort();
+    }
+
     /// Documents the unbounded escape hatch and the underlying issue #1914 hazard.
     ///
     /// `McpTool::call` awaits `self.client.call_tool(request)`; if the MCP request

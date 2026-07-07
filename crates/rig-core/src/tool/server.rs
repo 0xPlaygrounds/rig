@@ -441,6 +441,19 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn get_tool_defs_preserves_static_registration_order() {
+        let handle = ToolServer::new().run();
+        handle.add_tool(MockSubtractTool).await.unwrap();
+        handle.add_tool(MockAddTool).await.unwrap();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
+            vec!["subtract", "add"]
+        );
+    }
+
+    #[tokio::test]
     pub async fn get_tool_defs_dedupes_dynamic_and_static_overlap() {
         // One shared toolset backs both lists, so a dynamically retrieved
         // name that is also static must yield a single definition.

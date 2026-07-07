@@ -795,6 +795,16 @@ mod tests {
         let toolset = get_test_toolset();
         let tools = toolset.get_tool_definitions().unwrap();
         assert_eq!(tools.len(), 2);
+        assert_eq!(
+            tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["add", "subtract"],
+            "provider definitions must use registered tool names in order"
+        );
+        assert!(tools.iter().all(|tool| !tool.description.is_empty()));
+        assert!(tools.iter().all(|tool| tool.parameters.is_object()));
     }
 
     #[test]
@@ -865,6 +875,16 @@ mod tests {
             name: name.to_string(),
             description: description.to_string(),
         }
+    }
+
+    #[test]
+    fn tool_definition_uses_flattened_dyn_metadata() {
+        let tool = named_tool("alpha", "runtime description");
+        let definition = tool_definition(&tool);
+
+        assert_eq!(definition.name, "alpha");
+        assert_eq!(definition.description, "runtime description");
+        assert_eq!(definition.parameters["type"], "object");
     }
 
     #[tokio::test]
