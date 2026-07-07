@@ -199,8 +199,9 @@ impl ToolServerHandle {
 
     /// Retrieve the definitions of every registered static tool, advertised to
     /// the model. Rig has no dynamic-tool mechanism — the advertised set is simply
-    /// the tools registered on the server.
-    pub async fn get_tool_defs(&self) -> Result<Vec<ToolDefinition>, ToolServerError> {
+    /// the tools registered on the server. Infallible: every registered tool has
+    /// an in-hand [`ToolDyn::definition`], so building the list cannot fail.
+    pub async fn get_tool_defs(&self) -> Vec<ToolDefinition> {
         // Clone the handles under a brief read lock so that a slow tool
         // `definition()` (e.g. an MCP round-trip) never holds the lock across
         // `.await`. Handles come out in registration order.
@@ -231,7 +232,7 @@ impl ToolServerHandle {
             fresh
         });
 
-        Ok(tools)
+        tools
     }
 }
 
@@ -292,7 +293,6 @@ mod tests {
         let mut names: Vec<String> = handle
             .get_tool_defs()
             .await
-            .unwrap()
             .into_iter()
             .map(|d| d.name)
             .collect();
@@ -343,7 +343,6 @@ mod tests {
         let names: Vec<String> = handle
             .get_tool_defs()
             .await
-            .unwrap()
             .into_iter()
             .map(|d| d.name)
             .collect();
@@ -363,7 +362,6 @@ mod tests {
         let names: Vec<String> = handle
             .get_tool_defs()
             .await
-            .unwrap()
             .into_iter()
             .map(|d| d.name)
             .collect();
@@ -389,7 +387,7 @@ mod tests {
         handle.remove_tool("add").await.unwrap();
 
         assert!(
-            handle.get_tool_defs().await.unwrap().is_empty(),
+            handle.get_tool_defs().await.is_empty(),
             "removed tool is no longer advertised"
         );
         assert!(
@@ -405,7 +403,7 @@ mod tests {
         let handle = server.run();
 
         handle.add_tool(MockAddTool).await.unwrap();
-        let res = handle.get_tool_defs().await.unwrap();
+        let res = handle.get_tool_defs().await;
 
         assert_eq!(res.len(), 1);
 
@@ -415,7 +413,7 @@ mod tests {
         assert_eq!(res, "7");
 
         handle.remove_tool("add").await.unwrap();
-        let res = handle.get_tool_defs().await.unwrap();
+        let res = handle.get_tool_defs().await;
 
         assert_eq!(res.len(), 0);
     }
@@ -426,7 +424,7 @@ mod tests {
             let handle = ToolServer::new().run();
             handle.add_tool(MockAddTool).await.unwrap();
             handle.add_tool(MockSubtractTool).await.unwrap();
-            handle.get_tool_defs().await.unwrap()
+            handle.get_tool_defs().await
         };
         via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -436,7 +434,7 @@ mod tests {
             toolset.add_tool(MockAddTool);
             toolset.add_tool(MockSubtractTool);
             handle.append_toolset(toolset).await.unwrap();
-            handle.get_tool_defs().await.unwrap()
+            handle.get_tool_defs().await
         };
         via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -459,7 +457,7 @@ mod tests {
         toolset.add_tool(MockAddTool);
         handle.append_toolset(toolset).await.unwrap();
 
-        let defs = handle.get_tool_defs().await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(
             defs.len(),
             1,

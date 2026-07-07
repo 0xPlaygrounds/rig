@@ -44,10 +44,14 @@ struct KnowledgeBase {
 
 impl KnowledgeBase {
     fn search(&self, query: &str) -> Vec<Document> {
+        // Lowercase and strip surrounding punctuation so a query token like
+        // `"glarb-glarb"` or `mean?` still matches the bare word in a document
+        // (internal hyphens are kept, so `glarb-glarb` survives).
         let words: Vec<String> = query
             .to_lowercase()
             .split_whitespace()
-            .map(str::to_owned)
+            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_owned())
+            .filter(|w| !w.is_empty())
             .collect();
         let mut scored: Vec<(usize, &(&str, &str))> = self
             .docs
@@ -123,4 +127,33 @@ async fn main() -> Result<()> {
     let answer = agent.prompt("What does \"glarb-glarb\" mean?").await?;
     println!("{answer}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The demo query wraps the term in quotes and ends with `?`. The tokenizer
+    /// must strip that surrounding punctuation so it still matches the bare
+    /// `glarb-glarb` in the document, otherwise the example retrieves nothing.
+    #[test]
+    fn search_matches_despite_query_punctuation() {
+        let kb = KnowledgeBase {
+            docs: vec![
+                (
+                    "doc0",
+                    "A flurbo is a green alien that lives on cold planets.",
+                ),
+                (
+                    "doc1",
+                    "A glarb-glarb is an ancient tool used to farm the land.",
+                ),
+                ("doc2", "A linglingdong is a rare mystical instrument."),
+            ],
+            top_k: 1,
+        };
+        let hits = kb.search("What does \"glarb-glarb\" mean?");
+        assert_eq!(hits.len(), 1, "expected exactly one retrieved document");
+        assert_eq!(hits.first().map(|d| d.id.as_str()), Some("doc1"));
+    }
 }

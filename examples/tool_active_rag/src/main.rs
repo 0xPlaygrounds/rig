@@ -59,9 +59,13 @@ impl Tool for Retrieve {
             .docs
             .iter()
             .filter(|(_, text)| {
+                // Strip surrounding punctuation from each token so a query word
+                // like `"glarb-glarb"` or `mean?` still matches the bare word.
+                let text = text.to_lowercase();
                 query
                     .split_whitespace()
-                    .any(|word| text.to_lowercase().contains(word))
+                    .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+                    .any(|w| !w.is_empty() && text.contains(w))
             })
             .map(|(id, text)| format!("[{id}] {text}"))
             .collect();

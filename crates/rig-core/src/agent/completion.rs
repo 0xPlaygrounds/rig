@@ -273,10 +273,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     };
     // Resolve the advertised tool set: every registered static tool. Rig has no
     // dynamic-tool mechanism, so this is simply the tools on the server.
-    let mut tooldefs = tool_server_handle
-        .get_tool_defs()
-        .await
-        .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
+    let mut tooldefs = tool_server_handle.get_tool_defs().await;
 
     // Executable tools are the real tool-server tools, computed BEFORE any
     // synthetic output tool is appended.
@@ -286,13 +283,14 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // Resolve the effective output mode (#1928). Once the run has committed to a
     // Tool-mode output tool on an earlier turn (signaled by `committed_output_
     // tool`, which is persisted on the run via `output_tool_name`), stay in Tool
-    // mode and reuse that name — so a later turn whose tool set differs (e.g. RAG
-    // retrieved no tools) can't flip Tool -> Native and re-apply the native
-    // constraint that suppressed tools in the first place. Only Tool mode is
-    // pinned; Native/Prompted re-resolve, so a tool-less first turn can still
-    // become Tool once tools appear. Otherwise resolve from the request, the
-    // schema, the tool set, whether the tool choice permits the output-tool call,
-    // and whether the provider composes native structured output with tools.
+    // mode and reuse that name — so a later turn whose tool set differs (e.g. a
+    // tool removed mid-run via `ToolServerHandle::remove_tool`) can't flip Tool ->
+    // Native and re-apply the native constraint that suppressed tools in the first
+    // place. Only Tool mode is pinned; Native/Prompted re-resolve, so a tool-less
+    // first turn can still become Tool once tools appear. Otherwise resolve from the
+    // request, the schema, the tool set, whether the tool choice permits the
+    // output-tool call, and whether the provider composes native structured output
+    // with tools.
     let resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
         OutputMode::Tool
     } else {
@@ -380,9 +378,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     };
 
     // A per-turn `history` patch replaces the prior messages sent to the provider
-    // *this turn only* (context-window compaction / summarization). The RAG query
-    // text above deliberately still derives from the original `chat_history`, so
-    // this changes only what is sent, never what is retrieved or persisted.
+    // *this turn only* (context-window compaction / summarization). This changes
+    // only what is sent to the provider this turn, never the persisted transcript.
     let messages_history: &[Message] = request_patch
         .and_then(|o| o.history.as_deref())
         .unwrap_or(chat_history);
@@ -400,6 +397,13 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // `output_tool_name` is only `Some` when `output_schema` is `Some` (Tool mode
     // requires a schema), so this match always fires in Tool mode.
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
+        // A real tool registered mid-run can share the committed output-tool name
+        // (warned about above). The output-tool intercept matches by name and
+        // finalizes the run, so a call to that name is never dispatched to the
+        // real tool — drop its shadowed definition so the request advertises
+        // exactly one function with this name, carrying the output schema.
+        // Providers reject duplicate function declarations otherwise.
+        tooldefs.retain(|def| def.name != *name);
         tooldefs.push(crate::completion::ToolDefinition {
             name: name.clone(),
             description: "Call this tool exactly once with your final answer when you are done. \

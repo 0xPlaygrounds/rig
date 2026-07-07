@@ -1,12 +1,14 @@
 //! This module contains the implementation of the [Agent] struct and its builder.
 //!
 //! The [Agent] struct represents an LLM agent, which combines an LLM model with a preamble (system prompt),
-//! a set of context documents, and a set of tools. Note: both context documents and tools can be either
-//! static (i.e.: they are always provided) or dynamic (i.e.: they are RAGged at prompt-time).
+//! a set of context documents, and a set of tools. Context documents and tools are registered when the
+//! agent is built. Rig ships no built-in vector store, so retrieval (RAG) is a user-land pattern: inject
+//! per-turn context from an [`AgentHook`](crate::agent::AgentHook) via
+//! [`RequestPatch::extra_context`](crate::agent::RequestPatch), or expose retrieval as a
+//! [`Tool`](crate::tool::Tool) the model calls (see the RAG example below).
 //!
 //! The [Agent] struct is highly configurable, allowing the user to define anything from
-//! a simple bot with a specific system prompt to a complex RAG system with a set of dynamic
-//! context documents and tools.
+//! a simple bot with a specific system prompt to a full RAG system built from hooks and tools.
 //!
 //! The [Agent] struct implements the [crate::completion::Completion] and [crate::completion::Prompt] traits,
 //! allowing it to be used for generating completions responses and prompts. The [Agent] struct also
@@ -97,10 +99,17 @@
 //!             }) else {
 //!                 return Flow::cont();
 //!             };
+//!             // Lowercase and strip surrounding punctuation so a query token
+//!             // like `"glarb-glarb"` or `mean?` still matches the bare word.
+//!             let query = query.to_lowercase();
 //!             let docs: Vec<Document> = KB
 //!                 .iter()
 //!                 .filter(|(_, text)| {
-//!                     query.split_whitespace().any(|w| text.contains(w))
+//!                     let text = text.to_lowercase();
+//!                     query
+//!                         .split_whitespace()
+//!                         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+//!                         .any(|w| !w.is_empty() && text.contains(w))
 //!                 })
 //!                 .map(|(id, text)| Document {
 //!                     id: (*id).to_string(),

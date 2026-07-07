@@ -574,10 +574,7 @@ where
 
     #[cfg(feature = "rmcp")]
     fn add_rmcp_tools(mut self, built: Vec<RmcpTool>) -> Self {
-        for tool in built {
-            self.tool_state.tools.add_tool(tool);
-        }
-
+        self.tool_state.tools.add_tools(ToolSet::from_tools(built));
         self
     }
 

@@ -714,7 +714,7 @@ mod tests {
             .await
             .expect("connect failed");
 
-        let defs = tool_server_handle.get_tool_defs().await.unwrap();
+        let defs = tool_server_handle.get_tool_defs().await;
         assert_eq!(defs.len(), 2);
 
         let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
@@ -749,7 +749,7 @@ mod tests {
             .expect("connect failed");
 
         // Verify initial state
-        let defs = tool_server_handle.get_tool_defs().await.unwrap();
+        let defs = tool_server_handle.get_tool_defs().await;
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, "alpha");
 
@@ -773,7 +773,7 @@ mod tests {
         // a moment to re-fetch and re-register tools.
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let defs = tool_server_handle.get_tool_defs().await.unwrap();
+        let defs = tool_server_handle.get_tool_defs().await;
         assert_eq!(defs.len(), 2);
 
         let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();

@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
                 let tool_names: BTreeSet<String> = agent
                     .tool_server_handle
                     .get_tool_defs()
-                    .await?
+                    .await
                     .into_iter()
                     .map(|def| def.name)
                     .collect();

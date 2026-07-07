@@ -5556,6 +5556,101 @@ mod tests {
         );
     }
 
+    /// Regression guard for the *mid-run* collision: when Tool mode commits an
+    /// output-tool name on turn 1 (no real tool of that name yet) and a real tool
+    /// with that exact name is then registered mid-run via
+    /// [`ToolServerHandle::add_tool`], the next turn's request must still advertise
+    /// exactly ONE function with that name. Without the dedup in the request
+    /// builder, the committed output-tool definition and the real tool's
+    /// definition would both be sent, and providers reject duplicate function
+    /// declarations.
+    #[tokio::test]
+    async fn output_tool_dedups_when_real_tool_registered_after_commit() {
+        use crate::tool::server::ToolServerHandle;
+        use std::sync::OnceLock;
+
+        // Reads the agent's own tool-server handle (populated by the test after
+        // `.build()`) so it can register a real `final_result` tool between turn 1
+        // and turn 2.
+        struct RegisterFinalResultAfterTurn1 {
+            handle: Arc<OnceLock<ToolServerHandle>>,
+        }
+        impl<M: CompletionModel> AgentHook<M> for RegisterFinalResultAfterTurn1 {
+            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+                if let StepEvent::ModelTurnFinished { turn, .. } = event
+                    && turn == 1
+                    && let Some(handle) = self.handle.get()
+                {
+                    // The same name the run committed for structured output.
+                    let _ = handle.add_tool(FinalResultTool).await;
+                }
+                Flow::cont()
+            }
+        }
+
+        // Turn 1: the model calls the real `add` tool, so the loop continues to
+        // turn 2 (committing Tool mode with the fresh output name `final_result`).
+        // Turn 2: the model finalizes by calling `final_result`, which must be
+        // intercepted as the output tool.
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("c1", "add", json!({ "x": 1, "y": 2 })),
+            MockTurn::tool_call("c2", "final_result", json!({ "answer": "done" })),
+        ]);
+        let probe = model.clone();
+
+        let handle_slot: Arc<OnceLock<ToolServerHandle>> = Arc::new(OnceLock::new());
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .output_schema::<Answer>()
+            .output_mode(OutputMode::Tool)
+            .add_hook(RegisterFinalResultAfterTurn1 {
+                handle: handle_slot.clone(),
+            })
+            .build();
+        // Fresh `OnceLock`, set exactly once; ignore the returned handle on the
+        // (impossible) already-set path — `ToolServerHandle` isn't `Debug`.
+        let _ = handle_slot.set(agent.tool_server_handle.clone());
+
+        let response = agent
+            .runner("go")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("run should finalize via the committed output tool `final_result`");
+        assert!(
+            response.output.contains("done"),
+            "the intercepted output-tool call should produce the structured result, got {:?}",
+            response.output
+        );
+
+        // Turn 2's request must carry exactly one `final_result` declaration: the
+        // real tool registered mid-run shares the committed output-tool name, and
+        // the request builder must drop the shadowed real definition rather than
+        // send a provider-rejected duplicate.
+        let requests = probe.requests();
+        assert!(
+            requests.len() >= 2,
+            "two model turns expected, saw {}",
+            requests.len()
+        );
+        let final_result_count = requests[1]
+            .tools
+            .iter()
+            .filter(|t| t.name == "final_result")
+            .count();
+        assert_eq!(
+            final_result_count,
+            1,
+            "turn 2 must advertise exactly one `final_result` (no duplicate function \
+             declaration), saw {:?}",
+            requests[1]
+                .tools
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
     /// Captures whether any `ModelTurnFinished.content` carried a tool call named
     /// `final_result` — the model-emitted structured-output output-tool call.
     #[derive(Clone, Default)]
