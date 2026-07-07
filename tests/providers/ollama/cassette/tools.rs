@@ -44,7 +44,7 @@ impl Tool for RepeatTool {
     type Args = RepeatArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "repeat_text".to_string(),
             description: "Repeat `text`. `times` is optional and defaults to 2.".to_string(),
@@ -114,7 +114,7 @@ impl Tool for AddTool {
     type Args = BinOpArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
             description: "Add two integers a and b.".to_string(),
@@ -139,7 +139,7 @@ impl Tool for MultiplyTool {
     type Args = BinOpArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "multiply".to_string(),
             description: "Multiply two integers a and b.".to_string(),

@@ -168,7 +168,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(AlphaSignal.definition().await)
                 .build();
 
             let first_turn = collect_raw_stream_observation(

@@ -33,7 +33,7 @@ impl Tool for Adder {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
             description: "Add x and y together".to_string(),

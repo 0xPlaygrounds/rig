@@ -52,7 +52,7 @@ impl Tool for SendMessage {
     type Error = EchoChamberError;
     type Args = SendMessageArgs;
     type Output = serde_json::Value;
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "send_message".to_string(),
             description: "Send a message to a specified EchoChambers room".to_string(),
@@ -138,7 +138,7 @@ impl Tool for GetHistory {
     type Error = EchoChamberError;
     type Args = GetHistoryArgs;
     type Output = serde_json::Value;
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "get_history".to_string(),
             description: "Retrieve message history from a specified room".to_string(),
@@ -187,7 +187,7 @@ impl Tool for GetRoomMetrics {
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "get_room_metrics".to_string(),
             description: "Retrieve overall metrics for a room".to_string(),
@@ -228,7 +228,7 @@ impl Tool for GetAgentMetrics {
     type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "get_agent_metrics".to_string(),
             description: "Retrieve metrics for agents in a room".to_string(),
@@ -268,7 +268,7 @@ impl Tool for GetMetricsHistory {
     type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "get_metrics_history".to_string(),
             description: "Retrieve historical metrics for a room".to_string(),

@@ -107,7 +107,7 @@ impl Tool for JavaScript {
     type Args = JavaScriptProgram;
     type Output = ExecutorResponse;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.into(),
             description: "JavaScript runtime with an array of tools for completing the tasks assigned by the user. Legacy workspace agents may refer to this runtime as default_api.".into(),

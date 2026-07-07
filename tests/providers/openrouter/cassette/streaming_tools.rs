@@ -51,7 +51,7 @@ async fn raw_stream_decorates_reasoning_tool_call_metadata() {
         |client| async move {
             let model = client.completion_model("openai/o4-mini");
             let tool_definition = WeatherTool::new(Arc::new(AtomicUsize::new(0)))
-                .definition(String::new())
+                .definition()
                 .await;
             let request = model
                 .completion_request(crate::reasoning::TOOL_USER_PROMPT)
@@ -105,8 +105,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
-                .tool(BetaSignal.definition(String::new()).await)
+                .tool(AlphaSignal.definition().await)
+                .tool(BetaSignal.definition().await)
                 .build();
 
             let observation = collect_raw_stream_observation(
@@ -135,7 +135,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(AlphaSignal.definition().await)
                 .build();
 
             let first_turn = collect_raw_stream_observation(

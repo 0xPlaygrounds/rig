@@ -41,7 +41,7 @@ impl Tool for Calculator {
     type Args = CalculatorArgs;
     type Output = f64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "calculator".to_string(),
             description: "Evaluate arithmetic expressions with +, -, *, /, and parentheses."
@@ -210,7 +210,7 @@ impl Tool for DatabaseLookup {
     type Args = DatabaseLookupArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "database_lookup".to_string(),
             description: "Look up customer_policy, shipping_rates, or product_inventory."

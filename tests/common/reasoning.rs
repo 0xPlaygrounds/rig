@@ -285,7 +285,7 @@ impl Tool for WeatherTool {
     type Args = WeatherArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "get_weather".to_string(),
             description:

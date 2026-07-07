@@ -28,7 +28,7 @@ async fn strict_tools_opt_in_roundtrip() {
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(Adder.definition(String::new()).await)
+                .tool(Adder.definition().await)
                 .build();
 
             let response = model

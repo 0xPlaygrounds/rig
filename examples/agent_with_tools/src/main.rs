@@ -30,7 +30,7 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
             description: "Add x and y together".to_string(),
@@ -59,7 +59,7 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "subtract".to_string(),
             description: "Subtract y from x (i.e.: x - y)".to_string(),

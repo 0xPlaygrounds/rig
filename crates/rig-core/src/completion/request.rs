@@ -38,7 +38,6 @@ use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
 use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
-use crate::tool::server::ToolServerError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, http_client};
 use crate::{
@@ -153,10 +152,6 @@ pub enum PromptError {
     /// There was an error while using a tool
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
-
-    /// There was an issue while executing a tool on a tool server
-    #[error("ToolServerError: {0}")]
-    ToolServerError(#[from] Box<ToolServerError>),
 
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)

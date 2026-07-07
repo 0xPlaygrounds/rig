@@ -93,7 +93,7 @@ where
                 text: "House style: keep jokes short and family-friendly.".to_string(),
                 additional_props: Default::default(),
             };
-            // Appended after the agent's static/dynamic context, for this turn only.
+            // Appended after the agent's static context, for this turn only.
             return Flow::patch_request(RequestPatch::new().context(doc));
         }
         Flow::cont()

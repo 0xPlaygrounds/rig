@@ -60,7 +60,7 @@ impl Tool for GetBalance {
     type Args = BalanceArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Get the balance of an account.".to_string(),
@@ -92,7 +92,7 @@ impl Tool for TransferFunds {
     type Args = TransferArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Transfer funds to an account.".to_string(),

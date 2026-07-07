@@ -67,7 +67,7 @@ impl Tool for CountingMultiply {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Multiply x and y together".to_string(),

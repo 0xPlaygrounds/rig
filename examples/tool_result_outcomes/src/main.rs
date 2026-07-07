@@ -58,7 +58,7 @@ impl Tool for HttpFetch {
     type Args = FetchArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Fetch a URL and return its body. URLs containing 'slow' time out; \

@@ -45,7 +45,7 @@ async fn test_pub_tool_accessible_from_outside_module() {
 
     // PublicAdder and its parameters struct are accessible outside the `tools` module.
     let tool = tools::PublicAdder;
-    let def = tool.definition(String::default()).await;
+    let def = tool.definition().await;
     assert_eq!(def.name, "public_adder");
     assert_eq!(def.description, "A public tool for testing visibility");
 

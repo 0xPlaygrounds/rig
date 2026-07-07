@@ -42,7 +42,7 @@ impl Tool for StatusWordTool {
     type Args = NoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Return a harmless status word.".to_string(),
@@ -114,7 +114,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let request = model
                 .completion_request(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
-                .tool(StatusWordTool.definition(String::new()).await)
+                .tool(StatusWordTool.definition().await)
                 .build();
 
             let first_turn = collect_raw_stream_observation(

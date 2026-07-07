@@ -52,7 +52,7 @@ impl Tool for SendEmail {
     type Args = SendEmailArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Send an email to a recipient.".to_string(),
@@ -93,7 +93,7 @@ impl Tool for DeleteFile {
     type Args = DeleteFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Permanently delete a file at the given path.".to_string(),

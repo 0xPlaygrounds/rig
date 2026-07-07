@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
     // Create OpenAI client
     let openai_client = anthropic::Client::from_env()?;
 
-    // Create RAG agent with a single context prompt and a dynamic tool source
+    // Create an agent with a set of static arithmetic tools
     let agent = openai_client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
@@ -74,7 +74,7 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
             description: "Add x and y together".to_string(),
@@ -109,7 +109,7 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "subtract".to_string(),
             description: "Subtract y from x (i.e.: x - y)".to_string(),
@@ -144,7 +144,7 @@ impl Tool for Multiply {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "multiply".to_string(),
             description: "Compute the product of x and y (i.e.: x * y)".to_string(),
@@ -179,7 +179,7 @@ impl Tool for Divide {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "divide".to_string(),
             description: "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios."

@@ -48,7 +48,7 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
             description: "Add x and y together".to_string(),
@@ -108,9 +108,8 @@ async fn main() -> Result<()> {
                 println!("→ model call #{turn}");
                 let response = agent.completion(prompt, history).await?.send().await?;
 
-                // The tools advertised to the provider for this turn. With
-                // static tools these are the agent's registered tools; agents
-                // with dynamic (RAG) tools would resolve them per turn.
+                // The tools advertised to the provider for this turn — the
+                // agent's registered tools.
                 let tool_names: BTreeSet<String> = agent
                     .tool_server_handle
                     .get_tool_defs()

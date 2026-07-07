@@ -43,10 +43,7 @@ impl Tool for WeatherTool {
     type Args = WeatherArgs;
     type Output = String;
 
-    fn definition(
-        &self,
-        _prompt: String,
-    ) -> impl std::future::Future<Output = ToolDefinition> + Send + Sync {
+    fn definition(&self) -> impl std::future::Future<Output = ToolDefinition> + Send + Sync {
         std::future::ready(ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Get the current weather for a city.".to_string(),

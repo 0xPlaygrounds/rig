@@ -28,7 +28,7 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     type Error = PromptError;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description:

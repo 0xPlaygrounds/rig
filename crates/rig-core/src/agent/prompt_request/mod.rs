@@ -880,8 +880,8 @@ mod tests {
         type Args = MockOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        async fn definition(&self) -> ToolDefinition {
+            MockAddTool.definition().await
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {

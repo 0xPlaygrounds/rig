@@ -543,7 +543,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 #tool_name.to_string()
             }
 
-            async fn definition(&self, _prompt: String) -> #rig_core::completion::ToolDefinition {
+            async fn definition(&self) -> #rig_core::completion::ToolDefinition {
                 let mut schema = serde_json::to_value(
                     #rig_core::schemars::schema_for!(#params_struct_name)
                 ).expect("schema serialization");

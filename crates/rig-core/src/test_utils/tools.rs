@@ -32,7 +32,7 @@ impl Tool for MockAddTool {
     type Args = MockOperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Add x and y together".to_string(),
@@ -103,7 +103,7 @@ impl Tool for MockExtensionsProbeTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Records the SessionId observed in its call context".to_string(),
@@ -146,7 +146,7 @@ impl Tool for MockSubtractTool {
     type Args = MockOperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Subtract y from x".to_string(),
@@ -190,7 +190,7 @@ impl Tool for MockStringOutputTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Returns a multiline string".to_string(),
@@ -216,7 +216,7 @@ impl Tool for MockImageOutputTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Returns image JSON".to_string(),
@@ -247,7 +247,7 @@ impl Tool for MockImageGeneratorTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Generates a small test image (a 1x1 red pixel). Call this tool when asked to generate or show an image.".to_string(),
@@ -279,7 +279,7 @@ impl Tool for MockObjectOutputTool {
     type Args = serde_json::Value;
     type Output = serde_json::Value;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Returns an object".to_string(),
@@ -307,7 +307,7 @@ impl Tool for MockExampleTool {
     type Args = ();
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "A tool that returns some example text.".to_string(),
@@ -344,7 +344,7 @@ impl Tool for MockBarrierTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Waits at a barrier to test concurrency".to_string(),
@@ -383,7 +383,7 @@ impl Tool for MockControlledTool {
     type Args = serde_json::Value;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Test tool".to_string(),
@@ -425,7 +425,7 @@ impl Tool for MockFailingTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "A tool that always fails".to_string(),
@@ -462,7 +462,7 @@ impl Tool for MockHandledFailureTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Looks up a record".to_string(),
@@ -501,7 +501,7 @@ impl Tool for MockDeniedTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "A tool with an internal authorization check".to_string(),
@@ -540,7 +540,7 @@ impl Tool for MockMetadataTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Succeeds and attaches request metadata".to_string(),

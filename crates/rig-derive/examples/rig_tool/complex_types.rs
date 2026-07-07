@@ -32,7 +32,7 @@ fn list_items(
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let def = ListItems.definition(String::default()).await;
+    let def = ListItems.definition().await;
     println!("Tool definition:\n{}", serde_json::to_string_pretty(&def)?);
 
     Ok(())

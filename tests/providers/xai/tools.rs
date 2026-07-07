@@ -28,7 +28,7 @@ impl Tool for Adder {
     type Args = OperationArgs;
     type Output = f64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Add x and y together".to_string(),
@@ -57,7 +57,7 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = f64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Subtract y from x (that is, x - y)".to_string(),

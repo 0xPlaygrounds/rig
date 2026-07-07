@@ -51,7 +51,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "CALCULATOR: {}",
-        serde_json::to_string_pretty(&CALCULATOR.definition(String::default()).await)?
+        serde_json::to_string_pretty(&CALCULATOR.definition().await)?
     );
 
     for prompt in [

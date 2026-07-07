@@ -42,7 +42,7 @@ impl Tool for WeatherTool {
     type Args = WeatherArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Get the current weather for a city.".to_string(),

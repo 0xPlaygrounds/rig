@@ -205,8 +205,8 @@ impl Tool for OutOfOrderAlphaSignal {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, prompt: String) -> ToolDefinition {
-        AlphaSignal.definition(prompt).await
+    async fn definition(&self) -> ToolDefinition {
+        AlphaSignal.definition().await
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -224,8 +224,8 @@ impl Tool for OutOfOrderBetaSignal {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, prompt: String) -> ToolDefinition {
-        BetaSignal.definition(prompt).await
+    async fn definition(&self) -> ToolDefinition {
+        BetaSignal.definition().await
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {

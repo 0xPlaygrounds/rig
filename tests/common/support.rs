@@ -131,7 +131,7 @@ impl Tool for Adder {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "add".to_string(),
             description: "Add x and y together".to_string(),
@@ -156,7 +156,7 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "subtract".to_string(),
             description: "Subtract y from x (i.e.: x - y)".to_string(),
@@ -181,7 +181,7 @@ impl Tool for AlphaSignal {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Return the alpha signal marker.".to_string(),
@@ -207,7 +207,7 @@ impl Tool for BetaSignal {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Return the beta signal marker.".to_string(),

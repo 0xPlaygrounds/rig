@@ -45,7 +45,7 @@ impl Tool for SearchWeb {
     type Args = SearchArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Search the web for a query (read-only).".to_string(),
@@ -77,7 +77,7 @@ impl Tool for TransferFunds {
     type Args = TransferArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Transfer funds to an account.".to_string(),

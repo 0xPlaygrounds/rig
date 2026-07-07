@@ -25,7 +25,6 @@ pub use extensions::{MissingExtension, ToolCallExtensions, ToolResultExtensions}
 pub use result::{
     ToolExecutionResult, ToolFailure, ToolFailureKind, ToolOutcome, ToolReturn, ToolReturnOutcome,
 };
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -34,7 +33,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::{self, ToolDefinition},
+    completion::ToolDefinition,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -98,7 +97,7 @@ impl fmt::Display for ToolError {
 ///     type Args = AddArgs;
 ///     type Output = i32;
 ///
-///     async fn definition(&self, _prompt: String) -> ToolDefinition {
+///     async fn definition(&self) -> ToolDefinition {
 ///         ToolDefinition {
 ///             name: "add".to_string(),
 ///             description: "Add x and y together".to_string(),
@@ -141,12 +140,8 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         Self::NAME.to_string()
     }
 
-    /// A method returning the tool definition. The user prompt can be used to
-    /// tailor the definition to the specific use case.
-    fn definition(
-        &self,
-        _prompt: String,
-    ) -> impl Future<Output = ToolDefinition> + WasmCompatSend + WasmCompatSync;
+    /// A method returning the tool definition (the provider-facing schema).
+    fn definition(&self) -> impl Future<Output = ToolDefinition> + WasmCompatSend + WasmCompatSync;
 
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
@@ -247,7 +242,7 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     fn name(&self) -> String;
 
     /// Returns the provider-facing tool schema.
-    fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition>;
+    fn definition<'a>(&'a self) -> WasmBoxedFuture<'a, ToolDefinition>;
 
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
@@ -341,8 +336,8 @@ impl<T: Tool> ToolDyn for T {
         self.name()
     }
 
-    fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition> {
-        Box::pin(<Self as Tool>::definition(self, prompt))
+    fn definition<'a>(&'a self) -> WasmBoxedFuture<'a, ToolDefinition> {
+        Box::pin(<Self as Tool>::definition(self))
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
@@ -413,9 +408,9 @@ impl ToolType {
         }
     }
 
-    pub async fn definition(&self, prompt: String) -> ToolDefinition {
+    pub async fn definition(&self) -> ToolDefinition {
         match self {
-            ToolType::Simple(tool) => tool.definition(prompt).await,
+            ToolType::Simple(tool) => tool.definition().await,
         }
     }
 
@@ -463,7 +458,7 @@ pub enum ToolSetError {
 /// A struct that holds a set of tools.
 ///
 /// Tools are stored in an [`IndexMap`] keyed by name, so iteration
-/// (definitions, documents, schemas) follows registration order and the tool
+/// (definitions) follows registration order and the tool
 /// list sent to providers is deterministic across processes. Re-registering an
 /// existing name replaces the implementation but keeps its original position.
 #[derive(Default)]
@@ -557,7 +552,7 @@ impl ToolSet {
     pub async fn get_tool_definitions(&self) -> Result<Vec<ToolDefinition>, ToolSetError> {
         let mut defs = Vec::new();
         for tool in self.ordered_tools() {
-            let def = tool.definition(String::new()).await;
+            let def = tool.definition().await;
             defs.push(def);
         }
         Ok(defs)
@@ -614,31 +609,6 @@ impl ToolSet {
                 ToolFailure::not_found(format!("no tool named `{toolname}` is registered")),
             ),
         }
-    }
-
-    /// Get the documents of all the tools in the toolset
-    pub async fn documents(&self) -> Result<Vec<completion::Document>, ToolSetError> {
-        let mut docs = Vec::new();
-        for tool in self.ordered_tools() {
-            match tool {
-                ToolType::Simple(tool) => {
-                    docs.push(completion::Document {
-                        id: tool.name(),
-                        text: format!(
-                            "\
-                            Tool: {}\n\
-                            Definition: \n\
-                            {}\
-                        ",
-                            tool.name(),
-                            serde_json::to_string_pretty(&tool.definition("".to_string()).await)?
-                        ),
-                        additional_props: HashMap::new(),
-                    });
-                }
-            }
-        }
-        Ok(docs)
     }
 }
 
@@ -736,7 +706,7 @@ mod tests {
             self.name.clone()
         }
 
-        fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
+        fn definition(&self) -> WasmBoxedFuture<'_, ToolDefinition> {
             Box::pin(async move {
                 ToolDefinition {
                     name: self.name.clone(),
@@ -773,10 +743,6 @@ mod tests {
         let defs = toolset.get_tool_definitions().await.unwrap();
         let def_names: Vec<String> = defs.into_iter().map(|def| def.name).collect();
         assert_eq!(def_names, names);
-
-        let docs = toolset.documents().await.unwrap();
-        let doc_ids: Vec<String> = docs.into_iter().map(|doc| doc.id).collect();
-        assert_eq!(doc_ids, names);
     }
 
     #[tokio::test]
@@ -910,7 +876,7 @@ mod tests {
             type Args = NoRequiredArgs;
             type Output = String;
 
-            async fn definition(&self, _prompt: String) -> ToolDefinition {
+            async fn definition(&self) -> ToolDefinition {
                 ToolDefinition {
                     name: Self::NAME.to_string(),
                     description: "Tool with no required arguments".to_string(),

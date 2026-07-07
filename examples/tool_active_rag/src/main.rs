@@ -39,7 +39,7 @@ impl Tool for Retrieve {
     type Args = RetrieveArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Search the knowledge base for documents relevant to a query.".to_string(),

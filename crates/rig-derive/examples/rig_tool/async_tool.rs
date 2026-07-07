@@ -36,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "ASYNCOPERATION: {}",
-        serde_json::to_string_pretty(&AsyncOperation.definition(String::default()).await)?
+        serde_json::to_string_pretty(&AsyncOperation.definition().await)?
     );
 
     for prompt in [

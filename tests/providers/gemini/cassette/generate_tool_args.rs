@@ -61,7 +61,7 @@ impl Tool for PlanTrip {
     type Args = PlanTripArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Book a trip from a nested itinerary object.".to_string(),
@@ -202,7 +202,7 @@ async fn nested_arguments_streaming() {
                 .completion_request(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .temperature(0.0)
-                .tool(PlanTrip.definition(String::new()).await)
+                .tool(PlanTrip.definition().await)
                 .build();
 
             let observation = collect_raw_stream_observation(

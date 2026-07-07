@@ -63,7 +63,7 @@ impl Tool for GetUserRecord {
     type Args = LookupArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Look up a user record by id.".to_string(),

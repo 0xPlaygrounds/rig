@@ -37,7 +37,7 @@ impl Tool for PlanTrip {
     type Args = TripArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Plan a trip itinerary.".to_string(),
@@ -99,7 +99,7 @@ impl Tool for LegacyEcho {
     type Args = EchoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "LEGACY echo implementation.".to_string(),
@@ -127,7 +127,7 @@ impl Tool for ModernEcho {
     type Args = EchoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Echo the provided text back to the caller.".to_string(),

@@ -51,7 +51,7 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         operation_definition(Self::NAME, "Add x and y together")
     }
 
@@ -68,7 +68,7 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)")
     }
 
@@ -87,7 +87,7 @@ impl Tool for Sum {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         operation_definition(Self::NAME, "Add x and y together (alias of add)")
     }
 

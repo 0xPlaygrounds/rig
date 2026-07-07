@@ -2246,7 +2246,7 @@ mod tests {
             type Error = crate::test_utils::MockToolError;
             type Args = serde_json::Value;
             type Output = String;
-            async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
+            async fn definition(&self) -> crate::completion::ToolDefinition {
                 crate::completion::ToolDefinition {
                     name: Self::NAME.to_string(),
                     description: "returns a secret".to_string(),
@@ -2463,8 +2463,8 @@ mod tests {
         type Args = MockOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        async fn definition(&self) -> ToolDefinition {
+            MockAddTool.definition().await
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -2855,8 +2855,8 @@ mod tests {
         type Args = serde_json::Value;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        async fn definition(&self) -> ToolDefinition {
+            MockAddTool.definition().await
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -3166,8 +3166,8 @@ mod tests {
         type Args = serde_json::Value;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        async fn definition(&self) -> ToolDefinition {
+            MockAddTool.definition().await
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -3304,8 +3304,8 @@ mod tests {
         type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        async fn definition(&self) -> ToolDefinition {
+            MockAddTool.definition().await
         }
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(1) {
@@ -3574,8 +3574,8 @@ mod tests {
         type Args = MockOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        async fn definition(&self) -> ToolDefinition {
+            MockAddTool.definition().await
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -5492,7 +5492,7 @@ mod tests {
         type Args = serde_json::Value;
         type Output = String;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
+        async fn definition(&self) -> ToolDefinition {
             ToolDefinition {
                 name: Self::NAME.to_string(),
                 description: "A real tool sharing the default output-tool name".to_string(),

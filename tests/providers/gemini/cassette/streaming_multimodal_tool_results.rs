@@ -38,7 +38,7 @@ impl Tool for HybridImageTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Return a reference image the assistant must inspect before answering."

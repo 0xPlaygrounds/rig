@@ -44,7 +44,7 @@ impl Tool for StressAdd {
     type Args = StressMathArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Add x and y. This tool must be used for stress-test addition turns."
@@ -82,7 +82,7 @@ impl Tool for StressSubtract {
     type Args = StressMathArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description:

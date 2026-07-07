@@ -2051,7 +2051,7 @@ mod tests {
         type Args = CountingOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
+        async fn definition(&self) -> ToolDefinition {
             arithmetic_tool_definition(Self::NAME, "Add x and y together")
         }
 
@@ -2067,7 +2067,7 @@ mod tests {
         type Args = CountingOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
+        async fn definition(&self) -> ToolDefinition {
             arithmetic_tool_definition(Self::NAME, "Subtract y from x")
         }
 

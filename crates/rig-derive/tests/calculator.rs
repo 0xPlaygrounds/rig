@@ -69,7 +69,7 @@ fn sync_calculator(x: i32, y: i32, operation: String) -> Result<i32, rig_core::t
 async fn test_calculator_tool() {
     let calculator = Calculator;
 
-    let definition = calculator.definition(String::default()).await;
+    let definition = calculator.definition().await;
     assert_eq!(calculator.name(), "calculator");
     assert_eq!(
         definition.description,

@@ -72,7 +72,7 @@ impl Tool for Notify {
     type Args = NotifyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         notify_tool_definition()
     }
 

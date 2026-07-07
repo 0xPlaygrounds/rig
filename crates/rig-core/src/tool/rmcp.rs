@@ -349,7 +349,7 @@ impl ToolDyn for McpTool {
         self.definition.name.to_string()
     }
 
-    fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
+    fn definition(&self) -> WasmBoxedFuture<'_, ToolDefinition> {
         Box::pin(async move {
             ToolDefinition {
                 name: self.definition.name.to_string(),

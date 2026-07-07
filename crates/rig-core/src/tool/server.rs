@@ -255,7 +255,7 @@ impl ToolServerHandle {
 
         let mut tools = Vec::with_capacity(handles.len());
         for handle in handles {
-            tools.push(handle.definition(String::new()).await);
+            tools.push(handle.definition().await);
         }
 
         // One shared toolset backs the lists, so the same name can appear twice
@@ -312,7 +312,7 @@ mod tests {
         type Args = EmptyArgs;
         type Output = String;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
+        async fn definition(&self) -> ToolDefinition {
             ToolDefinition {
                 name: Self::NAME.to_string(),
                 description: "a user tool named tool_search".to_string(),
@@ -540,7 +540,7 @@ mod tests {
         type Args = serde_json::Value;
         type Output = String;
 
-        async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
+        async fn definition(&self) -> crate::completion::ToolDefinition {
             crate::completion::ToolDefinition {
                 name: "context_reader".to_string(),
                 description: "Reads SessionId from context".to_string(),

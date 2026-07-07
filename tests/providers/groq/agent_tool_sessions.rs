@@ -142,7 +142,7 @@ impl Tool for PingEmpty {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Return EMPTY-OK. This tool takes no arguments.".to_string(),
@@ -166,7 +166,7 @@ impl Tool for InspectManifest {
     type Args = ManifestArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Validate a nested deployment manifest.".to_string(),
@@ -217,7 +217,7 @@ impl Tool for JoinLabels {
     type Args = JoinArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Join label strings with the requested separator.".to_string(),
@@ -244,7 +244,7 @@ impl Tool for OptionalNullableProbe {
     type Args = OptionalNullableArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Validate optional and nullable argument serialization.".to_string(),
@@ -277,7 +277,7 @@ impl Tool for EscapeEcho {
     type Args = EchoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Echo a string containing escaping-sensitive characters.".to_string(),
@@ -677,7 +677,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                      Do not write normal text before the tool call.",
                 )
                 .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(tool.definition(String::new()).await)
+                .tool(tool.definition().await)
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -740,7 +740,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                     ALPHA_SIGNAL_OUTPUT,
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(AlphaSignal.definition().await)
                 .tool_choice(ToolChoice::None)
                 .build();
 
@@ -768,7 +768,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object.")
-                        .tool(AlphaSignal.definition(String::new()).await)
+                        .tool(AlphaSignal.definition().await)
                         .tool_choice(ToolChoice::Auto)
                         .build(),
                 )
@@ -787,7 +787,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
-                        .tool(AlphaSignal.definition(String::new()).await)
+                        .tool(AlphaSignal.definition().await)
                         .tool_choice(ToolChoice::Required)
                         .build(),
                 )
@@ -806,8 +806,8 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
-                        .tool(AlphaSignal.definition(String::new()).await)
-                        .tool(BetaSignal.definition(String::new()).await)
+                        .tool(AlphaSignal.definition().await)
+                        .tool(BetaSignal.definition().await)
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
@@ -832,7 +832,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
-                        .tool(AlphaSignal.definition(String::new()).await)
+                        .tool(AlphaSignal.definition().await)
                         .tool_choice(ToolChoice::None)
                         .build(),
                 )

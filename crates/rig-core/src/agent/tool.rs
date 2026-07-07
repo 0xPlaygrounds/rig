@@ -20,7 +20,7 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
     type Args = AgentToolArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         let description = format!(
             "
             Prompt a sub-agent to do a task for you.

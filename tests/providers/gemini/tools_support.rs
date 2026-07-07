@@ -90,7 +90,7 @@ impl Tool for CountingAdd {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         operation_definition(Self::NAME, "Add x and y together")
     }
 
@@ -112,7 +112,7 @@ impl Tool for CountingSubtract {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)")
     }
 
@@ -140,7 +140,7 @@ impl Tool for CountingPing {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Return the current ping marker. Takes no arguments.".to_string(),
@@ -184,7 +184,7 @@ impl Tool for CodewordLookup {
     type Args = CodewordArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Look up the secret codeword for a team.".to_string(),
@@ -227,7 +227,7 @@ impl Tool for StrictRegister {
     type Args = StrictRegisterArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Register guests for the event.".to_string(),
@@ -263,7 +263,7 @@ impl Tool for MottoTool {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Fetch the two-line workshop motto.".to_string(),
@@ -303,7 +303,7 @@ impl Tool for ConfigTool {
     type Args = EmptyArgs;
     type Output = ConfigOutput;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Fetch the service configuration object.".to_string(),
@@ -330,7 +330,7 @@ impl Tool for BadgeImageTool {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Fetch the attendee badge as an image the assistant must inspect."

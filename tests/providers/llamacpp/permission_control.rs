@@ -48,7 +48,7 @@ impl Tool for ReadFileHead {
     type Args = ReadFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "read_file_head".to_string(),
             description: "Read the first line of test.txt using the head command".to_string(),
@@ -79,7 +79,7 @@ impl Tool for ReadFileTail {
     type Args = ReadFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "read_file_tail".to_string(),
             description: "Read the last line of test.txt using the tail command".to_string(),

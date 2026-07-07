@@ -124,7 +124,7 @@ impl Tool for PingEmpty {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Return EMPTY-OK. This tool takes no arguments.".to_string(),
@@ -148,7 +148,7 @@ impl Tool for InspectManifest {
     type Args = ManifestArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Validate a nested deployment manifest.".to_string(),
@@ -199,7 +199,7 @@ impl Tool for JoinLabels {
     type Args = JoinArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Join label strings with the requested separator.".to_string(),
@@ -229,7 +229,7 @@ impl Tool for EscapeEcho {
     type Args = EchoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Echo a string containing escaping-sensitive characters.".to_string(),
@@ -573,7 +573,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                      Do not write normal text before the tool call.",
                 )
                 .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(tool.definition(String::new()).await)
+                .tool(tool.definition().await)
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -627,7 +627,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 })
                 .message(Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(AlphaSignal.definition().await)
                 .tool_choice(ToolChoice::None)
                 .build();
 

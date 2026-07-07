@@ -35,7 +35,7 @@ impl Tool for ThinkTool {
     type Args = ThinkArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    async fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "think".to_string(),
             description: "Use the tool to think about something. It will not obtain new information
@@ -69,7 +69,7 @@ mod tests {
     #[tokio::test]
     async fn test_think_tool_definition() {
         let tool = ThinkTool;
-        let definition = tool.definition("".to_string()).await;
+        let definition = tool.definition().await;
 
         assert_eq!(definition.name, "think");
         assert!(
