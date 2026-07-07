@@ -1981,10 +1981,17 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
+
+        // Record the request messages as GenAI input on the span so observability
+        // backends (e.g. Langfuse) can render the conversation. The provider only
+        // recorded token usage before, leaving `gen_ai.input.messages` empty.
+        span.record_model_input(&request.messages);
 
         let body = serde_json::to_vec(&body)?;
 
@@ -2014,6 +2021,13 @@ where
                         span.record_token_usage(&response.usage);
                         span.record("gen_ai.response.id", &response.id);
                         span.record("gen_ai.response.model", &response.model);
+                        span.record_model_output(
+                            &response
+                                .choices
+                                .iter()
+                                .map(|choice| &choice.message)
+                                .collect::<Vec<_>>(),
+                        );
 
                         tracing::debug!(target: "rig::completions",
                             "OpenRouter response: {response:?}");
