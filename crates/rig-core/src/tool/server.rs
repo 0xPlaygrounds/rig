@@ -203,8 +203,7 @@ impl ToolServerHandle {
     pub async fn get_tool_defs(&self) -> Result<Vec<ToolDefinition>, ToolServerError> {
         // Clone the handles under a brief read lock so that a slow tool
         // `definition()` (e.g. an MCP round-trip) never holds the lock across
-        // `.await`. The toolset is name-keyed, so the set is already unique and
-        // in registration order.
+        // `.await`. Handles come out in registration order.
         let handles: Vec<Arc<dyn ToolDyn>> = {
             let state = self.0.read().await;
             state.toolset.ordered_tools().cloned().collect()
@@ -214,6 +213,24 @@ impl ToolServerHandle {
         for handle in handles {
             tools.push(handle.definition().await);
         }
+
+        // The toolset is keyed by a tool's registration name (`Tool::NAME`),
+        // but the advertised name lives in its `ToolDefinition` — the two are
+        // independent, so two distinct registered tools could still emit the
+        // same definition name. Providers reject duplicate function
+        // declarations, so keep the first and drop exact-name repeats.
+        let mut seen = std::collections::HashSet::new();
+        tools.retain(|def| {
+            let fresh = seen.insert(def.name.clone());
+            if !fresh {
+                tracing::debug!(
+                    tool_name = %def.name,
+                    "dropping duplicate tool definition from the request"
+                );
+            }
+            fresh
+        });
+
         Ok(tools)
     }
 }
@@ -281,6 +298,60 @@ mod tests {
             .collect();
         names.sort();
         assert_eq!(names, vec!["add".to_string(), "subtract".to_string()]);
+    }
+
+    /// Two distinct registration names (`Tool::NAME`) that advertise the *same*
+    /// `ToolDefinition.name`. A tool's registration name and its advertised name
+    /// are independent, so this collision is possible; providers reject duplicate
+    /// function declarations, so `get_tool_defs` must dedup on the advertised name.
+    #[derive(Clone)]
+    struct DupDefA;
+    #[derive(Clone)]
+    struct DupDefB;
+
+    macro_rules! dup_def_tool {
+        ($ty:ty, $name:literal) => {
+            impl Tool for $ty {
+                const NAME: &'static str = $name;
+                type Error = ToolSearchErr;
+                type Args = EmptyArgs;
+                type Output = String;
+
+                async fn definition(&self) -> ToolDefinition {
+                    ToolDefinition {
+                        name: "shared".to_string(),
+                        description: concat!("advertised by ", $name).to_string(),
+                        parameters: serde_json::json!({ "type": "object", "properties": {} }),
+                    }
+                }
+
+                async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+                    Ok($name.to_string())
+                }
+            }
+        };
+    }
+    dup_def_tool!(DupDefA, "dup_a");
+    dup_def_tool!(DupDefB, "dup_b");
+
+    #[tokio::test]
+    pub async fn get_tool_defs_dedups_by_advertised_definition_name() {
+        // `dup_a` and `dup_b` register under distinct keys but both advertise the
+        // definition name "shared". Only the first survives, so the request never
+        // carries a duplicate function declaration.
+        let handle = ToolServer::new().tool(DupDefA).tool(DupDefB).run();
+        let names: Vec<String> = handle
+            .get_tool_defs()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        assert_eq!(
+            names,
+            vec!["shared".to_string()],
+            "colliding advertised names are deduped to the first"
+        );
     }
 
     #[tokio::test]
