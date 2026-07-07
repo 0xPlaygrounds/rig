@@ -133,21 +133,23 @@ one of these places, preferring the smallest reliable scope:
 - cassette-backed provider tests in `tests/providers/<provider>/cassette/`;
 - ignored live tests only when cassette replay is unsuitable.
 
-## Vector Store Changes
+## Retrieval / RAG Changes
 
-Vector stores should live in companion crates unless there is a strong reason to
-place them in `rig-core`.
+`rig-core` has no vector-store abstraction. Retrieval is a user-land pattern —
+keep new retrieval integrations in examples or user code unless a core primitive
+is explicitly approved.
 
-Implement both:
+- **Passive RAG:** an `AgentHook` on `StepEvent::CompletionCall` injects documents
+  via `RequestPatch::extra_context` before the model call.
+- **Active RAG:** expose retrieval as a normal `Tool` the model chooses to call.
+- **Large tool catalogs:** register the extras as deferred tools
+  (`AgentBuilder::deferred_tool` / `ToolServer::deferred_tool`) and let the model
+  discover them via the built-in `tool_search` meta-tool (the `tool_search` name
+  is reserved). Custom search strategies use `ToolServer::tool_search_fn`.
 
-- `top_n`
-- `top_n_ids`
-
-Use an appropriate backend-specific filter type.
-
-Return `VectorStoreError` variants instead of ad hoc string errors.
-
-Use `WasmCompatSend` and `WasmCompatSync` bounds.
+Embedding models/builders remain in `rig_core::embeddings`. Use `WasmCompatSend` /
+`WasmCompatSync` bounds and `WasmBoxedFuture` for public async abstractions
+(e.g. `ToolSearchFn`) so they stay WASM-compatible.
 
 ## Agent Hook Changes
 

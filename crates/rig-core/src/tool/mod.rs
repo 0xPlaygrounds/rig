@@ -502,18 +502,35 @@ impl ToolSet {
         self.tools.contains_key(toolname)
     }
 
-    /// Add a tool to the toolset
+    /// Add a tool to the toolset.
+    ///
+    /// The reserved built-in tool name (`tool_search`) is refused (logged and
+    /// skipped) rather than shadowing the deferred-tool search meta-tool.
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
         self.insert(ToolType::Simple(Arc::new(tool)));
     }
 
     /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
+    ///
+    /// Like [`add_tool`](Self::add_tool), the reserved `tool_search` name is refused.
     pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
         self.insert(ToolType::Simple(Arc::from(tool)));
     }
 
     pub(crate) fn insert(&mut self, tool: ToolType) {
         let name = tool.name();
+        // The built-in `tool_search` meta-tool name is reserved: a user tool with
+        // that name could be advertised but never execute (the tool server
+        // intercepts `tool_search`), so refuse it here rather than silently
+        // shadowing the built-in. See `server::TOOL_SEARCH_NAME`.
+        if server::is_reserved_tool_name(&name) {
+            tracing::warn!(
+                tool_name = %name,
+                "`{name}` is a reserved built-in tool name (the deferred-tool `tool_search` \
+                 meta-tool); refusing to register it — rename the tool"
+            );
+            return;
+        }
         // `IndexMap::insert` replaces the value while keeping the existing
         // slot position, and returns the previous value when the name was
         // already registered.

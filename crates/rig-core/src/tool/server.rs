@@ -15,7 +15,22 @@ use crate::{
 };
 
 /// Name of the built-in meta-tool the model calls to discover deferred tools.
+///
+/// This name is **reserved**: user tools may not register it. The tool server
+/// intercepts calls to it (advertising the built-in only when deferred tools
+/// exist), so a user tool with this name could be advertised but never execute —
+/// registration is refused instead (with an error on the `Result`-returning
+/// [`ToolServerHandle`] methods, or a `tracing::warn!` + skip on the infallible
+/// builder methods). See [`is_reserved_tool_name`].
 pub const TOOL_SEARCH_NAME: &str = "tool_search";
+
+/// Whether `name` is a reserved built-in tool name that user tools may not use.
+///
+/// Currently the only reserved name is [`TOOL_SEARCH_NAME`]. Registration paths
+/// use this to refuse a colliding user tool rather than silently shadowing it.
+pub fn is_reserved_tool_name(name: &str) -> bool {
+    name == TOOL_SEARCH_NAME
+}
 
 /// Name + description of a deferred tool, handed to a [`ToolSearchFn`] so it can
 /// rank candidates without the model paying for their full JSON schemas.
@@ -203,6 +218,12 @@ pub(crate) fn revealed_deferred_tools(history: &[Message]) -> BTreeSet<String> {
 /// while the toolset swaps in the new implementation. Providers reject
 /// duplicate function declarations, so the list must stay unique.
 fn push_unique_name(names: &mut Vec<String>, name: String) {
+    // The reserved built-in name never enters an advertised name list, so a user
+    // tool that collided with it (already refused + warned at the toolset level,
+    // or rejected at a `Result`-returning entry point) can never be advertised.
+    if is_reserved_tool_name(&name) {
+        return;
+    }
     if !names.contains(&name) {
         names.push(name);
     }
@@ -273,6 +294,9 @@ impl ToolServer {
 
     /// Add a static tool to the agent. Re-registering an existing name
     /// replaces the implementation (last wins) and keeps its position.
+    ///
+    /// The reserved built-in name ([`TOOL_SEARCH_NAME`]) is refused (logged and
+    /// skipped) rather than shadowing the built-in `tool_search` meta-tool.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.toolset.add_tool(tool);
@@ -318,6 +342,9 @@ impl ToolServer {
     /// and surfaced on demand. Once revealed (via a `tool_search` call recorded in
     /// the transcript), a deferred tool is advertised and dispatched like any other
     /// tool. Registering any deferred tool auto-advertises `tool_search`.
+    ///
+    /// The reserved built-in name ([`TOOL_SEARCH_NAME`]) is refused (logged and
+    /// skipped).
     pub fn deferred_tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.toolset.add_tool(tool);
@@ -362,9 +389,16 @@ pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 impl ToolServerHandle {
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
+    ///
+    /// Registering the reserved built-in name ([`TOOL_SEARCH_NAME`]) is rejected
+    /// with [`ToolServerError::ReservedToolName`] rather than silently shadowing
+    /// the built-in `tool_search` meta-tool.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
-        let mut state = self.0.write().await;
         let toolname = tool.name();
+        if is_reserved_tool_name(&toolname) {
+            return Err(ToolServerError::ReservedToolName(toolname));
+        }
+        let mut state = self.0.write().await;
         push_unique_name(&mut state.static_tool_names, toolname);
         state.toolset.add_tool_boxed(Box::new(tool));
         Ok(())
@@ -375,7 +409,15 @@ impl ToolServerHandle {
     /// order, so the tools become visible to the LLM via
     /// [`Self::get_tool_defs`]. Existing names are replaced (last wins) and
     /// keep their position.
+    ///
+    /// Rejected with [`ToolServerError::ReservedToolName`] if `toolset` contains
+    /// the reserved built-in name ([`TOOL_SEARCH_NAME`]).
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
+        for name in toolset.ordered_names() {
+            if is_reserved_tool_name(name) {
+                return Err(ToolServerError::ReservedToolName(name.clone()));
+            }
+        }
         let mut state = self.0.write().await;
         for name in toolset.ordered_names() {
             push_unique_name(&mut state.static_tool_names, name.clone());
@@ -613,6 +655,11 @@ impl ToolServerHandle {
 pub enum ToolServerError {
     #[error("Toolset error: {0}")]
     ToolsetError(#[from] ToolSetError),
+    #[error(
+        "`{0}` is a reserved built-in tool name (the deferred-tool `tool_search` meta-tool); \
+         rename the tool"
+    )]
+    ReservedToolName(String),
 }
 
 #[cfg(test)]
@@ -622,13 +669,44 @@ mod tests {
     use std::collections::BTreeSet;
 
     use crate::{
-        completion::Message,
+        completion::{Message, ToolDefinition},
         test_utils::{MockAddTool, MockBarrierTool, MockControlledTool, MockSubtractTool},
         tool::{
-            ToolCallExtensions, ToolOutcome, ToolSet,
-            server::{ToolServer, revealed_deferred_tools},
+            Tool, ToolCallExtensions, ToolOutcome, ToolSet,
+            server::{ToolServer, ToolServerError, revealed_deferred_tools},
         },
     };
+
+    /// A user tool that (illegally) claims the reserved built-in `tool_search`
+    /// name, used to prove such a tool is refused rather than silently shadowed.
+    #[derive(Clone)]
+    struct ReservedNameTool;
+
+    #[derive(serde::Deserialize)]
+    struct EmptyArgs {}
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("reserved name tool error")]
+    struct ReservedErr;
+
+    impl Tool for ReservedNameTool {
+        const NAME: &'static str = super::TOOL_SEARCH_NAME;
+        type Error = ReservedErr;
+        type Args = EmptyArgs;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "a user tool that should never be registered".to_string(),
+                parameters: serde_json::json!({ "type": "object", "properties": {} }),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok("user tool ran".to_string())
+        }
+    }
 
     #[tokio::test]
     pub async fn test_toolserver() {
@@ -912,6 +990,101 @@ mod tests {
             "structured path classifies invalid tool_search args as InvalidArgs: {:?}",
             result.outcome()
         );
+    }
+
+    #[tokio::test]
+    pub async fn reserved_static_tool_search_is_refused_not_shadowed() {
+        // A user static tool named `tool_search` must not be registered/advertised
+        // (it could never execute — the server intercepts `tool_search`).
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .tool(ReservedNameTool)
+            .run();
+        let defs = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
+        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["add"],
+            "the reserved `tool_search` user tool must not be advertised: {names:?}"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn reserved_deferred_tool_search_is_refused() {
+        // A deferred tool named `tool_search` is refused: it never registers, so no
+        // deferred tools exist and the built-in `tool_search` is not advertised.
+        let handle = ToolServer::new().deferred_tool(ReservedNameTool).run();
+        let defs = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
+        assert!(
+            defs.is_empty(),
+            "a refused deferred `tool_search` leaves no tools advertised: {:?}",
+            defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    pub async fn get_tool_defs_never_emits_duplicate_tool_search() {
+        // A real deferred tool advertises the built-in `tool_search`; a colliding
+        // user tool named `tool_search` is refused, so exactly one is emitted.
+        let handle = ToolServer::new()
+            .deferred_tool(MockSubtractTool)
+            .tool(ReservedNameTool)
+            .run();
+        // Reveal the deferred tool so both it and `tool_search` are advertised.
+        let revealed: BTreeSet<String> = ["subtract".to_string()].into_iter().collect();
+        let defs = handle.get_tool_defs(&revealed).await.unwrap();
+        let tool_search_count = defs
+            .iter()
+            .filter(|d| d.name == super::TOOL_SEARCH_NAME)
+            .count();
+        assert_eq!(
+            tool_search_count,
+            1,
+            "exactly one tool_search definition: {:?}",
+            defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    pub async fn handle_add_tool_reserved_name_errors() {
+        let handle = ToolServer::new().run();
+        let err = handle
+            .add_tool(ReservedNameTool)
+            .await
+            .expect_err("adding a reserved-name tool must error");
+        assert!(
+            matches!(&err, ToolServerError::ReservedToolName(name) if name == "tool_search"),
+            "expected ReservedToolName error, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn handle_append_toolset_with_reserved_name_errors() {
+        // The reserved name cannot even enter a ToolSet (insert refuses it), so we
+        // assert the direct-add error path; append_toolset is guarded the same way.
+        let handle = ToolServer::new().run();
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(MockAddTool);
+        // ToolSet::add_tool refuses the reserved name, so the toolset stays clean.
+        toolset.add_tool(ReservedNameTool);
+        assert!(
+            !toolset
+                .ordered_names()
+                .any(|n| n == super::TOOL_SEARCH_NAME),
+            "ToolSet must refuse the reserved name"
+        );
+        handle
+            .append_toolset(toolset)
+            .await
+            .expect("a toolset without the reserved name appends fine");
+        let names: Vec<String> = handle
+            .get_tool_defs(&BTreeSet::new())
+            .await
+            .unwrap()
+            .iter()
+            .map(|d| d.name.clone())
+            .collect();
+        assert_eq!(names, vec!["add".to_string()]);
     }
 
     #[tokio::test]

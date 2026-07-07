@@ -497,6 +497,8 @@ where
     /// until the model discovers it via the built-in `tool_search` meta-tool.
     /// Use this for tool catalogs too large to advertise every turn.
     ///
+    /// The reserved `tool_search` name is refused (logged and skipped).
+    ///
     /// Transitions the builder to the `WithBuilderTools` state.
     pub fn deferred_tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
         let toolname = tool.name();
@@ -643,6 +645,8 @@ where
     /// Register a deferred tool: executable but withheld from the advertised set
     /// until the model discovers it via the built-in `tool_search` meta-tool.
     /// Use this for tool catalogs too large to advertise every turn.
+    ///
+    /// The reserved `tool_search` name is refused (logged and skipped).
     pub fn deferred_tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.tool_state.tools.add_tool(tool);
