@@ -12,13 +12,15 @@ use serde_json::json;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::support::assert_nonempty_response;
 
 use super::{PERMISSION_CONTROL_PROMPT_MODEL, PERMISSION_CONTROL_STREAMING_MODEL};
 
-const TEST_FILE: &str = "test.txt";
+const TEST_FILE: &str = "groq_permission_control_test.txt";
 const TEST_CONTENT: &str = "hello world\n";
+static PERMISSION_CONTROL_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
 struct FileCleanup;
 
@@ -146,6 +148,7 @@ impl<M: CompletionModel> AgentHook<M> for PermissionHook {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn permission_control_prompt_example() -> Result<()> {
+    let _guard = PERMISSION_CONTROL_TEST_LOCK.lock().await;
     let _cleanup = FileCleanup::new()?;
 
     let agent = groq::Client::from_env()
@@ -185,6 +188,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn permission_control_streaming_example() -> Result<()> {
+    let _guard = PERMISSION_CONTROL_TEST_LOCK.lock().await;
     let _cleanup = FileCleanup::new()?;
 
     let agent = groq::Client::from_env()
