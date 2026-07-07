@@ -129,6 +129,25 @@ impl fmt::Display for ToolError {
 ///     }
 /// }
 /// ```
+///
+/// `Tool::NAME` is the only typed tool-name source; tools do not expose a
+/// runtime name getter:
+///
+/// ```compile_fail
+/// # use rig_core::tool::Tool;
+/// # #[derive(Debug, thiserror::Error)] #[error("err")] struct E;
+/// # struct Noop;
+/// # impl Tool for Noop {
+/// #   const NAME: &'static str = "noop";
+/// #   type Error = E;
+/// #   type Args = ();
+/// #   type Output = ();
+/// #   fn description(&self) -> String { String::new() }
+/// #   fn parameters(&self) -> serde_json::Value { serde_json::json!({}) }
+/// #   async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> { Ok(()) }
+/// # }
+/// let _ = Noop.name();
+/// ```
 pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// The name of the tool. This name should be unique within a single
     /// [`ToolSet`] or other registration scope that dispatches tools by name.
@@ -140,11 +159,6 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     type Args: for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync;
     /// The output type of the tool.
     type Output: Serialize;
-
-    /// A method returning the name of the tool.
-    fn name(&self) -> String {
-        Self::NAME.to_string()
-    }
 
     /// Model-facing description of what the tool does.
     fn description(&self) -> String;
@@ -226,8 +240,8 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     ///   framework hook `Flow::Skip` is what yields a *skipped* outcome, not the tool).
     ///
     /// **Override contract:** this is the single entry point under *structured
-    /// dynamic dispatch* — the agent loop routes every tool call here via the
-    /// blanket [`ToolDyn`] impl. If you override it, the `call` /
+    /// dynamic dispatch* — the agent loop routes every tool call here through
+    /// Rig's erased runtime adapter. If you override it, the `call` /
     /// `call_with_extensions` bodies are unreachable on that structured path (a
     /// direct call still runs them), so put your logic here. A returned
     /// `Err(Self::Error)` is still classified via
@@ -273,28 +287,85 @@ pub trait ToolEmbedding: Tool {
     fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
 }
 
-/// Wrapper trait to allow for dynamic dispatch of simple tools.
+trait ToolMetadata<T>: Fn() -> T + WasmCompatSend + WasmCompatSync {}
+
+impl<F, T> ToolMetadata<T> for F where F: Fn() -> T + WasmCompatSend + WasmCompatSync {}
+
+type ToolMetadataFn<T> = Arc<dyn ToolMetadata<T>>;
+
+trait ToolCallClosure:
+    for<'a> Fn(String, &'a ToolCallExtensions) -> WasmBoxedFuture<'a, Result<String, ToolError>>
+    + WasmCompatSend
+    + WasmCompatSync
+{
+}
+
+impl<F> ToolCallClosure for F where
+    F: for<'a> Fn(String, &'a ToolCallExtensions) -> WasmBoxedFuture<'a, Result<String, ToolError>>
+        + WasmCompatSend
+        + WasmCompatSync
+{
+}
+
+type ToolCallFn = Arc<dyn ToolCallClosure>;
+
+trait ToolCallStructuredClosure:
+    for<'a> Fn(String, &'a ToolCallExtensions) -> WasmBoxedFuture<'a, ToolExecutionResult>
+    + WasmCompatSend
+    + WasmCompatSync
+{
+}
+
+impl<F> ToolCallStructuredClosure for F where
+    F: for<'a> Fn(String, &'a ToolCallExtensions) -> WasmBoxedFuture<'a, ToolExecutionResult>
+        + WasmCompatSend
+        + WasmCompatSync
+{
+}
+
+type ToolCallStructuredFn = Arc<dyn ToolCallStructuredClosure>;
+
+fn serialize_tool_output(output: impl Serialize) -> serde_json::Result<String> {
+    match serde_json::to_value(output)? {
+        serde_json::Value::String(text) => Ok(text),
+        value => Ok(value.to_string()),
+    }
+}
+
+/// Deserialize JSON tool arguments, normalizing a bare `null` (which LLMs
+/// frequently send for tools whose arguments are all optional) to `{}`.
+fn parse_tool_args<A>(args: &str) -> serde_json::Result<A>
+where
+    A: for<'de> Deserialize<'de>,
+{
+    match serde_json::from_str(args) {
+        Ok(parsed) => Ok(parsed),
+        Err(err) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| err),
+        Err(err) => Err(err),
+    }
+}
+
+/// Map a [`ToolError`] surfaced by a string-returning dynamic tool path into a
+/// structured [`ToolExecutionResult`], classifying a JSON error as invalid
+/// arguments.
+fn tool_error_to_execution_result(err: ToolError) -> ToolExecutionResult {
+    let message = err.to_string();
+    let failure = match err {
+        ToolError::JsonError(_) => ToolFailure::invalid_args(message.clone()),
+        ToolError::ToolCallError(_) => ToolFailure::other(message.clone()),
+    };
+    ToolExecutionResult::failed(message, failure)
+}
+
+/// Nameless erased runtime executor for a tool.
 ///
-/// This is the object-safe erased form of [`Tool`]: it exposes the same flat
-/// metadata and string-based execution methods for runtime dispatch.
-pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
-    /// Returns the tool name used for dispatch and provider advertisement.
-    fn name(&self) -> String;
-
-    /// Model-facing description of what the tool does.
-    fn description(&self) -> String;
-
-    /// JSON Schema for the tool arguments.
-    fn parameters(&self) -> serde_json::Value;
-
+/// Tool identity is stored by [`ToolDyn`] and by [`ToolSet`] registration keys;
+/// runtime implementations cannot recompute or change it.
+pub(crate) trait ToolRuntime: WasmCompatSend + WasmCompatSync {
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
 
     /// Dynamic dispatch variant of tool execution with per-call runtime extensions.
-    ///
-    /// The default ignores the extensions and delegates to [`ToolDyn::call`].
-    /// The blanket impl for [`Tool`] types overrides this to thread the
-    /// extensions through to [`Tool::call_with_extensions`].
     fn call_with_extensions<'a>(
         &'a self,
         args: String,
@@ -306,21 +377,6 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     /// Execute the tool with per-call extensions, returning a structured
     /// [`ToolExecutionResult`] (model output + [`ToolOutcome`] + result
     /// extensions).
-    ///
-    /// This is the structured dynamic boundary the agent loop drives: the result
-    /// flows through to the
-    /// [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event.
-    /// Unlike [`call`](Self::call) it never returns a bare error — a failure is
-    /// carried as [`ToolOutcome::Error`] inside the result, with the
-    /// model-visible message on [`ToolExecutionResult::model_output`].
-    ///
-    /// The default wraps [`call_with_extensions`](Self::call_with_extensions): an
-    /// `Ok` output becomes a [`ToolOutcome::Success`]; a [`ToolError`] is
-    /// classified ([`ToolError::JsonError`] as
-    /// [`ToolFailureKind::InvalidArgs`], otherwise [`ToolFailureKind::Other`]).
-    /// The blanket impl for [`Tool`] types overrides this to route through
-    /// [`Tool::call_structured`] and [`Tool::classify_error`]; a manual `ToolDyn`
-    /// impl should override it to emit precise outcomes (e.g. a real timeout).
     fn call_structured<'a>(
         &'a self,
         args: String,
@@ -335,80 +391,446 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     }
 }
 
-fn serialize_tool_output(output: impl Serialize) -> serde_json::Result<String> {
-    match serde_json::to_value(output)? {
-        serde_json::Value::String(text) => Ok(text),
-        value => Ok(value.to_string()),
-    }
-}
-
-/// Deserialize JSON tool arguments, normalizing a bare `null` (which LLMs
-/// frequently send for tools whose arguments are all optional) to `{}`.
+/// Runtime assembled from [`ToolDynBuilder`] executor closures.
 ///
-/// `serde_json::from_str::<T>("null")` fails for struct types even when every
-/// field is `Option<_>`, because JSON null does not deserialize to an empty
-/// object. Any args type that already accepts `null` (such as `()` or
-/// `Option<T>`) is preserved; the fallback to `{}` only applies after the
-/// original parse fails.
-fn parse_tool_args<A>(args: &str) -> serde_json::Result<A>
-where
-    A: for<'de> Deserialize<'de>,
-{
-    match serde_json::from_str(args) {
-        Ok(parsed) => Ok(parsed),
-        Err(err) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| err),
-        Err(err) => Err(err),
+/// When only one executor is provided, the other path is derived from it: a
+/// string executor gets the default structured classification, and a structured
+/// executor maps a [`ToolOutcome::Success`] to `Ok(model_output)` and every
+/// other outcome to a [`ToolError::ToolCallError`] carrying the model-facing
+/// message.
+enum ClosureRuntime {
+    String(ToolCallFn),
+    Structured(ToolCallStructuredFn),
+    Both {
+        call: ToolCallFn,
+        structured: ToolCallStructuredFn,
+    },
+}
+
+impl ToolRuntime for ClosureRuntime {
+    fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        ToolRuntime::call_with_extensions(self, args, &ToolCallExtensions::EMPTY)
+    }
+
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        match self {
+            Self::String(call) | Self::Both { call, .. } => call(args, extensions),
+            Self::Structured(structured) => {
+                let result = structured(args, extensions);
+                Box::pin(async move {
+                    let result = result.await;
+                    match result.outcome() {
+                        ToolOutcome::Success => Ok(result.model_output().to_string()),
+                        _ => Err(ToolError::ToolCallError(
+                            result.model_output().to_string().into(),
+                        )),
+                    }
+                })
+            }
+        }
+    }
+
+    fn call_structured<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        match self {
+            Self::Structured(structured) | Self::Both { structured, .. } => {
+                structured(args, extensions)
+            }
+            Self::String(call) => {
+                let result = call(args, extensions);
+                Box::pin(async move {
+                    match result.await {
+                        Ok(model_output) => ToolExecutionResult::success(model_output),
+                        Err(err) => tool_error_to_execution_result(err),
+                    }
+                })
+            }
+        }
     }
 }
 
-/// Map a [`ToolError`] surfaced by a string-returning [`ToolDyn`] path into a
-/// structured [`ToolExecutionResult`], classifying a JSON error as invalid
-/// arguments. Used by the default [`ToolDyn::call_structured`] for manual
-/// implementations that only provide the string [`ToolDyn::call`].
-fn tool_error_to_execution_result(err: ToolError) -> ToolExecutionResult {
-    let message = err.to_string();
-    let failure = match err {
-        ToolError::JsonError(_) => ToolFailure::invalid_args(message.clone()),
-        ToolError::ToolCallError(_) => ToolFailure::other(message.clone()),
-    };
-    ToolExecutionResult::failed(message, failure)
+#[derive(Clone)]
+pub(crate) struct ToolEntry {
+    description: ToolMetadataFn<String>,
+    parameters: ToolMetadataFn<serde_json::Value>,
+    runtime: Arc<dyn ToolRuntime>,
 }
 
-/// Generate a provider-facing [`ToolDefinition`] from a registered tool's
-/// flat metadata.
-///
-/// The tool name is always taken from [`ToolDyn::name`], making that registered
-/// name the single source of truth for provider advertisement and dispatch.
-pub fn tool_definition(tool: &dyn ToolDyn) -> ToolDefinition {
-    tool_definition_with_name(tool.name(), tool)
-}
-
-pub(crate) fn tool_definition_with_name(
-    name: impl Into<String>,
-    tool: &dyn ToolDyn,
-) -> ToolDefinition {
-    ToolDefinition {
-        name: name.into(),
-        description: tool.description(),
-        parameters: tool.parameters(),
-    }
-}
-
-impl<T: Tool> ToolDyn for T {
-    fn name(&self) -> String {
-        <Self as Tool>::name(self)
+impl ToolEntry {
+    fn new(
+        description: impl Fn() -> String + WasmCompatSend + WasmCompatSync + 'static,
+        parameters: impl Fn() -> serde_json::Value + WasmCompatSend + WasmCompatSync + 'static,
+        runtime: Arc<dyn ToolRuntime>,
+    ) -> Self {
+        Self {
+            description: Arc::new(description),
+            parameters: Arc::new(parameters),
+            runtime,
+        }
     }
 
     fn description(&self) -> String {
-        <Self as Tool>::description(self)
+        (self.description)()
     }
 
     fn parameters(&self) -> serde_json::Value {
-        <Self as Tool>::parameters(self)
+        (self.parameters)()
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
-        ToolDyn::call_with_extensions(self, args, &ToolCallExtensions::EMPTY)
+        self.runtime.call(args)
+    }
+
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.runtime.call_with_extensions(args, extensions)
+    }
+
+    fn call_structured<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        self.runtime.call_structured(args, extensions)
+    }
+
+    fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
+        ToolDefinition {
+            name: name.into(),
+            description: self.description(),
+            parameters: self.parameters(),
+        }
+    }
+}
+
+/// A complete named dynamic LLM tool.
+///
+/// `ToolDyn` stores its canonical name as data until registration. When a tool
+/// is inserted into a [`ToolSet`], the name is consumed into the map key and the
+/// stored runtime entry is nameless.
+///
+/// `ToolDyn` is a concrete value, not an object-safe trait to implement:
+///
+/// ```compile_fail
+/// # use rig_core::tool::ToolDyn;
+/// struct Manual;
+/// impl ToolDyn for Manual {}
+/// ```
+#[derive(Clone)]
+pub struct ToolDyn {
+    name: String,
+    entry: ToolEntry,
+}
+
+impl ToolDyn {
+    /// Start building a concrete dynamic tool.
+    pub fn builder() -> ToolDynBuilder {
+        ToolDynBuilder::default()
+    }
+
+    pub(crate) fn from_runtime(
+        name: impl Into<String>,
+        description: impl Fn() -> String + WasmCompatSend + WasmCompatSync + 'static,
+        parameters: impl Fn() -> serde_json::Value + WasmCompatSend + WasmCompatSync + 'static,
+        runtime: Arc<dyn ToolRuntime>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            entry: ToolEntry::new(description, parameters, runtime),
+        }
+    }
+
+    fn from_typed<T>(tool: T) -> Self
+    where
+        T: Tool + 'static,
+    {
+        let tool = Arc::new(tool);
+        let description_tool = Arc::clone(&tool);
+        let parameters_tool = Arc::clone(&tool);
+        let runtime: Arc<dyn ToolRuntime> = tool;
+        Self::from_runtime(
+            T::NAME,
+            move || description_tool.description(),
+            move || parameters_tool.parameters(),
+            runtime,
+        )
+    }
+
+    fn into_parts(self) -> (String, ToolEntry) {
+        (self.name, self.entry)
+    }
+
+    /// The canonical tool name stored in this value. At registration it is
+    /// consumed into the [`ToolSet`] map key.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Replace the stored canonical name, returning the renamed tool.
+    ///
+    /// The name is plain data on this value; it is consumed into the [`ToolSet`]
+    /// map key at registration and cannot change afterwards. Use this to
+    /// register one implementation under an instance-specific name, or — since
+    /// `ToolDyn` is `Clone` and shares its runtime — under several names:
+    ///
+    /// `ToolDyn::from(tool).with_name("alias")`, `tool_dyn.clone().with_name("other")`.
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+
+    /// Model-facing description of what the tool does.
+    pub fn description(&self) -> String {
+        self.entry.description()
+    }
+
+    /// JSON Schema for the tool arguments.
+    pub fn parameters(&self) -> serde_json::Value {
+        self.entry.parameters()
+    }
+
+    /// Calls the tool with JSON-encoded arguments and returns model-facing text.
+    pub fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.entry.call(args)
+    }
+
+    /// Calls the tool with JSON-encoded arguments and runtime extensions.
+    pub fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.entry.call_with_extensions(args, extensions)
+    }
+
+    /// Execute the tool, returning a structured [`ToolExecutionResult`].
+    pub fn call_structured<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        self.entry.call_structured(args, extensions)
+    }
+
+    fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
+        self.entry.definition_with_name(name)
+    }
+}
+
+impl<T> From<T> for ToolDyn
+where
+    T: Tool + 'static,
+{
+    fn from(tool: T) -> Self {
+        Self::from_typed(tool)
+    }
+}
+
+/// Converts typed or already-dynamic tools into a complete [`ToolDyn`] value.
+pub trait IntoToolDyn {
+    /// Convert into a concrete named dynamic tool.
+    fn into_tool_dyn(self) -> ToolDyn;
+}
+
+impl<T> IntoToolDyn for T
+where
+    T: Tool + 'static,
+{
+    fn into_tool_dyn(self) -> ToolDyn {
+        ToolDyn::from_typed(self)
+    }
+}
+
+impl IntoToolDyn for ToolDyn {
+    fn into_tool_dyn(self) -> ToolDyn {
+        self
+    }
+}
+
+/// Source that can produce a provider-facing [`ToolDefinition`].
+///
+/// Typed tools use `T::NAME`; concrete dynamic tools use their stored name.
+pub trait ToolDefinitionSource {
+    /// Build a provider-facing tool definition from this source.
+    fn to_tool_definition(&self) -> ToolDefinition;
+}
+
+impl<T> ToolDefinitionSource for &T
+where
+    T: Tool,
+{
+    fn to_tool_definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: T::NAME.to_string(),
+            description: self.description(),
+            parameters: self.parameters(),
+        }
+    }
+}
+
+impl ToolDefinitionSource for &ToolDyn {
+    fn to_tool_definition(&self) -> ToolDefinition {
+        self.definition_with_name(self.name.clone())
+    }
+}
+
+/// Generate a provider-facing [`ToolDefinition`] from a typed or dynamic tool.
+pub fn tool_definition(tool: impl ToolDefinitionSource) -> ToolDefinition {
+    tool.to_tool_definition()
+}
+
+/// Builder for constructing a complete concrete [`ToolDyn`] value.
+#[derive(Default)]
+pub struct ToolDynBuilder {
+    name: Option<String>,
+    description: Option<ToolMetadataFn<String>>,
+    parameters: Option<ToolMetadataFn<serde_json::Value>>,
+    call: Option<ToolCallFn>,
+    call_structured: Option<ToolCallStructuredFn>,
+}
+
+impl ToolDynBuilder {
+    /// Set the canonical tool name stored in the dynamic tool value.
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Set a fixed model-facing description.
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        let description = description.into();
+        self.description = Some(Arc::new(move || description.clone()));
+        self
+    }
+
+    /// Set a lazily generated model-facing description.
+    pub fn description_fn(
+        mut self,
+        description: impl Fn() -> String + WasmCompatSend + WasmCompatSync + 'static,
+    ) -> Self {
+        self.description = Some(Arc::new(description));
+        self
+    }
+
+    /// Set a fixed JSON Schema for the tool arguments.
+    pub fn parameters(mut self, parameters: serde_json::Value) -> Self {
+        self.parameters = Some(Arc::new(move || parameters.clone()));
+        self
+    }
+
+    /// Set a lazily generated JSON Schema for the tool arguments.
+    pub fn parameters_fn(
+        mut self,
+        parameters: impl Fn() -> serde_json::Value + WasmCompatSend + WasmCompatSync + 'static,
+    ) -> Self {
+        self.parameters = Some(Arc::new(parameters));
+        self
+    }
+
+    /// Set a simple string-returning executor.
+    pub fn call<F, Fut>(self, call: F) -> Self
+    where
+        F: Fn(String) -> Fut + WasmCompatSend + WasmCompatSync + 'static,
+        Fut: Future<Output = Result<String, ToolError>> + WasmCompatSend + 'static,
+    {
+        self.call_with_extensions(move |args, _extensions| Box::pin(call(args)))
+    }
+
+    /// Set a string-returning executor that receives per-call extensions.
+    pub fn call_with_extensions<F>(mut self, call: F) -> Self
+    where
+        F: for<'a> Fn(
+                String,
+                &'a ToolCallExtensions,
+            ) -> WasmBoxedFuture<'a, Result<String, ToolError>>
+            + WasmCompatSend
+            + WasmCompatSync
+            + 'static,
+    {
+        self.call = Some(Arc::new(call));
+        self
+    }
+
+    /// Set a structured executor that returns a full [`ToolExecutionResult`],
+    /// for outcomes the string executors cannot express —
+    /// [`denied`](ToolExecutionResult::denied), or failures with a precise
+    /// [`ToolFailureKind`] such as a real timeout.
+    ///
+    /// If no string executor is set, the string [`ToolDyn::call`] /
+    /// [`ToolDyn::call_with_extensions`] paths are derived from this one: a
+    /// [`ToolOutcome::Success`] yields `Ok(model_output)` and any other outcome
+    /// yields a [`ToolError::ToolCallError`] carrying the model-facing message.
+    /// If both executors are set, each drives its own path directly.
+    pub fn call_structured<F>(mut self, call: F) -> Self
+    where
+        F: for<'a> Fn(String, &'a ToolCallExtensions) -> WasmBoxedFuture<'a, ToolExecutionResult>
+            + WasmCompatSend
+            + WasmCompatSync
+            + 'static,
+    {
+        self.call_structured = Some(Arc::new(call));
+        self
+    }
+
+    /// Build the dynamic tool, failing if any required metadata or executor is missing.
+    pub fn build(self) -> Result<ToolDyn, ToolDynBuilderError> {
+        let runtime: Arc<dyn ToolRuntime> = match (self.call, self.call_structured) {
+            (Some(call), Some(structured)) => Arc::new(ClosureRuntime::Both { call, structured }),
+            (Some(call), None) => Arc::new(ClosureRuntime::String(call)),
+            (None, Some(structured)) => Arc::new(ClosureRuntime::Structured(structured)),
+            (None, None) => return Err(ToolDynBuilderError::MissingRuntime),
+        };
+
+        Ok(ToolDyn {
+            name: self.name.ok_or(ToolDynBuilderError::MissingName)?,
+            entry: ToolEntry {
+                description: self
+                    .description
+                    .ok_or(ToolDynBuilderError::MissingDescription)?,
+                parameters: self
+                    .parameters
+                    .ok_or(ToolDynBuilderError::MissingParameters)?,
+                runtime,
+            },
+        })
+    }
+}
+
+/// Error returned when a [`ToolDynBuilder`] is missing required fields.
+#[derive(Debug, thiserror::Error)]
+pub enum ToolDynBuilderError {
+    /// The builder did not receive a canonical tool name.
+    #[error("dynamic tool is missing a name")]
+    MissingName,
+    /// The builder did not receive a model-facing description.
+    #[error("dynamic tool is missing a description")]
+    MissingDescription,
+    /// The builder did not receive a JSON Schema for tool arguments.
+    #[error("dynamic tool is missing parameters")]
+    MissingParameters,
+    /// The builder received neither a string executor ([`call`](ToolDynBuilder::call) /
+    /// [`call_with_extensions`](ToolDynBuilder::call_with_extensions)) nor a
+    /// structured executor ([`call_structured`](ToolDynBuilder::call_structured)).
+    #[error("dynamic tool is missing an executor")]
+    MissingRuntime,
+}
+
+impl<T> ToolRuntime for T
+where
+    T: Tool,
+{
+    fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        ToolRuntime::call_with_extensions(self, args, &ToolCallExtensions::EMPTY)
     }
 
     fn call_with_extensions<'a>(
@@ -427,12 +849,6 @@ impl<T: Tool> ToolDyn for T {
         })
     }
 
-    /// Routes through [`Tool::call_structured`] so rich returns
-    /// ([`ToolReturn`]) and [`Tool::classify_error`] are honored: a JSON
-    /// argument parse failure becomes an
-    /// [`InvalidArgs`](ToolFailureKind::InvalidArgs) outcome, a returned
-    /// `Err(Self::Error)` is classified, and a successful [`ToolReturn`] is
-    /// serialized while preserving its outcome and extensions.
     fn call_structured<'a>(
         &'a self,
         args: String,
@@ -463,46 +879,129 @@ impl<T: Tool> ToolDyn for T {
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 pub mod rmcp;
 
-/// Wrapper trait to allow for dynamic dispatch of raggable tools
-pub trait ToolEmbeddingDyn: ToolDyn {
-    /// Serializes context needed to reconstruct this dynamic tool.
-    fn context(&self) -> serde_json::Result<serde_json::Value>;
-
-    /// Returns text fragments used to retrieve this tool from a vector store.
-    fn embedding_docs(&self) -> Vec<String>;
+#[derive(Clone)]
+pub(crate) struct ToolEmbeddingEntry {
+    tool: ToolEntry,
+    context: Arc<dyn ToolMetadata<serde_json::Result<serde_json::Value>>>,
+    embedding_docs: Arc<dyn ToolMetadata<Vec<String>>>,
 }
 
-impl<T> ToolEmbeddingDyn for T
+impl ToolEmbeddingEntry {
+    fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
+        self.tool.definition_with_name(name)
+    }
+
+    pub(crate) fn context(&self) -> serde_json::Result<serde_json::Value> {
+        (self.context)()
+    }
+
+    pub(crate) fn embedding_docs(&self) -> Vec<String> {
+        (self.embedding_docs)()
+    }
+
+    pub(crate) async fn call_with_extensions(
+        &self,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> Result<String, ToolError> {
+        self.tool.call_with_extensions(args, extensions).await
+    }
+
+    pub(crate) async fn call_structured(
+        &self,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> ToolExecutionResult {
+        self.tool.call_structured(args, extensions).await
+    }
+}
+
+/// A complete named dynamic tool that can also be represented in a vector store.
+#[derive(Clone)]
+pub struct ToolEmbeddingDyn {
+    name: String,
+    entry: ToolEmbeddingEntry,
+}
+
+impl ToolEmbeddingDyn {
+    fn from_typed<T>(tool: T) -> Self
+    where
+        T: ToolEmbedding + 'static,
+    {
+        let tool = Arc::new(tool);
+        let description_tool = Arc::clone(&tool);
+        let parameters_tool = Arc::clone(&tool);
+        let context_tool = Arc::clone(&tool);
+        let docs_tool = Arc::clone(&tool);
+        let runtime: Arc<dyn ToolRuntime> = tool;
+        let entry = ToolEmbeddingEntry {
+            tool: ToolEntry::new(
+                move || description_tool.description(),
+                move || parameters_tool.parameters(),
+                runtime,
+            ),
+            context: Arc::new(move || serde_json::to_value(context_tool.context())),
+            embedding_docs: Arc::new(move || docs_tool.embedding_docs()),
+        };
+
+        Self {
+            name: T::NAME.to_string(),
+            entry,
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (String, ToolEmbeddingEntry) {
+        (self.name, self.entry)
+    }
+
+    /// The canonical tool name stored in this value. At registration it is
+    /// consumed into the [`ToolSet`] map key.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn context(&self) -> serde_json::Result<serde_json::Value> {
+        self.entry.context()
+    }
+
+    pub(crate) fn embedding_docs(&self) -> Vec<String> {
+        self.entry.embedding_docs()
+    }
+}
+
+/// Converts typed embeddable tools or already-dynamic embeddable tools into a
+/// complete [`ToolEmbeddingDyn`] value.
+pub trait IntoToolEmbeddingDyn {
+    /// Convert into a complete embeddable dynamic tool value.
+    fn into_tool_embedding_dyn(self) -> ToolEmbeddingDyn;
+}
+
+impl<T> IntoToolEmbeddingDyn for T
 where
     T: ToolEmbedding + 'static,
 {
-    fn context(&self) -> serde_json::Result<serde_json::Value> {
-        serde_json::to_value(self.context())
+    fn into_tool_embedding_dyn(self) -> ToolEmbeddingDyn {
+        ToolEmbeddingDyn::from_typed(self)
     }
+}
 
-    fn embedding_docs(&self) -> Vec<String> {
-        self.embedding_docs()
+impl IntoToolEmbeddingDyn for ToolEmbeddingDyn {
+    fn into_tool_embedding_dyn(self) -> ToolEmbeddingDyn {
+        self
     }
 }
 
 #[derive(Clone)]
 pub(crate) enum ToolType {
-    Simple(Arc<dyn ToolDyn>),
-    Embedding(Arc<dyn ToolEmbeddingDyn>),
+    Simple(ToolEntry),
+    Embedding(ToolEmbeddingEntry),
 }
 
 impl ToolType {
-    pub fn name(&self) -> String {
-        match self {
-            ToolType::Simple(tool) => tool.name(),
-            ToolType::Embedding(tool) => tool.name(),
-        }
-    }
-
     pub fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
         match self {
-            ToolType::Simple(tool) => tool_definition_with_name(name, &**tool),
-            ToolType::Embedding(tool) => tool_definition_with_name(name, &**tool),
+            ToolType::Simple(tool) => tool.definition_with_name(name),
+            ToolType::Embedding(tool) => tool.definition_with_name(name),
         }
     }
 
@@ -561,8 +1060,8 @@ pub struct ToolSet {
 }
 
 impl ToolSet {
-    /// Create a new ToolSet from a list of tools
-    pub fn from_tools(tools: Vec<impl ToolDyn + 'static>) -> Self {
+    /// Create a new ToolSet from a list of typed or dynamic tools.
+    pub fn from_tools(tools: Vec<impl IntoToolDyn>) -> Self {
         let mut toolset = Self::default();
         tools.into_iter().for_each(|tool| {
             toolset.add_tool(tool);
@@ -570,13 +1069,9 @@ impl ToolSet {
         toolset
     }
 
-    /// Create a new `ToolSet` from boxed dynamically-dispatched tools.
-    pub fn from_tools_boxed(tools: Vec<Box<dyn ToolDyn + 'static>>) -> Self {
-        let mut toolset = Self::default();
-        tools.into_iter().for_each(|tool| {
-            toolset.add_tool_boxed(tool);
-        });
-        toolset
+    /// Create a new `ToolSet` from complete dynamically-dispatched tools.
+    pub fn from_tools_boxed(tools: Vec<ToolDyn>) -> Self {
+        Self::from_tools(tools)
     }
 
     /// Create a toolset builder
@@ -590,18 +1085,24 @@ impl ToolSet {
     }
 
     /// Add a tool to the toolset, returning the registered key used for it.
-    pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) -> String {
-        self.insert(ToolType::Simple(Arc::new(tool)))
+    pub fn add_tool(&mut self, tool: impl IntoToolDyn) -> String {
+        let (name, entry) = tool.into_tool_dyn().into_parts();
+        self.insert_with_name(name, ToolType::Simple(entry))
     }
 
-    /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
+    /// Adds a complete dynamic tool to the toolset. Useful when dynamic dispatch is required.
     /// Returns the registered key used for the tool.
-    pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) -> String {
-        self.insert(ToolType::Simple(Arc::from(tool)))
+    pub fn add_tool_boxed(&mut self, tool: ToolDyn) -> String {
+        self.add_tool(tool)
     }
 
-    pub(crate) fn insert(&mut self, tool: ToolType) -> String {
-        let name = tool.name();
+    /// Add an embeddable tool to the toolset, returning the registered key used for it.
+    pub fn add_embedding_tool(&mut self, tool: impl IntoToolEmbeddingDyn) -> String {
+        let (name, entry) = tool.into_tool_embedding_dyn().into_parts();
+        self.insert_with_name(name, ToolType::Embedding(entry))
+    }
+
+    pub(crate) fn insert(&mut self, name: String, tool: ToolType) -> String {
         self.insert_with_name(name, tool)
     }
 
@@ -738,7 +1239,7 @@ impl ToolSet {
         self.ordered_entries()
             .filter_map(|(name, tool_type)| {
                 if let ToolType::Embedding(tool) = tool_type {
-                    Some(ToolSchema::from_tool(name.clone(), &**tool))
+                    Some(ToolSchema::from_registered_tool(name.clone(), tool))
                 } else {
                     None
                 }
@@ -750,27 +1251,29 @@ impl ToolSet {
 #[derive(Default)]
 /// Builder for constructing a [`ToolSet`] with static and dynamic tools.
 pub struct ToolSetBuilder {
-    tools: Vec<ToolType>,
+    tools: Vec<(String, ToolType)>,
 }
 
 impl ToolSetBuilder {
     /// Add a regular tool that is always available when the set is used.
-    pub fn static_tool(mut self, tool: impl ToolDyn + 'static) -> Self {
-        self.tools.push(ToolType::Simple(Arc::new(tool)));
+    pub fn static_tool(mut self, tool: impl IntoToolDyn) -> Self {
+        let (name, entry) = tool.into_tool_dyn().into_parts();
+        self.tools.push((name, ToolType::Simple(entry)));
         self
     }
 
     /// Add a tool that can be represented as embeddings for dynamic retrieval.
-    pub fn dynamic_tool(mut self, tool: impl ToolEmbeddingDyn + 'static) -> Self {
-        self.tools.push(ToolType::Embedding(Arc::new(tool)));
+    pub fn dynamic_tool(mut self, tool: impl IntoToolEmbeddingDyn) -> Self {
+        let (name, entry) = tool.into_tool_embedding_dyn().into_parts();
+        self.tools.push((name, ToolType::Embedding(entry)));
         self
     }
 
-    /// Build the tool set, keyed by each tool's name.
+    /// Build the tool set, keyed by each tool's stored canonical name.
     pub fn build(self) -> ToolSet {
         let mut toolset = ToolSet::default();
-        for tool in self.tools {
-            toolset.insert(tool);
+        for (name, tool) in self.tools {
+            toolset.insert(name, tool);
         }
         toolset
     }
@@ -845,37 +1348,20 @@ mod tests {
         );
     }
 
-    /// A tool whose name and definition are chosen at runtime, for ordering
-    /// and duplicate-registration tests.
-    struct NamedTool {
-        name: String,
-        description: String,
-    }
-
-    impl ToolDyn for NamedTool {
-        fn name(&self) -> String {
-            self.name.clone()
-        }
-
-        fn description(&self) -> String {
-            self.description.clone()
-        }
-
-        fn parameters(&self) -> serde_json::Value {
-            json!({ "type": "object", "properties": {} })
-        }
-
-        fn call(&self, _args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
-            let output = format!("called {}", self.description);
-            Box::pin(async move { Ok(output) })
-        }
-    }
-
-    fn named_tool(name: &str, description: &str) -> NamedTool {
-        NamedTool {
-            name: name.to_string(),
-            description: description.to_string(),
-        }
+    /// A concrete dynamic tool whose name and metadata are chosen at construction,
+    /// for ordering and duplicate-registration tests.
+    fn named_tool(name: &str, description: &str) -> ToolDyn {
+        let description_for_call = description.to_string();
+        ToolDyn::builder()
+            .name(name)
+            .description(description)
+            .parameters(json!({ "type": "object", "properties": {} }))
+            .call(move |_args| {
+                let output = format!("called {description_for_call}");
+                async move { Ok(output) }
+            })
+            .build()
+            .unwrap()
     }
 
     #[test]
@@ -886,6 +1372,157 @@ mod tests {
         assert_eq!(definition.name, "alpha");
         assert_eq!(definition.description, "runtime description");
         assert_eq!(definition.parameters["type"], "object");
+    }
+
+    /// A structured-only dynamic tool that always returns the given result.
+    fn structured_tool(name: &str, result: ToolExecutionResult) -> ToolDyn {
+        ToolDyn::builder()
+            .name(name)
+            .description("structured-only tool")
+            .parameters(json!({ "type": "object", "properties": {} }))
+            .call_structured(move |_args, _extensions| {
+                let result = result.clone();
+                Box::pin(async move { result })
+            })
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn structured_only_dynamic_tool_emits_denied_through_toolset() {
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(structured_tool(
+            "guard",
+            ToolExecutionResult::denied("cannot comply"),
+        ));
+
+        let result = toolset
+            .call_structured("guard", "{}".to_string(), &ToolCallExtensions::EMPTY)
+            .await;
+        assert!(
+            matches!(result.outcome(), ToolOutcome::Denied),
+            "denied outcome must survive the registered structured path"
+        );
+        assert_eq!(result.model_output(), "cannot comply");
+
+        // The string path is derived from the structured executor: a non-success
+        // outcome surfaces as a ToolCallError carrying the model-facing message.
+        let err = toolset
+            .call("guard", "{}".to_string())
+            .await
+            .expect_err("non-success structured outcome must map to Err on the string path");
+        assert!(err.to_string().contains("cannot comply"));
+    }
+
+    #[tokio::test]
+    async fn structured_only_dynamic_tool_reports_precise_failure_kind() {
+        let tool = structured_tool(
+            "slow",
+            ToolExecutionResult::failed("timed out after 5s", ToolFailure::timeout("deadline")),
+        );
+
+        let result = tool
+            .call_structured("{}".to_string(), &ToolCallExtensions::EMPTY)
+            .await;
+        match result.outcome() {
+            ToolOutcome::Error(failure) => assert_eq!(failure.kind, ToolFailureKind::Timeout),
+            other => panic!("expected a timeout error outcome, got {other:?}"),
+        }
+        assert_eq!(result.model_output(), "timed out after 5s");
+    }
+
+    #[tokio::test]
+    async fn structured_only_dynamic_tool_derives_success_string_path() {
+        let tool = structured_tool("ok", ToolExecutionResult::success("all good"));
+
+        let output = tool.call("{}".to_string()).await.unwrap();
+        assert_eq!(output, "all good");
+    }
+
+    #[tokio::test]
+    async fn dynamic_tool_with_both_executors_uses_each_path_directly() {
+        let tool = ToolDyn::builder()
+            .name("both")
+            .description("dual executor tool")
+            .parameters(json!({ "type": "object", "properties": {} }))
+            .call(|_args| async { Ok("string path".to_string()) })
+            .call_structured(|_args, _extensions| {
+                Box::pin(async { ToolExecutionResult::success("structured path") })
+            })
+            .build()
+            .unwrap();
+
+        assert_eq!(tool.call("{}".to_string()).await.unwrap(), "string path");
+        let result = tool
+            .call_structured("{}".to_string(), &ToolCallExtensions::EMPTY)
+            .await;
+        assert_eq!(result.model_output(), "structured path");
+    }
+
+    #[test]
+    fn builder_requires_at_least_one_executor() {
+        let no_executor = ToolDyn::builder()
+            .name("bare")
+            .description("no executor")
+            .parameters(json!({ "type": "object", "properties": {} }))
+            .build();
+        assert!(matches!(
+            no_executor,
+            Err(ToolDynBuilderError::MissingRuntime)
+        ));
+
+        let structured_only = ToolDyn::builder()
+            .name("bare")
+            .description("structured executor only")
+            .parameters(json!({ "type": "object", "properties": {} }))
+            .call_structured(|_args, _extensions| {
+                Box::pin(async { ToolExecutionResult::success("ok") })
+            })
+            .build();
+        assert!(structured_only.is_ok());
+    }
+
+    #[test]
+    fn tool_dyn_exposes_stored_name() {
+        assert_eq!(named_tool("alpha", "test tool").name(), "alpha");
+        assert_eq!(ToolDyn::from(MockExampleTool).name(), MockExampleTool::NAME);
+    }
+
+    #[tokio::test]
+    async fn with_name_renames_before_registration() {
+        let tool = named_tool("original", "adds numbers").with_name("plus");
+        assert_eq!(tool.name(), "plus");
+
+        let alias = tool.clone().with_name("alias");
+
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(tool);
+        toolset.add_tool(alias);
+
+        let names = toolset
+            .get_tool_definitions()
+            .unwrap()
+            .into_iter()
+            .map(|def| def.name)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec!["plus".to_string(), "alias".to_string()],
+            "definitions must advertise the renamed keys, not the original name"
+        );
+
+        let docs = toolset.documents().await.unwrap();
+        assert_eq!(
+            docs.iter().map(|doc| doc.id.as_str()).collect::<Vec<_>>(),
+            vec!["plus", "alias"]
+        );
+
+        // Both names dispatch to the same shared runtime.
+        for name in ["plus", "alias"] {
+            let output = toolset.call(name, "{}".to_string()).await.unwrap();
+            assert_eq!(output, "called adds numbers");
+        }
+        assert!(!toolset.contains("original"));
     }
 
     #[tokio::test]
@@ -910,37 +1547,8 @@ mod tests {
 
     #[tokio::test]
     async fn registered_name_is_definition_source_of_truth() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        struct ChangingNameTool {
-            calls: AtomicUsize,
-        }
-
-        impl ToolDyn for ChangingNameTool {
-            fn name(&self) -> String {
-                match self.calls.fetch_add(1, Ordering::SeqCst) {
-                    0 => "registered".to_string(),
-                    _ => "changed".to_string(),
-                }
-            }
-
-            fn description(&self) -> String {
-                "changes name after registration".to_string()
-            }
-
-            fn parameters(&self) -> serde_json::Value {
-                json!({ "type": "object", "properties": {} })
-            }
-
-            fn call(&self, _args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
-                Box::pin(async { Ok("ok".to_string()) })
-            }
-        }
-
         let mut toolset = ToolSet::default();
-        toolset.add_tool(ChangingNameTool {
-            calls: AtomicUsize::new(0),
-        });
+        toolset.add_tool(named_tool("registered", "registered dynamic tool"));
 
         let defs = toolset.get_tool_definitions().unwrap();
         assert_eq!(defs[0].name, "registered");
@@ -948,33 +1556,21 @@ mod tests {
         let docs = toolset.documents().await.unwrap();
         assert_eq!(docs[0].id, "registered");
         assert!(docs[0].text.contains("registered"));
-        assert!(!docs[0].text.contains("changed"));
     }
 
     #[test]
     fn dynamic_tool_schemas_use_registered_name() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
         #[derive(Debug, thiserror::Error)]
         #[error("init error")]
         struct InitError;
 
-        struct ChangingDynamicTool {
-            calls: AtomicUsize,
-        }
+        struct StaticDynamicTool;
 
-        impl Tool for ChangingDynamicTool {
+        impl Tool for StaticDynamicTool {
             const NAME: &'static str = "unused";
             type Error = MockToolError;
             type Args = serde_json::Value;
             type Output = String;
-
-            fn name(&self) -> String {
-                match self.calls.fetch_add(1, Ordering::SeqCst) {
-                    0 => "registered_dynamic".to_string(),
-                    _ => "changed_dynamic".to_string(),
-                }
-            }
 
             fn description(&self) -> String {
                 "dynamic tool".to_string()
@@ -989,7 +1585,7 @@ mod tests {
             }
         }
 
-        impl ToolEmbedding for ChangingDynamicTool {
+        impl ToolEmbedding for StaticDynamicTool {
             type InitError = InitError;
             type Context = ();
             type State = ();
@@ -1001,21 +1597,15 @@ mod tests {
             fn context(&self) -> Self::Context {}
 
             fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self {
-                    calls: AtomicUsize::new(0),
-                })
+                Ok(Self)
             }
         }
 
-        let toolset = ToolSet::builder()
-            .dynamic_tool(ChangingDynamicTool {
-                calls: AtomicUsize::new(0),
-            })
-            .build();
+        let toolset = ToolSet::builder().dynamic_tool(StaticDynamicTool).build();
 
         let schemas = toolset.schemas().unwrap();
         assert_eq!(schemas.len(), 1);
-        assert_eq!(schemas[0].name, "registered_dynamic");
+        assert_eq!(schemas[0].name, "unused");
         assert_eq!(schemas[0].embedding_docs, vec!["dynamic tool docs"]);
     }
 

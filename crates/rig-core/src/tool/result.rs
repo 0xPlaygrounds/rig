@@ -405,12 +405,12 @@ impl From<ToolReturnOutcome> for ToolOutcome {
 /// - [`outcome`](Self::outcome()): the structured [`ToolOutcome`];
 /// - [`extensions`](Self::extensions()): metadata never sent to the model.
 ///
-/// Tool authors rarely build this directly — they return a [`ToolReturn`] and the
-/// boundary assembles it. In a manual [`ToolDyn`](crate::tool::ToolDyn)
-/// implementation construct one with [`success`](Self::success) /
-/// [`failed`](Self::failed) / [`denied`](Self::denied); read it back with the
-/// [`model_output`](Self::model_output()) / [`outcome`](Self::outcome()) /
-/// [`extensions`](Self::extensions()) accessors.
+/// Tool authors rarely build this directly — typed tools return a [`ToolReturn`]
+/// and the boundary assembles it. A dynamic tool built with
+/// [`ToolDynBuilder::call_structured`](crate::tool::ToolDynBuilder::call_structured)
+/// constructs one with [`success`](Self::success) / [`failed`](Self::failed) /
+/// [`denied`](Self::denied); read it back with the [`model_output`](Self::model_output()) /
+/// [`outcome`](Self::outcome()) / [`extensions`](Self::extensions()) accessors.
 ///
 /// The fields are crate-private on purpose: [`Skipped`](ToolOutcome::Skipped) is a
 /// framework-only outcome (a hook [`Flow::Skip`](crate::agent::Flow::Skip)), and
@@ -477,8 +477,8 @@ impl ToolExecutionResult {
 
     /// Insert a single value into the result extensions, returning the updated
     /// result. The single-value counterpart to [`with_extensions`](Self::with_extensions),
-    /// mirroring [`ToolReturn::with_extension`] for manual
-    /// [`ToolDyn`](crate::tool::ToolDyn) implementations.
+    /// mirroring [`ToolReturn::with_extension`] for dynamic tools built with
+    /// [`ToolDynBuilder::call_structured`](crate::tool::ToolDynBuilder::call_structured).
     pub fn with_extension<
         E: Clone + crate::wasm_compat::WasmCompatSend + crate::wasm_compat::WasmCompatSync + 'static,
     >(

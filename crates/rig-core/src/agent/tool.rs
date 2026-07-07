@@ -1,7 +1,13 @@
+use std::sync::Arc;
+
 use crate::{
     agent::Agent,
-    completion::{CompletionModel, Prompt, PromptError},
-    tool::{Tool, ToolCallExtensions},
+    completion::{CompletionModel, Prompt},
+    tool::{
+        IntoToolDyn, ToolCallExtensions, ToolDyn, ToolError, ToolExecutionResult, ToolFailure,
+        ToolRuntime,
+    },
+    wasm_compat::WasmBoxedFuture,
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -13,52 +19,81 @@ pub struct AgentToolArgs {
     prompt: String,
 }
 
-impl<M: CompletionModel + 'static> Tool for Agent<M> {
-    const NAME: &'static str = "agent_tool";
-
-    type Error = PromptError;
-    type Args = AgentToolArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        format!(
-            "
-            Prompt a sub-agent to do a task for you.
-
-            Agent name: {name}
-            Agent description: {description}
-            Agent system prompt: {sysprompt}
-            ",
-            name = self.name(),
-            description = self.description.clone().unwrap_or_default(),
-            sysprompt = self.preamble.clone().unwrap_or_default()
-        )
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!(schema_for!(AgentToolArgs))
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        self.prompt(args.prompt).await
+impl<M: CompletionModel + 'static> ToolRuntime for Agent<M> {
+    fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.call_with_extensions(args, &ToolCallExtensions::EMPTY)
     }
 
     /// Propagate the caller's [`ToolCallExtensions`] into the sub-agent run, so the
     /// inner agent's own tools observe them too (sub-agent delegation / A2A
     /// chains). Without this, a sub-agent invoked as a tool would start with
     /// empty extensions.
-    async fn call_with_extensions(
-        &self,
-        args: Self::Args,
-        extensions: &ToolCallExtensions,
-    ) -> Result<Self::Output, Self::Error> {
-        self.prompt(args.prompt)
-            .tool_extensions(extensions.clone())
-            .await
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        Box::pin(async move {
+            let args =
+                serde_json::from_str::<AgentToolArgs>(&args).map_err(ToolError::JsonError)?;
+            self.prompt(args.prompt)
+                .tool_extensions(extensions.clone())
+                .await
+                .map_err(|err| ToolError::ToolCallError(Box::new(err)))
+        })
     }
 
-    fn name(&self) -> String {
-        self.name.clone().unwrap_or_else(|| Self::NAME.to_string())
+    fn call_structured<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        Box::pin(async move {
+            match self.call_with_extensions(args, extensions).await {
+                Ok(output) => ToolExecutionResult::success(output),
+                Err(ToolError::JsonError(err)) => ToolExecutionResult::failed(
+                    format!("failed to parse tool arguments: {err}"),
+                    ToolFailure::invalid_args(err.to_string()),
+                ),
+                Err(err) => ToolExecutionResult::failed(
+                    err.to_string(),
+                    ToolFailure::other(err.to_string()),
+                ),
+            }
+        })
+    }
+}
+
+impl<M: CompletionModel + 'static> IntoToolDyn for Agent<M> {
+    fn into_tool_dyn(self) -> ToolDyn {
+        let name = self
+            .name
+            .clone()
+            .unwrap_or_else(|| "agent_tool".to_string());
+        let agent = Arc::new(self);
+        let description_agent = Arc::clone(&agent);
+        let parameters = json!(schema_for!(AgentToolArgs));
+        let runtime: Arc<dyn ToolRuntime> = agent;
+
+        ToolDyn::from_runtime(
+            name,
+            move || {
+                format!(
+                    "
+            Prompt a sub-agent to do a task for you.
+
+            Agent name: {name}
+            Agent description: {description}
+            Agent system prompt: {sysprompt}
+            ",
+                    name = description_agent.name(),
+                    description = description_agent.description.clone().unwrap_or_default(),
+                    sysprompt = description_agent.preamble.clone().unwrap_or_default()
+                )
+            },
+            move || parameters.clone(),
+            runtime,
+        )
     }
 }
 

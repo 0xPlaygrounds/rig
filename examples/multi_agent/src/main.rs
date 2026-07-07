@@ -84,7 +84,7 @@ async fn main() -> Result<(), anyhow::Error> {
             When you receive input that is not in English, or contains grammatical errors \
             use the {} tool first to ensure proper English, then provide your response. \
             Always show both the translated text and your final response.",
-            translator_tool.name()
+            "translator"
         ))
         .tool(translator_tool)
         .build();

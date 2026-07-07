@@ -539,10 +539,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             type Output = #output_type;
             type Error = #error_type;
 
-            fn name(&self) -> String {
-                #tool_name.to_string()
-            }
-
             fn description(&self) -> String {
                 #tool_description.to_string()
             }

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(tool)* [**breaking**] flatten `Tool` / `ToolDyn` metadata: tool authors now implement `description()` and `parameters()` directly, and `Tool::definition(prompt)` / `ToolDyn::definition(prompt)` are removed. `ToolDefinition` remains a provider/request artifact generated from registered tools, with `Tool::NAME` / `Tool::name()` / `ToolDyn::name()` as the single source of truth for advertised and dispatched tool names.
+- *(tool)* [**breaking**] make tool identity structurally single-source: typed tools now use only `Tool::NAME` (no `Tool::name()`), public `ToolDyn` is a concrete named dynamic tool value, and the erased runtime executor is nameless. `Tool::definition(prompt)` / trait-object `ToolDyn::definition(prompt)` remain removed; provider `ToolDefinition`s are generated from typed `Tool::NAME`, concrete `ToolDyn` names, or registered `ToolSet` keys. The stored name is readable via `ToolDyn::name()` and renameable before registration via `ToolDyn::with_name(..)`; `ToolDynBuilder::call_structured(..)` lets dynamic tools return a full `ToolExecutionResult` (denied / timeout / cancelled outcomes), with the string call paths derived from it when it is the only executor.
 
 ## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/v0.38.2...v0.39.0) - 2026-06-19
 

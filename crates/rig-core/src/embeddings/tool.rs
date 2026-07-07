@@ -1,6 +1,9 @@
 //! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::ToolEmbedding]
 
-use crate::{Embed, tool::ToolEmbeddingDyn};
+use crate::{
+    Embed,
+    tool::{IntoToolEmbeddingDyn, ToolEmbeddingDyn, ToolEmbeddingEntry},
+};
 use serde::Serialize;
 
 use super::embed::EmbedError;
@@ -24,7 +27,7 @@ impl Embed for ToolSchema {
 }
 
 impl ToolSchema {
-    /// Convert item that implements [ToolEmbeddingDyn] to an [ToolSchema].
+    /// Convert an embeddable tool to a [`ToolSchema`].
     ///
     /// # Example
     /// ```rust
@@ -78,23 +81,31 @@ impl ToolSchema {
     ///     fn context(&self) -> Self::Context {}
     /// }
     ///
-    /// let tool = ToolSchema::try_from(&Nothing).unwrap();
+    /// let tool = ToolSchema::try_from(Nothing).unwrap();
     ///
     /// assert_eq!(tool.name, "nothing".to_string());
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
-    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbedError> {
-        Self::from_tool(tool.name(), tool)
+    pub fn try_from(tool: impl IntoToolEmbeddingDyn) -> Result<Self, EmbedError> {
+        let (name, tool) = tool.into_tool_embedding_dyn().into_parts();
+        Self::from_registered_tool(name, &tool)
     }
 
     /// Convert a tool to a schema using an explicit registered name.
     ///
     /// Registry paths should pass the key under which the tool was registered so
-    /// vector-store IDs resolve back to the same entry even if `tool.name()` is
-    /// computed dynamically.
-    pub fn from_tool(
+    /// vector-store IDs resolve back to the same entry.
+    pub fn from_tool(name: impl Into<String>, tool: &ToolEmbeddingDyn) -> Result<Self, EmbedError> {
+        Ok(ToolSchema {
+            name: name.into(),
+            context: tool.context().map_err(EmbedError::new)?,
+            embedding_docs: tool.embedding_docs(),
+        })
+    }
+
+    pub(crate) fn from_registered_tool(
         name: impl Into<String>,
-        tool: &dyn ToolEmbeddingDyn,
+        tool: &ToolEmbeddingEntry,
     ) -> Result<Self, EmbedError> {
         Ok(ToolSchema {
             name: name.into(),

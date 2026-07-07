@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{
-        Tool, ToolCallExtensions, ToolDyn, ToolExecutionResult, ToolFailure, ToolSet, ToolSetError,
+        IntoToolDyn, ToolCallExtensions, ToolExecutionResult, ToolFailure, ToolSet, ToolSetError,
     },
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
@@ -82,7 +82,7 @@ impl ToolServer {
 
     /// Add a static tool to the agent. Re-registering an existing name
     /// replaces the implementation (last wins) and keeps its position.
-    pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
+    pub fn tool(mut self, tool: impl IntoToolDyn) -> Self {
         let toolname = self.toolset.add_tool(tool);
         push_unique_name(&mut self.static_tool_names, toolname);
         self
@@ -152,9 +152,9 @@ pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 impl ToolServerHandle {
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
-    pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
+    pub async fn add_tool(&self, tool: impl IntoToolDyn) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        let toolname = state.toolset.add_tool_boxed(Box::new(tool));
+        let toolname = state.toolset.add_tool(tool);
         push_unique_name(&mut state.static_tool_names, toolname);
         Ok(())
     }
@@ -376,13 +376,7 @@ pub enum ToolServerError {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        },
-        time::Duration,
-    };
+    use std::{sync::Arc, time::Duration};
 
     use crate::{
         test_utils::{
@@ -392,30 +386,19 @@ mod tests {
         tool::{Tool, ToolEmbedding, ToolSet, server::ToolServer},
     };
 
-    struct ChangingNameTool {
-        calls: AtomicUsize,
-    }
+    struct StaticNameTool;
 
-    impl ChangingNameTool {
+    impl StaticNameTool {
         fn new() -> Self {
-            Self {
-                calls: AtomicUsize::new(0),
-            }
+            Self
         }
     }
 
-    impl Tool for ChangingNameTool {
-        const NAME: &'static str = "unused";
+    impl Tool for StaticNameTool {
+        const NAME: &'static str = "registered_changing";
         type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = String;
-
-        fn name(&self) -> String {
-            match self.calls.fetch_add(1, Ordering::SeqCst) {
-                0 => "registered_changing".to_string(),
-                _ => "changed_after_registration".to_string(),
-            }
-        }
 
         fn description(&self) -> String {
             "changes name after registration".to_string()
@@ -434,7 +417,7 @@ mod tests {
     #[error("init error")]
     struct InitError;
 
-    impl ToolEmbedding for ChangingNameTool {
+    impl ToolEmbedding for StaticNameTool {
         type InitError = InitError;
         type Context = ();
         type State = ();
@@ -504,7 +487,7 @@ mod tests {
 
     #[tokio::test]
     pub async fn builder_tool_uses_registered_key_for_static_names() {
-        let handle = ToolServer::new().tool(ChangingNameTool::new()).run();
+        let handle = ToolServer::new().tool(StaticNameTool::new()).run();
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
@@ -514,7 +497,7 @@ mod tests {
     #[tokio::test]
     pub async fn handle_add_tool_uses_registered_key_for_static_names() {
         let handle = ToolServer::new().run();
-        handle.add_tool(ChangingNameTool::new()).await.unwrap();
+        handle.add_tool(StaticNameTool::new()).await.unwrap();
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
@@ -524,7 +507,7 @@ mod tests {
     #[tokio::test]
     pub async fn dynamic_retrieval_resolves_registered_key() {
         let toolset = ToolSet::builder()
-            .dynamic_tool(ChangingNameTool::new())
+            .dynamic_tool(StaticNameTool::new())
             .build();
         let handle = ToolServer::new()
             .dynamic_tools(1, MockToolIndex::new(["registered_changing"]), toolset)
