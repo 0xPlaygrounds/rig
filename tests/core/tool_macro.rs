@@ -17,9 +17,7 @@ fn facade_find_nearby(
 
 #[tokio::test]
 async fn test_tool_macro_accepts_facade_schemars_reexport() {
-    use rig::tool::Tool;
-
-    let definition = FacadeFindNearby.definition(String::default()).await;
+    let definition = rig_core::tool::tool_definition(&FacadeFindNearby);
     let schema = serde_json::to_string(&definition.parameters).unwrap();
 
     assert!(schema.contains("lat"), "expected lat in schema: {schema}");

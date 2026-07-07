@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::client::CompletionClient;
-use rig::completion::{ToolDefinition, TypedPrompt};
+use rig::completion::TypedPrompt;
 use rig::providers::xai;
 use rig::tool::Tool;
 
@@ -43,20 +43,17 @@ impl Tool for WeatherTool {
     type Args = WeatherArgs;
     type Output = String;
 
-    fn definition(
-        &self,
-        _prompt: String,
-    ) -> impl std::future::Future<Output = ToolDefinition> + Send + Sync {
-        std::future::ready(ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Get the current weather for a city.".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" }
-                },
-                "required": ["city"]
-            }),
+    fn description(&self) -> String {
+        "Get the current weather for a city.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "city": { "type": "string" }
+            },
+            "required": ["city"]
         })
     }
 

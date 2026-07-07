@@ -29,11 +29,9 @@ impl ToolSchema {
     /// # Example
     /// ```rust
     /// use rig_core::{
-    ///     completion::ToolDefinition,
     ///     embeddings::ToolSchema,
     ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},
     /// };
-    /// use serde_json::json;
     ///
     /// #[derive(Debug, thiserror::Error)]
     /// #[error("Math error")]
@@ -51,16 +49,15 @@ impl ToolSchema {
     ///     type Args = ();
     ///     type Output = ();
     ///
-    ///     async fn definition(&self, _prompt: String) -> ToolDefinition {
-    ///         serde_json::from_value(json!({
-    ///             "name": "nothing",
-    ///             "description": "nothing",
-    ///             "parameters": {}
-    ///         }))
-    ///         .expect("Tool Definition")
+    ///     fn description(&self) -> String {
+    ///         "nothing".to_string()
     ///     }
     ///
-    ///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    ///     fn parameters(&self) -> serde_json::Value {
+    ///         serde_json::json!({})
+    ///     }
+    ///
+    ///     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
     ///         Ok(())
     ///     }
     /// }
