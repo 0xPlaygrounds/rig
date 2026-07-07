@@ -22,8 +22,8 @@
 //! # Retrieval (RAG)
 //!
 //! Rig does not ship a built-in vector-store abstraction. Retrieval is a
-//! user-land pattern: expose it as a normal [`tool`](rig_core::tool) the model
-//! calls, or inject retrieved context before each model call from an
+//! user-land pattern: expose it as an ordinary tool the model calls, or inject
+//! retrieved context before each model call from an
 //! [`AgentHook`](rig_core::agent::AgentHook) via
 //! [`RequestPatch::extra_context`](rig_core::agent::RequestPatch). Embedding
 //! models/builders remain in [`rig_core::embeddings`]. See the `tool_active_rag`
