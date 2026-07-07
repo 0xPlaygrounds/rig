@@ -589,18 +589,23 @@ impl ToolSet {
         self.tools.contains_key(toolname)
     }
 
-    /// Add a tool to the toolset
-    pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
-        self.insert(ToolType::Simple(Arc::new(tool)));
+    /// Add a tool to the toolset, returning the registered key used for it.
+    pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) -> String {
+        self.insert(ToolType::Simple(Arc::new(tool)))
     }
 
     /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
-    pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
-        self.insert(ToolType::Simple(Arc::from(tool)));
+    /// Returns the registered key used for the tool.
+    pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) -> String {
+        self.insert(ToolType::Simple(Arc::from(tool)))
     }
 
-    pub(crate) fn insert(&mut self, tool: ToolType) {
+    pub(crate) fn insert(&mut self, tool: ToolType) -> String {
         let name = tool.name();
+        self.insert_with_name(name, tool)
+    }
+
+    fn insert_with_name(&mut self, name: String, tool: ToolType) -> String {
         // `IndexMap::insert` replaces the value while keeping the existing
         // slot position, and returns the previous value when the name was
         // already registered.
@@ -610,6 +615,7 @@ impl ToolSet {
                 "a tool named {name:?} was already registered; replacing it with the new registration"
             );
         }
+        name
     }
 
     /// Remove a tool by name. Missing tools are ignored.
@@ -622,8 +628,8 @@ impl ToolSet {
     /// Merge another toolset into this one. Tools keep `toolset`'s
     /// registration order; names that already exist are replaced in place.
     pub fn add_tools(&mut self, toolset: ToolSet) {
-        for (_, tool) in toolset.tools {
-            self.insert(tool);
+        for (name, tool) in toolset.tools {
+            self.insert_with_name(name, tool);
         }
     }
 
@@ -634,11 +640,6 @@ impl ToolSet {
     /// Tool names in registration order.
     pub(crate) fn ordered_names(&self) -> impl Iterator<Item = &String> {
         self.tools.keys()
-    }
-
-    /// Tools in registration order.
-    fn ordered_tools(&self) -> impl Iterator<Item = &ToolType> {
-        self.tools.values()
     }
 
     /// Registered tool names and tools in registration order.
@@ -734,10 +735,10 @@ impl ToolSet {
     /// This is necessary because when adding tools to the EmbeddingBuilder because all
     /// documents added to the builder must all be of the same type.
     pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
-        self.ordered_tools()
-            .filter_map(|tool_type| {
+        self.ordered_entries()
+            .filter_map(|(name, tool_type)| {
                 if let ToolType::Embedding(tool) = tool_type {
-                    Some(ToolSchema::try_from(&**tool))
+                    Some(ToolSchema::from_tool(name.clone(), &**tool))
                 } else {
                     None
                 }
@@ -780,7 +781,7 @@ mod tests {
     use crate::message::{DocumentSourceKind, ToolResultContent};
     use crate::test_utils::{
         MockExampleTool, MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool,
-        mock_math_toolset,
+        MockToolError, mock_math_toolset,
     };
     use serde_json::json;
 
@@ -948,6 +949,74 @@ mod tests {
         assert_eq!(docs[0].id, "registered");
         assert!(docs[0].text.contains("registered"));
         assert!(!docs[0].text.contains("changed"));
+    }
+
+    #[test]
+    fn dynamic_tool_schemas_use_registered_name() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        #[derive(Debug, thiserror::Error)]
+        #[error("init error")]
+        struct InitError;
+
+        struct ChangingDynamicTool {
+            calls: AtomicUsize,
+        }
+
+        impl Tool for ChangingDynamicTool {
+            const NAME: &'static str = "unused";
+            type Error = MockToolError;
+            type Args = serde_json::Value;
+            type Output = String;
+
+            fn name(&self) -> String {
+                match self.calls.fetch_add(1, Ordering::SeqCst) {
+                    0 => "registered_dynamic".to_string(),
+                    _ => "changed_dynamic".to_string(),
+                }
+            }
+
+            fn description(&self) -> String {
+                "dynamic tool".to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                json!({ "type": "object", "properties": {} })
+            }
+
+            async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+                Ok("ok".to_string())
+            }
+        }
+
+        impl ToolEmbedding for ChangingDynamicTool {
+            type InitError = InitError;
+            type Context = ();
+            type State = ();
+
+            fn embedding_docs(&self) -> Vec<String> {
+                vec!["dynamic tool docs".to_string()]
+            }
+
+            fn context(&self) -> Self::Context {}
+
+            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
+                Ok(Self {
+                    calls: AtomicUsize::new(0),
+                })
+            }
+        }
+
+        let toolset = ToolSet::builder()
+            .dynamic_tool(ChangingDynamicTool {
+                calls: AtomicUsize::new(0),
+            })
+            .build();
+
+        let schemas = toolset.schemas().unwrap();
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].name, "registered_dynamic");
+        assert_eq!(schemas[0].embedding_docs, vec!["dynamic tool docs"]);
     }
 
     #[tokio::test]

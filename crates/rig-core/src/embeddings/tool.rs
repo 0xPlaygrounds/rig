@@ -84,8 +84,20 @@ impl ToolSchema {
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
     pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbedError> {
+        Self::from_tool(tool.name(), tool)
+    }
+
+    /// Convert a tool to a schema using an explicit registered name.
+    ///
+    /// Registry paths should pass the key under which the tool was registered so
+    /// vector-store IDs resolve back to the same entry even if `tool.name()` is
+    /// computed dynamically.
+    pub fn from_tool(
+        name: impl Into<String>,
+        tool: &dyn ToolEmbeddingDyn,
+    ) -> Result<Self, EmbedError> {
         Ok(ToolSchema {
-            name: tool.name(),
+            name: name.into(),
             context: tool.context().map_err(EmbedError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
