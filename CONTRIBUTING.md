@@ -110,16 +110,16 @@ This will be reviewed on a case by case basis, but generally unjustifiable break
 Rig is split up into multiple crates in a monorepo structure:
 
 - `rig`: the root facade crate. It re-exports `rig-core` and exposes companion crates behind feature flags.
-- `crates/rig-core`: foundational abstractions for agents, completion, embeddings, tools, vector stores, providers, telemetry, loaders, memory traits, and test utilities.
+- `crates/rig-core`: foundational abstractions for agents, completion, embeddings, tools, providers, telemetry, loaders, memory traits, and test utilities.
 - `crates/rig-derive`: derive macros.
-- `crates/rig-*`: first-party provider, vector-store, memory, and companion integration crates.
+- `crates/rig-*`: first-party provider, memory, and companion integration crates.
 - `examples/*`: workspace example packages.
 - `tests/*.rs`: root integration test targets.
 - `tests/providers/<provider>/`: provider-specific test modules.
 - `tests/cassettes/<provider>/`: committed HTTP cassette fixtures for replayable provider tests.
-- `tests/integrations/`: external-service and vector-store integration tests.
+- `tests/integrations/`: external-service integration tests.
 
-The main crate `rig-core` avoids adding many new dependencies to keep it lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without overburdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
+The main crate `rig-core` avoids adding many new dependencies to keep it lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without overburdening the main library with dependencies. For example, `rig-bedrock` contains extra dependencies to be able to interact with AWS Bedrock.
 
 If you are unsure whether a side-crate should live in the main repo, you can spin up a personal repo containing your crate and create an issue in our repo making the case on whether this side-crate should be integrated in the main repo and maintained by the Rig team.
 
@@ -162,10 +162,10 @@ Provider-agnostic core tests:
 cargo test -p rig --test core
 ```
 
-External-service integration tests are collected under the `integrations` target and may require feature flags, Docker, credentials, or pre-provisioned services. For example:
+External-service integration tests are collected under the `integrations` target and may require feature flags, credentials, or pre-provisioned services. For example:
 
 ```bash
-cargo test -p rig --features qdrant --test integrations qdrant -- --nocapture
+cargo test -p rig --features bedrock --test integrations bedrock -- --ignored --nocapture --test-threads=1
 cargo test -p rig --all-features --test integrations
 ```
 

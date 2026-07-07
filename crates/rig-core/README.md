@@ -16,8 +16,9 @@ More information about this crate can be found in the [crate documentation](http
 - Agentic workflows that can handle multi-turn streaming and prompting
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
-- 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
+- Retrieval (RAG) as a composable pattern — a tool or a hook, with no built-in vector-store abstraction
+- Deferred tools + a built-in `tool_search` meta-tool for catalogs too large to advertise every turn
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
 - Full WASM compatibility (core library only)
@@ -82,23 +83,18 @@ Rig supports the following LLM providers out of the box:
 - Xiaomi MiMo
 - Z.ai
 
-Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
+### Retrieval (RAG)
 
-```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
-```
+Rig does not ship a built-in vector-store abstraction. Embedding models/builders
+remain in `rig::embeddings`; retrieval is a user-land pattern:
 
-- MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)
-- LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb)
-- Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j)
-- Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-qdrant)
-- SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite)
-- SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb)
-- Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus)
-- ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb)
-- AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors)
-- HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
-- Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
+- **Active RAG** — expose retrieval as an ordinary `Tool` the model calls (see the
+  `tool_active_rag` example).
+- **Passive RAG** — inject retrieved context before each model call from an
+  `AgentHook` via `RequestPatch::extra_context` (see the `hook_passive_rag` example).
+- **Large tool catalogs** — register the extras as deferred tools and let the model
+  discover them on demand via the built-in `tool_search` meta-tool (see the
+  `deferred_tools` example).
 
 The following providers are available as separate companion-crates:
 

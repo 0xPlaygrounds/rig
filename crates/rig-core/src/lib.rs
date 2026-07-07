@@ -19,7 +19,7 @@
 //!
 //! # High-level features
 //! - Full support for LLM completion and embedding workflows
-//! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
+//! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere), embeddings, tools, and hooks
 //! - Integrate LLMs in your app with minimal boilerplate
 //!
 //! # Simple example

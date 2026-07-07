@@ -82,7 +82,7 @@ jobs:
           components: clippy
           toolchain: ${{ env.RUST_VERSION }}
 
-      # Required to compile rig-lancedb
+      # Required to compile rig-gemini-grpc (tonic/prost build)
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -108,7 +108,7 @@ jobs:
         with:
           tool: nextest
 
-      # Required to compile rig-lancedb
+      # Required to compile rig-gemini-grpc (tonic/prost build)
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -146,7 +146,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
-      # Required to compile rig-lancedb
+      # Required to compile rig-gemini-grpc (tonic/prost build)
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -169,7 +169,7 @@ jobs:
           components: rust-docs
           toolchain: ${{ env.RUST_VERSION }}
 
-      # Required to compile rig-lancedb
+      # Required to compile rig-gemini-grpc (tonic/prost build)
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 

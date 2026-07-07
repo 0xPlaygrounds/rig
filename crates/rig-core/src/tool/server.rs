@@ -8,8 +8,10 @@ use crate::{
     completion::ToolDefinition,
     message::{AssistantContent, Message, ToolResultContent, UserContent},
     tool::{
-        Tool, ToolCallExtensions, ToolDyn, ToolExecutionResult, ToolFailure, ToolSet, ToolSetError,
+        Tool, ToolCallExtensions, ToolDyn, ToolError, ToolExecutionResult, ToolFailure, ToolSet,
+        ToolSetError,
     },
+    wasm_compat::WasmBoxedFuture,
 };
 
 /// Name of the built-in meta-tool the model calls to discover deferred tools.
@@ -28,16 +30,32 @@ pub struct DeferredToolMeta {
 /// Strategy the built-in `tool_search` meta-tool uses to rank deferred tools for
 /// a set of queries, returning the names to reveal (most relevant first).
 ///
-/// The default ([`default_tool_search_fn`]) is a dependency-free, case-insensitive
-/// keyword-overlap scorer over each tool's name + description. Swap it for BM25,
-/// an embedding similarity search, or an LLM picker via
-/// [`ToolServer::tool_search_fn`].
-pub type ToolSearchFn = Arc<dyn Fn(&[String], &[DeferredToolMeta]) -> Vec<String> + Send + Sync>;
+/// The function is **async**, so a custom strategy can await IO — an embedding
+/// similarity query against a vector DB, a BM25 index, or an LLM picker. It takes
+/// owned arguments and returns a `'static` boxed future so it can outlive the
+/// borrow of the tool server's state. The default ([`default_tool_search_fn`]) is
+/// a dependency-free, case-insensitive keyword-overlap scorer over each tool's
+/// name + description; swap it via [`ToolServer::tool_search_fn`].
+pub type ToolSearchFn = Arc<
+    dyn Fn(Vec<String>, Vec<DeferredToolMeta>) -> WasmBoxedFuture<'static, Vec<String>>
+        + Send
+        + Sync,
+>;
 
-/// The default `tool_search` strategy: rank deferred tools by how many query
-/// tokens appear in each tool's name + description (case-insensitive), returning
-/// every tool with a non-zero score, most relevant first.
-pub fn default_tool_search_fn(queries: &[String], tools: &[DeferredToolMeta]) -> Vec<String> {
+/// The default [`ToolSearchFn`]: a keyword-overlap scorer (see
+/// [`keyword_overlap_search`]) wrapped in a ready future. The scoring is
+/// synchronous — the async signature exists so custom strategies can await IO.
+pub fn default_tool_search_fn(
+    queries: Vec<String>,
+    tools: Vec<DeferredToolMeta>,
+) -> WasmBoxedFuture<'static, Vec<String>> {
+    Box::pin(async move { keyword_overlap_search(&queries, &tools) })
+}
+
+/// Rank deferred tools by how many query tokens appear in each tool's name +
+/// description (case-insensitive), returning every tool with a non-zero score,
+/// most relevant first. The synchronous core of [`default_tool_search_fn`].
+pub fn keyword_overlap_search(queries: &[String], tools: &[DeferredToolMeta]) -> Vec<String> {
     let query_tokens: BTreeSet<String> = queries
         .iter()
         .flat_map(|q| {
@@ -90,6 +108,16 @@ struct RevealedTool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ToolSearchResult {
     revealed_tools: Vec<RevealedTool>,
+}
+
+/// Failure modes of the built-in `tool_search` meta-tool, mapped to a classified
+/// [`ToolExecutionResult`] on the structured path and to a [`ToolServerError`] on
+/// the string path.
+enum ToolSearchError {
+    /// The `tool_search` arguments did not parse (invalid args, not "not found").
+    InvalidArgs(serde_json::Error),
+    /// The result envelope failed to serialize.
+    Serialize(serde_json::Error),
 }
 
 /// The [`ToolDefinition`] advertised for the built-in `tool_search` meta-tool.
@@ -297,11 +325,16 @@ impl ToolServer {
         self
     }
 
-    /// Override the strategy the built-in `tool_search` meta-tool uses to rank
-    /// deferred tools (default: keyword-overlap, see [`default_tool_search_fn`]).
+    /// Override the (async) strategy the built-in `tool_search` meta-tool uses to
+    /// rank deferred tools (default: keyword-overlap, see [`default_tool_search_fn`]).
+    /// The function may await IO — e.g. an embedding query or an LLM picker (see
+    /// [`ToolSearchFn`]).
     pub fn tool_search_fn(
         mut self,
-        search: impl Fn(&[String], &[DeferredToolMeta]) -> Vec<String> + Send + Sync + 'static,
+        search: impl Fn(Vec<String>, Vec<DeferredToolMeta>) -> WasmBoxedFuture<'static, Vec<String>>
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         self.tool_search_fn = Arc::new(search);
         self
@@ -380,6 +413,19 @@ impl ToolServerHandle {
         args: &str,
         extensions: &ToolCallExtensions,
     ) -> Result<String, ToolServerError> {
+        // The built-in `tool_search` meta-tool is dispatched here too (not just in
+        // `call_tool_structured`), so `call_tool` and this method stay consistent
+        // with `get_tool_defs` advertising it. Invalid args surface as an error,
+        // not a `ToolNotFoundError`.
+        if tool_name == TOOL_SEARCH_NAME {
+            return self.run_tool_search(args).await.map_err(|e| match e {
+                ToolSearchError::InvalidArgs(e) => {
+                    ToolSetError::ToolCallError(ToolError::JsonError(e)).into()
+                }
+                ToolSearchError::Serialize(e) => ToolSetError::JsonError(e).into(),
+            });
+        }
+
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
@@ -418,9 +464,21 @@ impl ToolServerHandle {
         extensions: &ToolCallExtensions,
     ) -> ToolExecutionResult {
         // The `tool_search` meta-tool is a built-in, not a registered tool: it is
-        // advertised by `get_tool_defs` when deferred tools exist and dispatched here.
+        // advertised by `get_tool_defs` when deferred tools exist and dispatched
+        // here (and in `call_tool_with_extensions`). Map its error to a classified
+        // outcome so hooks/policies still observe an `InvalidArgs` failure.
         if tool_name == TOOL_SEARCH_NAME {
-            return self.run_tool_search(args).await;
+            return match self.run_tool_search(args).await {
+                Ok(json) => ToolExecutionResult::success(json),
+                Err(ToolSearchError::InvalidArgs(e)) => ToolExecutionResult::failed(
+                    format!("invalid tool_search arguments: {e}"),
+                    ToolFailure::invalid_args(e.to_string()),
+                ),
+                Err(ToolSearchError::Serialize(e)) => ToolExecutionResult::failed(
+                    format!("failed to serialize tool_search result: {e}"),
+                    ToolFailure::other(e.to_string()),
+                ),
+            };
         }
 
         let tool = {
@@ -444,19 +502,16 @@ impl ToolServerHandle {
     }
 
     /// Run the built-in `tool_search` meta-tool: rank deferred tools for the
-    /// requested queries and return the matches as a [`ToolSearchResult`] envelope
-    /// (parsed back out of the transcript by [`revealed_deferred_tools`]). Deferred
-    /// tool definitions are resolved lazily — only here, at search time.
-    async fn run_tool_search(&self, args: &str) -> ToolExecutionResult {
-        let queries = match serde_json::from_str::<ToolSearchArgs>(args) {
-            Ok(parsed) => parsed.queries,
-            Err(e) => {
-                return ToolExecutionResult::failed(
-                    format!("invalid tool_search arguments: {e}"),
-                    ToolFailure::invalid_args(e.to_string()),
-                );
-            }
-        };
+    /// requested queries (awaiting the configured [`ToolSearchFn`]) and return the
+    /// matches as a [`ToolSearchResult`] JSON envelope (parsed back out of the
+    /// transcript by [`revealed_deferred_tools`]). Deferred tool definitions are
+    /// resolved lazily — only here, at search time. Shared by
+    /// [`call_tool_with_extensions`](Self::call_tool_with_extensions) and
+    /// [`call_tool_structured`](Self::call_tool_structured).
+    async fn run_tool_search(&self, args: &str) -> Result<String, ToolSearchError> {
+        let queries = serde_json::from_str::<ToolSearchArgs>(args)
+            .map_err(ToolSearchError::InvalidArgs)?
+            .queries;
 
         let (deferred_handles, search_fn) = {
             let state = self.0.read().await;
@@ -477,7 +532,8 @@ impl ToolServerHandle {
             });
         }
 
-        let revealed_tools = search_fn(&queries, &metas)
+        let revealed_tools = search_fn(queries, metas.clone())
+            .await
             .into_iter()
             .filter_map(|name| {
                 metas.iter().find(|m| m.name == name).map(|m| RevealedTool {
@@ -487,13 +543,8 @@ impl ToolServerHandle {
             })
             .collect::<Vec<_>>();
 
-        match serde_json::to_string(&ToolSearchResult { revealed_tools }) {
-            Ok(json) => ToolExecutionResult::success(json),
-            Err(e) => ToolExecutionResult::failed(
-                format!("failed to serialize tool_search result: {e}"),
-                ToolFailure::other(e.to_string()),
-            ),
-        }
+        serde_json::to_string(&ToolSearchResult { revealed_tools })
+            .map_err(ToolSearchError::Serialize)
     }
 
     /// Retrieve the tool definitions advertised to the model for a turn.
@@ -758,6 +809,108 @@ mod tests {
         assert!(
             revealed_deferred_tools(&history).is_empty(),
             "only tool_search results reveal tools"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn tool_search_uses_custom_async_search_fn() {
+        use super::{DeferredToolMeta, ToolSearchResult};
+        use crate::wasm_compat::WasmBoxedFuture;
+
+        // A custom *async* search fn: it awaits a yield (proving the async
+        // signature works) then reveals every deferred tool whose name contains
+        // the first query.
+        let handle = ToolServer::new()
+            .deferred_tool(MockAddTool)
+            .deferred_tool(MockSubtractTool)
+            .tool_search_fn(
+                |queries: Vec<String>,
+                 tools: Vec<DeferredToolMeta>|
+                 -> WasmBoxedFuture<'static, Vec<String>> {
+                    Box::pin(async move {
+                        tokio::task::yield_now().await;
+                        let needle = queries.first().cloned().unwrap_or_default();
+                        tools
+                            .into_iter()
+                            .filter(|t| t.name.contains(&needle))
+                            .map(|t| t.name)
+                            .collect()
+                    })
+                },
+            )
+            .run();
+
+        let out = handle
+            .call_tool(
+                "tool_search",
+                &serde_json::json!({ "queries": ["sub"] }).to_string(),
+            )
+            .await
+            .unwrap();
+        let parsed: ToolSearchResult = serde_json::from_str(&out).unwrap();
+        let names: Vec<&str> = parsed
+            .revealed_tools
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["subtract"],
+            "custom async search fn drives the reveal set"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn call_tool_dispatches_tool_search() {
+        // The public string path (`call_tool` -> `call_tool_with_extensions`)
+        // dispatches the built-in meta-tool and returns the same JSON envelope the
+        // structured path produces.
+        let handle = ToolServer::new().deferred_tool(MockSubtractTool).run();
+        let args = serde_json::json!({ "queries": ["subtract"] }).to_string();
+
+        let via_call = handle.call_tool("tool_search", &args).await.unwrap();
+        let via_structured = handle
+            .call_tool_structured("tool_search", &args, &ToolCallExtensions::EMPTY)
+            .await;
+
+        assert!(matches!(via_structured.outcome(), ToolOutcome::Success));
+        assert_eq!(
+            via_call,
+            via_structured.model_output(),
+            "both dispatch paths return the same envelope"
+        );
+        assert!(via_call.contains("subtract"));
+    }
+
+    #[tokio::test]
+    pub async fn call_tool_invalid_tool_search_args_is_error_not_not_found() {
+        let handle = ToolServer::new().deferred_tool(MockSubtractTool).run();
+        let err = handle
+            .call_tool("tool_search", "{ not valid json }")
+            .await
+            .expect_err("invalid tool_search args should error");
+        assert!(
+            !matches!(
+                err,
+                super::ToolServerError::ToolsetError(crate::tool::ToolSetError::ToolNotFoundError(
+                    _
+                ))
+            ),
+            "invalid args must be an error, not tool-not-found: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn call_tool_structured_invalid_tool_search_args_is_invalid_args() {
+        use crate::tool::ToolFailureKind;
+        let handle = ToolServer::new().deferred_tool(MockSubtractTool).run();
+        let result = handle
+            .call_tool_structured("tool_search", "{ not json }", &ToolCallExtensions::EMPTY)
+            .await;
+        assert!(
+            result.outcome().is_error_kind(ToolFailureKind::InvalidArgs),
+            "structured path classifies invalid tool_search args as InvalidArgs: {:?}",
+            result.outcome()
         );
     }
 

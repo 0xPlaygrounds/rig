@@ -676,7 +676,7 @@ impl<M: CompletionModel> StepEvent<'_, M> {
 ///
 /// | Field | hook ⊕ hook (registration order) | patch → baseline |
 /// |---|---|---|
-/// | `extra_context` | append (earlier hooks' docs first) | append after static + dynamic context |
+/// | `extra_context` | append (earlier hooks' docs first) | append after static context |
 /// | `additional_params` | shallow-merge top-level keys, later hook wins | shallow-merge onto baseline params |
 /// | `preamble` | last writer wins (warns on conflict) | replaces |
 /// | `temperature`, `max_tokens`, `tool_choice` | last writer wins (warns on conflict) | replaces |
@@ -715,7 +715,7 @@ pub struct RequestPatch {
     pub active_tools: Option<Vec<String>>,
     /// Provider-passthrough params shallow-merged onto the agent's for this turn.
     pub additional_params: Option<serde_json::Value>,
-    /// Extra context documents appended (after static and dynamic context) for
+    /// Extra context documents appended (after the agent's static context) for
     /// this turn only. The passive-RAG injection point.
     pub extra_context: Vec<Document>,
     /// Replace the prior chat history sent to the provider **this turn only**.
@@ -802,8 +802,8 @@ impl RequestPatch {
     }
 
     /// Append extra context documents for this turn (the passive-RAG injection
-    /// point). Documents are appended after the agent's static and dynamic
-    /// (vector-store) context, in the order added.
+    /// point). Documents are appended after the agent's static context, in the
+    /// order added.
     pub fn extra_context<I>(mut self, docs: I) -> Self
     where
         I: IntoIterator<Item = Document>,

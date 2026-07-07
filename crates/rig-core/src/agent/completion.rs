@@ -383,7 +383,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     });
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a
-    // real tool with that name is added mid-run (e.g. via dynamic/RAG tools).
+    // real tool with that name is advertised mid-run (e.g. a deferred tool the
+    // model reveals via `tool_search`, or the built-in `tool_search` tool itself).
     // The output-tool intercept matches by name, so surface the conflict — a
     // call to the real tool would otherwise finalize the run (see #1928, #3).
     if let Some(name) = &output_tool_name

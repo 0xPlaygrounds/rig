@@ -37,7 +37,11 @@ reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 rig-derive = { version = "0.39.0", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+# `preserve_order` keeps JSON object key order at insertion/declaration order
+# (rather than sorted), so tool-output and request serialization is stable. This
+# was previously enabled transitively by a vector-store companion crate's deps;
+# depend on it explicitly now that those crates are removed.
+serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }

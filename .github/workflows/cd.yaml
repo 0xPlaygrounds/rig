@@ -35,7 +35,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           cache: true
 
-      # Required to compile rig-lancedb
+      # Required to compile rig-gemini-grpc (tonic/prost build)
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 

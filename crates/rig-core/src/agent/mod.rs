@@ -57,49 +57,71 @@
 //! # }
 //! ```
 //!
-//! RAG Agent example
+//! RAG agent example — retrieval is a user-land pattern. Rig ships no built-in
+//! vector store: inject retrieved context before each model call from an
+//! [`AgentHook`](crate::agent::AgentHook) via
+//! [`RequestPatch::extra_context`](crate::agent::RequestPatch) (passive RAG, shown
+//! below), or expose retrieval as an ordinary [`Tool`](crate::tool::Tool) the model
+//! calls (active RAG). See the `hook_passive_rag` and `tool_active_rag` examples
+//! for runnable end-to-end versions.
 //! ```no_run
-//! use rig_core::{
-//!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
-//!     completion::Prompt,
-//!     embeddings::EmbeddingsBuilder,
-//!     providers::openai,
-//!     vector_store::in_memory_store::InMemoryVectorStore,
-//! };
+//! use std::collections::HashMap;
+//!
+//! use rig_core::agent::{AgentHook, Flow, HookContext, RequestPatch, StepEvent};
+//! use rig_core::client::{CompletionClient, ProviderClient};
+//! use rig_core::completion::{CompletionModel, Document, Message, Prompt};
+//! use rig_core::message::UserContent;
+//! use rig_core::providers::openai;
+//!
+//! // A tiny in-process knowledge base — swap for embeddings + your own store.
+//! const KB: &[(&str, &str)] = &[
+//!     ("glarb-glarb", "A glarb-glarb is an ancient tool used to farm the land."),
+//!     ("flurbo", "A flurbo is a green alien that lives on cold planets."),
+//! ];
+//!
+//! // Injects retrieved context on the first model call, before the provider sees it.
+//! struct DictionaryRag;
+//!
+//! impl<M: CompletionModel> AgentHook<M> for DictionaryRag {
+//!     async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+//!         if let StepEvent::CompletionCall { prompt, turn, .. } = event
+//!             && turn == 1
+//!         {
+//!             // Read the query from the prompt (public Message/UserContent API).
+//!             let Message::User { content } = prompt else {
+//!                 return Flow::cont();
+//!             };
+//!             let Some(query) = content.iter().find_map(|c| match c {
+//!                 UserContent::Text(t) => Some(t.text()),
+//!                 _ => None,
+//!             }) else {
+//!                 return Flow::cont();
+//!             };
+//!             let docs: Vec<Document> = KB
+//!                 .iter()
+//!                 .filter(|(_, text)| {
+//!                     query.split_whitespace().any(|w| text.contains(w))
+//!                 })
+//!                 .map(|(id, text)| Document {
+//!                     id: (*id).to_string(),
+//!                     text: (*text).to_string(),
+//!                     additional_props: HashMap::new(),
+//!                 })
+//!                 .collect();
+//!             return Flow::patch_request(RequestPatch::new().extra_context(docs));
+//!         }
+//!         Flow::cont()
+//!     }
+//! }
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize OpenAI client
 //! let openai = openai::Client::from_env()?;
-//!
-//! // Initialize OpenAI embedding model
-//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
-//!
-//! // Create vector store, compute embeddings and load them in the store
-//! let mut vector_store = InMemoryVectorStore::default();
-//!
-//! let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-//!     .documents(vec![
-//!         "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
-//!         "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-//!         "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
-//!     ])?
-//!     .build()
-//!     .await?;
-//!
-//! vector_store.add_documents(embeddings);
-//!
-//! // Create vector store index
-//! let index = vector_store.index(embedding_model);
-//!
-//! let agent = openai.agent(openai::GPT_5_2)
-//!     .preamble("
-//!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
-//!         You will find additional non-standard word definitions that could be useful below.
-//!     ")
-//!     .dynamic_context(1, index)
+//! let agent = openai
+//!     .agent(openai::GPT_5_2)
+//!     .preamble("You are a dictionary assistant. Use the provided context documents.")
+//!     .add_hook(DictionaryRag)
 //!     .build();
 //!
-//! // Prompt the agent and print the response
 //! let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
 //! # Ok(())
 //! # }
