@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(tool)* [**breaking**] flatten `Tool` / `ToolDyn` metadata: tool authors now implement `description()` and `parameters()` directly, and `Tool::definition(prompt)` / `ToolDyn::definition(prompt)` are removed. `ToolDefinition` remains a provider/request artifact generated from registered tools, with `Tool::NAME` / `Tool::name()` / `ToolDyn::name()` as the single source of truth for advertised and dispatched tool names.
 
+### Removed
+
+- *(core)* [**breaking**] remove the unused `evals` module (`Eval` trait, judge metrics, and builders) along with the `experimental` feature flag that gated it
+
 ## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/v0.38.2...v0.39.0) - 2026-06-19
 
 ### Added
