@@ -62,7 +62,6 @@ pub struct WithToolServerHandle {
 /// etc. When `.build()` is called, a new `ToolServer` will be created with all
 /// the configured tools.
 pub struct WithBuilderTools {
-    static_tools: Vec<String>,
     tools: ToolSet,
 }
 
@@ -333,7 +332,6 @@ where
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
     pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
-        let toolname = tool.name();
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -346,7 +344,6 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             tool_state: WithBuilderTools {
-                static_tools: vec![toolname],
                 tools: ToolSet::from_tools(vec![tool]),
             },
             hooks: self.hooks,
@@ -362,7 +359,6 @@ where
     /// This is useful when you need to dynamically add static tools to the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
     pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
-        let static_tools = tools.iter().map(|tool| tool.name()).collect();
         let tools = ToolSet::from_tools_boxed(tools);
 
         AgentBuilder {
@@ -381,10 +377,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                static_tools,
-                tools,
-            },
+            tool_state: WithBuilderTools { tools },
         }
     }
 
@@ -462,7 +455,7 @@ where
         self,
         built: Vec<(String, RmcpTool)>,
     ) -> AgentBuilder<M, WithBuilderTools> {
-        let (static_tools, toolset): (Vec<String>, Vec<RmcpTool>) = built.into_iter().unzip();
+        let toolset: Vec<RmcpTool> = built.into_iter().map(|(_, tool)| tool).collect();
 
         AgentBuilder {
             name: self.name,
@@ -481,7 +474,6 @@ where
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
-                static_tools,
                 tools: ToolSet::from_tools(toolset),
             },
         }
@@ -547,18 +539,15 @@ where
 {
     /// Add another static tool to the agent.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = tool.name();
         self.tool_state.tools.add_tool(tool);
-        self.tool_state.static_tools.push(toolname);
         self
     }
 
     /// Add a vector of boxed static tools to the agent.
     pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
-        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
-        self.tool_state.tools.add_tools(tools);
-        self.tool_state.static_tools.extend(toolnames);
+        self.tool_state
+            .tools
+            .add_tools(ToolSet::from_tools_boxed(tools));
         self
     }
 
@@ -595,8 +584,7 @@ where
 
     #[cfg(feature = "rmcp")]
     fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
-        for (name, tool) in built {
-            self.tool_state.static_tools.push(name);
+        for (_, tool) in built {
             self.tool_state.tools.add_tool(tool);
         }
 
@@ -608,10 +596,7 @@ where
     /// A new `ToolServer` will be created containing all tools added via
     /// `.tool()`, `.tools()`, etc.
     pub fn build(self) -> Agent<M> {
-        let tool_server_handle = ToolServer::new()
-            .static_tool_names(self.tool_state.static_tools)
-            .add_tools(self.tool_state.tools)
-            .run();
+        let tool_server_handle = ToolServer::new().add_tools(self.tool_state.tools).run();
 
         Agent {
             name: self.name,

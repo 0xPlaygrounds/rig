@@ -396,46 +396,6 @@ impl<T: Tool> ToolDyn for T {
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 pub mod rmcp;
 
-#[derive(Clone)]
-pub(crate) enum ToolType {
-    Simple(Arc<dyn ToolDyn>),
-}
-
-impl ToolType {
-    pub fn name(&self) -> String {
-        match self {
-            ToolType::Simple(tool) => tool.name(),
-        }
-    }
-
-    pub async fn definition(&self) -> ToolDefinition {
-        match self {
-            ToolType::Simple(tool) => tool.definition().await,
-        }
-    }
-
-    pub async fn call_with_extensions(
-        &self,
-        args: String,
-        extensions: &ToolCallExtensions,
-    ) -> Result<String, ToolError> {
-        match self {
-            ToolType::Simple(tool) => tool.call_with_extensions(args, extensions).await,
-        }
-    }
-
-    /// Execute the tool, returning the structured [`ToolExecutionResult`].
-    pub async fn call_structured(
-        &self,
-        args: String,
-        extensions: &ToolCallExtensions,
-    ) -> ToolExecutionResult {
-        match self {
-            ToolType::Simple(tool) => tool.call_structured(args, extensions).await,
-        }
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ToolSetError {
     /// Error returned by the tool
@@ -463,7 +423,7 @@ pub enum ToolSetError {
 /// existing name replaces the implementation but keeps its original position.
 #[derive(Default)]
 pub struct ToolSet {
-    pub(crate) tools: IndexMap<String, ToolType>,
+    pub(crate) tools: IndexMap<String, Arc<dyn ToolDyn>>,
 }
 
 impl ToolSet {
@@ -497,15 +457,15 @@ impl ToolSet {
 
     /// Add a tool to the toolset.
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
-        self.insert(ToolType::Simple(Arc::new(tool)));
+        self.insert(Arc::new(tool));
     }
 
     /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
     pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
-        self.insert(ToolType::Simple(Arc::from(tool)));
+        self.insert(Arc::from(tool));
     }
 
-    pub(crate) fn insert(&mut self, tool: ToolType) {
+    pub(crate) fn insert(&mut self, tool: Arc<dyn ToolDyn>) {
         let name = tool.name();
         // `IndexMap::insert` replaces the value while keeping the existing
         // slot position, and returns the previous value when the name was
@@ -533,17 +493,12 @@ impl ToolSet {
         }
     }
 
-    pub(crate) fn get(&self, toolname: &str) -> Option<&ToolType> {
+    pub(crate) fn get(&self, toolname: &str) -> Option<&Arc<dyn ToolDyn>> {
         self.tools.get(toolname)
     }
 
-    /// Tool names in registration order.
-    pub(crate) fn ordered_names(&self) -> impl Iterator<Item = &String> {
-        self.tools.keys()
-    }
-
     /// Tools in registration order.
-    fn ordered_tools(&self) -> impl Iterator<Item = &ToolType> {
+    pub(crate) fn ordered_tools(&self) -> impl Iterator<Item = &Arc<dyn ToolDyn>> {
         self.tools.values()
     }
 
@@ -615,13 +570,13 @@ impl ToolSet {
 #[derive(Default)]
 /// Builder for constructing a [`ToolSet`].
 pub struct ToolSetBuilder {
-    tools: Vec<ToolType>,
+    tools: Vec<Arc<dyn ToolDyn>>,
 }
 
 impl ToolSetBuilder {
-    /// Add a regular tool that is always available when the set is used.
+    /// Add a tool to the set.
     pub fn static_tool(mut self, tool: impl ToolDyn + 'static) -> Self {
-        self.tools.push(ToolType::Simple(Arc::new(tool)));
+        self.tools.push(Arc::new(tool));
         self
     }
 
@@ -665,7 +620,7 @@ mod tests {
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
         assert_eq!(
-            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            toolset.tools.keys().cloned().collect::<Vec<_>>(),
             vec!["subtract".to_string()]
         );
     }
@@ -684,7 +639,7 @@ mod tests {
         toolset.delete_tool("beta");
 
         assert_eq!(
-            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            toolset.tools.keys().cloned().collect::<Vec<_>>(),
             vec![
                 "alpha".to_string(),
                 "gamma".to_string(),

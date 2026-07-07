@@ -9,22 +9,10 @@ use crate::{
     },
 };
 
-/// Append `name` to the advertised static-tool list unless already present.
-/// Registration is last-wins on the toolset, so the name list only needs
-/// first-occurrence order: a re-registered name keeps its original position
-/// while the toolset swaps in the new implementation. Providers reject
-/// duplicate function declarations, so the list must stay unique.
-fn push_unique_name(names: &mut Vec<String>, name: String) {
-    if !names.contains(&name) {
-        names.push(name);
-    }
-}
-
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
-    /// Static tool names that persist until explicitly removed. Always advertised.
-    static_tool_names: Vec<String>,
-    /// The toolset where tools are registered and executed.
+    /// The toolset where tools are registered and executed. Every registered
+    /// tool is advertised, in registration order.
     toolset: ToolSet,
 }
 
@@ -33,7 +21,6 @@ struct ToolServerState {
 /// Accumulates tools and configuration, then produces a shared handle via
 /// [`run()`](ToolServer::run).
 pub struct ToolServer {
-    static_tool_names: Vec<String>,
     toolset: ToolSet,
 }
 
@@ -46,20 +33,8 @@ impl Default for ToolServer {
 impl ToolServer {
     pub fn new() -> Self {
         Self {
-            static_tool_names: Vec::new(),
             toolset: ToolSet::default(),
         }
-    }
-
-    pub(crate) fn static_tool_names(mut self, names: Vec<String>) -> Self {
-        // Last-wins registration replaces the implementation but keeps the
-        // original position, so the advertised list dedupes to first
-        // occurrence (duplicate declarations are rejected by providers).
-        self.static_tool_names = Vec::with_capacity(names.len());
-        for name in names {
-            push_unique_name(&mut self.static_tool_names, name);
-        }
-        self
     }
 
     pub(crate) fn add_tools(mut self, tools: ToolSet) -> Self {
@@ -70,9 +45,7 @@ impl ToolServer {
     /// Add a static tool to the agent. Re-registering an existing name
     /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = tool.name();
         self.toolset.add_tool(tool);
-        push_unique_name(&mut self.static_tool_names, toolname);
         self
     }
 
@@ -99,17 +72,14 @@ impl ToolServer {
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
         use crate::tool::rmcp::McpTool;
-        let toolname = tool.name.to_string();
         self.toolset
             .add_tool(McpTool::from_mcp_server(tool, client).with_timeout(timeout));
-        push_unique_name(&mut self.static_tool_names, toolname);
         self
     }
 
     /// Consume the builder and return a shared [`ToolServerHandle`].
     pub fn run(self) -> ToolServerHandle {
         ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
-            static_tool_names: self.static_tool_names,
             toolset: self.toolset,
         })))
     }
@@ -128,30 +98,23 @@ impl ToolServerHandle {
     /// the implementation (last wins) and keeps its position.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        let toolname = tool.name();
-        push_unique_name(&mut state.static_tool_names, toolname);
         state.toolset.add_tool_boxed(Box::new(tool));
         Ok(())
     }
 
-    /// Merge an entire toolset into the server. Tool names from `toolset`
-    /// are appended to the static-tool list in `toolset`'s registration
-    /// order, so the tools become visible to the LLM via
-    /// [`Self::get_tool_defs`]. Existing names are replaced (last wins) and
-    /// keep their position.
+    /// Merge an entire toolset into the server. Tools from `toolset` become
+    /// visible to the LLM via [`Self::get_tool_defs`] in `toolset`'s
+    /// registration order. Existing names are replaced (last wins) and keep
+    /// their position.
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        for name in toolset.ordered_names() {
-            push_unique_name(&mut state.static_tool_names, name.clone());
-        }
         state.toolset.add_tools(toolset);
         Ok(())
     }
 
-    /// Remove a tool by name from both the toolset and the static list.
+    /// Remove a tool by name from the toolset.
     pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        state.static_tool_names.retain(|x| *x != tool_name);
         state.toolset.delete_tool(tool_name);
         Ok(())
     }
@@ -238,41 +201,19 @@ impl ToolServerHandle {
     /// the model. Rig has no dynamic-tool mechanism — the advertised set is simply
     /// the tools registered on the server.
     pub async fn get_tool_defs(&self) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        let handles: Vec<_> = {
+        // Clone the handles under a brief read lock so that a slow tool
+        // `definition()` (e.g. an MCP round-trip) never holds the lock across
+        // `.await`. The toolset is name-keyed, so the set is already unique and
+        // in registration order.
+        let handles: Vec<Arc<dyn ToolDyn>> = {
             let state = self.0.read().await;
-            state
-                .static_tool_names
-                .iter()
-                .filter_map(|name| {
-                    let handle = state.toolset.get(name).cloned();
-                    if handle.is_none() {
-                        tracing::warn!("Tool implementation not found in toolset: {}", name);
-                    }
-                    handle
-                })
-                .collect()
+            state.toolset.ordered_tools().cloned().collect()
         };
 
         let mut tools = Vec::with_capacity(handles.len());
         for handle in handles {
             tools.push(handle.definition().await);
         }
-
-        // One shared toolset backs the lists, so the same name can appear twice
-        // (e.g. a re-registered tool). Keep the first definition and drop
-        // exact-name repeats: providers reject duplicate function declarations.
-        let mut seen = std::collections::HashSet::new();
-        tools.retain(|def| {
-            let fresh = seen.insert(def.name.clone());
-            if !fresh {
-                tracing::debug!(
-                    tool_name = %def.name,
-                    "dropping duplicate tool definition from the request"
-                );
-            }
-            fresh
-        });
-
         Ok(tools)
     }
 }
