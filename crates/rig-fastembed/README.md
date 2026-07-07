@@ -25,5 +25,4 @@ retrieval to the agent as either:
 - an `AgentHook` that injects retrieved context via `RequestPatch::extra_context`
   before each model call (passive RAG).
 
-See the root workspace examples `tool_active_rag`, `hook_passive_rag`, and
-`deferred_tools` (deferred tool catalogs + the built-in `tool_search` meta-tool).
+See the root workspace examples `tool_active_rag` and `hook_passive_rag`.

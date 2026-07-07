@@ -65,8 +65,7 @@ More information about this crate can be found in the [official](https://docs.ri
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
-- Retrieval (RAG) as a composable pattern — expose it as a tool or inject context from a hook, with no built-in vector-store abstraction to buy into
-- Deferred tools + a built-in `tool_search` meta-tool for catalogs too large to advertise every turn
+- Retrieval (RAG) as a composable pattern — expose it as a tool or inject context from a hook, with no built-in vector-store or dynamic-tool abstraction to buy into
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
 - Full WASM compatibility (core library only)

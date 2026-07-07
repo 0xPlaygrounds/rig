@@ -17,8 +17,7 @@ More information about this crate can be found in the [crate documentation](http
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
-- Retrieval (RAG) as a composable pattern — a tool or a hook, with no built-in vector-store abstraction
-- Deferred tools + a built-in `tool_search` meta-tool for catalogs too large to advertise every turn
+- Retrieval (RAG) as a composable pattern — a tool or a hook, with no built-in vector-store or dynamic-tool abstraction
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
 - Full WASM compatibility (core library only)
@@ -85,16 +84,17 @@ Rig supports the following LLM providers out of the box:
 
 ### Retrieval (RAG)
 
-Rig does not ship a built-in vector-store abstraction. Embedding models/builders
-remain in `rig::embeddings`; retrieval is a user-land pattern:
+Rig has no built-in vector-store abstraction and no dynamic-tool mechanism.
+Embedding models/builders remain in `rig::embeddings`; retrieval is a user-land
+pattern:
 
 - **Active RAG** — expose retrieval as an ordinary `Tool` the model calls (see the
   `tool_active_rag` example).
 - **Passive RAG** — inject retrieved context before each model call from an
   `AgentHook` via `RequestPatch::extra_context` (see the `hook_passive_rag` example).
-- **Large tool catalogs** — register the extras as deferred tools and let the model
-  discover them on demand via the built-in `tool_search` meta-tool (see the
-  `deferred_tools` example).
+- **Large tool catalogs** — agents advertise their statically registered tools; if
+  you need a catalog too large to advertise, implement the search and dispatch
+  inside your own ordinary `Tool`.
 
 The following providers are available as separate companion-crates:
 

@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
     // Create OpenAI client
     let openai_client = anthropic::Client::from_env()?;
 
-    // Create RAG agent with a single context prompt and a dynamic tool source
+    // Create an agent with a set of arithmetic tools
     let agent = openai_client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(

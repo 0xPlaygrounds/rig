@@ -42,7 +42,7 @@ fn build_rmcp_tools(
 ///
 /// This is the default state for a new `AgentBuilder`. From this state,
 /// you can either:
-/// - Add tools via `.tool()`, `.tools()`, `.deferred_tool()`, etc. (transitions to `WithBuilderTools`)
+/// - Add tools via `.tool()`, `.tools()`, etc. (transitions to `WithBuilderTools`)
 /// - Set a pre-existing `ToolServerHandle` via `.tool_server_handle()` (transitions to `WithToolServerHandle`)
 /// - Call `.build()` to create an agent with no tools
 #[derive(Default)]
@@ -59,14 +59,11 @@ pub struct WithToolServerHandle {
 /// Typestate indicating tools are being configured via the builder API.
 ///
 /// In this state, you can continue adding tools via `.tool()`, `.tools()`,
-/// `.deferred_tool()`, etc. When `.build()` is called, a new `ToolServer`
-/// will be created with all the configured tools.
+/// etc. When `.build()` is called, a new `ToolServer` will be created with all
+/// the configured tools.
 pub struct WithBuilderTools {
     static_tools: Vec<String>,
     tools: ToolSet,
-    /// Names of deferred tools (registered in `tools` but withheld from the
-    /// advertised set until revealed via `tool_search`).
-    deferred_tools: Vec<String>,
 }
 
 /// A builder for creating an agent
@@ -351,7 +348,6 @@ where
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
                 tools: ToolSet::from_tools(vec![tool]),
-                deferred_tools: vec![],
             },
             hooks: self.hooks,
             output_schema: self.output_schema,
@@ -388,7 +384,6 @@ where
             tool_state: WithBuilderTools {
                 static_tools,
                 tools,
-                deferred_tools: vec![],
             },
         }
     }
@@ -488,40 +483,6 @@ where
             tool_state: WithBuilderTools {
                 static_tools,
                 tools: ToolSet::from_tools(toolset),
-                deferred_tools: vec![],
-            },
-        }
-    }
-
-    /// Register a deferred tool: executable but withheld from the advertised set
-    /// until the model discovers it via the built-in `tool_search` meta-tool.
-    /// Use this for tool catalogs too large to advertise every turn.
-    ///
-    /// The reserved `tool_search` name is refused (logged and skipped).
-    ///
-    /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn deferred_tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
-        let toolname = tool.name();
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                static_tools: vec![],
-                tools: ToolSet::from_tools(vec![tool]),
-                deferred_tools: vec![toolname],
             },
         }
     }
@@ -642,27 +603,14 @@ where
         self
     }
 
-    /// Register a deferred tool: executable but withheld from the advertised set
-    /// until the model discovers it via the built-in `tool_search` meta-tool.
-    /// Use this for tool catalogs too large to advertise every turn.
-    ///
-    /// The reserved `tool_search` name is refused (logged and skipped).
-    pub fn deferred_tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = tool.name();
-        self.tool_state.tools.add_tool(tool);
-        self.tool_state.deferred_tools.push(toolname);
-        self
-    }
-
     /// Build the agent with the configured tools.
     ///
     /// A new `ToolServer` will be created containing all tools added via
-    /// `.tool()`, `.tools()`, `.deferred_tool()`, etc.
+    /// `.tool()`, `.tools()`, etc.
     pub fn build(self) -> Agent<M> {
         let tool_server_handle = ToolServer::new()
             .static_tool_names(self.tool_state.static_tools)
             .add_tools(self.tool_state.tools)
-            .add_deferred_tool_names(self.tool_state.deferred_tools)
             .run();
 
         Agent {

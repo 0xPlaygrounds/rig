@@ -40,7 +40,7 @@ Rig is built around provider-agnostic traits:
 
 - `CompletionModel` for text completion and chat models
 - `EmbeddingModel` for embedding generation
-- `Tool` for callable tools (register large catalogs as deferred tools discovered via the built-in `tool_search` meta-tool)
+- `Tool` for callable tools (agents advertise their statically registered tools; there is no dynamic-tool mechanism)
 
 Use these traits instead of creating parallel abstractions.
 
@@ -142,10 +142,10 @@ is explicitly approved.
 - **Passive RAG:** an `AgentHook` on `StepEvent::CompletionCall` injects documents
   via `RequestPatch::extra_context` before the model call.
 - **Active RAG:** expose retrieval as a normal `Tool` the model chooses to call.
-- **Large tool catalogs:** register the extras as deferred tools
-  (`AgentBuilder::deferred_tool` / `ToolServer::deferred_tool`) and let the model
-  discover them via the built-in `tool_search` meta-tool (the `tool_search` name
-  is reserved). Custom search strategies use `ToolServer::tool_search_fn`.
+- **Large tool catalogs:** Rig core has no dynamic-tool mechanism — agents
+  advertise their statically registered tools. A catalog too large to advertise
+  is a user-land concern: implement the search and dispatch inside an ordinary
+  `Tool`. Do not add a core dynamic-tool registry/dispatcher.
 
 Embedding models/builders remain in `rig_core::embeddings`. Use `WasmCompatSend` /
 `WasmCompatSync` bounds and `WasmBoxedFuture` for public async abstractions

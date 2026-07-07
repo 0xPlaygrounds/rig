@@ -66,15 +66,14 @@
 //! RAG systems that can be used to answer questions using a knowledge base.
 //!
 //! ## Retrieval (RAG)
-//! Rig does not ship a built-in vector-store abstraction. Retrieval is a user-land
-//! pattern: expose it as a normal [tool](crate::tool) the model chooses to call, or
-//! inject retrieved context before each model call from an
+//! Rig has no built-in vector-store abstraction and no dynamic-tool mechanism.
+//! Retrieval is a user-land pattern: expose it as a normal [tool](crate::tool) the
+//! model chooses to call, or inject retrieved context before each model call from an
 //! [AgentHook](crate::agent::AgentHook) via
 //! [RequestPatch::extra_context](crate::agent::RequestPatch). Embedding
-//! models/builders remain in [embeddings](crate::embeddings). For catalogs with more
-//! tools than fit in a prompt, register the extras as deferred tools and let the model
-//! discover them with the built-in `tool_search` meta-tool
-//! (see [`ToolServer::deferred_tool`](crate::tool::ToolServer::deferred_tool)).
+//! models/builders remain in [embeddings](crate::embeddings). Agents advertise their
+//! statically registered tools; if you need a large catalog, implement the search
+//! and dispatch inside your own ordinary tool.
 //!
 //! ## Conversation memory
 //! Rig can transparently load and persist per-conversation history through the

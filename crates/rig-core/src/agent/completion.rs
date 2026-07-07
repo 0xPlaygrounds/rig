@@ -11,7 +11,7 @@ use crate::{
     json_utils,
     message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
-    tool::server::{ToolServerHandle, revealed_deferred_tools},
+    tool::server::ToolServerHandle,
     wasm_compat::WasmCompatSend,
 };
 use std::{collections::BTreeSet, sync::Arc};
@@ -299,14 +299,10 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     };
     let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
 
-    // Resolve the advertised tool set. Deferred tools are withheld until the model
-    // reveals them via `tool_search`; the reveal set is reconstructed from the real
-    // transcript (`chat_history`, not the compaction-patched view below), so a
-    // compaction hook can't hide a reveal. The current prompt carries no
-    // `tool_search` result, so scanning history is sufficient.
-    let revealed = revealed_deferred_tools(chat_history);
+    // Resolve the advertised tool set: every registered static tool. Rig has no
+    // dynamic-tool mechanism, so this is simply the tools on the server.
     let mut tooldefs = tool_server_handle
-        .get_tool_defs(&revealed)
+        .get_tool_defs()
         .await
         .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
 
@@ -383,10 +379,10 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     });
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a
-    // real tool with that name is advertised mid-run (e.g. a deferred tool the
-    // model reveals via `tool_search`, or the built-in `tool_search` tool itself).
-    // The output-tool intercept matches by name, so surface the conflict — a
-    // call to the real tool would otherwise finalize the run (see #1928, #3).
+    // real tool with that name is registered mid-run (e.g. via
+    // `ToolServerHandle::add_tool`). The output-tool intercept matches by name, so
+    // surface the conflict — a call to the real tool would otherwise finalize the
+    // run (see #1928, #3).
     if let Some(name) = &output_tool_name
         && executable_tool_names.contains(name)
     {

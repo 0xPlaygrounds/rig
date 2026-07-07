@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
                 // with dynamic (RAG) tools would resolve them per turn.
                 let tool_names: BTreeSet<String> = agent
                     .tool_server_handle
-                    .get_tool_defs(&BTreeSet::new())
+                    .get_tool_defs()
                     .await?
                     .into_iter()
                     .map(|def| def.name)

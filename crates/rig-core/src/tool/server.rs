@@ -1,216 +1,13 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::{
     completion::ToolDefinition,
-    message::{AssistantContent, Message, ToolResultContent, UserContent},
     tool::{
-        Tool, ToolCallExtensions, ToolDyn, ToolError, ToolExecutionResult, ToolFailure, ToolSet,
-        ToolSetError,
+        Tool, ToolCallExtensions, ToolDyn, ToolExecutionResult, ToolFailure, ToolSet, ToolSetError,
     },
-    wasm_compat::WasmBoxedFuture,
 };
-
-/// Name of the built-in meta-tool the model calls to discover deferred tools.
-///
-/// This name is **reserved**: user tools may not register it. The tool server
-/// intercepts calls to it (advertising the built-in only when deferred tools
-/// exist), so a user tool with this name could be advertised but never execute —
-/// registration is refused instead (with an error on the `Result`-returning
-/// [`ToolServerHandle`] methods, or a `tracing::warn!` + skip on the infallible
-/// builder methods). See [`is_reserved_tool_name`].
-pub const TOOL_SEARCH_NAME: &str = "tool_search";
-
-/// Whether `name` is a reserved built-in tool name that user tools may not use.
-///
-/// Currently the only reserved name is [`TOOL_SEARCH_NAME`]. Registration paths
-/// use this to refuse a colliding user tool rather than silently shadowing it.
-pub fn is_reserved_tool_name(name: &str) -> bool {
-    name == TOOL_SEARCH_NAME
-}
-
-/// Name + description of a deferred tool, handed to a [`ToolSearchFn`] so it can
-/// rank candidates without the model paying for their full JSON schemas.
-#[derive(Debug, Clone)]
-pub struct DeferredToolMeta {
-    /// The tool's name (its `tool_search` and dispatch key).
-    pub name: String,
-    /// The tool's human-readable description.
-    pub description: String,
-}
-
-/// Strategy the built-in `tool_search` meta-tool uses to rank deferred tools for
-/// a set of queries, returning the names to reveal (most relevant first).
-///
-/// The function is **async**, so a custom strategy can await IO — an embedding
-/// similarity query against a vector DB, a BM25 index, or an LLM picker. It takes
-/// owned arguments and returns a `'static` boxed future so it can outlive the
-/// borrow of the tool server's state. The default ([`default_tool_search_fn`]) is
-/// a dependency-free, case-insensitive keyword-overlap scorer over each tool's
-/// name + description; swap it via [`ToolServer::tool_search_fn`].
-pub type ToolSearchFn = Arc<
-    dyn Fn(Vec<String>, Vec<DeferredToolMeta>) -> WasmBoxedFuture<'static, Vec<String>>
-        + Send
-        + Sync,
->;
-
-/// The default [`ToolSearchFn`]: a keyword-overlap scorer (see
-/// [`keyword_overlap_search`]) wrapped in a ready future. The scoring is
-/// synchronous — the async signature exists so custom strategies can await IO.
-pub fn default_tool_search_fn(
-    queries: Vec<String>,
-    tools: Vec<DeferredToolMeta>,
-) -> WasmBoxedFuture<'static, Vec<String>> {
-    Box::pin(async move { keyword_overlap_search(&queries, &tools) })
-}
-
-/// Rank deferred tools by how many query tokens appear in each tool's name +
-/// description (case-insensitive), returning every tool with a non-zero score,
-/// most relevant first. The synchronous core of [`default_tool_search_fn`].
-pub fn keyword_overlap_search(queries: &[String], tools: &[DeferredToolMeta]) -> Vec<String> {
-    let query_tokens: BTreeSet<String> = queries
-        .iter()
-        .flat_map(|q| {
-            q.to_lowercase()
-                .split_whitespace()
-                .map(str::to_owned)
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    if query_tokens.is_empty() {
-        return Vec::new();
-    }
-    let mut scored: Vec<(usize, &str)> = tools
-        .iter()
-        .filter_map(|tool| {
-            let haystack = format!("{} {}", tool.name, tool.description).to_lowercase();
-            let score = query_tokens
-                .iter()
-                .filter(|token| haystack.contains(token.as_str()))
-                .count();
-            (score > 0).then_some((score, tool.name.as_str()))
-        })
-        .collect();
-    // Higher score first; ties keep first-registered order (stable sort).
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
-    scored
-        .into_iter()
-        .map(|(_, name)| name.to_owned())
-        .collect()
-}
-
-/// Arguments accepted by the built-in `tool_search` meta-tool.
-#[derive(Debug, Deserialize)]
-struct ToolSearchArgs {
-    /// One or more capability queries to search the deferred-tool catalog for.
-    queries: Vec<String>,
-}
-
-/// A single tool surfaced by a `tool_search` call.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RevealedTool {
-    name: String,
-    description: String,
-}
-
-/// The model-visible result envelope produced by a `tool_search` call. History
-/// reconstruction ([`revealed_deferred_tools`]) parses this back out to learn
-/// which deferred tools have been unlocked, so reveal state is stateless and
-/// resumable (derived from the transcript, never stored on the agent).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ToolSearchResult {
-    revealed_tools: Vec<RevealedTool>,
-}
-
-/// Failure modes of the built-in `tool_search` meta-tool, mapped to a classified
-/// [`ToolExecutionResult`] on the structured path and to a [`ToolServerError`] on
-/// the string path.
-enum ToolSearchError {
-    /// The `tool_search` arguments did not parse (invalid args, not "not found").
-    InvalidArgs(serde_json::Error),
-    /// The result envelope failed to serialize.
-    Serialize(serde_json::Error),
-}
-
-/// The [`ToolDefinition`] advertised for the built-in `tool_search` meta-tool.
-fn tool_search_definition() -> ToolDefinition {
-    ToolDefinition {
-        name: TOOL_SEARCH_NAME.to_string(),
-        description: "Search for additional tools by capability when the tool you need is not \
-                      already listed. Returns matching tool names and descriptions; then call a \
-                      returned tool by name on a later step."
-            .to_string(),
-        parameters: serde_json::json!({
-            "type": "object",
-            "properties": {
-                "queries": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Capability queries describing the tool(s) you are looking for."
-                }
-            },
-            "required": ["queries"]
-        }),
-    }
-}
-
-/// Reconstruct the set of revealed deferred-tool names from a chat transcript.
-///
-/// Scans for `tool_search` tool calls, then parses the [`ToolSearchResult`]
-/// envelope out of the tool-result messages that answer them, unioning the
-/// revealed names. Pure (history in → name set out), so it is trivially
-/// testable and keeps reveal state append-only and prompt-cache friendly.
-pub(crate) fn revealed_deferred_tools(history: &[Message]) -> BTreeSet<String> {
-    // Ids of every tool_search call in the transcript (both `id` and `call_id`,
-    // since providers correlate results by either).
-    let mut search_call_ids: BTreeSet<&str> = BTreeSet::new();
-    for msg in history {
-        if let Message::Assistant { content, .. } = msg {
-            for item in content.iter() {
-                if let AssistantContent::ToolCall(call) = item
-                    && call.function.name == TOOL_SEARCH_NAME
-                {
-                    search_call_ids.insert(call.id.as_str());
-                    if let Some(cid) = &call.call_id {
-                        search_call_ids.insert(cid.as_str());
-                    }
-                }
-            }
-        }
-    }
-
-    let mut revealed = BTreeSet::new();
-    for msg in history {
-        if let Message::User { content } = msg {
-            for item in content.iter() {
-                if let UserContent::ToolResult(result) = item {
-                    let answers_search = search_call_ids.contains(result.id.as_str())
-                        || result
-                            .call_id
-                            .as_deref()
-                            .is_some_and(|cid| search_call_ids.contains(cid));
-                    if !answers_search {
-                        continue;
-                    }
-                    for content in result.content.iter() {
-                        if let ToolResultContent::Text(text) = content
-                            && let Ok(parsed) =
-                                serde_json::from_str::<ToolSearchResult>(text.text())
-                        {
-                            for tool in parsed.revealed_tools {
-                                revealed.insert(tool.name);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    revealed
-}
 
 /// Append `name` to the advertised static-tool list unless already present.
 /// Registration is last-wins on the toolset, so the name list only needs
@@ -218,12 +15,6 @@ pub(crate) fn revealed_deferred_tools(history: &[Message]) -> BTreeSet<String> {
 /// while the toolset swaps in the new implementation. Providers reject
 /// duplicate function declarations, so the list must stay unique.
 fn push_unique_name(names: &mut Vec<String>, name: String) {
-    // The reserved built-in name never enters an advertised name list, so a user
-    // tool that collided with it (already refused + warned at the toolset level,
-    // or rejected at a `Result`-returning entry point) can never be advertised.
-    if is_reserved_tool_name(&name) {
-        return;
-    }
     if !names.contains(&name) {
         names.push(name);
     }
@@ -233,13 +24,8 @@ fn push_unique_name(names: &mut Vec<String>, name: String) {
 struct ToolServerState {
     /// Static tool names that persist until explicitly removed. Always advertised.
     static_tool_names: Vec<String>,
-    /// Deferred tool names: executable (registered in `toolset`) but withheld
-    /// from the advertised set until the model reveals them via `tool_search`.
-    deferred_tool_names: Vec<String>,
     /// The toolset where tools are registered and executed.
     toolset: ToolSet,
-    /// Search strategy backing the built-in `tool_search` meta-tool.
-    tool_search_fn: ToolSearchFn,
 }
 
 /// Builder for constructing a [`ToolServerHandle`].
@@ -248,9 +34,7 @@ struct ToolServerState {
 /// [`run()`](ToolServer::run).
 pub struct ToolServer {
     static_tool_names: Vec<String>,
-    deferred_tool_names: Vec<String>,
     toolset: ToolSet,
-    tool_search_fn: ToolSearchFn,
 }
 
 impl Default for ToolServer {
@@ -263,9 +47,7 @@ impl ToolServer {
     pub fn new() -> Self {
         Self {
             static_tool_names: Vec::new(),
-            deferred_tool_names: Vec::new(),
             toolset: ToolSet::default(),
-            tool_search_fn: Arc::new(default_tool_search_fn),
         }
     }
 
@@ -285,18 +67,8 @@ impl ToolServer {
         self
     }
 
-    pub(crate) fn add_deferred_tool_names(mut self, names: Vec<String>) -> Self {
-        for name in names {
-            push_unique_name(&mut self.deferred_tool_names, name);
-        }
-        self
-    }
-
     /// Add a static tool to the agent. Re-registering an existing name
     /// replaces the implementation (last wins) and keeps its position.
-    ///
-    /// The reserved built-in name ([`TOOL_SEARCH_NAME`]) is refused (logged and
-    /// skipped) rather than shadowing the built-in `tool_search` meta-tool.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.toolset.add_tool(tool);
@@ -334,46 +106,11 @@ impl ToolServer {
         self
     }
 
-    /// Register an executable tool that is **withheld** from the advertised tool
-    /// set until the model discovers it via the built-in `tool_search` meta-tool.
-    ///
-    /// Deferred tools cost zero schema tokens and zero `definition()` calls until
-    /// searched, so a catalog far larger than fits in a prompt can be registered
-    /// and surfaced on demand. Once revealed (via a `tool_search` call recorded in
-    /// the transcript), a deferred tool is advertised and dispatched like any other
-    /// tool. Registering any deferred tool auto-advertises `tool_search`.
-    ///
-    /// The reserved built-in name ([`TOOL_SEARCH_NAME`]) is refused (logged and
-    /// skipped).
-    pub fn deferred_tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = tool.name();
-        self.toolset.add_tool(tool);
-        push_unique_name(&mut self.deferred_tool_names, toolname);
-        self
-    }
-
-    /// Override the (async) strategy the built-in `tool_search` meta-tool uses to
-    /// rank deferred tools (default: keyword-overlap, see [`default_tool_search_fn`]).
-    /// The function may await IO — e.g. an embedding query or an LLM picker (see
-    /// [`ToolSearchFn`]).
-    pub fn tool_search_fn(
-        mut self,
-        search: impl Fn(Vec<String>, Vec<DeferredToolMeta>) -> WasmBoxedFuture<'static, Vec<String>>
-        + Send
-        + Sync
-        + 'static,
-    ) -> Self {
-        self.tool_search_fn = Arc::new(search);
-        self
-    }
-
     /// Consume the builder and return a shared [`ToolServerHandle`].
     pub fn run(self) -> ToolServerHandle {
         ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
             static_tool_names: self.static_tool_names,
-            deferred_tool_names: self.deferred_tool_names,
             toolset: self.toolset,
-            tool_search_fn: self.tool_search_fn,
         })))
     }
 }
@@ -389,16 +126,9 @@ pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 impl ToolServerHandle {
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
-    ///
-    /// Registering the reserved built-in name ([`TOOL_SEARCH_NAME`]) is rejected
-    /// with [`ToolServerError::ReservedToolName`] rather than silently shadowing
-    /// the built-in `tool_search` meta-tool.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
-        let toolname = tool.name();
-        if is_reserved_tool_name(&toolname) {
-            return Err(ToolServerError::ReservedToolName(toolname));
-        }
         let mut state = self.0.write().await;
+        let toolname = tool.name();
         push_unique_name(&mut state.static_tool_names, toolname);
         state.toolset.add_tool_boxed(Box::new(tool));
         Ok(())
@@ -409,15 +139,7 @@ impl ToolServerHandle {
     /// order, so the tools become visible to the LLM via
     /// [`Self::get_tool_defs`]. Existing names are replaced (last wins) and
     /// keep their position.
-    ///
-    /// Rejected with [`ToolServerError::ReservedToolName`] if `toolset` contains
-    /// the reserved built-in name ([`TOOL_SEARCH_NAME`]).
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
-        for name in toolset.ordered_names() {
-            if is_reserved_tool_name(name) {
-                return Err(ToolServerError::ReservedToolName(name.clone()));
-            }
-        }
         let mut state = self.0.write().await;
         for name in toolset.ordered_names() {
             push_unique_name(&mut state.static_tool_names, name.clone());
@@ -455,19 +177,6 @@ impl ToolServerHandle {
         args: &str,
         extensions: &ToolCallExtensions,
     ) -> Result<String, ToolServerError> {
-        // The built-in `tool_search` meta-tool is dispatched here too (not just in
-        // `call_tool_structured`), so `call_tool` and this method stay consistent
-        // with `get_tool_defs` advertising it. Invalid args surface as an error,
-        // not a `ToolNotFoundError`.
-        if tool_name == TOOL_SEARCH_NAME {
-            return self.run_tool_search(args).await.map_err(|e| match e {
-                ToolSearchError::InvalidArgs(e) => {
-                    ToolSetError::ToolCallError(ToolError::JsonError(e)).into()
-                }
-                ToolSearchError::Serialize(e) => ToolSetError::JsonError(e).into(),
-            });
-        }
-
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
@@ -505,24 +214,6 @@ impl ToolServerHandle {
         args: &str,
         extensions: &ToolCallExtensions,
     ) -> ToolExecutionResult {
-        // The `tool_search` meta-tool is a built-in, not a registered tool: it is
-        // advertised by `get_tool_defs` when deferred tools exist and dispatched
-        // here (and in `call_tool_with_extensions`). Map its error to a classified
-        // outcome so hooks/policies still observe an `InvalidArgs` failure.
-        if tool_name == TOOL_SEARCH_NAME {
-            return match self.run_tool_search(args).await {
-                Ok(json) => ToolExecutionResult::success(json),
-                Err(ToolSearchError::InvalidArgs(e)) => ToolExecutionResult::failed(
-                    format!("invalid tool_search arguments: {e}"),
-                    ToolFailure::invalid_args(e.to_string()),
-                ),
-                Err(ToolSearchError::Serialize(e)) => ToolExecutionResult::failed(
-                    format!("failed to serialize tool_search result: {e}"),
-                    ToolFailure::other(e.to_string()),
-                ),
-            };
-        }
-
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
@@ -543,73 +234,14 @@ impl ToolServerHandle {
         }
     }
 
-    /// Run the built-in `tool_search` meta-tool: rank deferred tools for the
-    /// requested queries (awaiting the configured [`ToolSearchFn`]) and return the
-    /// matches as a [`ToolSearchResult`] JSON envelope (parsed back out of the
-    /// transcript by [`revealed_deferred_tools`]). Deferred tool definitions are
-    /// resolved lazily — only here, at search time. Shared by
-    /// [`call_tool_with_extensions`](Self::call_tool_with_extensions) and
-    /// [`call_tool_structured`](Self::call_tool_structured).
-    async fn run_tool_search(&self, args: &str) -> Result<String, ToolSearchError> {
-        let queries = serde_json::from_str::<ToolSearchArgs>(args)
-            .map_err(ToolSearchError::InvalidArgs)?
-            .queries;
-
-        let (deferred_handles, search_fn) = {
+    /// Retrieve the definitions of every registered static tool, advertised to
+    /// the model. Rig has no dynamic-tool mechanism — the advertised set is simply
+    /// the tools registered on the server.
+    pub async fn get_tool_defs(&self) -> Result<Vec<ToolDefinition>, ToolServerError> {
+        let handles: Vec<_> = {
             let state = self.0.read().await;
-            let handles: Vec<(String, _)> = state
-                .deferred_tool_names
-                .iter()
-                .filter_map(|name| state.toolset.get(name).cloned().map(|t| (name.clone(), t)))
-                .collect();
-            (handles, state.tool_search_fn.clone())
-        };
-
-        let mut metas = Vec::with_capacity(deferred_handles.len());
-        for (name, handle) in &deferred_handles {
-            let def = handle.definition(String::new()).await;
-            metas.push(DeferredToolMeta {
-                name: name.clone(),
-                description: def.description,
-            });
-        }
-
-        let revealed_tools = search_fn(queries, metas.clone())
-            .await
-            .into_iter()
-            .filter_map(|name| {
-                metas.iter().find(|m| m.name == name).map(|m| RevealedTool {
-                    name: m.name.clone(),
-                    description: m.description.clone(),
-                })
-            })
-            .collect::<Vec<_>>();
-
-        serde_json::to_string(&ToolSearchResult { revealed_tools })
-            .map_err(ToolSearchError::Serialize)
-    }
-
-    /// Retrieve the tool definitions advertised to the model for a turn.
-    ///
-    /// The advertised set is: every static tool, the definitions of the deferred
-    /// tools named in `revealed` (reconstructed from history by
-    /// [`revealed_deferred_tools`]), and the built-in `tool_search` meta-tool when
-    /// any deferred tool is registered. Deferred tools that have not been revealed
-    /// are omitted, so their schemas never reach the model until searched.
-    pub async fn get_tool_defs(
-        &self,
-        revealed: &BTreeSet<String>,
-    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        let (has_deferred, handles) = {
-            let state = self.0.read().await;
-            // Static tools + revealed deferred tools; first-occurrence order.
-            let mut names: Vec<String> = state.static_tool_names.clone();
-            for name in &state.deferred_tool_names {
-                if revealed.contains(name) {
-                    push_unique_name(&mut names, name.clone());
-                }
-            }
-            let handles: Vec<_> = names
+            state
+                .static_tool_names
                 .iter()
                 .filter_map(|name| {
                     let handle = state.toolset.get(name).cloned();
@@ -618,18 +250,12 @@ impl ToolServerHandle {
                     }
                     handle
                 })
-                .collect();
-            (!state.deferred_tool_names.is_empty(), handles)
+                .collect()
         };
 
-        let mut tools = Vec::with_capacity(handles.len() + usize::from(has_deferred));
+        let mut tools = Vec::with_capacity(handles.len());
         for handle in handles {
             tools.push(handle.definition(String::new()).await);
-        }
-
-        // Advertise the meta-tool whenever there are deferred tools to discover.
-        if has_deferred {
-            tools.push(tool_search_definition());
         }
 
         // One shared toolset backs the lists, so the same name can appear twice
@@ -655,50 +281,41 @@ impl ToolServerHandle {
 pub enum ToolServerError {
     #[error("Toolset error: {0}")]
     ToolsetError(#[from] ToolSetError),
-    #[error(
-        "`{0}` is a reserved built-in tool name (the deferred-tool `tool_search` meta-tool); \
-         rename the tool"
-    )]
-    ReservedToolName(String),
 }
 
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use std::collections::BTreeSet;
-
     use crate::{
-        completion::{Message, ToolDefinition},
+        completion::ToolDefinition,
         test_utils::{MockAddTool, MockBarrierTool, MockControlledTool, MockSubtractTool},
-        tool::{
-            Tool, ToolCallExtensions, ToolOutcome, ToolSet,
-            server::{ToolServer, ToolServerError, revealed_deferred_tools},
-        },
+        tool::{Tool, ToolCallExtensions, ToolOutcome, ToolSet, server::ToolServer},
     };
 
-    /// A user tool that (illegally) claims the reserved built-in `tool_search`
-    /// name, used to prove such a tool is refused rather than silently shadowed.
+    /// A perfectly ordinary user tool that happens to be named `tool_search`. Rig
+    /// has no reserved tool names, so it registers, advertises, and executes like
+    /// any other tool.
     #[derive(Clone)]
-    struct ReservedNameTool;
+    struct ToolSearchNamedTool;
 
     #[derive(serde::Deserialize)]
     struct EmptyArgs {}
 
     #[derive(Debug, thiserror::Error)]
-    #[error("reserved name tool error")]
-    struct ReservedErr;
+    #[error("tool error")]
+    struct ToolSearchErr;
 
-    impl Tool for ReservedNameTool {
-        const NAME: &'static str = super::TOOL_SEARCH_NAME;
-        type Error = ReservedErr;
+    impl Tool for ToolSearchNamedTool {
+        const NAME: &'static str = "tool_search";
+        type Error = ToolSearchErr;
         type Args = EmptyArgs;
         type Output = String;
 
         async fn definition(&self, _prompt: String) -> ToolDefinition {
             ToolDefinition {
                 name: Self::NAME.to_string(),
-                description: "a user tool that should never be registered".to_string(),
+                description: "a user tool named tool_search".to_string(),
                 parameters: serde_json::json!({ "type": "object", "properties": {} }),
             }
         }
@@ -709,13 +326,74 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn get_tool_defs_returns_only_registered_static_tools() {
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .run();
+        let mut names: Vec<String> = handle
+            .get_tool_defs()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["add".to_string(), "subtract".to_string()]);
+    }
+
+    #[tokio::test]
+    pub async fn user_tool_named_tool_search_is_registered_and_executable() {
+        // `tool_search` is not reserved: a user tool with that name is advertised
+        // and dispatched normally.
+        let handle = ToolServer::new().tool(ToolSearchNamedTool).run();
+
+        let names: Vec<String> = handle
+            .get_tool_defs()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        assert_eq!(
+            names,
+            vec!["tool_search".to_string()],
+            "user tool is advertised"
+        );
+
+        let out = handle.call_tool("tool_search", "{}").await.unwrap();
+        assert_eq!(out, "user tool ran", "user tool executes via call_tool");
+
+        let structured = handle
+            .call_tool_structured("tool_search", "{}", &ToolCallExtensions::EMPTY)
+            .await;
+        assert!(matches!(structured.outcome(), ToolOutcome::Success));
+        assert_eq!(structured.model_output(), "user tool ran");
+    }
+
+    #[tokio::test]
+    pub async fn removing_a_tool_removes_it_from_defs_and_dispatch() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        handle.remove_tool("add").await.unwrap();
+
+        assert!(
+            handle.get_tool_defs().await.unwrap().is_empty(),
+            "removed tool is no longer advertised"
+        );
+        assert!(
+            handle.call_tool("add", "{}").await.is_err(),
+            "removed tool is no longer dispatchable"
+        );
+    }
+
+    #[tokio::test]
     pub async fn test_toolserver() {
         let server = ToolServer::new();
 
         let handle = server.run();
 
         handle.add_tool(MockAddTool).await.unwrap();
-        let res = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
+        let res = handle.get_tool_defs().await.unwrap();
 
         assert_eq!(res.len(), 1);
 
@@ -725,7 +403,7 @@ mod tests {
         assert_eq!(res, "7");
 
         handle.remove_tool("add").await.unwrap();
-        let res = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
+        let res = handle.get_tool_defs().await.unwrap();
 
         assert_eq!(res.len(), 0);
     }
@@ -736,7 +414,7 @@ mod tests {
             let handle = ToolServer::new().run();
             handle.add_tool(MockAddTool).await.unwrap();
             handle.add_tool(MockSubtractTool).await.unwrap();
-            handle.get_tool_defs(&BTreeSet::new()).await.unwrap()
+            handle.get_tool_defs().await.unwrap()
         };
         via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -746,7 +424,7 @@ mod tests {
             toolset.add_tool(MockAddTool);
             toolset.add_tool(MockSubtractTool);
             handle.append_toolset(toolset).await.unwrap();
-            handle.get_tool_defs(&BTreeSet::new()).await.unwrap()
+            handle.get_tool_defs().await.unwrap()
         };
         via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -761,333 +439,6 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn deferred_tool_absent_until_searched() {
-        // A deferred tool is executable but withheld from the advertised set;
-        // `tool_search` is advertised in its place until the tool is revealed.
-        let handle = ToolServer::new()
-            .tool(MockAddTool)
-            .deferred_tool(MockSubtractTool)
-            .run();
-
-        let defs = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
-        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
-        assert!(names.contains(&"add"), "static tool advertised: {names:?}");
-        assert!(
-            names.contains(&"tool_search"),
-            "tool_search advertised when deferred tools exist: {names:?}"
-        );
-        assert!(
-            !names.contains(&"subtract"),
-            "deferred tool withheld until searched: {names:?}"
-        );
-    }
-
-    #[tokio::test]
-    pub async fn tool_search_absent_without_deferred_tools() {
-        let handle = ToolServer::new().tool(MockAddTool).run();
-        let defs = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
-        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
-        assert_eq!(names, vec!["add"], "no tool_search without deferred tools");
-    }
-
-    #[tokio::test]
-    pub async fn tool_search_reveals_and_advertises_deferred_tool() {
-        let handle = ToolServer::new()
-            .tool(MockAddTool)
-            .deferred_tool(MockSubtractTool)
-            .run();
-
-        // The model calls tool_search; the result envelope names the match.
-        let result = handle
-            .call_tool_structured(
-                "tool_search",
-                &serde_json::json!({ "queries": ["subtract"] }).to_string(),
-                &ToolCallExtensions::EMPTY,
-            )
-            .await;
-        assert!(matches!(result.outcome(), ToolOutcome::Success));
-        assert!(
-            result.model_output().contains("subtract"),
-            "tool_search result names the match: {}",
-            result.model_output()
-        );
-
-        // Reveal state reconstructed from a transcript carrying that result.
-        let history: Vec<Message> = serde_json::from_value(serde_json::json!([
-            {"role": "assistant", "content": [
-                {"id": "call-1", "function": {"name": "tool_search", "arguments": {"queries": ["subtract"]}}}
-            ]},
-            {"role": "user", "content": [
-                {"type": "toolresult", "id": "call-1", "content": [{"type": "text", "text": result.model_output()}]}
-            ]}
-        ]))
-        .unwrap();
-        let revealed = revealed_deferred_tools(&history);
-        assert!(
-            revealed.contains("subtract"),
-            "reveal reconstructed from history: {revealed:?}"
-        );
-
-        // Feeding the reveal set into get_tool_defs advertises the tool, and it
-        // dispatches like any other tool.
-        let defs = handle.get_tool_defs(&revealed).await.unwrap();
-        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
-        assert!(
-            names.contains(&"subtract"),
-            "revealed tool advertised: {names:?}"
-        );
-        let out = handle
-            .call_tool("subtract", &serde_json::json!({"x": 5, "y": 3}).to_string())
-            .await
-            .unwrap();
-        assert_eq!(out, "2");
-    }
-
-    #[tokio::test]
-    pub async fn tool_search_no_match_reveals_nothing() {
-        let handle = ToolServer::new().deferred_tool(MockSubtractTool).run();
-        let result = handle
-            .call_tool_structured(
-                "tool_search",
-                &serde_json::json!({ "queries": ["totally unrelated capability"] }).to_string(),
-                &ToolCallExtensions::EMPTY,
-            )
-            .await;
-        assert!(matches!(result.outcome(), ToolOutcome::Success));
-        let history: Vec<Message> = serde_json::from_value(serde_json::json!([
-            {"role": "assistant", "content": [
-                {"id": "c1", "function": {"name": "tool_search", "arguments": {"queries": ["x"]}}}
-            ]},
-            {"role": "user", "content": [
-                {"type": "toolresult", "id": "c1", "content": [{"type": "text", "text": result.model_output()}]}
-            ]}
-        ]))
-        .unwrap();
-        assert!(
-            revealed_deferred_tools(&history).is_empty(),
-            "no matches reveals nothing"
-        );
-    }
-
-    #[tokio::test]
-    pub async fn revealed_deferred_tools_ignores_non_search_tool_results() {
-        // A normal tool result that happens to be JSON must not be mistaken for a
-        // tool_search reveal (correlation is by the tool_search call id).
-        let history: Vec<Message> = serde_json::from_value(serde_json::json!([
-            {"role": "assistant", "content": [
-                {"id": "c1", "function": {"name": "add", "arguments": {"x": 1, "y": 2}}}
-            ]},
-            {"role": "user", "content": [
-                {"type": "toolresult", "id": "c1", "content": [
-                    {"type": "text", "text": "{\"revealed_tools\":[{\"name\":\"subtract\",\"description\":\"d\"}]}"}
-                ]}
-            ]}
-        ]))
-        .unwrap();
-        assert!(
-            revealed_deferred_tools(&history).is_empty(),
-            "only tool_search results reveal tools"
-        );
-    }
-
-    #[tokio::test]
-    pub async fn tool_search_uses_custom_async_search_fn() {
-        use super::{DeferredToolMeta, ToolSearchResult};
-        use crate::wasm_compat::WasmBoxedFuture;
-
-        // A custom *async* search fn: it awaits a yield (proving the async
-        // signature works) then reveals every deferred tool whose name contains
-        // the first query.
-        let handle = ToolServer::new()
-            .deferred_tool(MockAddTool)
-            .deferred_tool(MockSubtractTool)
-            .tool_search_fn(
-                |queries: Vec<String>,
-                 tools: Vec<DeferredToolMeta>|
-                 -> WasmBoxedFuture<'static, Vec<String>> {
-                    Box::pin(async move {
-                        tokio::task::yield_now().await;
-                        let needle = queries.first().cloned().unwrap_or_default();
-                        tools
-                            .into_iter()
-                            .filter(|t| t.name.contains(&needle))
-                            .map(|t| t.name)
-                            .collect()
-                    })
-                },
-            )
-            .run();
-
-        let out = handle
-            .call_tool(
-                "tool_search",
-                &serde_json::json!({ "queries": ["sub"] }).to_string(),
-            )
-            .await
-            .unwrap();
-        let parsed: ToolSearchResult = serde_json::from_str(&out).unwrap();
-        let names: Vec<&str> = parsed
-            .revealed_tools
-            .iter()
-            .map(|t| t.name.as_str())
-            .collect();
-        assert_eq!(
-            names,
-            vec!["subtract"],
-            "custom async search fn drives the reveal set"
-        );
-    }
-
-    #[tokio::test]
-    pub async fn call_tool_dispatches_tool_search() {
-        // The public string path (`call_tool` -> `call_tool_with_extensions`)
-        // dispatches the built-in meta-tool and returns the same JSON envelope the
-        // structured path produces.
-        let handle = ToolServer::new().deferred_tool(MockSubtractTool).run();
-        let args = serde_json::json!({ "queries": ["subtract"] }).to_string();
-
-        let via_call = handle.call_tool("tool_search", &args).await.unwrap();
-        let via_structured = handle
-            .call_tool_structured("tool_search", &args, &ToolCallExtensions::EMPTY)
-            .await;
-
-        assert!(matches!(via_structured.outcome(), ToolOutcome::Success));
-        assert_eq!(
-            via_call,
-            via_structured.model_output(),
-            "both dispatch paths return the same envelope"
-        );
-        assert!(via_call.contains("subtract"));
-    }
-
-    #[tokio::test]
-    pub async fn call_tool_invalid_tool_search_args_is_error_not_not_found() {
-        let handle = ToolServer::new().deferred_tool(MockSubtractTool).run();
-        let err = handle
-            .call_tool("tool_search", "{ not valid json }")
-            .await
-            .expect_err("invalid tool_search args should error");
-        assert!(
-            !matches!(
-                err,
-                super::ToolServerError::ToolsetError(crate::tool::ToolSetError::ToolNotFoundError(
-                    _
-                ))
-            ),
-            "invalid args must be an error, not tool-not-found: {err:?}"
-        );
-    }
-
-    #[tokio::test]
-    pub async fn call_tool_structured_invalid_tool_search_args_is_invalid_args() {
-        use crate::tool::ToolFailureKind;
-        let handle = ToolServer::new().deferred_tool(MockSubtractTool).run();
-        let result = handle
-            .call_tool_structured("tool_search", "{ not json }", &ToolCallExtensions::EMPTY)
-            .await;
-        assert!(
-            result.outcome().is_error_kind(ToolFailureKind::InvalidArgs),
-            "structured path classifies invalid tool_search args as InvalidArgs: {:?}",
-            result.outcome()
-        );
-    }
-
-    #[tokio::test]
-    pub async fn reserved_static_tool_search_is_refused_not_shadowed() {
-        // A user static tool named `tool_search` must not be registered/advertised
-        // (it could never execute — the server intercepts `tool_search`).
-        let handle = ToolServer::new()
-            .tool(MockAddTool)
-            .tool(ReservedNameTool)
-            .run();
-        let defs = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
-        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
-        assert_eq!(
-            names,
-            vec!["add"],
-            "the reserved `tool_search` user tool must not be advertised: {names:?}"
-        );
-    }
-
-    #[tokio::test]
-    pub async fn reserved_deferred_tool_search_is_refused() {
-        // A deferred tool named `tool_search` is refused: it never registers, so no
-        // deferred tools exist and the built-in `tool_search` is not advertised.
-        let handle = ToolServer::new().deferred_tool(ReservedNameTool).run();
-        let defs = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
-        assert!(
-            defs.is_empty(),
-            "a refused deferred `tool_search` leaves no tools advertised: {:?}",
-            defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>()
-        );
-    }
-
-    #[tokio::test]
-    pub async fn get_tool_defs_never_emits_duplicate_tool_search() {
-        // A real deferred tool advertises the built-in `tool_search`; a colliding
-        // user tool named `tool_search` is refused, so exactly one is emitted.
-        let handle = ToolServer::new()
-            .deferred_tool(MockSubtractTool)
-            .tool(ReservedNameTool)
-            .run();
-        // Reveal the deferred tool so both it and `tool_search` are advertised.
-        let revealed: BTreeSet<String> = ["subtract".to_string()].into_iter().collect();
-        let defs = handle.get_tool_defs(&revealed).await.unwrap();
-        let tool_search_count = defs
-            .iter()
-            .filter(|d| d.name == super::TOOL_SEARCH_NAME)
-            .count();
-        assert_eq!(
-            tool_search_count,
-            1,
-            "exactly one tool_search definition: {:?}",
-            defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>()
-        );
-    }
-
-    #[tokio::test]
-    pub async fn handle_add_tool_reserved_name_errors() {
-        let handle = ToolServer::new().run();
-        let err = handle
-            .add_tool(ReservedNameTool)
-            .await
-            .expect_err("adding a reserved-name tool must error");
-        assert!(
-            matches!(&err, ToolServerError::ReservedToolName(name) if name == "tool_search"),
-            "expected ReservedToolName error, got {err:?}"
-        );
-    }
-
-    #[tokio::test]
-    pub async fn handle_append_toolset_with_reserved_name_errors() {
-        // The reserved name cannot even enter a ToolSet (insert refuses it), so we
-        // assert the direct-add error path; append_toolset is guarded the same way.
-        let handle = ToolServer::new().run();
-        let mut toolset = ToolSet::default();
-        toolset.add_tool(MockAddTool);
-        // ToolSet::add_tool refuses the reserved name, so the toolset stays clean.
-        toolset.add_tool(ReservedNameTool);
-        assert!(
-            !toolset
-                .ordered_names()
-                .any(|n| n == super::TOOL_SEARCH_NAME),
-            "ToolSet must refuse the reserved name"
-        );
-        handle
-            .append_toolset(toolset)
-            .await
-            .expect("a toolset without the reserved name appends fine");
-        let names: Vec<String> = handle
-            .get_tool_defs(&BTreeSet::new())
-            .await
-            .unwrap()
-            .iter()
-            .map(|d| d.name.clone())
-            .collect();
-        assert_eq!(names, vec!["add".to_string()]);
-    }
-
-    #[tokio::test]
     pub async fn duplicate_registration_advertises_one_definition() {
         let handle = ToolServer::new().tool(MockAddTool).run();
         handle.add_tool(MockAddTool).await.unwrap();
@@ -1096,7 +447,7 @@ mod tests {
         toolset.add_tool(MockAddTool);
         handle.append_toolset(toolset).await.unwrap();
 
-        let defs = handle.get_tool_defs(&BTreeSet::new()).await.unwrap();
+        let defs = handle.get_tool_defs().await.unwrap();
         assert_eq!(
             defs.len(),
             1,
