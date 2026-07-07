@@ -250,7 +250,7 @@ impl<M: CompletionModel> AgentHook<M> for ScratchpadReader {
 
 /// Applies a fixed [`RequestPatch`] on every `CompletionCall` — the workhorse for
 /// the `RequestPatch` suite (preamble / temperature / max_tokens / tool_choice /
-/// active_tools / additional_params / extra_context / history).
+/// additional_params / extra_context / history).
 #[derive(Clone)]
 pub(crate) struct ApplyPatch(pub(crate) RequestPatch);
 

@@ -3537,93 +3537,6 @@ mod tests {
         );
     }
 
-    /// `ToolChoice::Required` + a hook whose `active_tools([])` advertises no tools
-    /// is a **local** error: the run fails before any provider round-trip.
-    #[tokio::test]
-    async fn required_with_empty_active_tools_errors_locally_without_provider_call() {
-        struct EmptyActiveToolsHook;
-        impl<M: CompletionModel> AgentHook<M> for EmptyActiveToolsHook {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::CompletionCall { .. } = event {
-                    Flow::patch_request(RequestPatch::new().active_tools(Vec::<String>::new()))
-                } else {
-                    Flow::cont()
-                }
-            }
-        }
-
-        let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
-        let probe = model.clone();
-        let err = AgentBuilder::new(model)
-            .tool(MockAddTool)
-            .tool_choice(ToolChoice::Required)
-            .add_hook(EmptyActiveToolsHook)
-            .build()
-            .runner("go")
-            .run()
-            .await
-            .expect_err("Required with an empty active_tools filter must fail locally");
-
-        assert!(
-            probe.requests().is_empty(),
-            "the request must fail locally, with no provider round-trip"
-        );
-        let msg = err.to_string();
-        assert!(
-            msg.contains("Required"),
-            "error should mention Required: {msg}"
-        );
-        assert!(
-            msg.contains("active_tools"),
-            "error should name active_tools: {msg}"
-        );
-    }
-
-    /// `ToolChoice::Specific` naming a tool that a hook's `active_tools` filtered
-    /// out is a **local** error naming the filter, before any provider round-trip.
-    #[tokio::test]
-    async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call() {
-        struct FilterToAddHook;
-        impl<M: CompletionModel> AgentHook<M> for FilterToAddHook {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::CompletionCall { .. } = event {
-                    Flow::patch_request(RequestPatch::new().active_tools(["add"]))
-                } else {
-                    Flow::cont()
-                }
-            }
-        }
-
-        let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
-        let probe = model.clone();
-        let err = AgentBuilder::new(model)
-            .tool(MockAddTool)
-            .tool(MockSubtractTool)
-            .tool_choice(ToolChoice::Specific {
-                function_names: vec!["subtract".to_string()],
-            })
-            .add_hook(FilterToAddHook)
-            .build()
-            .runner("go")
-            .run()
-            .await
-            .expect_err("Specific naming a filtered-out tool must fail locally");
-
-        assert!(
-            probe.requests().is_empty(),
-            "the request must fail locally, with no provider round-trip"
-        );
-        let msg = err.to_string();
-        assert!(
-            msg.contains("subtract"),
-            "error should name the missing tool: {msg}"
-        );
-        assert!(
-            msg.contains("active_tools"),
-            "error should name active_tools: {msg}"
-        );
-    }
-
     /// `tool_concurrency(0)` is clamped to 1 and runs to completion. The timeout
     /// guards against a regression that lets `concurrency == 0` reach a
     /// `buffer_unordered(0)` (which never makes progress) instead of the
@@ -4874,8 +4787,8 @@ mod tests {
     }
 
     /// A hook that patches the model request for the turn (`Flow::PatchRequest`
-    /// on `CompletionCall`): forces tool_choice + temperature, narrows the
-    /// advertised tools to an allow-list, and injects a passthrough param.
+    /// on `CompletionCall`): forces tool_choice + temperature and injects a
+    /// passthrough param.
     struct PatchRequestHook;
 
     impl<M: CompletionModel> AgentHook<M> for PatchRequestHook {
@@ -4887,7 +4800,6 @@ mod tests {
                         .temperature(0.25)
                         .max_tokens(OVERRIDE_MAX_TOKENS)
                         .tool_choice(ToolChoice::Required)
-                        .active_tools(["add"])
                         .additional_params(json!({"injected": true})),
                 )
             } else {
@@ -4943,8 +4855,8 @@ mod tests {
 
     /// A `Flow::PatchRequest` hook patches the request for the turn identically
     /// under `run()` and `stream()`: the captured completion request shows the
-    /// overridden temperature/tool_choice, the merged additional_params, and the
-    /// tool set narrowed to the allow-list — on both drivers.
+    /// overridden temperature/tool_choice and the merged additional_params — on
+    /// both drivers.
     #[tokio::test]
     async fn patch_request_parity_across_run_and_stream() {
         fn assert_request(req: &crate::completion::CompletionRequest) {
@@ -4969,12 +4881,6 @@ mod tests {
                 "override preamble wins over the agent's baseline and is the leading system message"
             );
             assert!(matches!(req.tool_choice, Some(ToolChoice::Required)));
-            let tool_names: Vec<&str> = req.tools.iter().map(|t| t.name.as_str()).collect();
-            assert_eq!(
-                tool_names,
-                ["add"],
-                "active_tools narrows the advertised set to `add` (drops `subtract`)"
-            );
             // additional_params is shallow-merged: the agent baseline survives and
             // the override's key is added.
             let params = req.additional_params.as_ref().expect("additional_params");
@@ -5576,8 +5482,8 @@ mod tests {
     }
 
     /// A real tool whose name equals the default synthetic output-tool name
-    /// (`final_result`). Used to prove a per-turn `active_tools` filter cannot
-    /// make the picked output-tool name collide with it.
+    /// (`final_result`). Used to prove the picked output-tool name does not
+    /// collide with a registered real tool of that name.
     struct FinalResultTool;
 
     impl Tool for FinalResultTool {
@@ -5599,30 +5505,12 @@ mod tests {
         }
     }
 
-    /// Narrows the advertised tools to `add` for the turn, filtering out the real
-    /// `final_result` tool.
-    struct ActiveToolsAddOnly;
-
-    impl<M: CompletionModel> AgentHook<M> for ActiveToolsAddOnly {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::CompletionCall { .. } = event {
-                Flow::patch_request(RequestPatch::new().active_tools(["add"]))
-            } else {
-                Flow::cont()
-            }
-        }
-    }
-
-    /// Regression guard: a per-turn `active_tools` allow-list that filters out a
-    /// real tool whose name equals the default synthetic output-tool name must not
-    /// let the picked output-tool name collide with that (filtered) real tool. The
-    /// name is pinned for the whole run, so picking it against the FULL advertised
-    /// set — not just this turn's narrowed executable set — keeps it collision-safe
-    /// once the filter lifts on a later turn. With the bug, the output tool would
-    /// be named `final_result` (picked against the narrowed `{add}`), colliding
-    /// with the real `final_result` whenever the filter is gone.
+    /// Regression guard: with a real static tool named `final_result` (the default
+    /// synthetic output-tool name) registered, Tool output mode must pick a
+    /// collision-safe output-tool name (`final_result_1`) rather than shadowing the
+    /// real tool — and the run must finalize by calling that picked name.
     #[tokio::test]
-    async fn active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_real_tool() {
+    async fn output_tool_avoids_collision_with_a_real_final_result_tool() {
         // The model finalizes by calling the (correctly-picked) output tool, so a
         // run on the fixed code completes cleanly in a single turn. Asserting the
         // run succeeds also exercises finalization: the model's call to
@@ -5639,7 +5527,6 @@ mod tests {
             .tool(FinalResultTool)
             .output_schema::<Answer>()
             .output_mode(OutputMode::Tool)
-            .add_hook(ActiveToolsAddOnly)
             .build()
             .runner("go")
             .max_turns(2)
@@ -5660,18 +5547,12 @@ mod tests {
         );
         let tool_names: Vec<&str> = requests[0].tools.iter().map(|t| t.name.as_str()).collect();
         assert!(
-            tool_names.contains(&"add"),
-            "active_tools keeps `add` advertised, saw {tool_names:?}"
+            tool_names.contains(&"final_result"),
+            "the real `final_result` tool is advertised, saw {tool_names:?}"
         );
         assert!(
             tool_names.contains(&"final_result_1"),
-            "the synthetic output tool must avoid the filtered real `final_result` name, \
-             saw {tool_names:?}"
-        );
-        assert!(
-            !tool_names.contains(&"final_result"),
-            "the real `final_result` is filtered out and the output tool must not reuse \
-             its name, saw {tool_names:?}"
+            "the synthetic output tool avoids the real `final_result` name, saw {tool_names:?}"
         );
     }
 

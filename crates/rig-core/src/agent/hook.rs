@@ -680,12 +680,9 @@ impl<M: CompletionModel> StepEvent<'_, M> {
 /// | `additional_params` | shallow-merge top-level keys, later hook wins | shallow-merge onto baseline params |
 /// | `preamble` | last writer wins (warns on conflict) | replaces |
 /// | `temperature`, `max_tokens`, `tool_choice` | last writer wins (warns on conflict) | replaces |
-/// | `active_tools` | set **intersection** (warns when empty) | narrows the advertised set |
 /// | `history` | last writer wins (warns on conflict) | replaces the messages sent this turn |
 ///
-/// `active_tools` intersects rather than last-writer-wins because it is an
-/// allow-list guardrail: two narrowing hooks must compose as *narrowing*. All
-/// last-writer-wins conflicts emit a `tracing::warn!` so composition stays
+/// All last-writer-wins conflicts emit a `tracing::warn!` so composition stays
 /// debuggable — additive guidance belongs in `extra_context` documents, not in
 /// preamble concatenation.
 ///
@@ -695,7 +692,6 @@ impl<M: CompletionModel> StepEvent<'_, M> {
 /// Flow::patch_request(
 ///     RequestPatch::new()
 ///         .tool_choice(ToolChoice::Required)
-///         .active_tools(["search"])
 ///         .temperature(0.0),
 /// )
 /// ```
@@ -710,9 +706,6 @@ pub struct RequestPatch {
     pub max_tokens: Option<u64>,
     /// Override the tool choice for this turn.
     pub tool_choice: Option<ToolChoice>,
-    /// Restrict the advertised tools to this allow-list (by name) for this turn.
-    /// `Some(vec![])` advertises no executable tools; `None` keeps the full set.
-    pub active_tools: Option<Vec<String>>,
     /// Provider-passthrough params shallow-merged onto the agent's for this turn.
     pub additional_params: Option<serde_json::Value>,
     /// Extra context documents appended (after the agent's static context) for
@@ -777,23 +770,6 @@ impl RequestPatch {
         self
     }
 
-    /// Restrict the advertised tools to this allow-list (by name) for this turn.
-    ///
-    /// This narrows the executable tool set, so it composes with `tool_choice`:
-    /// if the effective tool choice is a [`ToolChoice::Specific`] naming a tool
-    /// that `active_tools` filters out (e.g. the agent's baseline choice is
-    /// inherited because this patch didn't set its own), the request fails
-    /// closed with a request error rather than silently forcing a dropped tool.
-    /// When narrowing the set, set a compatible `tool_choice` in the same patch.
-    pub fn active_tools<I, S>(mut self, names: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.active_tools = Some(names.into_iter().map(Into::into).collect());
-        self
-    }
-
     /// Shallow-merge these provider-passthrough params onto the agent's for this
     /// turn.
     pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
@@ -835,7 +811,6 @@ impl RequestPatch {
             && self.temperature.is_none()
             && self.max_tokens.is_none()
             && self.tool_choice.is_none()
-            && self.active_tools.is_none()
             && self.additional_params.is_none()
             && self.extra_context.is_empty()
             && self.history.is_none()
@@ -864,26 +839,6 @@ impl RequestPatch {
         self.max_tokens = merge_last_wins(self.max_tokens, later.max_tokens, "max_tokens");
         self.tool_choice = merge_last_wins(self.tool_choice, later.tool_choice, "tool_choice");
         self.history = merge_last_wins(self.history, later.history, "history");
-
-        // active_tools: set intersection (two narrowing guardrails compose as
-        // narrowing). One-sided keeps the present allow-list.
-        self.active_tools = match (self.active_tools.take(), later.active_tools) {
-            (Some(earlier), Some(later)) => {
-                let later_set: std::collections::BTreeSet<&String> = later.iter().collect();
-                let intersection: Vec<String> = earlier
-                    .into_iter()
-                    .filter(|name| later_set.contains(name))
-                    .collect();
-                if intersection.is_empty() {
-                    tracing::warn!(
-                        "two hooks' `active_tools` allow-lists have an empty intersection; \
-                         no executable tools will be advertised this turn"
-                    );
-                }
-                Some(intersection)
-            }
-            (earlier, later) => earlier.or(later),
-        };
 
         self
     }
@@ -1930,32 +1885,6 @@ mod tests {
         let a = RequestPatch::new().temperature(0.1);
         let b = RequestPatch::new().temperature(0.9);
         assert_eq!(a.merge(b).temperature, Some(0.9));
-    }
-
-    #[test]
-    fn merge_active_tools_intersects() {
-        let a = RequestPatch::new().active_tools(["search", "add", "sub"]);
-        let b = RequestPatch::new().active_tools(["add", "sub", "mul"]);
-        let merged = a.merge(b);
-        assert_eq!(
-            merged.active_tools,
-            Some(vec!["add".to_string(), "sub".to_string()])
-        );
-    }
-
-    #[test]
-    fn merge_active_tools_empty_intersection_yields_empty() {
-        let a = RequestPatch::new().active_tools(["search"]);
-        let b = RequestPatch::new().active_tools(["add"]);
-        let merged = a.merge(b);
-        assert_eq!(merged.active_tools, Some(vec![]));
-    }
-
-    #[test]
-    fn merge_one_sided_active_tools_keeps_the_present_list() {
-        let a = RequestPatch::new().active_tools(["search"]);
-        let b = RequestPatch::new();
-        assert_eq!(a.merge(b).active_tools, Some(vec!["search".to_string()]));
     }
 
     // --- Scratchpad tests ---

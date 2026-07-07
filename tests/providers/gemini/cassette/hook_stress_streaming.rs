@@ -1,18 +1,16 @@
 //! Hook-system stress suite: streaming lifecycle and blocking-vs-streaming
 //! parity — `TextDelta` / `StreamResponseFinish` / `ModelTurnFinished` on the
 //! streaming surface, `RewriteResult` redaction reaching the `FinalResponse`,
-//! `active_tools` narrowing and `Skip` on the streaming driver, and the same
-//! workflow producing the same answer on both surfaces. Recorded against real
-//! Gemini.
+//! `Skip` on the streaming driver, and the same workflow producing the same
+//! answer on both surfaces. Recorded against real Gemini.
 
-use rig::agent::RequestPatch;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
 
 use super::super::hook_stress_support::{
-    ApplyPatch, CHAIN_PREAMBLE, EventTap, ResultRewrite, RewriteToolResult,
+    CHAIN_PREAMBLE, EventTap, ResultRewrite, RewriteToolResult,
 };
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract, SkipToolHook};
@@ -151,53 +149,6 @@ async fn streaming_result_redaction_reaches_final_response() {
             assert!(
                 !final_text.contains("10"),
                 "the raw tool result must not reach the model: {final_text:?}"
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn streaming_active_tools_narrowing_filters_a_tool() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let add_calls = add.counter.clone();
-    let subtract_calls = subtract.counter.clone();
-
-    with_gemini_cassette(
-        "hook_stress_streaming/streaming_active_tools_narrowing_filters_a_tool",
-        |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a calculator assistant. Use a provided tool for any arithmetic you \
-                     can; if a tool is unavailable, say so and continue.",
-                )
-                .tool(add)
-                .tool(subtract)
-                .build();
-
-            let mut stream = agent
-                .stream_prompt("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
-                .add_hook(ApplyPatch(
-                    RequestPatch::new().active_tools(["add"]).temperature(0.0),
-                ))
-                .multi_turn(5)
-                .await;
-
-            let final_text = collect_stream_final_response(&mut stream)
-                .await
-                .expect("a final response");
-            assert_nonempty_response(&final_text);
-            assert!(
-                add_calls.count() >= 1,
-                "add stays advertised and should run"
-            );
-            assert_eq!(
-                subtract_calls.count(),
-                0,
-                "subtract is filtered out of active_tools on the streaming surface too"
             );
         },
     )

@@ -189,8 +189,8 @@ silently proceeding:
 
 `RequestPatch` is per-turn and non-sticky (it never mutates the agent baseline);
 its per-field merge rules (append `extra_context`, shallow-merge
-`additional_params`, intersect `active_tools`, last-writer-wins scalars/`history`
-with a warning) are documented on the type. Every new hook semantic must behave
+`additional_params`, last-writer-wins scalars/`history` with a warning) are
+documented on the type. Every new hook semantic must behave
 identically on both surfaces — check streaming and non-streaming paths
 (`AgentRunner::stream` and `AgentRunner::run` share one drive loop, `drive_agent`).
 

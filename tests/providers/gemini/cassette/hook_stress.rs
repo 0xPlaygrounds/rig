@@ -4,9 +4,8 @@
 //! drive rich multi-turn workflows and assert *structural invariants* of the
 //! merged hook system: `HookContext` identity/turn/streaming, a shared
 //! `Scratchpad` threaded across hooks and turns, `RequestPatch` context
-//! injection + `active_tools` narrowing, chained `RewriteArgs` -> observe ->
-//! `RewriteResult` redaction, and streaming lifecycle ordering / blocking-vs-
-//! streaming parity.
+//! injection, chained `RewriteArgs` -> observe -> `RewriteResult` redaction, and
+//! streaming lifecycle ordering / blocking-vs-streaming parity.
 //!
 //! ## On loose assertions
 //!
@@ -23,11 +22,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures::StreamExt;
-use rig::agent::{
-    AgentHook, Flow, HookContext, MultiTurnStreamItem, RequestPatch, StepEvent, StreamingError,
-};
+use rig::agent::{AgentHook, Flow, HookContext, MultiTurnStreamItem, StepEvent, StreamingError};
 use rig::client::CompletionClient;
-use rig::completion::{Document, Prompt};
+use rig::completion::Prompt;
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
 use rig::tool::Tool;
@@ -157,35 +154,6 @@ impl AgentHook<GeminiModel> for ScratchpadReader {
             self.tallies.lock().expect("tallies").push(tally);
         }
         Flow::cont()
-    }
-}
-
-/// `CompletionCall` hook that injects a run-state fact via `extra_context`,
-/// narrows `active_tools`, and pins temperature — one merged `RequestPatch`.
-#[derive(Clone)]
-struct InjectContextAndNarrowTools {
-    fact_id: &'static str,
-    fact_text: &'static str,
-    allow: &'static [&'static str],
-}
-
-impl AgentHook<GeminiModel> for InjectContextAndNarrowTools {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) {
-            let doc = Document {
-                id: self.fact_id.to_string(),
-                text: self.fact_text.to_string(),
-                additional_props: Default::default(),
-            };
-            Flow::patch_request(
-                RequestPatch::new()
-                    .context(doc)
-                    .active_tools(self.allow.iter().copied())
-                    .temperature(0.0),
-            )
-        } else {
-            Flow::cont()
-        }
     }
 }
 
@@ -329,73 +297,6 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
                 *tallies.last().expect("at least one tally"),
                 tool_calls,
                 "the final scratchpad tally must equal the total ToolCall count"
-            );
-        },
-    )
-    .await;
-}
-
-// ---------------------------------------------------------------------------
-// 2. RequestPatch: extra_context injection + active_tools narrowing.
-// ---------------------------------------------------------------------------
-
-const VAULT_FACT_ID: &str = "vault-note";
-const VAULT_FACT: &str = "Operational note: the vault access code is CINNABAR-42.";
-const VAULT_CODE: &str = "CINNABAR-42";
-
-#[tokio::test]
-async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let add_calls = add.counter.clone();
-    let subtract_calls = subtract.counter.clone();
-
-    with_gemini_cassette(
-        "hook_stress/request_patch_injects_context_and_narrows_active_tools_blocking",
-        |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a helpful assistant. Use a tool for any arithmetic. Consult the \
-                     provided context for any facts you are asked about.",
-                )
-                .tool(add)
-                .tool(subtract)
-                .build();
-
-            let response = agent
-                .prompt(
-                    "Two things: (1) tell me the vault access code, and (2) use a tool to compute \
-                     41 + 1.",
-                )
-                .max_turns(5)
-                // Inject the secret via extra_context and narrow the advertised
-                // tools to `add` only (subtract is filtered out this run).
-                .add_hook(InjectContextAndNarrowTools {
-                    fact_id: VAULT_FACT_ID,
-                    fact_text: VAULT_FACT,
-                    allow: &["add"],
-                })
-                .await
-                .expect("context-injecting, tool-narrowing run should succeed");
-
-            // extra_context injection reached the model: the answer uses the fact
-            // that appears only in the injected document (no model input).
-            assert!(
-                response.contains(VAULT_CODE),
-                "the extra_context fact must reach the model; answer: {response:?}"
-            );
-            // active_tools narrowing is proven by the downstream negative: the
-            // filtered-out tool never executes, while the advertised one does.
-            assert_eq!(
-                subtract_calls.count(),
-                0,
-                "subtract was filtered out of active_tools and must never execute"
-            );
-            assert!(
-                add_calls.count() >= 1,
-                "the advertised add tool should still run for 41 + 1"
             );
         },
     )
@@ -737,11 +638,6 @@ fn assert_hook_impls() {
     fn requires_hook<H: AgentHook<GeminiModel>>(_hook: H) {}
     requires_hook(LifecycleRecorder::default());
     requires_hook(ScratchpadReader::default());
-    requires_hook(InjectContextAndNarrowTools {
-        fact_id: "",
-        fact_text: "",
-        allow: &[],
-    });
     requires_hook(ForceArgs {
         tool_name: "add",
         args: serde_json::Value::Null,

@@ -1,7 +1,7 @@
 //! Hook-system stress suite: `HookContext` identity, the shared `Scratchpad`
 //! threaded across hooks and turns, and `HookStack` composition (multiple hooks,
 //! observe-only both-fire, `add_hook` append, `CompletionCall` patch
-//! accumulation, `active_tools` intersection). Recorded against real Gemini.
+//! accumulation). Recorded against real Gemini.
 //!
 //! Assertions are loose for model-shaped values and exact only for
 //! rig-synthesized values (see `tools_support`'s note).
@@ -11,7 +11,7 @@ use rig::completion::Prompt;
 use rig::providers::gemini;
 
 use super::super::hook_stress_support::{
-    ApplyPatch, CHAIN_PREAMBLE, CountingMultiply, EventTap, ScratchpadReader, fact_doc,
+    ApplyPatch, CHAIN_PREAMBLE, EventTap, ScratchpadReader, fact_doc,
 };
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract};
@@ -368,69 +368,6 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
                 response.contains("BETA-22"),
                 "the second hook's injected fact must reach the model too (patches accumulate): \
                  {response:?}"
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let multiply = CountingMultiply::default();
-    let add_calls = add.counter.clone();
-    let subtract_calls = subtract.counter.clone();
-    let multiply_calls = multiply.counter.clone();
-
-    with_gemini_cassette(
-        "hook_stress_context/two_hooks_narrow_active_tools_to_intersection_blocking",
-        |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a calculator assistant. Use a provided tool for any arithmetic you \
-                     can. If a needed tool is unavailable, say so and move on.",
-                )
-                .tool(add)
-                .tool(subtract)
-                .tool(multiply)
-                .build();
-
-            // Two narrowing hooks: {add, subtract} ∩ {add, multiply} == {add}.
-            let response = agent
-                .prompt(
-                    "Compute 6 + 2, then 10 - 3, then 4 * 5. Report whichever results you can \
-                     obtain.",
-                )
-                .max_turns(5)
-                .add_hook(ApplyPatch(
-                    RequestPatch::new()
-                        .active_tools(["add", "subtract"])
-                        .temperature(0.0),
-                ))
-                .add_hook(ApplyPatch(
-                    RequestPatch::new().active_tools(["add", "multiply"]),
-                ))
-                .await
-                .expect("intersected-tools run should succeed");
-
-            assert_nonempty_response(&response);
-            // Only `add` is in the intersection, so only it can execute.
-            assert!(
-                add_calls.count() >= 1,
-                "add is in the intersection and should run"
-            );
-            assert_eq!(
-                subtract_calls.count(),
-                0,
-                "subtract is outside the intersection and must never execute"
-            );
-            assert_eq!(
-                multiply_calls.count(),
-                0,
-                "multiply is outside the intersection and must never execute"
             );
         },
     )
