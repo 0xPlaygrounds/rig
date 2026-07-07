@@ -2052,8 +2052,12 @@ mod tests {
         type Args = CountingOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            arithmetic_tool_definition(Self::NAME, "Add x and y together")
+        fn description(&self) -> String {
+            "Add x and y together".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            arithmetic_tool_definition(Self::NAME, "Add x and y together").parameters
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -2068,8 +2072,12 @@ mod tests {
         type Args = CountingOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            arithmetic_tool_definition(Self::NAME, "Subtract y from x")
+        fn description(&self) -> String {
+            "Subtract y from x".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            arithmetic_tool_definition(Self::NAME, "Subtract y from x").parameters
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

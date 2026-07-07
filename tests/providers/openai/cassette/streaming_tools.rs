@@ -7,7 +7,6 @@ use rig::message::{AssistantContent, Message};
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 
 use serde::Deserialize;
 
@@ -168,7 +167,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let first_turn = collect_raw_stream_observation(

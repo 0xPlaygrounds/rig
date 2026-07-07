@@ -10,7 +10,7 @@ use rig::agent::{
     StepEvent, StreamingResult,
 };
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, ToolDefinition};
+use rig::completion::CompletionModel;
 use rig::message::ToolResultContent;
 use rig::providers::gemini::{
     self,
@@ -107,12 +107,12 @@ impl Tool for JavaScript {
     type Args = JavaScriptProgram;
     type Output = ExecutorResponse;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.into(),
-            description: "JavaScript runtime with an array of tools for completing the tasks assigned by the user. Legacy workspace agents may refer to this runtime as default_api.".into(),
-            parameters: schema_for!(JavaScriptProgram).to_value(),
-        }
+    fn description(&self) -> String {
+        "JavaScript runtime with an array of tools for completing the tasks assigned by the user. Legacy workspace agents may refer to this runtime as default_api.".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        schema_for!(JavaScriptProgram).to_value()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

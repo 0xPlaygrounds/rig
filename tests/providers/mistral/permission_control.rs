@@ -3,7 +3,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, Flow, StepEvent, stream_to_stdout};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt, ToolDefinition};
+use rig::completion::{CompletionModel, Prompt};
 use rig::providers::mistral;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
@@ -19,6 +19,7 @@ use super::TOOL_MODEL;
 
 const TEST_FILE: &str = "test.txt";
 const TEST_CONTENT: &str = "hello world\n";
+static FILE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 struct FileCleanup;
 
@@ -51,15 +52,15 @@ impl Tool for ReadFileHead {
     type Args = ReadFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "read_file_head".to_string(),
-            description: "Read the first line of test.txt using the head command".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-            }),
-        }
+    fn description(&self) -> String {
+        "Read the first line of test.txt using the head command".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -82,15 +83,15 @@ impl Tool for ReadFileTail {
     type Args = ReadFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "read_file_tail".to_string(),
-            description: "Read the last line of test.txt using the tail command".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-            }),
-        }
+    fn description(&self) -> String {
+        "Read the last line of test.txt using the tail command".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -144,6 +145,7 @@ impl<M: CompletionModel> AgentHook<M> for PermissionHook {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn permission_control_prompt_example() -> Result<()> {
+    let _file_lock = FILE_TEST_LOCK.lock().await;
     let _cleanup = FileCleanup::new()?;
 
     let agent = mistral::Client::from_env()
@@ -180,6 +182,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn permission_control_streaming_example() -> Result<()> {
+    let _file_lock = FILE_TEST_LOCK.lock().await;
     let _cleanup = FileCleanup::new()?;
 
     let agent = mistral::Client::from_env()

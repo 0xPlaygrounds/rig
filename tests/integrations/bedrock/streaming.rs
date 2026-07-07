@@ -59,7 +59,7 @@ async fn raw_streaming_tool_call_smoke() {
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-        .tool(AlphaSignal.definition(String::new()).await)
+        .tool(rig_core::tool::tool_definition(&AlphaSignal))
         .tool_choice(ToolChoice::Specific {
             function_names: vec![AlphaSignal::NAME.to_string()],
         })

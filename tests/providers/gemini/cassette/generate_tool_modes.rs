@@ -26,7 +26,7 @@ async fn required_maps_to_any_and_forces_function_call() {
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .temperature(0.0)
-                .tool(Adder.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
                 .build();
 

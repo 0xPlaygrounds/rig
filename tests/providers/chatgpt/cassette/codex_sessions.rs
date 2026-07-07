@@ -314,7 +314,7 @@ async fn long_history_replay_nonstreaming() {
             let first_request = model
                 .completion_request("Look up the harbor label with the tool.")
                 .preamble(preamble.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&AlphaSignal))
                 .build();
             let first_response = model
                 .completion(first_request)
@@ -363,7 +363,7 @@ async fn long_history_replay_nonstreaming() {
                     ALPHA_SIGNAL_OUTPUT,
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let response = model

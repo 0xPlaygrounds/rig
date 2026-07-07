@@ -73,14 +73,17 @@ impl fmt::Display for ToolError {
     }
 }
 
-/// Trait that represents a simple LLM tool
+/// Trait that represents a simple LLM tool.
+///
+/// Tool authors declare their tool identity with [`Tool::NAME`] and expose
+/// model-facing metadata through [`Tool::description`] and
+/// [`Tool::parameters`]. Rig derives provider-facing [`ToolDefinition`] values
+/// from that flattened metadata at registration/request boundaries, so the tool
+/// name used for dispatch is also the name advertised to providers.
 ///
 /// # Example
 /// ```
-/// use rig_core::{
-///     completion::ToolDefinition,
-///     tool::{ToolSet, Tool},
-/// };
+/// use rig_core::tool::{ToolSet, Tool};
 ///
 /// #[derive(serde::Deserialize)]
 /// struct AddArgs {
@@ -102,24 +105,24 @@ impl fmt::Display for ToolError {
 ///     type Args = AddArgs;
 ///     type Output = i32;
 ///
-///     async fn definition(&self, _prompt: String) -> ToolDefinition {
-///         ToolDefinition {
-///             name: "add".to_string(),
-///             description: "Add x and y together".to_string(),
-///             parameters: serde_json::json!({
-///                 "type": "object",
-///                 "properties": {
-///                     "x": {
-///                         "type": "number",
-///                         "description": "The first number to add"
-///                     },
-///                     "y": {
-///                         "type": "number",
-///                         "description": "The second number to add"
-///                     }
+///     fn description(&self) -> String {
+///         "Add x and y together".to_string()
+///     }
+///
+///     fn parameters(&self) -> serde_json::Value {
+///         serde_json::json!({
+///             "type": "object",
+///             "properties": {
+///                 "x": {
+///                     "type": "number",
+///                     "description": "The first number to add"
+///                 },
+///                 "y": {
+///                     "type": "number",
+///                     "description": "The second number to add"
 ///                 }
-///             })
-///         }
+///             }
+///         })
 ///     }
 ///
 ///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -145,12 +148,11 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         Self::NAME.to_string()
     }
 
-    /// A method returning the tool definition. The user prompt can be used to
-    /// tailor the definition to the specific use case.
-    fn definition(
-        &self,
-        _prompt: String,
-    ) -> impl Future<Output = ToolDefinition> + WasmCompatSend + WasmCompatSync;
+    /// A model-facing description of what this tool does.
+    fn description(&self) -> String;
+
+    /// The JSON Schema for this tool's arguments.
+    fn parameters(&self) -> serde_json::Value;
 
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
@@ -278,8 +280,11 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     /// Returns the tool name used for dispatch.
     fn name(&self) -> String;
 
-    /// Returns the provider-facing tool schema.
-    fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition>;
+    /// Returns the model-facing description of what this tool does.
+    fn description(&self) -> String;
+
+    /// Returns the JSON Schema for this tool's arguments.
+    fn parameters(&self) -> serde_json::Value;
 
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
@@ -368,13 +373,29 @@ fn tool_error_to_execution_result(err: ToolError) -> ToolExecutionResult {
     ToolExecutionResult::failed(message, failure)
 }
 
+/// Build the provider-facing definition for a registered Rig tool.
+///
+/// The registered tool name is the single source of truth: the generated
+/// [`ToolDefinition`] always uses [`ToolDyn::name`].
+pub fn tool_definition(tool: &dyn ToolDyn) -> ToolDefinition {
+    ToolDefinition {
+        name: tool.name(),
+        description: tool.description(),
+        parameters: tool.parameters(),
+    }
+}
+
 impl<T: Tool> ToolDyn for T {
     fn name(&self) -> String {
-        self.name()
+        <Self as Tool>::name(self)
     }
 
-    fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition> {
-        Box::pin(<Self as Tool>::definition(self, prompt))
+    fn description(&self) -> String {
+        <Self as Tool>::description(self)
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        <Self as Tool>::parameters(self)
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
@@ -469,10 +490,25 @@ impl ToolType {
         }
     }
 
-    pub async fn definition(&self, prompt: String) -> ToolDefinition {
+    pub fn description(&self) -> String {
         match self {
-            ToolType::Simple(tool) => tool.definition(prompt).await,
-            ToolType::Embedding(tool) => tool.definition(prompt).await,
+            ToolType::Simple(tool) => tool.description(),
+            ToolType::Embedding(tool) => tool.description(),
+        }
+    }
+
+    pub fn parameters(&self) -> serde_json::Value {
+        match self {
+            ToolType::Simple(tool) => tool.parameters(),
+            ToolType::Embedding(tool) => tool.parameters(),
+        }
+    }
+
+    pub fn to_definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: self.name(),
+            description: self.description(),
+            parameters: self.parameters(),
         }
     }
 
@@ -616,8 +652,7 @@ impl ToolSet {
     pub async fn get_tool_definitions(&self) -> Result<Vec<ToolDefinition>, ToolSetError> {
         let mut defs = Vec::new();
         for tool in self.ordered_tools() {
-            let def = tool.definition(String::new()).await;
-            defs.push(def);
+            defs.push(tool.to_definition());
         }
         Ok(defs)
     }
@@ -679,38 +714,20 @@ impl ToolSet {
     pub async fn documents(&self) -> Result<Vec<completion::Document>, ToolSetError> {
         let mut docs = Vec::new();
         for tool in self.ordered_tools() {
-            match tool {
-                ToolType::Simple(tool) => {
-                    docs.push(completion::Document {
-                        id: tool.name(),
-                        text: format!(
-                            "\
-                            Tool: {}\n\
-                            Definition: \n\
-                            {}\
-                        ",
-                            tool.name(),
-                            serde_json::to_string_pretty(&tool.definition("".to_string()).await)?
-                        ),
-                        additional_props: HashMap::new(),
-                    });
-                }
-                ToolType::Embedding(tool) => {
-                    docs.push(completion::Document {
-                        id: tool.name(),
-                        text: format!(
-                            "\
-                            Tool: {}\n\
-                            Definition: \n\
-                            {}\
-                        ",
-                            tool.name(),
-                            serde_json::to_string_pretty(&tool.definition("".to_string()).await)?
-                        ),
-                        additional_props: HashMap::new(),
-                    });
-                }
-            }
+            let definition = tool.to_definition();
+            docs.push(completion::Document {
+                id: definition.name.clone(),
+                text: format!(
+                    "\
+                    Tool: {}\n\
+                    Definition: \n\
+                    {}\
+                ",
+                    definition.name,
+                    serde_json::to_string_pretty(&definition)?
+                ),
+                additional_props: HashMap::new(),
+            });
         }
         Ok(docs)
     }
@@ -819,8 +836,8 @@ mod tests {
         );
     }
 
-    /// A tool whose name and definition are chosen at runtime, for ordering
-    /// and duplicate-registration tests.
+    /// A tool whose name and metadata are chosen at runtime, for ordering and
+    /// duplicate-registration tests.
     struct NamedTool {
         name: String,
         description: String,
@@ -831,14 +848,12 @@ mod tests {
             self.name.clone()
         }
 
-        fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
-            Box::pin(async move {
-                ToolDefinition {
-                    name: self.name.clone(),
-                    description: self.description.clone(),
-                    parameters: json!({ "type": "object", "properties": {} }),
-                }
-            })
+        fn description(&self) -> String {
+            self.description.clone()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
         }
 
         fn call(&self, _args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
@@ -852,6 +867,16 @@ mod tests {
             name: name.to_string(),
             description: description.to_string(),
         }
+    }
+
+    #[test]
+    fn tool_definition_uses_flattened_dyn_metadata() {
+        let tool = named_tool("alpha", "runtime description");
+        let definition = tool_definition(&tool);
+
+        assert_eq!(definition.name, "alpha");
+        assert_eq!(definition.description, "runtime description");
+        assert_eq!(definition.parameters["type"], "object");
     }
 
     #[tokio::test]
@@ -1005,12 +1030,12 @@ mod tests {
             type Args = NoRequiredArgs;
             type Output = String;
 
-            async fn definition(&self, _prompt: String) -> ToolDefinition {
-                ToolDefinition {
-                    name: Self::NAME.to_string(),
-                    description: "Tool with no required arguments".to_string(),
-                    parameters: json!({"type": "object", "properties": {}}),
-                }
+            fn description(&self) -> String {
+                "Tool with no required arguments".to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                json!({"type": "object", "properties": {}})
             }
 
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

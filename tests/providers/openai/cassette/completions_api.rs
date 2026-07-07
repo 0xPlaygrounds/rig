@@ -8,7 +8,6 @@ use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
-use rig::tool::Tool;
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::{
@@ -159,8 +158,8 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
-                .tool(BetaSignal.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&AlphaSignal))
+                .tool(rig_core::tool::tool_definition(&BetaSignal))
                 .build();
 
             let observation = collect_raw_stream_observation(
@@ -216,7 +215,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let first_turn = collect_raw_stream_observation(

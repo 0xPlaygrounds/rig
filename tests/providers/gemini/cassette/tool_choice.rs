@@ -58,8 +58,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(Adder.definition(String::new()).await)
-                .tool(Subtract.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&Adder))
+                .tool(rig_core::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .build();
             let stream = model.stream(request).await.expect("stream should start");
@@ -111,8 +111,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(Adder.definition(String::new()).await)
-                .tool(Subtract.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&Adder))
+                .tool(rig_core::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .send()
                 .await

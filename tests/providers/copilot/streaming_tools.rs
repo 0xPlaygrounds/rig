@@ -5,7 +5,6 @@ use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{
@@ -94,8 +93,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
-                .tool(BetaSignal.definition(String::new()).await)
+                .tool(rig_core::tool::tool_definition(&AlphaSignal))
+                .tool(rig_core::tool::tool_definition(&BetaSignal))
                 .build();
 
             let observation = collect_raw_stream_observation(
@@ -150,7 +149,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         let request = model
             .completion_request(ORDERED_TOOL_STREAM_PROMPT)
             .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-            .tool(AlphaSignal.definition(String::new()).await)
+            .tool(rig_core::tool::tool_definition(&AlphaSignal))
             .build();
 
         let first_turn = collect_raw_stream_observation(

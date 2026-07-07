@@ -3,7 +3,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, Flow, StepEvent, stream_to_stdout};
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Prompt, PromptError, ToolDefinition};
+use rig::completion::{CompletionModel, Prompt, PromptError};
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ use super::support;
 
 const TEST_FILE: &str = "test.txt";
 const TEST_CONTENT: &str = "hello world\n";
+static FILE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 struct FileCleanup;
 
@@ -50,16 +51,16 @@ impl Tool for ReadFileHead {
     type Args = ReadFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "read_file_head".to_string(),
-            description: "Read the first line of test.txt using the head command".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "required": [],
-            }),
-        }
+    fn description(&self) -> String {
+        "Read the first line of test.txt using the head command".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -82,16 +83,16 @@ impl Tool for ReadFileTail {
     type Args = ReadFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "read_file_tail".to_string(),
-            description: "Read the last line of test.txt using the tail command".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "required": [],
-            }),
-        }
+    fn description(&self) -> String {
+        "Read the last line of test.txt using the tail command".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -165,6 +166,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         return Ok(());
     }
 
+    let _file_lock = FILE_TEST_LOCK.lock().await;
     let _cleanup = FileCleanup::new()?;
 
     let agent = support::client()
@@ -239,6 +241,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         return Ok(());
     }
 
+    let _file_lock = FILE_TEST_LOCK.lock().await;
     let _cleanup = FileCleanup::new()?;
 
     let agent = support::client()

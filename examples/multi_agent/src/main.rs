@@ -4,7 +4,7 @@ use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
     agent::{Agent, AgentBuilder},
-    completion::{Chat, CompletionModel, Message, PromptError, ToolDefinition},
+    completion::{Chat, CompletionModel, Message, PromptError},
     providers::openai::Client as OpenAIClient,
     tool::Tool,
 };
@@ -28,23 +28,22 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     type Error = PromptError;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description:
-                "Translate any text to English. If already in English, fix grammar and syntax issues."
-                    .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "The text to translate to English"
-                    }
-                },
-                "required": ["prompt"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Translate any text to English. If already in English, fix grammar and syntax issues."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The text to translate to English"
+                }
+            },
+            "required": ["prompt"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

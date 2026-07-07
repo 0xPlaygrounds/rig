@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::completion::ToolDefinition;
 use crate::tool::Tool;
 
 /// Arguments for the Think tool
@@ -35,24 +34,24 @@ impl Tool for ThinkTool {
     type Args = ThinkArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "think".to_string(),
-            description: "Use the tool to think about something. It will not obtain new information
+    fn description(&self) -> String {
+        "Use the tool to think about something. It will not obtain new information
             or change the database, but just append the thought to the log. Use it when complex
             reasoning or some cache memory is needed."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "thought": {
-                        "type": "string",
-                        "description": "A thought to think about."
-                    }
-                },
-                "required": ["thought"]
-            }),
-        }
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "thought": {
+                    "type": "string",
+                    "description": "A thought to think about."
+                }
+            },
+            "required": ["thought"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -69,7 +68,7 @@ mod tests {
     #[tokio::test]
     async fn test_think_tool_definition() {
         let tool = ThinkTool;
-        let definition = tool.definition("".to_string()).await;
+        let definition = crate::tool::tool_definition(&tool);
 
         assert_eq!(definition.name, "think");
         assert!(

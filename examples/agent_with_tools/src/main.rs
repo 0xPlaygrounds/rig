@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{Prompt, ToolDefinition};
+use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::tool::{Tool, ToolDyn};
 use serde::Deserialize;
@@ -30,19 +30,19 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "add".to_string(),
-            description: "Add x and y together".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": { "type": "number", "description": "The first number to add" },
-                    "y": { "type": "number", "description": "The second number to add" }
-                },
-                "required": ["x", "y"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": { "type": "number", "description": "The first number to add" },
+                "y": { "type": "number", "description": "The second number to add" }
+            },
+            "required": ["x", "y"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -59,19 +59,19 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "subtract".to_string(),
-            description: "Subtract y from x (i.e.: x - y)".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": { "type": "number", "description": "The number to subtract from" },
-                    "y": { "type": "number", "description": "The number to subtract" }
-                },
-                "required": ["x", "y"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Subtract y from x (i.e.: x - y)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": { "type": "number", "description": "The number to subtract from" },
+                "y": { "type": "number", "description": "The number to subtract" }
+            },
+            "required": ["x", "y"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
