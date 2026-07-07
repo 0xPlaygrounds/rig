@@ -62,6 +62,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_ollama_cassette"],
     },
     ProviderCassetteSuite {
+        provider: "llamafile",
+        source_dir: "tests/providers/llamafile/cassette",
+        wrapper_names: &["with_llamafile_cassette"],
+    },
+    ProviderCassetteSuite {
         provider: "xai",
         source_dir: "tests/providers/xai",
         wrapper_names: &["with_xai_cassette", "with_xai_cassette_result"],

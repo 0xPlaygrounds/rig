@@ -1136,6 +1136,25 @@ impl GetTokenUsage for Usage {
     }
 }
 
+/// Contract for provider extensions that speak the OpenAI Chat Completions wire
+/// format through [`GenericCompletionModel`]. Mirrors
+/// [`AnthropicCompatibleProvider`](crate::providers::anthropic::completion::AnthropicCompatibleProvider)
+/// on the Anthropic-compatible side.
+pub trait OpenAICompatibleProvider: crate::client::Provider {
+    /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
+    const PROVIDER_NAME: &'static str;
+
+    /// Whether the backend can emit a whole tool call (id, name, and complete
+    /// arguments) in a single streaming chunk, as llama.cpp-based servers do.
+    /// When true, the shared streaming layer emits such calls as soon as they
+    /// arrive instead of holding them until the stream ends.
+    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = false;
+}
+
+impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
+    const PROVIDER_NAME: &'static str = "openai";
+}
+
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
@@ -1362,6 +1381,7 @@ where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
+        + OpenAICompatibleProvider
         + crate::client::DebugExt
         + Clone
         + WasmCompatSend
@@ -1398,7 +1418,7 @@ where
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "openai",
+                gen_ai.provider.name = Ext::PROVIDER_NAME,
                 gen_ai.request.model = self.model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,

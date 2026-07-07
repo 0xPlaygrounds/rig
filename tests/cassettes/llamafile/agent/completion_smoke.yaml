@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"llama3.2:latest"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Rust is a systems programming language that prioritizes memory safety by using ownership and borrowing mechanisms to ensure data is accessed and modified correctly, preventing common types of memory-related bugs like null pointer dereferences and data corruption. By focusing on memory safety, Rust aims to protect programs and systems from crashes and security vulnerabilities, making it a popular choice for building robust and reliable software.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama3.2:latest","object":"chat.completion","system_fingerprint":"fp_ollama","usage":{"completion_tokens":75,"prompt_tokens":52,"total_tokens":127}}'
