@@ -29,7 +29,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt, ToolDefinition};
+use rig::completion::{CompletionModel, Prompt};
 use rig::providers::openai;
 use rig::tool::{Tool, ToolFailure, ToolFailureKind, ToolOutcome};
 
@@ -58,20 +58,20 @@ impl Tool for HttpFetch {
     type Args = FetchArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Fetch a URL and return its body. URLs containing 'slow' time out; \
-                          URLs containing 'missing' return HTTP 404."
-                .to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "url": { "type": "string", "description": "The URL to fetch" }
-                },
-                "required": ["url"],
-            }),
-        }
+    fn description(&self) -> String {
+        "Fetch a URL and return its body. URLs containing 'slow' time out; \
+                                  URLs containing 'missing' return HTTP 404."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "url": { "type": "string", "description": "The URL to fetch" }
+            },
+            "required": ["url"],
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

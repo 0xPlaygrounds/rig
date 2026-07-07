@@ -322,11 +322,10 @@ impl ToolServerHandle {
                     .collect()
             };
 
-            let mut tools = Vec::new();
-            for tool in dynamic_tool_handles {
-                tools.push(tool.definition(text.clone()).await);
-            }
-            tools
+            dynamic_tool_handles
+                .into_iter()
+                .map(|tool| tool.to_definition())
+                .collect()
         } else {
             Vec::new()
         };
@@ -346,7 +345,7 @@ impl ToolServerHandle {
         };
 
         for tool in static_tool_handles {
-            tools.push(tool.definition(String::new()).await);
+            tools.push(tool.to_definition());
         }
 
         // One shared toolset backs both lists, so a name appearing in the
@@ -438,6 +437,20 @@ mod tests {
                 .zip(via_append_toolset.iter())
                 .all(|(a, b)| a.name == b.name),
             "append_toolset must surface the same LLM-visible tools as add_tool",
+        );
+    }
+
+    #[tokio::test]
+    pub async fn get_tool_defs_preserves_static_registration_order() {
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .run();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
+            vec!["add", "subtract"]
         );
     }
 
@@ -664,12 +677,12 @@ mod tests {
         type Args = serde_json::Value;
         type Output = String;
 
-        async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
-            crate::completion::ToolDefinition {
-                name: "context_reader".to_string(),
-                description: "Reads SessionId from context".to_string(),
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-            }
+        fn description(&self) -> String {
+            "Reads SessionId from context".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {

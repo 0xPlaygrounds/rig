@@ -37,6 +37,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(tool)* [**breaking**] flattened the tool authoring/runtime metadata APIs. `Tool::definition(prompt)` and `ToolDyn::definition(...)` are removed; implement `description(&self) -> String` and `parameters(&self) -> serde_json::Value` alongside `const NAME` instead. `ToolDefinition` remains a provider/request artifact generated at registry/request boundaries from `ToolDyn::name()`, `description()`, and `parameters()`, so a registered tool cannot advertise a provider name different from its dispatch name. Migration:
+  ```rust
+  // before
+  async fn definition(&self, _prompt: String) -> ToolDefinition {
+      ToolDefinition {
+          name: "search".into(),
+          description: "Search docs".into(),
+          parameters: serde_json::json!({ "type": "object" }),
+      }
+  }
+
+  // after
+  const NAME: &'static str = "search";
+
+  fn description(&self) -> String {
+      "Search docs".into()
+  }
+
+  fn parameters(&self) -> serde_json::Value {
+      serde_json::json!({ "type": "object" })
+  }
+  ```
+
 - *(openai)* [**breaking**] the Responses API conversion now sends Rig system instructions (the preamble and any leading system messages) through the official top-level `instructions` field instead of as `system` messages in `input`. Mid-conversation system messages keep their position in `input`; ChatGPT (whose backend rejects the `system` role entirely) lifts all of them. **Behavioral note for OpenAI-compatible endpoints:** a backend that ignores or rejects top-level `instructions` (some vLLM / mistral.rs / LM Studio setups) will silently lose the system prompt under the new default — call `with_system_instructions_as_messages()` on the `openai::Client` (applies to every model, agent, and extractor created from it) or on a `ResponsesCompletionModel` to restore the previous request shape. Placement is expressed by the new public `responses_api::SystemInstructionsPlacement` enum — selectable via `with_system_instructions_placement(..)` on the `openai::Client` and on `ResponsesCompletionModel` (including `AllInstructions` for backends that reject the `system` role), with `with_system_instructions_as_messages()` kept as a shorthand for the compatibility fallback — and a client-level default flows through the new `responses_api::ResponsesProviderExt` trait implemented by the client's `Ext` type (`system_instructions_placement` is a required method, so implementors must state their placement explicitly). A configured placement survives `completions_api()`/`responses_api()` round trips. Direct request conversion with a non-default placement uses the public `responses_api::ResponsesRequestParams` (a `TryFrom` source for the Responses `CompletionRequest`, mirroring the Chat Completions `OpenAIRequestParams` pattern). Also [**breaking**]: `OpenAIResponsesExt` and `OpenAICompletionsExt` are no longer unit structs — construct them with `::default()` instead of the struct literal. ([#1995](https://github.com/0xPlaygrounds/rig/pull/1995), closes [#1599](https://github.com/0xPlaygrounds/rig/issues/1599))
 - *(anthropic)* the streaming completion path now honors the request's `tool_choice` instead of hardcoding `auto`, so a caller's tool choice (including one set per-turn via `Flow::PatchRequest`) takes effect under `stream_prompt`/streaming as it already did on the blocking path. A `tool_choice` Anthropic cannot represent (a multi-name `ToolChoice::Specific`) now surfaces as a request error on both the streaming and blocking paths instead of being silently downgraded to `auto`. ([#1966](https://github.com/0xPlaygrounds/rig/pull/1966))
 - *(agent)* [**breaking**] `Flow` no longer implements `Eq` (it remains `PartialEq`), because `Flow::PatchRequest` carries a `RequestPatch` with an `f64` `temperature`. Code that relied on `Flow: Eq` (e.g. an `Eq` derive on a type embedding `Flow`, or an `Eq`/`Hash` bound) must drop that requirement. ([#1966](https://github.com/0xPlaygrounds/rig/pull/1966))

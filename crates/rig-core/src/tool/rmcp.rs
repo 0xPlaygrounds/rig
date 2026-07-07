@@ -349,19 +349,16 @@ impl ToolDyn for McpTool {
         self.definition.name.to_string()
     }
 
-    fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
-        Box::pin(async move {
-            ToolDefinition {
-                name: self.definition.name.to_string(),
-                description: self
-                    .definition
-                    .description
-                    .clone()
-                    .unwrap_or(Cow::from(""))
-                    .to_string(),
-                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
-            }
-        })
+    fn description(&self) -> String {
+        self.definition
+            .description
+            .clone()
+            .unwrap_or(Cow::from(""))
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.definition.schema_as_json_value()
     }
 
     fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {

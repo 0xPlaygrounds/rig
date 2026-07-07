@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
 use rig::agent::run::{ModelTurn, PendingToolCall};
-use rig::completion::{Completion, ToolDefinition, Usage};
+use rig::completion::{Completion, Usage};
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -28,19 +28,15 @@ pub(crate) struct OperationArgs {
 #[error("math error")]
 pub(crate) struct MathError;
 
-fn operation_definition(name: &str, description: &str) -> ToolDefinition {
-    ToolDefinition {
-        name: name.to_string(),
-        description: description.to_string(),
-        parameters: json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The first operand" },
-                "y": { "type": "number", "description": "The second operand" }
-            },
-            "required": ["x", "y"]
-        }),
-    }
+fn operation_parameters() -> serde_json::Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "x": { "type": "number", "description": "The first operand" },
+            "y": { "type": "number", "description": "The second operand" }
+        },
+        "required": ["x", "y"]
+    })
 }
 
 pub(crate) struct Add;
@@ -51,8 +47,12 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Add x and y together")
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_parameters()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -68,8 +68,12 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)")
+    fn description(&self) -> String {
+        "Subtract y from x (i.e. x - y)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_parameters()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -87,8 +91,12 @@ impl Tool for Sum {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Add x and y together (alias of add)")
+    fn description(&self) -> String {
+        "Add x and y together (alias of add)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_parameters()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

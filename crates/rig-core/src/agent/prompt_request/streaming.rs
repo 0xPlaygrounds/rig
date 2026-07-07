@@ -1598,7 +1598,7 @@ mod tests {
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::{CompletionRequest, PromptError, ToolDefinition, Usage};
+    use crate::completion::{CompletionRequest, PromptError, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolChoice, ToolResultContent, UserContent,
@@ -2025,25 +2025,21 @@ mod tests {
         y: i32,
     }
 
-    fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
-        ToolDefinition {
-            name: name.to_string(),
-            description: description.to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first operand"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second operand"
-                    }
+    fn arithmetic_tool_parameters() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "The first operand"
                 },
-                "required": ["x", "y"],
-            }),
-        }
+                "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                }
+            },
+            "required": ["x", "y"],
+        })
     }
 
     impl Tool for CountingAddTool {
@@ -2052,8 +2048,12 @@ mod tests {
         type Args = CountingOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            arithmetic_tool_definition(Self::NAME, "Add x and y together")
+        fn description(&self) -> String {
+            "Add x and y together".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            arithmetic_tool_parameters()
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -2068,8 +2068,12 @@ mod tests {
         type Args = CountingOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            arithmetic_tool_definition(Self::NAME, "Subtract y from x")
+        fn description(&self) -> String {
+            "Subtract y from x".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            arithmetic_tool_parameters()
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

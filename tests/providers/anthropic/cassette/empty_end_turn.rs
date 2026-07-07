@@ -39,20 +39,24 @@ struct NotifyArgs {
 #[error("notify error")]
 struct NotifyError;
 
+fn notify_tool_parameters() -> serde_json::Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "msg": {
+                "type": "string",
+                "description": "The short notification to send."
+            }
+        },
+        "required": ["msg"]
+    })
+}
+
 fn notify_tool_definition() -> ToolDefinition {
     ToolDefinition {
         name: Notify::NAME.to_string(),
         description: "Send a short notification for a user status update.".to_string(),
-        parameters: json!({
-            "type": "object",
-            "properties": {
-                "msg": {
-                    "type": "string",
-                    "description": "The short notification to send."
-                }
-            },
-            "required": ["msg"]
-        }),
+        parameters: notify_tool_parameters(),
     }
 }
 
@@ -72,8 +76,12 @@ impl Tool for Notify {
     type Args = NotifyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        notify_tool_definition()
+    fn description(&self) -> String {
+        "Send a short notification for a user status update.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        notify_tool_parameters()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

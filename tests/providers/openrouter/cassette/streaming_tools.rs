@@ -5,7 +5,6 @@ use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -50,9 +49,9 @@ async fn raw_stream_decorates_reasoning_tool_call_metadata() {
         "streaming_tools/raw_stream_decorates_reasoning_tool_call_metadata",
         |client| async move {
             let model = client.completion_model("openai/o4-mini");
-            let tool_definition = WeatherTool::new(Arc::new(AtomicUsize::new(0)))
-                .definition(String::new())
-                .await;
+            let tool_definition = rig::tool::tool_definition(&WeatherTool::new(Arc::new(
+                AtomicUsize::new(0),
+            )));
             let request = model
                 .completion_request(crate::reasoning::TOOL_USER_PROMPT)
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
@@ -105,8 +104,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
-                .tool(BetaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&BetaSignal))
                 .build();
 
             let observation = collect_raw_stream_observation(
@@ -135,7 +134,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let first_turn = collect_raw_stream_observation(
