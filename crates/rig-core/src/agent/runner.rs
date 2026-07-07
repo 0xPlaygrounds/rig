@@ -1094,7 +1094,7 @@ mod tests {
     };
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
-    use crate::completion::{CompletionModel, Message, PromptError, ToolDefinition};
+    use crate::completion::{CompletionModel, Message, PromptError};
     use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
     use crate::test_utils::{
@@ -2248,12 +2248,12 @@ mod tests {
             type Error = crate::test_utils::MockToolError;
             type Args = serde_json::Value;
             type Output = String;
-            async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
-                crate::completion::ToolDefinition {
-                    name: Self::NAME.to_string(),
-                    description: "returns a secret".to_string(),
-                    parameters: serde_json::json!({ "type": "object", "properties": {} }),
-                }
+            fn description(&self) -> String {
+                "returns a secret".to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                serde_json::json!({ "type": "object", "properties": {} })
             }
             async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
                 Ok("SUPER_SECRET_TOKEN_42".to_string())
@@ -2465,8 +2465,12 @@ mod tests {
         type Args = MockOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -2857,8 +2861,12 @@ mod tests {
         type Args = serde_json::Value;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -3168,8 +3176,12 @@ mod tests {
         type Args = serde_json::Value;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
         }
 
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -3306,8 +3318,12 @@ mod tests {
         type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
         }
         async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(1) {
@@ -3663,8 +3679,12 @@ mod tests {
         type Args = MockOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -5515,12 +5535,12 @@ mod tests {
         type Args = serde_json::Value;
         type Output = String;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: Self::NAME.to_string(),
-                description: "A real tool sharing the default output-tool name".to_string(),
-                parameters: json!({ "type": "object", "properties": {} }),
-            }
+        fn description(&self) -> String {
+            "A real tool sharing the default output-tool name".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {

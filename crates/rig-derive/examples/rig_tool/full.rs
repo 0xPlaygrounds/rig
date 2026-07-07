@@ -1,7 +1,6 @@
 use rig_core::client::{CompletionClient, ProviderClient};
 use rig_core::completion::Prompt;
 use rig_core::providers;
-use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 /// A tool that performs string operations
@@ -40,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "STRINGPROCESSOR: {}",
-        serde_json::to_string_pretty(&StringProcessor.definition(String::default()).await)?
+        serde_json::to_string_pretty(&rig_core::tool::tool_definition(&StringProcessor))?
     );
 
     for prompt in [

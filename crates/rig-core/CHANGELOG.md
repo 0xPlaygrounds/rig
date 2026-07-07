@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(tool)* [**breaking**] flatten `Tool` and `ToolDyn`: tool implementations now provide `description()` and `parameters()` directly, while provider-facing `ToolDefinition`s are generated at registration/request boundaries. `Tool::definition(prompt)` and `ToolDyn::definition(prompt)` are removed, and the registered `Tool::NAME` / `Tool::name()` / `ToolDyn::name()` is the only advertised dispatch identity.
+
 ### Added
 
 - *(agent)* [**breaking**] hook system v2 — composable middleware for the agent run loop. Builds on the unified `AgentHook` below and makes hooks compose the way production middleware needs:

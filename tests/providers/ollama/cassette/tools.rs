@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Message, ToolDefinition};
+use rig::completion::{Chat, Message};
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -44,13 +44,13 @@ impl Tool for RepeatTool {
     type Args = RepeatArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "repeat_text".to_string(),
-            description: "Repeat `text`. `times` is optional and defaults to 2.".to_string(),
-            // schemars schema, exactly as repo-tagger builds its tool parameters.
-            parameters: serde_json::to_value(schemars::schema_for!(RepeatArgs)).unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Repeat `text`. `times` is optional and defaults to 2.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        // schemars schema, exactly as repo-tagger builds its tool parameters.
+        serde_json::to_value(schemars::schema_for!(RepeatArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -114,12 +114,12 @@ impl Tool for AddTool {
     type Args = BinOpArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "add".to_string(),
-            description: "Add two integers a and b.".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Add two integers a and b.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -139,12 +139,12 @@ impl Tool for MultiplyTool {
     type Args = BinOpArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "multiply".to_string(),
-            description: "Multiply two integers a and b.".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Multiply two integers a and b.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

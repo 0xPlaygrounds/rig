@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, Flow, StepEvent};
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Prompt, ToolDefinition};
+use rig::completion::{CompletionModel, Prompt};
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
@@ -63,18 +63,18 @@ impl Tool for GetUserRecord {
     type Args = LookupArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Look up a user record by id.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "user_id": { "type": "string", "description": "The user id, e.g. 'u-42'" }
-                },
-                "required": ["user_id"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Look up a user record by id.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "user_id": { "type": "string", "description": "The user id, e.g. 'u-42'" }
+            },
+            "required": ["user_id"]
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
