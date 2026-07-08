@@ -93,7 +93,6 @@
 //! - ChatGPT and GitHub Copilot auth-backed clients
 //! - Cohere
 //! - DeepSeek
-//! - Galadriel
 //! - Gemini
 //! - Groq
 //! - Hugging Face

@@ -5,7 +5,6 @@
 //! - ChatGPT and GitHub Copilot auth-backed clients
 //! - Cohere
 //! - DeepSeek
-//! - Galadriel
 //! - Gemini
 //! - Groq
 //! - Hugging Face
@@ -100,7 +99,6 @@ pub mod chatgpt;
 pub mod cohere;
 pub mod copilot;
 pub mod deepseek;
-pub mod galadriel;
 pub mod gemini;
 pub mod groq;
 pub mod huggingface;
