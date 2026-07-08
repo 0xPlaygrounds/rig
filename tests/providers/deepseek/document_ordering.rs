@@ -55,7 +55,9 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
                 .message(Message::assistant("Acknowledged."))
                 .document(ordering_document())
                 .temperature(0.0)
-                .max_tokens(32)
+                // Needs headroom for deepseek-v4-flash's thinking tokens now
+                // that max_tokens is actually forwarded to the API.
+                .max_tokens(512)
                 .send()
                 .await
                 .expect("DeepSeek document ordering request should succeed");

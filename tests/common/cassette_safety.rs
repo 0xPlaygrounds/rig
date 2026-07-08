@@ -62,6 +62,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_ollama_cassette"],
     },
     ProviderCassetteSuite {
+        provider: "llamafile",
+        source_dir: "tests/providers/llamafile/cassette",
+        wrapper_names: &["with_llamafile_cassette"],
+    },
+    ProviderCassetteSuite {
         provider: "xai",
         source_dir: "tests/providers/xai",
         wrapper_names: &["with_xai_cassette", "with_xai_cassette_result"],
@@ -89,6 +94,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "mistral",
         source_dir: "tests/providers/mistral",
         wrapper_names: &["with_mistral_cassette_result"],
+    },
+    ProviderCassetteSuite {
+        provider: "perplexity",
+        source_dir: "tests/providers/perplexity/cassette",
+        wrapper_names: &["with_perplexity_cassette"],
     },
     ProviderCassetteSuite {
         provider: "mistralrs",

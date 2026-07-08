@@ -3,7 +3,6 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
-use rig::completion::ToolDefinition;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
 };
@@ -38,17 +37,16 @@ impl Tool for HybridImageTool {
     type Args = serde_json::Value;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Return a reference image the assistant must inspect before answering."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "required": [],
-            }),
-        }
+    fn description(&self) -> String {
+        "Return a reference image the assistant must inspect before answering.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {

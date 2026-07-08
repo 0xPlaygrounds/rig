@@ -11,21 +11,10 @@
 //! # Ok(())
 //! # }
 //! ```
-use super::openai::{AssistantContent, send_compatible_streaming_request};
 
 use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
 use crate::client::{BearerAuth, ProviderClient};
 use crate::http_client::{self, HttpClientExt};
-use crate::streaming::StreamingCompletionResponse;
-
-use crate::providers::openai;
-use crate::{
-    OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
-    json_utils,
-    providers::openai::Message,
-};
-use serde::{Deserialize, Serialize};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -58,6 +47,46 @@ impl<H> Capabilities<H> for HyperbolicExt {
 }
 
 impl DebugExt for HyperbolicExt {}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for HyperbolicExt {
+    const PROVIDER_NAME: &'static str = "hyperbolic";
+
+    // Hyperbolic's structured-output support is unverified; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    // Hyperbolic does not support tool calling; `tools`/`tool_choice` are
+    // dropped with a warning during request conversion.
+    const SUPPORTS_TOOLS: bool = false;
+
+    type StreamingUsage = crate::providers::openai::Usage;
+
+    type Response = crate::providers::openai::CompletionResponse;
+
+    fn finalize_request_body(
+        &self,
+        body: &mut serde_json::Value,
+    ) -> Result<(), crate::completion::CompletionError> {
+        // Strip tool-exchange remnants that shared chat histories may carry;
+        // content-part arrays are kept as-is for Hyperbolic's vision models.
+        if let Some(messages) = body
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            crate::providers::openai::completion::sanitize_plain_text_history(
+                messages, None, false, false,
+            );
+        }
+
+        Ok(())
+    }
+
+    // The client base URL is the bare host; image/audio generation build
+    // their own v1 paths.
+    fn completion_path(&self, _model: &str) -> String {
+        "/v1/chat/completions".to_string()
+    }
+}
 
 impl ProviderBuilder for HyperbolicBuilder {
     type Extension<H>
@@ -97,39 +126,21 @@ impl ProviderClient for Client {
     }
 }
 
+#[cfg(any(feature = "image", feature = "audio"))]
+use serde::Deserialize;
+
+#[cfg(any(feature = "image", feature = "audio"))]
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
     message: String,
 }
 
+#[cfg(any(feature = "image", feature = "audio"))]
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingData {
-    pub object: String,
-    pub embedding: Vec<f64>,
-    pub index: usize,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
-    }
 }
 
 // ================================================================
@@ -161,317 +172,12 @@ pub const DEEPSEEK_R1_ZERO: &str = "deepseek-ai/DeepSeek-R1-Zero";
 /// Deepseek R1 model.
 pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
-/// A Hyperbolic completion object.
-///
-/// For more information, see this link: <https://docs.hyperbolic.xyz/reference/create_chat_completion_v1_chat_completions_post>
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    pub choices: Vec<Choice>,
-    pub usage: Option<Usage>,
-}
+/// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H = reqwest::Client> =
+    crate::providers::openai::completion::GenericCompletionModel<HyperbolicExt, H>;
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
-
-        let content = match &choice.message {
-            Message::Assistant {
-                content,
-                tool_calls,
-                ..
-            } => {
-                let mut content = content
-                    .iter()
-                    .map(|c| match c {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                        AssistantContent::Refusal { refusal } => {
-                            completion::AssistantContent::text(refusal)
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
-
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
-
-        let usage = response
-            .usage
-            .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .unwrap_or_default();
-
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Choice {
-    pub index: usize,
-    pub message: Message,
-    pub finish_reason: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct HyperbolicCompletionRequest {
-    model: String,
-    pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-}
-
-impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let chat_history = req.chat_history_with_documents();
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Hyperbolic");
-        }
-
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        if req.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
-        }
-
-        if !req.tools.is_empty() {
-            tracing::warn!("WARNING: `tools` not supported on Hyperbolic");
-        }
-
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-
-        let chat_history: Vec<Message> = chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            additional_params: req.additional_params,
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "hyperbolic",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-        let request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Hyperbolic completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let async_block = async move {
-            let response = self.client.send::<_, bytes::Bytes>(req).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        if tracing::enabled!(tracing::Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "Hyperbolic completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => {
-                        tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ))
-            }
-        };
-
-        async_block.instrument(span).await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "hyperbolic",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-        let mut request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
-        );
-
-        request.additional_params = Some(params);
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Hyperbolic streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        send_compatible_streaming_request(self.client.clone(), req)
-            .instrument(span)
-            .await
-    }
-}
+/// Raw completion payload, shared with the OpenAI Chat Completions path.
+pub type CompletionResponse = crate::providers::openai::CompletionResponse;
 
 // =======================================
 // Hyperbolic Image Generation API
@@ -622,7 +328,6 @@ mod image_generation {
 // ======================================
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
-use tracing::{Instrument, info_span};
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -726,6 +431,45 @@ mod audio_generation {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hyperbolic_prepare_request_drops_tools_and_tool_choice() {
+        use crate::providers::openai::completion::{
+            CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider,
+            OpenAIRequestParams,
+        };
+
+        let request = crate::completion::CompletionRequestBuilder::new(
+            crate::test_utils::MockCompletionModel::default(),
+            "hello",
+        )
+        .tool(crate::completion::ToolDefinition {
+            name: "lookup".to_string(),
+            description: "Lookup".to_string(),
+            parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+        })
+        .tool_choice(crate::message::ToolChoice::Required)
+        .output_schema(schemars::schema_for!(serde_json::Value))
+        .build();
+
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "meta-llama/Meta-Llama-3.1-8B-Instruct".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: super::HyperbolicExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: false,
+        })
+        .expect("request should convert");
+        super::HyperbolicExt
+            .prepare_request(&mut request)
+            .expect("prepare_request should succeed");
+
+        let body = serde_json::to_value(request).expect("request should serialize");
+        assert!(body.get("tools").is_none());
+        assert!(body.get("tool_choice").is_none());
+        assert!(body.get("response_format").is_none());
+    }
+
     #[test]
     fn test_client_initialization() {
         let _client =

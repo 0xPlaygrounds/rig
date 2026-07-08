@@ -6,7 +6,7 @@
 //! replay fails with a body mismatch.
 
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Message, ToolDefinition};
+use rig::completion::{Chat, Message};
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -37,39 +37,39 @@ impl Tool for PlanTrip {
     type Args = TripArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Plan a trip itinerary.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "destination": {
-                        "type": "string",
-                        "description": "Destination city"
-                    },
-                    "travellers": {
-                        "type": "integer",
-                        "description": "Number of travellers"
-                    },
-                    "transport": {
-                        "type": "string",
-                        "enum": ["train", "car", "plane"],
-                        "description": "Mode of transport"
-                    },
-                    "waypoints": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Cities to pass through, in order"
-                    },
-                    "notes": {
-                        "type": "string",
-                        "description": "Optional free-form notes"
-                    }
+    fn description(&self) -> String {
+        "Plan a trip itinerary.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "destination": {
+                    "type": "string",
+                    "description": "Destination city"
                 },
-                "required": ["destination", "travellers", "transport", "waypoints"]
-            }),
-        }
+                "travellers": {
+                    "type": "integer",
+                    "description": "Number of travellers"
+                },
+                "transport": {
+                    "type": "string",
+                    "enum": ["train", "car", "plane"],
+                    "description": "Mode of transport"
+                },
+                "waypoints": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Cities to pass through, in order"
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional free-form notes"
+                }
+            },
+            "required": ["destination", "travellers", "transport", "waypoints"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -99,18 +99,18 @@ impl Tool for LegacyEcho {
     type Args = EchoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "LEGACY echo implementation.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "text": { "type": "string", "description": "Text to echo" }
-                },
-                "required": ["text"]
-            }),
-        }
+    fn description(&self) -> String {
+        "LEGACY echo implementation.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "text": { "type": "string", "description": "Text to echo" }
+            },
+            "required": ["text"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -127,18 +127,18 @@ impl Tool for ModernEcho {
     type Args = EchoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Echo the provided text back to the caller.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "text": { "type": "string", "description": "Text to echo" }
-                },
-                "required": ["text"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Echo the provided text back to the caller.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "text": { "type": "string", "description": "Text to echo" }
+            },
+            "required": ["text"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

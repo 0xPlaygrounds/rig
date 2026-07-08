@@ -760,7 +760,10 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum ToolChoice {
-    /// `"auto"`, `"none"`, or `"required"`.
+    /// `"auto"`, `"none"`, or `"required"`. The wrapped chat-completions
+    /// enum also has a `Function` variant whose nested wire shape the
+    /// Responses API rejects — use [`ToolChoiceDefinition::Function`] to
+    /// force a function here.
     Mode(super::completion::ToolChoice),
     /// A typed tool-choice object (`function` or `allowed_tools`).
     Definition(ToolChoiceDefinition),
@@ -1354,7 +1357,7 @@ where
 {
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        super::completion::CompletionModel::with_model(self.client.completions_api(), &self.model)
+        super::completion::CompletionModel::new(self.client.completions_api(), &self.model)
     }
 }
 

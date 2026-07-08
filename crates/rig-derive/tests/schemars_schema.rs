@@ -28,13 +28,13 @@ fn add_doc(
 
 #[tokio::test]
 async fn test_doc_comment_description() {
-    let def = AddDoc.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&AddDoc);
     assert_eq!(def.description, "Add two numbers");
 }
 
 #[tokio::test]
 async fn test_param_doc_comments() {
-    let def = AddDoc.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&AddDoc);
     let props = def.parameters["properties"].as_object().unwrap();
     assert_eq!(props["a"]["description"], "First number");
     assert_eq!(props["b"]["description"], "Second number");
@@ -56,7 +56,7 @@ fn search_override(
 
 #[tokio::test]
 async fn test_explicit_overrides_doc() {
-    let def = SearchOverride.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&SearchOverride);
     assert_eq!(def.description, "Override description");
     let props = def.parameters["properties"].as_object().unwrap();
     assert_eq!(props["query"]["description"], "Override param doc");
@@ -77,7 +77,7 @@ fn search_optional(
 
 #[tokio::test]
 async fn test_option_nullable() {
-    let def = SearchOptional.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&SearchOptional);
     let props = def.parameters["properties"].as_object().unwrap();
 
     // query is a plain string
@@ -127,7 +127,7 @@ fn numeric_types(
 
 #[tokio::test]
 async fn test_integer_vs_number() {
-    let def = NumericTypes.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&NumericTypes);
     let props = def.parameters["properties"].as_object().unwrap();
     assert_eq!(props["int_val"]["type"], "integer");
     assert_eq!(props["float_val"]["type"], "number");
@@ -146,7 +146,7 @@ fn sum_vec(
 
 #[tokio::test]
 async fn test_vec_param() {
-    let def = SumVec.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&SumVec);
     let props = def.parameters["properties"].as_object().unwrap();
     assert_eq!(props["numbers"]["type"], "array");
     assert_eq!(props["numbers"]["items"]["type"], "integer");
@@ -162,7 +162,7 @@ fn no_params() -> Result<i32, rig_core::tool::ToolError> {
 
 #[tokio::test]
 async fn test_no_params() {
-    let def = NoParams.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&NoParams);
     let required = def.parameters["required"].as_array().unwrap();
     assert!(required.is_empty());
 
@@ -185,7 +185,7 @@ fn toggle(
 
 #[tokio::test]
 async fn test_bool_param() {
-    let def = Toggle.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&Toggle);
     let props = def.parameters["properties"].as_object().unwrap();
     assert_eq!(props["enabled"]["type"], "boolean");
 }
@@ -199,7 +199,7 @@ fn no_docs(x: i32) -> Result<i32, rig_core::tool::ToolError> {
 
 #[tokio::test]
 async fn test_default_description_fallback() {
-    let def = NoDocs.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&NoDocs);
     assert_eq!(def.description, "Function to no_docs");
 
     let props = def.parameters["properties"].as_object().unwrap();
@@ -210,7 +210,7 @@ async fn test_default_description_fallback() {
 
 #[tokio::test]
 async fn test_schema_type_object() {
-    let def = AddDoc.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&AddDoc);
     assert_eq!(def.parameters["type"], "object");
 }
 
@@ -218,7 +218,7 @@ async fn test_schema_type_object() {
 
 #[tokio::test]
 async fn test_required_all_by_default() {
-    let def = AddDoc.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&AddDoc);
     let required = def.parameters["required"].as_array().unwrap();
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
     assert_eq!(names.len(), 2);
@@ -247,7 +247,7 @@ fn sort_items(
 
 #[tokio::test]
 async fn test_enum_param() {
-    let def = SortItems.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&SortItems);
     let schema_str = serde_json::to_string(&def.parameters).unwrap();
 
     // schemars may use $defs/$ref or inline the enum — verify the renamed
@@ -269,7 +269,7 @@ fn store_metadata(
 
 #[tokio::test]
 async fn test_hashmap_param() {
-    let def = StoreMetadata.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&StoreMetadata);
     let props = def.parameters["properties"].as_object().unwrap();
     let meta = &props["metadata"];
     assert_eq!(meta["type"], "object");
@@ -303,7 +303,7 @@ fn find_nearby(
 
 #[tokio::test]
 async fn test_nested_struct_param() {
-    let def = FindNearby.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&FindNearby);
     let props = def.parameters["properties"].as_object().unwrap();
 
     // The location field should reference a nested struct definition
@@ -341,7 +341,7 @@ async fn fetch_url(
 
 #[tokio::test]
 async fn test_async_tool_with_docs() {
-    let def = FetchUrl.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&FetchUrl);
     assert_eq!(def.description, "Fetch a URL asynchronously");
     assert_eq!(def.name, "fetch_url");
 

@@ -2,21 +2,17 @@ use super::{
     client::{ApiResponse, Client, Usage},
     streaming::StreamingCompletionResponse,
 };
-use crate::message::{
-    self, AudioMediaType, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType,
-    VideoMediaType,
-};
+use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
 use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     http_client::HttpClientExt,
     json_utils,
-    one_or_many::string_or_one_or_many,
     providers::openai,
 };
 use bytes::Bytes;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{Instrument, Level, enabled, info_span};
 
@@ -721,7 +717,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .unwrap_or((0, 0));
                 completion::Usage {
                     input_tokens: usage.prompt_tokens as u64,
-                    output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                    // Reported completion tokens (like the streaming path),
+                    // falling back to saturating total - prompt for gateways
+                    // that omit the field (it deserializes to 0).
+                    output_tokens: if usage.completion_tokens > 0 {
+                        usage.completion_tokens as u64
+                    } else {
+                        usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64
+                    },
                     total_tokens: usage.total_tokens as u64,
                     cached_input_tokens: cached_input,
                     cache_creation_input_tokens: cache_creation,
@@ -740,235 +743,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-/// User content types supported by OpenRouter.
-///
-/// OpenRouter uses different content type structures than OpenAI's Chat Completions API,
-/// particularly for file/document, audio, and video content. This enum matches OpenRouter's
-/// API specification.
-///
-/// # Supported Content Types
-///
-/// - **Text**: Plain text content
-/// - **ImageUrl**: Images via URL or base64 data URI
-/// - **File**: PDF documents and other files via URL or base64 data URI
-/// - **InputAudio**: Base64-encoded audio files (supported formats vary by model)
-/// - **VideoUrl**: Videos via URL or base64 data URI
-///
-/// # Example
-///
-/// ```rust
-/// use rig_core::providers::openrouter::UserContent;
-///
-/// // Text content
-/// let text = UserContent::text("Hello, world!");
-///
-/// // Image from URL
-/// let image = UserContent::image_url("https://example.com/image.png");
-///
-/// // PDF from URL
-/// let pdf = UserContent::file_url("https://example.com/document.pdf", Some("document.pdf".to_string()));
-///
-/// // Audio from base64
-/// use rig_core::completion::message::AudioMediaType;
-/// let audio = UserContent::audio_base64("base64data", AudioMediaType::WAV);
-///
-/// // Video from URL
-/// let video = UserContent::video_url("https://example.com/video.mp4");
-///
-/// // Video from base64
-/// use rig_core::completion::message::VideoMediaType;
-/// let video = UserContent::video_base64("base64data", VideoMediaType::MP4);
-/// ```
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum UserContent {
-    /// Plain text content
-    Text { text: String },
-
-    /// Image content (URL or base64 data URI)
-    ///
-    /// Supports: image/png, image/jpeg, image/webp, image/gif
-    #[serde(rename = "image_url")]
-    ImageUrl { image_url: ImageUrl },
-
-    /// File content (for PDFs and other documents)
-    ///
-    /// Uses `file_data` field which accepts either a publicly accessible URL
-    /// or base64-encoded content as a data URI.
-    File { file: FileContent },
-
-    /// Audio content (base64-encoded only; URLs are not supported for audio)
-    ///
-    /// Supported formats vary by model.
-    InputAudio { input_audio: openai::InputAudio },
-
-    /// Video content (URL or base64 data URI)
-    ///
-    /// Supports: video/mp4, video/mpeg, video/mov, video/webm.
-    /// URL support varies by provider.
-    #[serde(rename = "video_url")]
-    VideoUrl { video_url: VideoUrlContent },
-}
-
-impl UserContent {
-    /// Create text content
-    pub fn text(text: impl Into<String>) -> Self {
-        UserContent::Text { text: text.into() }
-    }
-
-    /// Create image content from URL
-    pub fn image_url(url: impl Into<String>) -> Self {
-        UserContent::ImageUrl {
-            image_url: ImageUrl {
-                url: url.into(),
-                detail: None,
-            },
-        }
-    }
-
-    /// Create image content from URL with detail level
-    pub fn image_url_with_detail(url: impl Into<String>, detail: ImageDetail) -> Self {
-        UserContent::ImageUrl {
-            image_url: ImageUrl {
-                url: url.into(),
-                detail: Some(detail),
-            },
-        }
-    }
-
-    /// Create image content from base64 data
-    ///
-    /// # Arguments
-    /// * `data` - Base64-encoded image data
-    /// * `mime_type` - MIME type (e.g., "image/png", "image/jpeg")
-    /// * `detail` - Optional detail level for image processing
-    pub fn image_base64(
-        data: impl Into<String>,
-        mime_type: &str,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        let data_uri = format!("data:{};base64,{}", mime_type, data.into());
-        UserContent::ImageUrl {
-            image_url: ImageUrl {
-                url: data_uri,
-                detail,
-            },
-        }
-    }
-
-    /// Create file content from URL
-    ///
-    /// # Arguments
-    /// * `url` - URL to the file (must be publicly accessible)
-    /// * `filename` - Optional filename for the document
-    pub fn file_url(url: impl Into<String>, filename: Option<String>) -> Self {
-        UserContent::File {
-            file: FileContent {
-                filename,
-                file_data: Some(url.into()),
-            },
-        }
-    }
-
-    /// Create file content from base64 data
-    ///
-    /// # Arguments
-    /// * `data` - Base64-encoded file data
-    /// * `mime_type` - MIME type (e.g., "application/pdf")
-    /// * `filename` - Optional filename for the document
-    pub fn file_base64(data: impl Into<String>, mime_type: &str, filename: Option<String>) -> Self {
-        let data_uri = format!("data:{};base64,{}", mime_type, data.into());
-        UserContent::File {
-            file: FileContent {
-                filename,
-                file_data: Some(data_uri),
-            },
-        }
-    }
-
-    /// Create audio content from base64-encoded data
-    ///
-    /// OpenRouter only supports base64-encoded audio; direct URLs are not supported.
-    ///
-    /// # Arguments
-    /// * `data` - Base64-encoded audio data
-    /// * `format` - Audio format (e.g., `AudioMediaType::WAV`, `AudioMediaType::MP3`)
-    pub fn audio_base64(data: impl Into<String>, format: AudioMediaType) -> Self {
-        UserContent::InputAudio {
-            input_audio: openai::InputAudio {
-                data: data.into(),
-                format,
-            },
-        }
-    }
-
-    /// Create video content from a URL
-    ///
-    /// URL support varies by provider.
-    ///
-    /// # Arguments
-    /// * `url` - URL to the video (must be publicly accessible)
-    pub fn video_url(url: impl Into<String>) -> Self {
-        UserContent::VideoUrl {
-            video_url: VideoUrlContent { url: url.into() },
-        }
-    }
-
-    /// Create video content from base64-encoded data
-    ///
-    /// # Arguments
-    /// * `data` - Base64-encoded video data
-    /// * `media_type` - Video media type (e.g., `VideoMediaType::MP4`)
-    pub fn video_base64(data: impl Into<String>, media_type: VideoMediaType) -> Self {
-        let mime = media_type.to_mime_type();
-        let data_uri = format!("data:{mime};base64,{}", data.into());
-        UserContent::VideoUrl {
-            video_url: VideoUrlContent { url: data_uri },
-        }
-    }
-}
-
-impl From<String> for UserContent {
-    fn from(text: String) -> Self {
-        UserContent::Text { text }
-    }
-}
-
-impl From<&str> for UserContent {
-    fn from(text: &str) -> Self {
-        UserContent::Text {
-            text: text.to_string(),
-        }
-    }
-}
-
-impl std::str::FromStr for UserContent {
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(UserContent::Text {
-            text: s.to_string(),
-        })
-    }
-}
-
-/// Image URL structure for OpenRouter
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ImageUrl {
-    /// URL or data URI (data:image/png;base64,...)
-    pub url: String,
-    /// Image detail level (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<ImageDetail>,
-}
-
-/// An image emitted by an image-generation model. OpenRouter returns generated images
-/// out-of-band from `content`, as a sibling `images` array on the assistant message.
-/// Each entry mirrors the request-side `image_url` content part structure.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ResponseImage {
-    pub image_url: ImageUrl,
-}
+// OpenRouter shares OpenAI's Chat Completions message model. The request and
+// response *message* types are the shared OpenAI ones; only OpenRouter's
+// response envelope, provider routing preferences, and the conversion rules
+// below are provider-specific.
+pub use crate::providers::openai::completion::{
+    FileData, ImageUrl, Message, ReasoningDetails, ResponseImage, UserContent, VideoUrl,
+};
 
 const OPENROUTER_RESPONSE_ONLY_KEY: &str = "response_only";
 const OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY: &str = "source";
@@ -1025,254 +806,175 @@ fn is_openrouter_response_image(image: &message::Image) -> bool {
         })
 }
 
-/// Video URL content structure for OpenRouter video support
+/// Convert rig user content into OpenRouter's OpenAI-compatible content parts.
 ///
-/// OpenRouter supports both direct URLs and base64-encoded data URIs for video:
-/// - A publicly accessible URL
-/// - A base64-encoded data URI (e.g., `data:video/mp4;base64,...`)
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct VideoUrlContent {
-    /// URL or data URI (data:video/mp4;base64,...)
-    pub url: String,
-}
-
-/// File content structure for OpenRouter PDF/document support
+/// OpenRouter shares OpenAI's content schema but keeps its own conversion
+/// rules:
+/// - image `detail` passes through unchanged, so an absent detail stays
+///   absent on the wire,
+/// - documents accept URLs and non-PDF media types via `file_data`, while
+///   provider file IDs are rejected,
+/// - audio requires an explicit media type instead of defaulting to MP3.
 ///
-/// OpenRouter supports sending files (particularly PDFs) to models via the `file_data` field,
-/// which accepts either:
-/// - A publicly accessible URL to the file
-/// - A base64-encoded data URI (e.g., `data:application/pdf;base64,...`)
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct FileContent {
-    /// Filename (e.g., "document.pdf")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub filename: Option<String>,
-    /// File data source - URL or base64-encoded data URI
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_data: Option<String>,
-}
-
-/// Serializes user content as a plain string when there's a single text item,
-/// otherwise as an array of content parts.
-fn serialize_user_content<S>(
-    content: &OneOrMany<UserContent>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    if content.len() == 1
-        && let UserContent::Text { text, .. } = content.first_ref()
-    {
-        return serializer.serialize_str(text);
-    }
-    content.serialize(serializer)
-}
-
-impl TryFrom<message::UserContent> for UserContent {
-    type Error = message::MessageError;
-
-    fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
-        match value {
-            message::UserContent::Text(message::Text { text, .. }) => {
-                Ok(UserContent::Text { text })
-            }
-
-            message::UserContent::Image(message::Image {
-                data,
-                detail,
-                media_type,
-                ..
-            }) => {
-                let url = match data {
-                    DocumentSourceKind::Url(url) => url,
-                    DocumentSourceKind::Base64(data) => {
-                        let mime = media_type
-                            .ok_or_else(|| {
-                                message::MessageError::ConversionError(
-                                    "Image media type required for base64 encoding".into(),
-                                )
-                            })?
-                            .to_mime_type();
-                        format!("data:{mime};base64,{data}")
-                    }
-                    DocumentSourceKind::Raw(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "Raw bytes not supported, encode as base64 first".into(),
-                        ));
-                    }
-                    DocumentSourceKind::FileId(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "File IDs are not supported for images".into(),
-                        ));
-                    }
-                    DocumentSourceKind::String(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "String source not supported for images".into(),
-                        ));
-                    }
-                    DocumentSourceKind::Unknown => {
-                        return Err(message::MessageError::ConversionError(
-                            "Image has no data".into(),
-                        ));
-                    }
-                };
-                Ok(UserContent::ImageUrl {
-                    image_url: ImageUrl { url, detail },
-                })
-            }
-
-            message::UserContent::Document(message::Document {
-                data, media_type, ..
-            }) => match data {
-                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
-                    "Provider file IDs are not supported for OpenRouter document inputs".into(),
-                )),
-                DocumentSourceKind::Url(url) => {
-                    let filename = media_type.as_ref().map(|mt| match mt {
-                        DocumentMediaType::PDF => "document.pdf",
-                        DocumentMediaType::TXT => "document.txt",
-                        DocumentMediaType::HTML => "document.html",
-                        DocumentMediaType::MARKDOWN => "document.md",
-                        DocumentMediaType::CSV => "document.csv",
-                        DocumentMediaType::XML => "document.xml",
-                        _ => "document",
-                    });
-                    Ok(UserContent::File {
-                        file: FileContent {
-                            filename: filename.map(String::from),
-                            file_data: Some(url),
-                        },
-                    })
-                }
+/// Text and video content use the shared OpenAI conversion.
+fn user_content_to_openai(
+    value: message::UserContent,
+) -> Result<UserContent, message::MessageError> {
+    match value {
+        message::UserContent::Image(message::Image {
+            data,
+            detail,
+            media_type,
+            ..
+        }) => {
+            let url = match data {
+                DocumentSourceKind::Url(url) => url,
                 DocumentSourceKind::Base64(data) => {
                     let mime = media_type
-                        .as_ref()
-                        .map(|m| m.to_mime_type())
-                        .unwrap_or("application/pdf");
-                    let data_uri = format!("data:{mime};base64,{data}");
-
-                    let filename = media_type.as_ref().map(|mt| match mt {
-                        DocumentMediaType::PDF => "document.pdf",
-                        DocumentMediaType::TXT => "document.txt",
-                        DocumentMediaType::HTML => "document.html",
-                        DocumentMediaType::MARKDOWN => "document.md",
-                        DocumentMediaType::CSV => "document.csv",
-                        DocumentMediaType::XML => "document.xml",
-                        _ => "document",
-                    });
-
-                    Ok(UserContent::File {
-                        file: FileContent {
-                            filename: filename.map(String::from),
-                            file_data: Some(data_uri),
-                        },
-                    })
+                        .ok_or_else(|| {
+                            message::MessageError::ConversionError(
+                                "Image media type required for base64 encoding".into(),
+                            )
+                        })?
+                        .to_mime_type();
+                    format!("data:{mime};base64,{data}")
                 }
-                DocumentSourceKind::String(text) => Ok(UserContent::Text { text }),
-                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
-                    "Raw bytes not supported for documents, encode as base64 first".into(),
-                )),
-                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
-                    "Document has no data".into(),
-                )),
-            },
-
-            message::UserContent::Audio(message::Audio {
-                data, media_type, ..
-            }) => match data {
-                DocumentSourceKind::Base64(data) => {
-                    let format = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Audio media type required for base64 encoding".into(),
-                        )
-                    })?;
-                    Ok(UserContent::InputAudio {
-                        input_audio: openai::InputAudio { data, format },
-                    })
+                DocumentSourceKind::Raw(_) => {
+                    return Err(message::MessageError::ConversionError(
+                        "Raw bytes not supported, encode as base64 first".into(),
+                    ));
                 }
-                DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
-                    "OpenRouter does not support audio URLs, encode as base64 first".into(),
-                )),
-                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
-                    "Raw bytes not supported for audio, encode as base64 first".into(),
-                )),
-                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
-                    "File IDs are not supported for audio".into(),
-                )),
-                DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
-                    "String source not supported for audio".into(),
-                )),
-                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
-                    "Audio has no data".into(),
-                )),
-            },
+                DocumentSourceKind::FileId(_) => {
+                    return Err(message::MessageError::ConversionError(
+                        "File IDs are not supported for images".into(),
+                    ));
+                }
+                DocumentSourceKind::String(_) => {
+                    return Err(message::MessageError::ConversionError(
+                        "String source not supported for images".into(),
+                    ));
+                }
+                DocumentSourceKind::Unknown => {
+                    return Err(message::MessageError::ConversionError(
+                        "Image has no data".into(),
+                    ));
+                }
+            };
+            Ok(UserContent::Image {
+                image_url: ImageUrl { url, detail },
+            })
+        }
 
-            message::UserContent::Video(message::Video {
-                data, media_type, ..
-            }) => {
-                let url = match data {
-                    DocumentSourceKind::Url(url) => url,
-                    DocumentSourceKind::Base64(data) => {
-                        let mime = media_type
-                            .ok_or_else(|| {
-                                message::MessageError::ConversionError(
-                                    "Video media type required for base64 encoding".into(),
-                                )
-                            })?
-                            .to_mime_type();
-                        format!("data:{mime};base64,{data}")
-                    }
-                    DocumentSourceKind::Raw(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "Raw bytes not supported for video, encode as base64 first".into(),
-                        ));
-                    }
-                    DocumentSourceKind::FileId(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "File IDs are not supported for video".into(),
-                        ));
-                    }
-                    DocumentSourceKind::String(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "String source not supported for video".into(),
-                        ));
-                    }
-                    DocumentSourceKind::Unknown => {
-                        return Err(message::MessageError::ConversionError(
-                            "Video has no data".into(),
-                        ));
-                    }
-                };
-                Ok(UserContent::VideoUrl {
-                    video_url: VideoUrlContent { url },
+        message::UserContent::Document(message::Document {
+            data, media_type, ..
+        }) => match data {
+            DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                "Provider file IDs are not supported for OpenRouter document inputs".into(),
+            )),
+            DocumentSourceKind::Url(url) => Ok(UserContent::File {
+                file: FileData {
+                    file_data: Some(url),
+                    file_id: None,
+                    filename: document_filename(media_type.as_ref()),
+                },
+            }),
+            DocumentSourceKind::Base64(data) => {
+                let mime = media_type
+                    .as_ref()
+                    .map(|m| m.to_mime_type())
+                    .unwrap_or("application/pdf");
+                let data_uri = format!("data:{mime};base64,{data}");
+
+                Ok(UserContent::File {
+                    file: FileData {
+                        file_data: Some(data_uri),
+                        file_id: None,
+                        filename: document_filename(media_type.as_ref()),
+                    },
                 })
             }
-
-            message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
-                "Tool results should be handled as separate messages".into(),
+            DocumentSourceKind::String(text) => Ok(UserContent::Text { text }),
+            DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                "Raw bytes not supported for documents, encode as base64 first".into(),
             )),
-        }
+            DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                "Document has no data".into(),
+            )),
+        },
+
+        message::UserContent::Audio(message::Audio {
+            data, media_type, ..
+        }) => match data {
+            DocumentSourceKind::Base64(data) => {
+                let format = media_type.ok_or_else(|| {
+                    message::MessageError::ConversionError(
+                        "Audio media type required for base64 encoding".into(),
+                    )
+                })?;
+                Ok(UserContent::Audio {
+                    input_audio: openai::InputAudio { data, format },
+                })
+            }
+            DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
+                "OpenRouter does not support audio URLs, encode as base64 first".into(),
+            )),
+            DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                "Raw bytes not supported for audio, encode as base64 first".into(),
+            )),
+            DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                "File IDs are not supported for audio".into(),
+            )),
+            DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
+                "String source not supported for audio".into(),
+            )),
+            DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                "Audio has no data".into(),
+            )),
+        },
+
+        message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
+            "Tool results should be handled as separate messages".into(),
+        )),
+
+        // Text and video conversions are identical to the shared OpenAI ones.
+        value => UserContent::try_from(value),
     }
 }
 
-impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
-    type Error = message::MessageError;
+fn document_filename(media_type: Option<&DocumentMediaType>) -> Option<String> {
+    media_type.map(|mt| {
+        match mt {
+            DocumentMediaType::PDF => "document.pdf",
+            DocumentMediaType::TXT => "document.txt",
+            DocumentMediaType::HTML => "document.html",
+            DocumentMediaType::MARKDOWN => "document.md",
+            DocumentMediaType::CSV => "document.csv",
+            DocumentMediaType::XML => "document.xml",
+            _ => "document",
+        }
+        .to_string()
+    })
+}
 
-    fn try_from(value: OneOrMany<message::UserContent>) -> Result<Self, Self::Error> {
-        let (tool_results, other_content): (Vec<_>, Vec<_>) = value
+fn user_contents_to_messages(
+    value: OneOrMany<message::UserContent>,
+) -> Result<Vec<Message>, message::MessageError> {
+    let (tool_results, other_content): (Vec<_>, Vec<_>) = value
+        .into_iter()
+        .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+
+    // If there are messages with both tool results and user content, we handle
+    // tool results first. It's unlikely that there will be both.
+    if !tool_results.is_empty() {
+        tool_results
             .into_iter()
-            .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
-
-        // If there are messages with both tool results and user content, we handle
-        // tool results first. It's unlikely that there will be both.
-        if !tool_results.is_empty() {
-            tool_results
-                .into_iter()
-                .map(|content| match content {
-                    message::UserContent::ToolResult(tool_result) => Ok(Message::ToolResult {
-                        tool_call_id: tool_result.id,
-                        content: tool_result
+            .map(|content| match content {
+                message::UserContent::ToolResult(tool_result) => Ok(Message::ToolResult {
+                    // Prefer the provider-issued call id, matching the
+                    // assistant echo (shared From<message::ToolCall>).
+                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
+                    content: openai::completion::ToolResultContentValue::String(
+                        tool_result
                             .content
                             .into_iter()
                             .map(|c| match c {
@@ -1285,29 +987,29 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
                             })
                             .collect::<Vec<_>>()
                             .join("\n"),
-                    }),
-                    _ => Err(message::MessageError::ConversionError(
-                        "expected tool result content while converting OpenRouter input".into(),
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()
-        } else {
-            let user_content: Vec<UserContent> = other_content
-                .into_iter()
-                .map(|content| content.try_into())
-                .collect::<Result<Vec<_>, _>>()?;
+                    ),
+                }),
+                _ => Err(message::MessageError::ConversionError(
+                    "expected tool result content while converting OpenRouter input".into(),
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()
+    } else {
+        let user_content: Vec<UserContent> = other_content
+            .into_iter()
+            .map(user_content_to_openai)
+            .collect::<Result<Vec<_>, _>>()?;
 
-            let content = OneOrMany::many(user_content).map_err(|_| {
-                message::MessageError::ConversionError(
-                    "OpenRouter user message did not contain any non-tool content".into(),
-                )
-            })?;
+        let content = OneOrMany::many(user_content).map_err(|_| {
+            message::MessageError::ConversionError(
+                "OpenRouter user message did not contain any non-tool content".into(),
+            )
+        })?;
 
-            Ok(vec![Message::User {
-                content,
-                name: None,
-            }])
-        }
+        Ok(vec![Message::User {
+            content,
+            name: None,
+        }])
     }
 }
 
@@ -1323,103 +1025,6 @@ pub struct Choice {
     pub finish_reason: Option<String>,
 }
 
-/// OpenRouter message.
-///
-/// Almost identical to OpenAI's Message, but supports more parameters
-/// for some providers like `reasoning`, and uses OpenRouter-specific
-/// content types that support images, PDFs, and other file types.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "role", rename_all = "lowercase")]
-pub enum Message {
-    #[serde(alias = "developer")]
-    System {
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        content: OneOrMany<openai::SystemContent>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    User {
-        #[serde(
-            deserialize_with = "string_or_one_or_many",
-            serialize_with = "serialize_user_content"
-        )]
-        content: OneOrMany<UserContent>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    #[serde(alias = "model")]
-    Assistant {
-        #[serde(
-            default,
-            deserialize_with = "json_utils::string_or_vec",
-            skip_serializing_if = "Vec::is_empty"
-        )]
-        content: Vec<openai::AssistantContent>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        refusal: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        audio: Option<openai::AudioAssistant>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        #[serde(
-            default,
-            deserialize_with = "json_utils::null_or_vec",
-            skip_serializing_if = "Vec::is_empty"
-        )]
-        tool_calls: Vec<openai::ToolCall>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        reasoning: Option<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        reasoning_details: Vec<ReasoningDetails>,
-        /// Generated images (image-generation models). Inbound only —
-        /// never serialized back into a request (assistant images are
-        /// not a supported request content type on OpenRouter).
-        #[serde(default, skip_serializing)]
-        images: Vec<ResponseImage>,
-    },
-    #[serde(rename = "tool")]
-    ToolResult {
-        tool_call_id: String,
-        content: String,
-    },
-}
-
-impl Message {
-    pub fn system(content: &str) -> Self {
-        Message::System {
-            content: OneOrMany::one(content.to_owned().into()),
-            name: None,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ReasoningDetails {
-    #[serde(rename = "reasoning.summary")]
-    Summary {
-        id: Option<String>,
-        format: Option<String>,
-        index: Option<usize>,
-        summary: String,
-    },
-    #[serde(rename = "reasoning.encrypted")]
-    Encrypted {
-        id: Option<String>,
-        format: Option<String>,
-        index: Option<usize>,
-        data: String,
-    },
-    #[serde(rename = "reasoning.text")]
-    Text {
-        id: Option<String>,
-        format: Option<String>,
-        index: Option<usize>,
-        text: Option<String>,
-        signature: Option<String>,
-    },
-}
-
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 #[serde(untagged)]
 enum ToolCallAdditionalParams {
@@ -1430,263 +1035,160 @@ enum ToolCallAdditionalParams {
     },
 }
 
-/// Convert OpenAI's user content to OpenRouter's user content.
-impl TryFrom<openai::UserContent> for UserContent {
-    type Error = message::MessageError;
+/// Replay assistant history — including structured reasoning — as OpenRouter
+/// request messages.
+///
+/// Maps rig [`message::Reasoning`] blocks back onto the `reasoning_details`
+/// field of the shared assistant message, and recovers reasoning metadata
+/// stored on tool calls (signature / `additional_params`) so providers that
+/// require reasoning to be echoed back on tool-call turns keep working.
+fn assistant_contents_to_messages(
+    value: OneOrMany<message::AssistantContent>,
+) -> Result<Vec<Message>, message::MessageError> {
+    let mut text_content = Vec::new();
+    let mut tool_calls = Vec::new();
+    let mut reasoning = None;
+    let mut reasoning_details = Vec::new();
 
-    fn try_from(value: openai::UserContent) -> Result<Self, Self::Error> {
-        Ok(match value {
-            openai::UserContent::Text { text, .. } => UserContent::Text { text },
-            openai::UserContent::Image { image_url } => UserContent::ImageUrl {
-                image_url: ImageUrl {
-                    url: image_url.url,
-                    detail: Some(image_url.detail),
-                },
-            },
-            openai::UserContent::Audio { input_audio } => UserContent::InputAudio { input_audio },
-            openai::UserContent::File { file } => match file.file_data {
-                Some(file_data) => UserContent::File {
-                    file: FileContent {
-                        filename: file.filename,
-                        file_data: Some(file_data),
-                    },
-                },
-                None => {
-                    return Err(message::MessageError::ConversionError(
-                        "OpenRouter file inputs require URL or base64 file_data; provider file IDs are not supported".into(),
-                    ));
+    for content in value.into_iter() {
+        match content {
+            message::AssistantContent::Text(text) => text_content.push(text),
+            message::AssistantContent::ToolCall(tool_call) => {
+                // We usually want to provide back the reasoning to OpenRouter since some
+                // providers require it.
+                // 1. Full reasoning details passed back the user
+                // 2. The signature, an id and a format if present
+                // 3. The signature and the call_id if present
+                if let Some(additional_params) = &tool_call.additional_params
+                    && let Ok(additional_params) = serde_json::from_value::<ToolCallAdditionalParams>(
+                        additional_params.clone(),
+                    )
+                {
+                    match additional_params {
+                        ToolCallAdditionalParams::ReasoningDetails(full) => {
+                            reasoning_details.push(full);
+                        }
+                        ToolCallAdditionalParams::Minimal { id, format } => {
+                            // Correlate with the id the wire tool call will
+                            // carry (call_id when present, else id).
+                            let id = id
+                                .or_else(|| tool_call.call_id.clone())
+                                .unwrap_or_else(|| tool_call.id.clone());
+                            if let Some(signature) = &tool_call.signature {
+                                reasoning_details.push(ReasoningDetails::Encrypted {
+                                    id: Some(id),
+                                    format,
+                                    index: None,
+                                    data: signature.clone(),
+                                })
+                            }
+                        }
+                    }
+                } else if let Some(signature) = &tool_call.signature {
+                    reasoning_details.push(ReasoningDetails::Encrypted {
+                        id: Some(
+                            tool_call
+                                .call_id
+                                .clone()
+                                .unwrap_or_else(|| tool_call.id.clone()),
+                        ),
+                        format: None,
+                        index: None,
+                        data: signature.clone(),
+                    });
                 }
-            },
-        })
-    }
-}
-
-impl TryFrom<openai::Message> for Message {
-    type Error = message::MessageError;
-
-    fn try_from(value: openai::Message) -> Result<Self, Self::Error> {
-        Ok(match value {
-            openai::Message::System { content, name } => Self::System { content, name },
-            openai::Message::User { content, name } => {
-                let converted_content = content.try_map(UserContent::try_from)?;
-                Self::User {
-                    content: converted_content,
-                    name,
+                tool_calls.push(tool_call.into())
+            }
+            message::AssistantContent::Reasoning(r) => {
+                if r.content.is_empty() {
+                    let display = r.display_text();
+                    if !display.is_empty() {
+                        reasoning = Some(display);
+                    }
+                } else {
+                    for reasoning_block in &r.content {
+                        let index = Some(reasoning_details.len());
+                        match reasoning_block {
+                            message::ReasoningContent::Text { text, signature } => {
+                                reasoning_details.push(ReasoningDetails::Text {
+                                    id: r.id.clone(),
+                                    format: None,
+                                    index,
+                                    text: Some(text.clone()),
+                                    signature: signature.clone(),
+                                });
+                            }
+                            message::ReasoningContent::Summary(summary) => {
+                                reasoning_details.push(ReasoningDetails::Summary {
+                                    id: r.id.clone(),
+                                    format: None,
+                                    index,
+                                    summary: summary.clone(),
+                                });
+                            }
+                            message::ReasoningContent::Encrypted(data)
+                            | message::ReasoningContent::Redacted { data } => {
+                                reasoning_details.push(ReasoningDetails::Encrypted {
+                                    id: r.id.clone(),
+                                    format: None,
+                                    index,
+                                    data: data.clone(),
+                                });
+                            }
+                        }
+                    }
                 }
             }
-            openai::Message::Assistant {
-                content,
-                reasoning,
-                refusal,
-                audio,
-                name,
-                tool_calls,
-            } => Self::Assistant {
-                content,
-                refusal,
-                audio,
-                name,
-                tool_calls,
-                reasoning,
-                reasoning_details: Vec::new(),
-                images: Vec::new(),
-            },
-            openai::Message::ToolResult {
-                tool_call_id,
-                content,
-            } => Self::ToolResult {
-                tool_call_id,
-                content: content.as_text(),
-            },
-        })
-    }
-}
-
-impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
-    type Error = message::MessageError;
-
-    fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
-        let mut text_content = Vec::new();
-        let mut tool_calls = Vec::new();
-        let mut reasoning = None;
-        let mut reasoning_details = Vec::new();
-
-        for content in value.into_iter() {
-            match content {
-                message::AssistantContent::Text(text) => text_content.push(text),
-                message::AssistantContent::ToolCall(tool_call) => {
-                    // We usually want to provide back the reasoning to OpenRouter since some
-                    // providers require it.
-                    // 1. Full reasoning details passed back the user
-                    // 2. The signature, an id and a format if present
-                    // 3. The signature and the call_id if present
-                    if let Some(additional_params) = &tool_call.additional_params
-                        && let Ok(additional_params) =
-                            serde_json::from_value::<ToolCallAdditionalParams>(
-                                additional_params.clone(),
-                            )
-                    {
-                        match additional_params {
-                            ToolCallAdditionalParams::ReasoningDetails(full) => {
-                                reasoning_details.push(full);
-                            }
-                            ToolCallAdditionalParams::Minimal { id, format } => {
-                                let id = id.or_else(|| tool_call.call_id.clone());
-                                if let Some(signature) = &tool_call.signature
-                                    && let Some(id) = id
-                                {
-                                    reasoning_details.push(ReasoningDetails::Encrypted {
-                                        id: Some(id),
-                                        format,
-                                        index: None,
-                                        data: signature.clone(),
-                                    })
-                                }
-                            }
-                        }
-                    } else if let Some(signature) = &tool_call.signature {
-                        reasoning_details.push(ReasoningDetails::Encrypted {
-                            id: tool_call.call_id.clone(),
-                            format: None,
-                            index: None,
-                            data: signature.clone(),
-                        });
-                    }
-                    tool_calls.push(tool_call.into())
-                }
-                message::AssistantContent::Reasoning(r) => {
-                    if r.content.is_empty() {
-                        let display = r.display_text();
-                        if !display.is_empty() {
-                            reasoning = Some(display);
-                        }
-                    } else {
-                        for reasoning_block in &r.content {
-                            let index = Some(reasoning_details.len());
-                            match reasoning_block {
-                                message::ReasoningContent::Text { text, signature } => {
-                                    reasoning_details.push(ReasoningDetails::Text {
-                                        id: r.id.clone(),
-                                        format: None,
-                                        index,
-                                        text: Some(text.clone()),
-                                        signature: signature.clone(),
-                                    });
-                                }
-                                message::ReasoningContent::Summary(summary) => {
-                                    reasoning_details.push(ReasoningDetails::Summary {
-                                        id: r.id.clone(),
-                                        format: None,
-                                        index,
-                                        summary: summary.clone(),
-                                    });
-                                }
-                                message::ReasoningContent::Encrypted(data)
-                                | message::ReasoningContent::Redacted { data } => {
-                                    reasoning_details.push(ReasoningDetails::Encrypted {
-                                        id: r.id.clone(),
-                                        format: None,
-                                        index,
-                                        data: data.clone(),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-                message::AssistantContent::Image(image) if is_openrouter_response_image(&image) => {
-                    // OpenRouter generated images are response artifacts. They remain
-                    // visible in Rig history, but OpenRouter does not define them as
-                    // replayable assistant request content.
-                }
-                message::AssistantContent::Image(_) => {
-                    return Err(Self::Error::ConversionError(
+            message::AssistantContent::Image(image) if is_openrouter_response_image(&image) => {
+                // OpenRouter generated images are response artifacts. They remain
+                // visible in Rig history, but OpenRouter does not define them as
+                // replayable assistant request content.
+            }
+            message::AssistantContent::Image(_) => {
+                return Err(message::MessageError::ConversionError(
                         "OpenRouter does not support assistant image content in request history; pass images as user image inputs instead".into(),
                     ));
-                }
             }
         }
-
-        if text_content.is_empty()
-            && tool_calls.is_empty()
-            && reasoning.is_none()
-            && reasoning_details.is_empty()
-        {
-            return Ok(vec![]);
-        }
-
-        Ok(vec![Message::Assistant {
-            content: text_content
-                .into_iter()
-                .map(|content| content.text.into())
-                .collect::<Vec<_>>(),
-            refusal: None,
-            audio: None,
-            name: None,
-            tool_calls,
-            reasoning,
-            reasoning_details,
-            images: Vec::new(),
-        }])
     }
-}
 
-// OpenRouter uses its own content types for User messages to support
-// images and PDFs. Assistant messages still use OpenAI-compatible types.
-impl TryFrom<message::Message> for Vec<Message> {
-    type Error = message::MessageError;
-
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        match message {
-            message::Message::System { content } => Ok(vec![Message::System {
-                content: OneOrMany::one(content.into()),
-                name: None,
-            }]),
-            message::Message::User { content } => {
-                // Use OpenRouter's own conversion for User content
-                // This supports images and PDF files via the file content type
-                content.try_into()
-            }
-            message::Message::Assistant { content, .. } => content.try_into(),
-        }
+    if text_content.is_empty()
+        && tool_calls.is_empty()
+        && reasoning.is_none()
+        && reasoning_details.is_empty()
+    {
+        return Ok(vec![]);
     }
+
+    Ok(vec![Message::Assistant {
+        content: text_content
+            .into_iter()
+            .map(|content| content.text.into())
+            .collect::<Vec<_>>(),
+        refusal: None,
+        audio: None,
+        name: None,
+        tool_calls,
+        reasoning,
+        reasoning_details,
+        images: Vec::new(),
+    }])
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged, rename_all = "snake_case")]
-pub enum ToolChoice {
-    None,
-    Auto,
-    Required,
-    Function(Vec<ToolChoiceFunctionKind>),
-}
-
-impl TryFrom<crate::message::ToolChoice> for ToolChoice {
-    type Error = CompletionError;
-
-    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
-        let res = match value {
-            crate::message::ToolChoice::None => Self::None,
-            crate::message::ToolChoice::Auto => Self::Auto,
-            crate::message::ToolChoice::Required => Self::Required,
-            crate::message::ToolChoice::Specific { function_names } => {
-                let vec: Vec<ToolChoiceFunctionKind> = function_names
-                    .into_iter()
-                    .map(|name| ToolChoiceFunctionKind::Function { name })
-                    .collect();
-
-                Self::Function(vec)
-            }
-        };
-
-        Ok(res)
+/// Convert a rig message into OpenRouter request messages.
+///
+/// OpenRouter shares the OpenAI message model, but keeps its own conversion
+/// rules for user content (see `user_content_to_openai`) and for replaying
+/// assistant reasoning, so it does not use the shared
+/// `TryFrom<message::Message> for Vec<openai::Message>` conversion.
+pub fn messages_from_rig_message(
+    message: message::Message,
+) -> Result<Vec<Message>, message::MessageError> {
+    match message {
+        message::Message::System { content } => Ok(vec![Message::system(&content)]),
+        message::Message::User { content } => user_contents_to_messages(content),
+        message::Message::Assistant { content, .. } => assistant_contents_to_messages(content),
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "function")]
-pub enum ToolChoiceFunctionKind {
-    Function { name: String },
 }
 
 /// Apply explicit prompt-caching markers to an already-serialized OpenRouter
@@ -1755,6 +1257,24 @@ pub(super) fn final_request_body(
     if prompt_caching {
         apply_prompt_caching(&mut body);
     }
+
+    // The shared assistant message serializes hidden reasoning under the
+    // llama.cpp/DeepSeek key `reasoning_content`; OpenRouter's documented
+    // assistant field is `reasoning`.
+    if let Some(messages) = body
+        .get_mut("messages")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for message in messages {
+            if let Some(message) = message.as_object_mut()
+                && message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                && let Some(reasoning) = message.remove("reasoning_content")
+            {
+                message.insert("reasoning".to_string(), reasoning);
+            }
+        }
+    }
+
     Ok(body)
 }
 
@@ -1798,7 +1318,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
 
         let chat_history: Vec<Message> = chat_history
             .into_iter()
-            .map(|message| message.try_into())
+            .map(messages_from_rig_message)
             .collect::<Result<Vec<Vec<Message>>, _>>()?
             .into_iter()
             .flatten()
@@ -2046,6 +1566,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::{AudioMediaType, ImageDetail, VideoMediaType};
     use serde_json::json;
 
     #[test]
@@ -2129,6 +1650,41 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "openai/gpt-4o-mini");
+    }
+
+    #[test]
+    fn final_request_body_serializes_assistant_reasoning_under_openrouter_key() {
+        // Reasoning replay normally flows through `reasoning_details`; the
+        // plain string field must nevertheless hit the wire under
+        // OpenRouter's `reasoning` key, not the shared `reasoning_content`.
+        let request = OpenrouterCompletionRequest {
+            model: "openai/gpt-4o".to_string(),
+            messages: vec![Message::Assistant {
+                content: vec![],
+                reasoning: Some("thinking it through".to_string()),
+                refusal: None,
+                audio: None,
+                name: None,
+                tool_calls: vec![],
+                reasoning_details: vec![],
+                images: vec![],
+            }],
+            temperature: None,
+            tools: vec![],
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(
+            body["messages"][0]["reasoning"],
+            serde_json::json!("thinking it through")
+        );
+        assert!(
+            body["messages"][0].get("reasoning_content").is_none(),
+            "OpenRouter's assistant reasoning key is `reasoning`, not `reasoning_content`"
+        );
     }
 
     #[test]
@@ -2262,6 +1818,47 @@ mod tests {
         assert_eq!(response.model, "google/gemini-2.5-flash");
         assert_eq!(response.choices.len(), 1);
         assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
+    }
+
+    #[test]
+    fn test_completion_response_usage_prefers_reported_completion_tokens() {
+        let json = json!({
+            "id": "gen-usage-divergent",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "anthropic/claude-3.5-sonnet",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }],
+            // Divergent accounting: total != prompt + completion.
+            "usage": {"prompt_tokens": 500, "completion_tokens": 10, "total_tokens": 505}
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        assert_eq!(converted.usage.output_tokens, 10);
+    }
+
+    #[test]
+    fn test_completion_response_usage_falls_back_when_completion_tokens_missing() {
+        let json = json!({
+            "id": "gen-usage-omitted",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "some/gateway-model",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 100, "total_tokens": 110}
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        assert_eq!(converted.usage.output_tokens, 10);
     }
 
     #[test]
@@ -2860,7 +2457,9 @@ mod tests {
 
     #[test]
     fn test_user_content_text_serialization() {
-        let content = UserContent::text("Hello, world!");
+        let content = UserContent::Text {
+            text: "Hello, world!".to_string(),
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "text");
@@ -2869,7 +2468,12 @@ mod tests {
 
     #[test]
     fn test_user_content_image_url_serialization() {
-        let content = UserContent::image_url("https://example.com/image.png");
+        let content = UserContent::Image {
+            image_url: ImageUrl {
+                url: "https://example.com/image.png".to_string(),
+                detail: None,
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "image_url");
@@ -2879,8 +2483,12 @@ mod tests {
 
     #[test]
     fn test_user_content_image_url_with_detail_serialization() {
-        let content =
-            UserContent::image_url_with_detail("https://example.com/image.png", ImageDetail::High);
+        let content = UserContent::Image {
+            image_url: ImageUrl {
+                url: "https://example.com/image.png".to_string(),
+                detail: Some(ImageDetail::High),
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "image_url");
@@ -2890,7 +2498,12 @@ mod tests {
 
     #[test]
     fn test_user_content_image_base64_serialization() {
-        let content = UserContent::image_base64("SGVsbG8=", "image/png", Some(ImageDetail::Low));
+        let content = UserContent::Image {
+            image_url: ImageUrl {
+                url: "data:image/png;base64,SGVsbG8=".to_string(),
+                detail: Some(ImageDetail::Low),
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "image_url");
@@ -2900,10 +2513,13 @@ mod tests {
 
     #[test]
     fn test_user_content_file_url_serialization() {
-        let content = UserContent::file_url(
-            "https://example.com/doc.pdf",
-            Some("document.pdf".to_string()),
-        );
+        let content = UserContent::File {
+            file: FileData {
+                file_data: Some("https://example.com/doc.pdf".to_string()),
+                file_id: None,
+                filename: Some("document.pdf".to_string()),
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "file");
@@ -2913,11 +2529,13 @@ mod tests {
 
     #[test]
     fn test_user_content_file_base64_serialization() {
-        let content = UserContent::file_base64(
-            "JVBERi0xLjQ=",
-            "application/pdf",
-            Some("report.pdf".to_string()),
-        );
+        let content = UserContent::File {
+            file: FileData {
+                file_data: Some("data:application/pdf;base64,JVBERi0xLjQ=".to_string()),
+                file_id: None,
+                filename: Some("report.pdf".to_string()),
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "file");
@@ -2956,11 +2574,11 @@ mod tests {
 
         let content: UserContent = serde_json::from_value(json).unwrap();
         match content {
-            UserContent::ImageUrl { image_url } => {
+            UserContent::Image { image_url } => {
                 assert_eq!(image_url.url, "https://example.com/img.jpg");
                 assert_eq!(image_url.detail, Some(ImageDetail::High));
             }
-            _ => panic!("Expected ImageUrl variant"),
+            _ => panic!("Expected Image variant"),
         }
     }
 
@@ -2990,7 +2608,9 @@ mod tests {
     #[test]
     fn test_message_user_with_text_serialization() {
         let message = Message::User {
-            content: OneOrMany::one(UserContent::text("Hello")),
+            content: OneOrMany::one(UserContent::Text {
+                text: "Hello".to_string(),
+            }),
             name: None,
         };
         let json = serde_json::to_value(&message).unwrap();
@@ -3004,8 +2624,15 @@ mod tests {
     fn test_message_user_with_mixed_content_serialization() {
         let message = Message::User {
             content: OneOrMany::many(vec![
-                UserContent::text("Check this image:"),
-                UserContent::image_url("https://example.com/img.png"),
+                UserContent::Text {
+                    text: "Check this image:".to_string(),
+                },
+                UserContent::Image {
+                    image_url: ImageUrl {
+                        url: "https://example.com/img.png".to_string(),
+                        detail: None,
+                    },
+                },
             ])
             .unwrap(),
             name: None,
@@ -3023,11 +2650,16 @@ mod tests {
     fn test_message_user_with_file_serialization() {
         let message = Message::User {
             content: OneOrMany::many(vec![
-                UserContent::text("Analyze this PDF:"),
-                UserContent::file_url(
-                    "https://example.com/doc.pdf",
-                    Some("document.pdf".to_string()),
-                ),
+                UserContent::Text {
+                    text: "Analyze this PDF:".to_string(),
+                },
+                UserContent::File {
+                    file: FileData {
+                        file_data: Some("https://example.com/doc.pdf".to_string()),
+                        file_id: None,
+                        filename: Some("document.pdf".to_string()),
+                    },
+                },
             ])
             .unwrap(),
             name: None,
@@ -3048,7 +2680,7 @@ mod tests {
     #[test]
     fn test_user_content_from_rig_text() {
         let rig_content = message::UserContent::Text(message::Text::new("Hello".to_string()));
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         assert_eq!(
             openrouter_content,
@@ -3066,14 +2698,14 @@ mod tests {
             detail: Some(ImageDetail::High),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::ImageUrl { image_url } => {
+            UserContent::Image { image_url } => {
                 assert_eq!(image_url.url, "https://example.com/img.png");
                 assert_eq!(image_url.detail, Some(ImageDetail::High));
             }
-            _ => panic!("Expected ImageUrl variant"),
+            _ => panic!("Expected Image variant"),
         }
     }
 
@@ -3085,14 +2717,14 @@ mod tests {
             detail: Some(ImageDetail::Low),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::ImageUrl { image_url } => {
+            UserContent::Image { image_url } => {
                 assert_eq!(image_url.url, "data:image/jpeg;base64,SGVsbG8=");
                 assert_eq!(image_url.detail, Some(ImageDetail::Low));
             }
-            _ => panic!("Expected ImageUrl variant"),
+            _ => panic!("Expected Image variant"),
         }
     }
 
@@ -3103,7 +2735,7 @@ mod tests {
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
             UserContent::File { file } => {
@@ -3124,7 +2756,7 @@ mod tests {
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
             UserContent::File { file } => {
@@ -3146,7 +2778,7 @@ mod tests {
             additional_params: None,
         });
 
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
         assert!(matches!(
             result,
             Err(message::MessageError::ConversionError(message))
@@ -3165,7 +2797,7 @@ mod tests {
         };
         let rig_content: message::UserContent = openai_content.into();
 
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
         assert!(matches!(
             result,
             Err(message::MessageError::ConversionError(message))
@@ -3180,7 +2812,7 @@ mod tests {
             media_type: Some(DocumentMediaType::TXT),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         assert_eq!(
             openrouter_content,
@@ -3239,7 +2871,7 @@ mod tests {
             ],
         };
 
-        let messages = Vec::<Message>::try_from(OneOrMany::one(
+        let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::Reasoning(reasoning),
         ))
         .unwrap();
@@ -3266,6 +2898,79 @@ mod tests {
     }
 
     #[test]
+    fn test_tool_call_signature_without_params_uses_wire_id_for_encrypted_detail() {
+        let tool_call = message::ToolCall {
+            id: "call_wire".to_string(),
+            call_id: None,
+            function: message::ToolFunction {
+                name: "lookup".to_string(),
+                arguments: json!({}),
+            },
+            signature: Some("sig-data".to_string()),
+            additional_params: None,
+        };
+
+        let messages = assistant_contents_to_messages(OneOrMany::one(
+            message::AssistantContent::ToolCall(tool_call),
+        ))
+        .unwrap();
+
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted {
+                id: Some(id),
+                data,
+                ..
+            }) if id == "call_wire" && data == "sig-data"
+        ));
+    }
+
+    #[test]
+    fn test_tool_call_minimal_params_fall_back_to_wire_id() {
+        let tool_call = message::ToolCall {
+            id: "call_wire".to_string(),
+            call_id: None,
+            function: message::ToolFunction {
+                name: "lookup".to_string(),
+                arguments: json!({}),
+            },
+            signature: Some("sig-data".to_string()),
+            // Minimal params carrying only a format: the detail id must
+            // still correlate with the wire tool-call id.
+            additional_params: Some(json!({"format": "anthropic"})),
+        };
+
+        let messages = assistant_contents_to_messages(OneOrMany::one(
+            message::AssistantContent::ToolCall(tool_call),
+        ))
+        .unwrap();
+
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted {
+                id: Some(id),
+                format,
+                data,
+                ..
+            }) if id == "call_wire" && data == "sig-data" && format.as_deref() == Some("anthropic")
+        ));
+    }
+
+    #[test]
     fn test_assistant_redacted_reasoning_emits_encrypted_detail_not_text() {
         let reasoning = message::Reasoning {
             id: Some("rs_redacted".to_string()),
@@ -3274,7 +2979,7 @@ mod tests {
             }],
         };
 
-        let messages = Vec::<Message>::try_from(OneOrMany::one(
+        let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::Reasoning(reasoning),
         ))
         .unwrap();
@@ -3353,7 +3058,7 @@ mod tests {
             detail: None,
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3368,7 +3073,7 @@ mod tests {
             detail: None,
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3382,13 +3087,13 @@ mod tests {
             media_type: Some(message::VideoMediaType::MP4),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::VideoUrl { video_url } => {
+            UserContent::Video { video_url } => {
                 assert_eq!(video_url.url, "https://example.com/video.mp4");
             }
-            _ => panic!("Expected VideoUrl variant"),
+            _ => panic!("Expected Video variant"),
         }
     }
 
@@ -3399,13 +3104,13 @@ mod tests {
             media_type: Some(message::VideoMediaType::MP4),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::VideoUrl { video_url } => {
+            UserContent::Video { video_url } => {
                 assert_eq!(video_url.url, "data:video/mp4;base64,SGVsbG8=");
             }
-            _ => panic!("Expected VideoUrl variant"),
+            _ => panic!("Expected Video variant"),
         }
     }
 
@@ -3416,7 +3121,7 @@ mod tests {
             media_type: None,
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3430,7 +3135,7 @@ mod tests {
             media_type: Some(message::VideoMediaType::MP4),
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3444,14 +3149,14 @@ mod tests {
             media_type: Some(message::AudioMediaType::MP3),
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::InputAudio { input_audio } => {
+            UserContent::Audio { input_audio } => {
                 assert_eq!(input_audio.data, "audiodata");
                 assert_eq!(input_audio.format, message::AudioMediaType::MP3);
             }
-            _ => panic!("Expected InputAudio variant"),
+            _ => panic!("Expected Audio variant"),
         }
     }
 
@@ -3462,7 +3167,7 @@ mod tests {
             media_type: None, // missing media type
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3476,7 +3181,7 @@ mod tests {
             media_type: Some(message::AudioMediaType::WAV),
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3490,7 +3195,7 @@ mod tests {
             media_type: Some(message::AudioMediaType::WAV),
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3504,7 +3209,7 @@ mod tests {
             media_type: Some(message::VideoMediaType::MP4),
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3521,7 +3226,7 @@ mod tests {
             media_type: Some(message::AudioMediaType::MP3),
             additional_params: None,
         });
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3537,13 +3242,13 @@ mod tests {
         // `video_url` data URI.
         let rig_content =
             message::UserContent::video("SGVsbG8=", Some(message::VideoMediaType::MP4));
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::VideoUrl { video_url } => {
+            UserContent::Video { video_url } => {
                 assert_eq!(video_url.url, "data:video/mp4;base64,SGVsbG8=");
             }
-            _ => panic!("Expected VideoUrl variant"),
+            _ => panic!("Expected Video variant"),
         }
     }
 
@@ -3552,13 +3257,13 @@ mod tests {
         // `UserContent::video_url(..)` passes the URL through unchanged and does
         // not require a media type.
         let rig_content = message::UserContent::video_url("https://example.com/video.mp4", None);
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::VideoUrl { video_url } => {
+            UserContent::Video { video_url } => {
                 assert_eq!(video_url.url, "https://example.com/video.mp4");
             }
-            _ => panic!("Expected VideoUrl variant"),
+            _ => panic!("Expected Video variant"),
         }
     }
 
@@ -3568,7 +3273,7 @@ mod tests {
         // accept; the caller must base64-encode first.
         let rig_content =
             message::UserContent::video_raw(vec![1, 2, 3], Some(message::VideoMediaType::MP4));
-        let result: Result<UserContent, _> = rig_content.try_into();
+        let result: Result<UserContent, _> = user_content_to_openai(rig_content);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -3591,7 +3296,7 @@ mod tests {
             .unwrap(),
         };
 
-        let openrouter_messages: Vec<Message> = rig_message.try_into().unwrap();
+        let openrouter_messages: Vec<Message> = messages_from_rig_message(rig_message).unwrap();
         assert_eq!(openrouter_messages.len(), 1);
 
         match &openrouter_messages[0] {
@@ -3625,84 +3330,6 @@ mod tests {
                 text: "World".to_string()
             }
         );
-    }
-
-    #[test]
-    fn test_openai_user_content_conversion() {
-        // Test that OpenAI UserContent can be converted to OpenRouter UserContent
-        let openai_text = openai::UserContent::Text {
-            text: "Hello".to_string(),
-        };
-        let converted: UserContent = openai_text.try_into().unwrap();
-        assert_eq!(
-            converted,
-            UserContent::Text {
-                text: "Hello".to_string()
-            }
-        );
-
-        let openai_image = openai::UserContent::Image {
-            image_url: openai::ImageUrl {
-                url: "https://example.com/img.png".to_string(),
-                detail: ImageDetail::Auto,
-            },
-        };
-        let converted: UserContent = openai_image.try_into().unwrap();
-        match converted {
-            UserContent::ImageUrl { image_url } => {
-                assert_eq!(image_url.url, "https://example.com/img.png");
-                assert_eq!(image_url.detail, Some(ImageDetail::Auto));
-            }
-            _ => panic!("Expected ImageUrl"),
-        }
-
-        let openai_audio = openai::UserContent::Audio {
-            input_audio: openai::InputAudio {
-                data: "audiodata".to_string(),
-                format: AudioMediaType::FLAC,
-            },
-        };
-        let converted: UserContent = openai_audio.try_into().unwrap();
-        match converted {
-            UserContent::InputAudio { input_audio } => {
-                assert_eq!(input_audio.data, "audiodata");
-                assert_eq!(input_audio.format, AudioMediaType::FLAC);
-            }
-            _ => panic!("Expected InputAudio"),
-        }
-
-        let openai_file = openai::UserContent::File {
-            file: openai::FileData {
-                file_data: Some("data:application/pdf;base64,AAAA".to_string()),
-                file_id: None,
-                filename: Some("uploaded.pdf".to_string()),
-            },
-        };
-        let converted: UserContent = openai_file.try_into().unwrap();
-        match converted {
-            UserContent::File { file } => {
-                assert_eq!(file.filename, Some("uploaded.pdf".to_string()));
-                assert_eq!(
-                    file.file_data,
-                    Some("data:application/pdf;base64,AAAA".to_string())
-                );
-            }
-            _ => panic!("Expected File"),
-        }
-
-        let openai_file_id = openai::UserContent::File {
-            file: openai::FileData {
-                file_data: None,
-                file_id: Some("file_abc".to_string()),
-                filename: Some("uploaded.pdf".to_string()),
-            },
-        };
-        let result: Result<UserContent, _> = openai_file_id.try_into();
-        assert!(matches!(
-            result,
-            Err(message::MessageError::ConversionError(message))
-                if message.contains("provider file IDs are not supported")
-        ));
     }
 
     #[test]
@@ -3758,7 +3385,12 @@ mod tests {
 
     #[test]
     fn test_user_content_audio_serialization() {
-        let content = UserContent::audio_base64("SGVsbG8=", AudioMediaType::WAV);
+        let content = UserContent::Audio {
+            input_audio: openai::InputAudio {
+                data: "SGVsbG8=".to_string(),
+                format: AudioMediaType::WAV,
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "input_audio");
@@ -3778,11 +3410,11 @@ mod tests {
 
         let content: UserContent = serde_json::from_value(json).unwrap();
         match content {
-            UserContent::InputAudio { input_audio } => {
+            UserContent::Audio { input_audio } => {
                 assert_eq!(input_audio.data, "SGVsbG8=");
                 assert_eq!(input_audio.format, AudioMediaType::WAV);
             }
-            _ => panic!("Expected InputAudio variant"),
+            _ => panic!("Expected Audio variant"),
         }
     }
 
@@ -3790,8 +3422,15 @@ mod tests {
     fn test_message_user_with_audio_serialization() {
         let msg = Message::User {
             content: OneOrMany::many(vec![
-                UserContent::text("Transcribe this audio:"),
-                UserContent::audio_base64("SGVsbG8=", AudioMediaType::MP3),
+                UserContent::Text {
+                    text: "Transcribe this audio:".to_string(),
+                },
+                UserContent::Audio {
+                    input_audio: openai::InputAudio {
+                        data: "SGVsbG8=".to_string(),
+                        format: AudioMediaType::MP3,
+                    },
+                },
             ])
             .unwrap(),
             name: None,
@@ -3809,7 +3448,11 @@ mod tests {
 
     #[test]
     fn test_user_content_video_url_serialization() {
-        let content = UserContent::video_url("https://example.com/video.mp4");
+        let content = UserContent::Video {
+            video_url: VideoUrl {
+                url: "https://example.com/video.mp4".to_string(),
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "video_url");
@@ -3818,7 +3461,14 @@ mod tests {
 
     #[test]
     fn test_user_content_video_base64_serialization() {
-        let content = UserContent::video_base64("SGVsbG8=", VideoMediaType::MP4);
+        let content = UserContent::Video {
+            video_url: VideoUrl {
+                url: format!(
+                    "data:{};base64,SGVsbG8=",
+                    VideoMediaType::MP4.to_mime_type()
+                ),
+            },
+        };
         let json = serde_json::to_value(&content).unwrap();
 
         assert_eq!(json["type"], "video_url");
@@ -3836,10 +3486,10 @@ mod tests {
 
         let content: UserContent = serde_json::from_value(json).unwrap();
         match content {
-            UserContent::VideoUrl { video_url } => {
+            UserContent::Video { video_url } => {
                 assert_eq!(video_url.url, "https://example.com/video.mp4");
             }
-            _ => panic!("Expected VideoUrl variant"),
+            _ => panic!("Expected Video variant"),
         }
     }
 
@@ -3847,8 +3497,14 @@ mod tests {
     fn test_message_user_with_video_serialization() {
         let msg = Message::User {
             content: OneOrMany::many(vec![
-                UserContent::text("Describe this video:"),
-                UserContent::video_url("https://example.com/video.mp4"),
+                UserContent::Text {
+                    text: "Describe this video:".to_string(),
+                },
+                UserContent::Video {
+                    video_url: VideoUrl {
+                        url: "https://example.com/video.mp4".to_string(),
+                    },
+                },
             ])
             .unwrap(),
             name: None,
@@ -3873,13 +3529,13 @@ mod tests {
             media_type: None,
             additional_params: None,
         });
-        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let openrouter_content: UserContent = user_content_to_openai(rig_content).unwrap();
 
         match openrouter_content {
-            UserContent::VideoUrl { video_url } => {
+            UserContent::Video { video_url } => {
                 assert_eq!(video_url.url, "https://example.com/video.mp4");
             }
-            _ => panic!("Expected VideoUrl variant"),
+            _ => panic!("Expected Video variant"),
         }
     }
 
@@ -4147,7 +3803,7 @@ mod tests {
             generated_image,
         ])
         .unwrap();
-        let messages = Vec::<Message>::try_from(content).unwrap();
+        let messages = assistant_contents_to_messages(content).unwrap();
 
         assert_eq!(messages.len(), 1);
         assert!(matches!(
@@ -4168,7 +3824,7 @@ mod tests {
             },
         });
 
-        let messages = Vec::<Message>::try_from(OneOrMany::one(generated_image)).unwrap();
+        let messages = assistant_contents_to_messages(OneOrMany::one(generated_image)).unwrap();
 
         assert!(
             messages.is_empty(),
@@ -4184,7 +3840,7 @@ mod tests {
             None,
         );
 
-        let err = Vec::<Message>::try_from(OneOrMany::one(image)).unwrap_err();
+        let err = assistant_contents_to_messages(OneOrMany::one(image)).unwrap_err();
 
         match err {
             message::MessageError::ConversionError(message) => assert!(
@@ -4203,7 +3859,7 @@ mod tests {
             },
         });
 
-        let messages = Vec::<Message>::try_from(
+        let messages = assistant_contents_to_messages(
             OneOrMany::many(vec![
                 completion::AssistantContent::text("Keep this text."),
                 generated_image,

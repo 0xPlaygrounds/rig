@@ -23,7 +23,7 @@ use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{ToolDefinition, Usage};
+use rig::completion::Usage;
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 use rig::tool::Tool;
@@ -50,21 +50,21 @@ impl Tool for ProjectStatusTool {
     type Args = ProjectStatusArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Look up the current status for an internal project ticket.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "ticket": {
-                        "type": "string",
-                        "description": "The internal project ticket to look up"
-                    }
-                },
-                "required": ["ticket"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Look up the current status for an internal project ticket.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "ticket": {
+                    "type": "string",
+                    "description": "The internal project ticket to look up"
+                }
+            },
+            "required": ["ticket"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

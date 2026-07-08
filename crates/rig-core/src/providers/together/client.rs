@@ -1,6 +1,7 @@
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        ProviderClient,
     },
     http_client,
 };
@@ -25,6 +26,25 @@ impl Provider for TogetherExt {
     type Builder = TogetherExtBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
+}
+
+impl DebugExt for TogetherExt {}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for TogetherExt {
+    const PROVIDER_NAME: &'static str = "together";
+
+    type StreamingUsage = crate::providers::openai::Usage;
+
+    // Together's structured-output support is model-dependent; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    type Response = crate::providers::openai::CompletionResponse;
+
+    // The client base URL is the bare host; embeddings build their own v1 path.
+    fn completion_path(&self, _model: &str) -> String {
+        "/v1/chat/completions".to_string()
+    }
 }
 
 impl<H> Capabilities<H> for TogetherExt {

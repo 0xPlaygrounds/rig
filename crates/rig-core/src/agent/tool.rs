@@ -1,6 +1,6 @@
 use crate::{
     agent::Agent,
-    completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
+    completion::{CompletionModel, Prompt, PromptError},
     tool::{Tool, ToolCallExtensions},
 };
 use schemars::{JsonSchema, schema_for};
@@ -20,8 +20,8 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
     type Args = AgentToolArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        let description = format!(
+    fn description(&self) -> String {
+        format!(
             "
             Prompt a sub-agent to do a task for you.
 
@@ -32,12 +32,11 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
             name = self.name(),
             description = self.description.clone().unwrap_or_default(),
             sysprompt = self.preamble.clone().unwrap_or_default()
-        );
-        ToolDefinition {
-            name: <Self as Tool>::name(self),
-            description,
-            parameters: json!(schema_for!(AgentToolArgs)),
-        }
+        )
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!(schema_for!(AgentToolArgs))
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
