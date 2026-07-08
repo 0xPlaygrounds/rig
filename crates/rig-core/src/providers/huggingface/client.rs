@@ -122,6 +122,8 @@ impl Provider for HuggingFaceExt {
 impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingFaceExt {
     const PROVIDER_NAME: &'static str = "huggingface";
 
+    type StreamingUsage = crate::providers::openai::Usage;
+
     // Structured-output support varies by sub-provider; keep the
     // pre-migration behavior of dropping `output_schema` with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;

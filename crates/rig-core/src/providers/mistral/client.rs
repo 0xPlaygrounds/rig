@@ -30,6 +30,8 @@ impl Provider for MistralExt {
 impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralExt {
     const PROVIDER_NAME: &'static str = "mistral";
 
+    type StreamingUsage = Usage;
+
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
 
     // Mistral is strict about unknown parameters and reports usage on the

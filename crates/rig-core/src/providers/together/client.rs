@@ -33,6 +33,8 @@ impl DebugExt for TogetherExt {}
 impl crate::providers::openai::completion::OpenAICompatibleProvider for TogetherExt {
     const PROVIDER_NAME: &'static str = "together";
 
+    type StreamingUsage = crate::providers::openai::Usage;
+
     // Together's structured-output support is model-dependent; keep the
     // pre-migration behavior of dropping `output_schema` with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;

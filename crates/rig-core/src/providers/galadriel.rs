@@ -43,6 +43,12 @@ type GaladrielApiKey = BearerAuth;
 impl crate::providers::openai::completion::OpenAICompatibleProvider for GaladrielExt {
     const PROVIDER_NAME: &'static str = "galadriel";
 
+    // Galadriel's structured-output support is unverified; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    type StreamingUsage = crate::providers::openai::Usage;
+
     type Response = crate::providers::openai::CompletionResponse;
 }
 

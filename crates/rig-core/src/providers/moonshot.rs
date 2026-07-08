@@ -289,6 +289,8 @@ pub type CompletionModel<H = reqwest::Client> =
 impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
     const PROVIDER_NAME: &'static str = "moonshot";
 
+    type StreamingUsage = openai::Usage;
+
     // Moonshot's API rejects the `json_schema` response format; keep the
     // pre-migration behavior of dropping `output_schema` with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;

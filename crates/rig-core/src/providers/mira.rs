@@ -54,6 +54,8 @@ impl DebugExt for MiraExt {}
 impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt {
     const PROVIDER_NAME: &'static str = "mira";
 
+    type StreamingUsage = crate::providers::openai::Usage;
+
     // Mira's gateway does not accept OpenAI structured-output parameters.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
 

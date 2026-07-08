@@ -3,8 +3,11 @@
 //! Replays by default. Set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local OpenAI-compatible llama.cpp-family server. Recording defaults to
 //! Ollama's OpenAI-compatible endpoint (`http://localhost:11434`); set
-//! `LLAMAFILE_CASSETTE_UPSTREAM` to record against a different server (e.g. an
-//! actual llamafile on `http://localhost:8080`).
+//! `LLAMAFILE_CASSETTE_UPSTREAM` to record against a different server. The
+//! committed chat cassettes were recorded against an actual llama.cpp
+//! `llama-server` (`brew install llama.cpp`, `llama-server -m <gguf> --jinja`,
+//! then `LLAMAFILE_CASSETTE_UPSTREAM=http://localhost:<port>`); the embeddings
+//! cassette was recorded against Ollama.
 
 use futures::FutureExt;
 use rig::providers::llamafile;

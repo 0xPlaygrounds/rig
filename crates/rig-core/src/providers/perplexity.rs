@@ -44,6 +44,8 @@ impl Provider for PerplexityExt {
 impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
     const PROVIDER_NAME: &'static str = "perplexity";
 
+    type StreamingUsage = openai::Usage;
+
     // Perplexity's structured-output support predates rig's `output_schema`
     // mapping; keep the pre-migration behavior of dropping it with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
@@ -62,6 +64,37 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
         }
         if request.tool_choice.take().is_some() {
             tracing::warn!("Tool choice is not supported by Perplexity and will be ignored");
+        }
+
+        Ok(())
+    }
+
+    fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
+        // Perplexity historically only accepted plain `{role, content: String}`
+        // messages. Flatten text-only content-part arrays back to strings;
+        // arrays with non-text parts (e.g. images on sonar models) are left
+        // for the API's multimodal handling.
+        let Some(messages) = body
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        else {
+            return Ok(());
+        };
+
+        for message in messages {
+            let Some(content) = message.get_mut("content") else {
+                continue;
+            };
+            let Some(parts) = content.as_array() else {
+                continue;
+            };
+            let texts = parts
+                .iter()
+                .map(|part| part.get("text").and_then(serde_json::Value::as_str))
+                .collect::<Option<Vec<_>>>();
+            if let Some(texts) = texts {
+                *content = serde_json::Value::String(texts.join("\n"));
+            }
         }
 
         Ok(())
@@ -148,6 +181,33 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn perplexity_finalize_flattens_text_only_content_arrays() {
+        let mut body = serde_json::json!({
+            "model": SONAR,
+            "messages": [
+                {"role": "system", "content": [{"type": "text", "text": "Be brief."}]},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "First."},
+                    {"type": "text", "text": "Second."}
+                ]},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "Look:"},
+                    {"type": "image_url", "image_url": {"url": "https://example.com/i.png"}}
+                ]}
+            ]
+        });
+
+        PerplexityExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+
+        assert_eq!(body["messages"][0]["content"], "Be brief.");
+        assert_eq!(body["messages"][1]["content"], "First.\nSecond.");
+        // Mixed content stays an array for the API's multimodal handling.
+        assert!(body["messages"][2]["content"].is_array());
     }
 
     #[test]

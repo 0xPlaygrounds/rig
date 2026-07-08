@@ -51,6 +51,8 @@ impl Provider for DeepSeekExt {
 impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
     const PROVIDER_NAME: &'static str = "deepseek";
 
+    type StreamingUsage = Usage;
+
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
 
     // DeepSeek's API only supports `json_object` response formats (passed via
@@ -167,8 +169,9 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<DeepSeekExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path.
-pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
+/// Final streaming response, shared with the OpenAI Chat Completions path but
+/// carrying DeepSeek's own usage payload (cache hit/miss counters).
+pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
 
 impl ProviderClient for Client {
     type Input = DeepSeekApiKey;

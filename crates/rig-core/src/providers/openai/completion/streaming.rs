@@ -77,19 +77,26 @@ struct StreamingChoice {
 }
 
 #[derive(Deserialize, Debug)]
-struct StreamingCompletionChunk {
+struct StreamingCompletionChunk<U = Usage> {
     id: Option<String>,
     model: Option<String>,
     choices: Vec<StreamingChoice>,
-    usage: Option<Usage>,
+    usage: Option<U>,
 }
 
+/// Final streaming response. `U` is the provider's streaming usage payload
+/// ([`Usage`] for OpenAI itself; providers with richer usage accounting, e.g.
+/// Mistral and DeepSeek, substitute their own via
+/// [`OpenAICompatibleProvider::StreamingUsage`].
 #[derive(Clone, Serialize, Deserialize)]
-pub struct StreamingCompletionResponse {
-    pub usage: Usage,
+pub struct StreamingCompletionResponse<U = Usage> {
+    pub usage: U,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl<U> GetTokenUsage for StreamingCompletionResponse<U>
+where
+    U: GetTokenUsage,
+{
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
@@ -103,8 +110,10 @@ where
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<
+        streaming::StreamingCompletionResponse<StreamingCompletionResponse<Ext::StreamingUsage>>,
+        CompletionError,
+    > {
         let mut request = super::CompletionRequest::try_from(OpenAIRequestParams {
             model: self.model.clone(),
             request: completion_request,
@@ -170,9 +179,10 @@ where
             openai_chat_completions_compatible::send_compatible_streaming_request(
                 client,
                 req,
-                OpenAICompatibleProfile {
+                OpenAICompatibleProfile::<Ext::StreamingUsage> {
                     emits_complete_single_chunk_tool_calls:
                         Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
+                    usage: std::marker::PhantomData,
                 },
             ),
             span,
@@ -182,20 +192,30 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile {
+struct OpenAICompatibleProfile<U = Usage> {
     emits_complete_single_chunk_tool_calls: bool,
+    usage: std::marker::PhantomData<U>,
 }
 
-impl CompatibleStreamProfile for OpenAICompatibleProfile {
-    type Usage = Usage;
+impl<U> CompatibleStreamProfile for OpenAICompatibleProfile<U>
+where
+    U: Clone
+        + Default
+        + GetTokenUsage
+        + serde::de::DeserializeOwned
+        + crate::wasm_compat::WasmCompatSend
+        + Unpin
+        + 'static,
+{
+    type Usage = U;
     type Detail = ();
-    type FinalResponse = StreamingCompletionResponse;
+    type FinalResponse = StreamingCompletionResponse<U>;
 
     fn normalize_chunk(
         &self,
         data: &str,
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
+        let data = match serde_json::from_str::<StreamingCompletionChunk<U>>(data) {
             Ok(data) => data,
             Err(error) => {
                 tracing::error!(?error, message = data, "Failed to parse SSE message");

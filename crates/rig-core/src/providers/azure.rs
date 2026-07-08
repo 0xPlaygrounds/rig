@@ -555,6 +555,8 @@ pub type CompletionModel<H = reqwest::Client> =
 impl openai::completion::OpenAICompatibleProvider for AzureExt {
     const PROVIDER_NAME: &'static str = "azure";
 
+    type StreamingUsage = openai::Usage;
+
     type Response = openai::CompletionResponse;
 
     // Azure routes the deployment (model) through the URL path and versions

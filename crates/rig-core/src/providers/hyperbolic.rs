@@ -53,7 +53,30 @@ impl DebugExt for HyperbolicExt {}
 impl crate::providers::openai::completion::OpenAICompatibleProvider for HyperbolicExt {
     const PROVIDER_NAME: &'static str = "hyperbolic";
 
+    // Hyperbolic's structured-output support is unverified; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    type StreamingUsage = crate::providers::openai::Usage;
+
     type Response = crate::providers::openai::CompletionResponse;
+
+    fn prepare_request(
+        &self,
+        request: &mut crate::providers::openai::completion::CompletionRequest,
+    ) -> Result<(), crate::completion::CompletionError> {
+        // Hyperbolic does not support tool calling; drop tools rather than
+        // sending parameters its API may reject.
+        if !request.tools.is_empty() {
+            tracing::warn!("`tools` not supported on Hyperbolic; tools will be ignored");
+            request.tools.clear();
+        }
+        if request.tool_choice.take().is_some() {
+            tracing::warn!("`tool_choice` not supported on Hyperbolic and will be ignored");
+        }
+
+        Ok(())
+    }
 
     // The client base URL is the bare host; image/audio generation build
     // their own v1 paths.
@@ -425,6 +448,44 @@ mod audio_generation {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hyperbolic_prepare_request_drops_tools_and_tool_choice() {
+        use crate::providers::openai::completion::{
+            CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider,
+            OpenAIRequestParams,
+        };
+
+        let request = crate::completion::CompletionRequestBuilder::new(
+            crate::test_utils::MockCompletionModel::default(),
+            "hello",
+        )
+        .tool(crate::completion::ToolDefinition {
+            name: "lookup".to_string(),
+            description: "Lookup".to_string(),
+            parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+        })
+        .tool_choice(crate::message::ToolChoice::Required)
+        .output_schema(schemars::schema_for!(serde_json::Value))
+        .build();
+
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "meta-llama/Meta-Llama-3.1-8B-Instruct".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: super::HyperbolicExt::SUPPORTS_RESPONSE_FORMAT,
+        })
+        .expect("request should convert");
+        super::HyperbolicExt
+            .prepare_request(&mut request)
+            .expect("prepare_request should succeed");
+
+        let body = serde_json::to_value(request).expect("request should serialize");
+        assert!(body.get("tools").is_none());
+        assert!(body.get("tool_choice").is_none());
+        assert!(body.get("response_format").is_none());
+    }
+
     #[test]
     fn test_client_initialization() {
         let _client =

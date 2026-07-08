@@ -35,8 +35,9 @@ pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<MistralExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path.
-pub type MistralStreamingCompletionResponse = openai::StreamingCompletionResponse;
+/// Final streaming response, shared with the OpenAI Chat Completions path but
+/// carrying Mistral's own usage payload (cached-token fallbacks).
+pub type MistralStreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
 
 // =================================================================
 // Rig Implementation Types

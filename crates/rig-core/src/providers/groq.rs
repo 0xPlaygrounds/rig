@@ -45,6 +45,8 @@ impl Provider for GroqExt {
 impl openai::completion::OpenAICompatibleProvider for GroqExt {
     const PROVIDER_NAME: &'static str = "groq";
 
+    type StreamingUsage = openai::Usage;
+
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
 
     type Response = openai::CompletionResponse;

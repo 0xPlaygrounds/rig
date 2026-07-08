@@ -12,8 +12,8 @@ then:
   status: 200
   header:
   - name: content-type
-    value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama3.2:latest","object":"chat.completion","system_fingerprint":"fp_ollama","usage":{"completion_tokens":22,"prompt_tokens":244,"total_tokens":266}}'
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": \"2\", \"y\": \"5\"}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/Users/kisaczka/.ollama/models/blobs/sha256-dde5aa3fc5ffc17176b5e8bdc82f587b24b2678c6c66101bf7da77af9f7ccdff","object":"chat.completion","system_fingerprint":"b9890-74976e1ae","timings":{"cache_n":357,"predicted_ms":181.93,"predicted_n":22,"predicted_per_second":120.92563073709668,"predicted_per_token_ms":8.269545454545455,"prompt_ms":11.508,"prompt_n":1,"prompt_per_second":86.89607229753216,"prompt_per_token_ms":11.508},"usage":{"completion_tokens":22,"prompt_tokens":358,"prompt_tokens_details":{"cached_tokens":357},"total_tokens":380}}'
 ---
 when:
   path: /v1/chat/completions
@@ -24,10 +24,61 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"llama3.2:latest","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":\"2\",\"y\":\"5\"}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]},{"content":"failed to parse tool arguments: invalid type: string \"2\", expected i32 at line 1 column 8","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"llama3.2:latest","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/Users/kisaczka/.ollama/models/blobs/sha256-dde5aa3fc5ffc17176b5e8bdc82f587b24b2678c6c66101bf7da77af9f7ccdff","object":"chat.completion","system_fingerprint":"b9890-74976e1ae","timings":{"cache_n":379,"predicted_ms":185.993,"predicted_n":22,"predicted_per_second":118.28402144166716,"predicted_per_token_ms":8.454227272727273,"prompt_ms":57.771,"prompt_n":36,"prompt_per_second":623.1500233681259,"prompt_per_token_ms":1.6047500000000001},"usage":{"completion_tokens":22,"prompt_tokens":415,"prompt_tokens_details":{"cached_tokens":379},"total_tokens":437}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The result of 2 - 5 is -3.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"llama3.2:latest","object":"chat.completion","system_fingerprint":"fp_ollama","usage":{"completion_tokens":13,"prompt_tokens":108,"total_tokens":121}}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":\"2\",\"y\":\"5\"}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]},{"content":"failed to parse tool arguments: invalid type: string \"2\", expected i32 at line 1 column 8","role":"tool","tool_call_id":"call_REDACTED_1"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_2","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"llama3.2:latest","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_3","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"/Users/kisaczka/.ollama/models/blobs/sha256-dde5aa3fc5ffc17176b5e8bdc82f587b24b2678c6c66101bf7da77af9f7ccdff","object":"chat.completion","system_fingerprint":"b9890-74976e1ae","timings":{"cache_n":436,"predicted_ms":182.333,"predicted_n":22,"predicted_per_second":120.65835586536721,"predicted_per_token_ms":8.287863636363637,"prompt_ms":41.665,"prompt_n":14,"prompt_per_second":336.01344053762153,"prompt_per_token_ms":2.9760714285714287},"usage":{"completion_tokens":22,"prompt_tokens":450,"prompt_tokens_details":{"cached_tokens":436},"total_tokens":472}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":\"2\",\"y\":\"5\"}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]},{"content":"failed to parse tool arguments: invalid type: string \"2\", expected i32 at line 1 column 8","role":"tool","tool_call_id":"call_REDACTED_1"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_2","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_2"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_3","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_3"}],"model":"llama3.2:latest","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_4","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"/Users/kisaczka/.ollama/models/blobs/sha256-dde5aa3fc5ffc17176b5e8bdc82f587b24b2678c6c66101bf7da77af9f7ccdff","object":"chat.completion","system_fingerprint":"b9890-74976e1ae","timings":{"cache_n":471,"predicted_ms":188.607,"predicted_n":22,"predicted_per_second":116.6446632415552,"predicted_per_token_ms":8.573045454545454,"prompt_ms":42.693,"prompt_n":14,"prompt_per_second":327.92261026397773,"prompt_per_token_ms":3.0494999999999997},"usage":{"completion_tokens":22,"prompt_tokens":485,"prompt_tokens_details":{"cached_tokens":471},"total_tokens":507}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":\"2\",\"y\":\"5\"}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]},{"content":"failed to parse tool arguments: invalid type: string \"2\", expected i32 at line 1 column 8","role":"tool","tool_call_id":"call_REDACTED_1"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_2","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_2"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_3","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_3"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_4","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_4"}],"model":"llama3.2:latest","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is the correct JSON for the function call \"subtract\" with arguments x=2 and y=5. When you run this function call, it will return -3, which is the result of subtracting 5 from 2.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_5","model":"/Users/kisaczka/.ollama/models/blobs/sha256-dde5aa3fc5ffc17176b5e8bdc82f587b24b2678c6c66101bf7da77af9f7ccdff","object":"chat.completion","system_fingerprint":"b9890-74976e1ae","timings":{"cache_n":506,"predicted_ms":431.62,"predicted_n":49,"predicted_per_second":113.52578657152124,"predicted_per_token_ms":8.808571428571428,"prompt_ms":41.366,"prompt_n":14,"prompt_per_second":338.4421989073152,"prompt_per_token_ms":2.9547142857142856},"usage":{"completion_tokens":49,"prompt_tokens":520,"prompt_tokens_details":{"cached_tokens":506},"total_tokens":569}}'

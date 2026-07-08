@@ -1369,6 +1369,20 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// this to false.
     const STREAM_INCLUDE_USAGE: bool = true;
 
+    /// The usage payload parsed from streaming chunks and carried on the
+    /// final streaming response. OpenAI's [`Usage`] for most providers;
+    /// providers with richer usage accounting (e.g. Mistral's cached-token
+    /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
+    type StreamingUsage: Clone
+        + Default
+        + GetTokenUsage
+        + Serialize
+        + serde::de::DeserializeOwned
+        + Unpin
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static;
+
     /// The chat-completions payload this provider returns.
     type Response: serde::de::DeserializeOwned
         + Serialize
@@ -1408,6 +1422,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
 impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
 
+    type StreamingUsage = Usage;
     type Response = CompletionResponse;
 }
 
@@ -1658,7 +1673,7 @@ where
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = Ext::Response;
-    type StreamingResponse = StreamingCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse<Ext::StreamingUsage>;
 
     type Client = crate::client::Client<Ext, H>;
 
