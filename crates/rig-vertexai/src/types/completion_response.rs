@@ -3,7 +3,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, CompletionResponse, Usage};
-use rig_core::message::{AssistantContent, Text, ToolCall, ToolFunction};
+use rig_core::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -51,7 +51,13 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                     .with_signature(signature),
                 ));
             } else if let Some(text) = part.text() {
-                assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));
+                if part.thought {
+                    assistant_contents.push(AssistantContent::Reasoning(
+                        Reasoning::new_with_signature(text, signature),
+                    ));
+                } else {
+                    assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));
+                }
             } else if signature.is_some() {
                 // A signature-bearing part that is neither a function call nor text (e.g. a
                 // standalone "thinking" part). rig-core has no carrier for it, so it is dropped —
@@ -177,6 +183,34 @@ mod tests {
         match response.choice.first() {
             AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, None),
             _ => panic!("Expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn test_thought_text_response_captures_thought_signature() {
+        let raw = b"\x00\x01\x02thinking-text-sig\xff";
+        let part = vertexai::model::Part::new()
+            .set_text("thinking text".to_string())
+            .set_thought(true)
+            .set_thought_signature(raw.to_vec());
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts([part]);
+        let candidate = vertexai::model::Candidate::new().set_content(content);
+        let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
+
+        let response: CompletionResponse<VertexGenerateContentOutput> =
+            VertexGenerateContentOutput(response).try_into().unwrap();
+
+        match response.choice.first() {
+            AssistantContent::Reasoning(reasoning) => {
+                assert_eq!(reasoning.display_text(), "thinking text");
+                assert_eq!(
+                    reasoning.first_signature(),
+                    Some(BASE64.encode(raw).as_str())
+                );
+            }
+            _ => panic!("Expected Reasoning"),
         }
     }
 

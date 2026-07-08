@@ -109,6 +109,24 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
 
                             Ok(part)
                         }
+                        AssistantContent::Reasoning(reasoning) => {
+                            let mut part = vertexai::model::Part::new()
+                                .set_text(reasoning.display_text())
+                                .set_thought(true);
+
+                            if let Some(signature) = reasoning.first_signature() {
+                                match BASE64.decode(signature.as_bytes()) {
+                                    Ok(bytes) => part = part.set_thought_signature(bytes),
+                                    Err(err) => tracing::warn!(
+                                        %err,
+                                        "Failed to base64-decode reasoning thought_signature; \
+                                         dropping it for this turn"
+                                    ),
+                                }
+                            }
+
+                            Ok(part)
+                        }
                         _ => Err(CompletionError::ProviderError(format!(
                             "Unsupported assistant content type: {:?}",
                             assistant_content
@@ -236,6 +254,49 @@ mod tests {
         assert_eq!(content.parts.len(), 1);
         assert!(content.parts[0].thought_signature.is_empty());
         assert!(content.parts[0].function_call().is_some());
+    }
+
+    #[test]
+    fn test_assistant_reasoning_echoes_thought_signature() {
+        let raw = b"\x00\x01\x02thinking-text-sig\xff";
+        let reasoning = rig_core::message::Reasoning::new_with_signature(
+            "thinking text",
+            Some(BASE64.encode(raw)),
+        );
+
+        let content: vertexai::model::Content = RigMessage(Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        })
+        .try_into()
+        .unwrap();
+
+        assert_eq!(content.parts.len(), 1);
+        assert_eq!(
+            content.parts[0].text().map(String::as_str),
+            Some("thinking text")
+        );
+        assert!(content.parts[0].thought);
+        assert_eq!(content.parts[0].thought_signature.as_ref(), raw.as_slice());
+    }
+
+    #[test]
+    fn test_assistant_reasoning_malformed_signature_is_dropped_not_fatal() {
+        let reasoning = rig_core::message::Reasoning::new_with_signature(
+            "thinking text",
+            Some("!!! not base64 !!!".to_string()),
+        );
+
+        let content: vertexai::model::Content = RigMessage(Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        })
+        .try_into()
+        .expect("malformed signature should not fail the conversion");
+
+        assert_eq!(content.parts.len(), 1);
+        assert!(content.parts[0].thought);
+        assert!(content.parts[0].thought_signature.is_empty());
     }
 
     #[test]
