@@ -1,9 +1,7 @@
 use rig::OneOrMany;
 use rig::message::{Document, DocumentSourceKind, Message, UserContent as RigUserContent};
 use rig::providers::openai::{FileData as OpenAiFileData, UserContent as OpenAiUserContent};
-use rig::providers::openrouter::{
-    Message as OpenRouterMessage, UserContent as OpenRouterUserContent,
-};
+use rig::providers::openrouter::{Message as OpenRouterMessage, messages_from_rig_message};
 
 #[test]
 fn generic_document_file_id_fails_openrouter_message_conversion() {
@@ -15,7 +13,7 @@ fn generic_document_file_id_fails_openrouter_message_conversion() {
         })),
     };
 
-    let result: Result<Vec<OpenRouterMessage>, _> = message.try_into();
+    let result: Result<Vec<OpenRouterMessage>, _> = messages_from_rig_message(message);
 
     assert!(result.is_err());
     let error = result.unwrap_err().to_string();
@@ -35,8 +33,12 @@ fn openai_file_data_converts_to_openrouter_file_data() {
         },
     };
 
-    let converted: OpenRouterUserContent = openai_content.try_into().unwrap();
-    let json = serde_json::to_value(&converted).unwrap();
+    let message = Message::User {
+        content: OneOrMany::one(RigUserContent::from(openai_content)),
+    };
+    let messages = messages_from_rig_message(message).unwrap();
+    let json = serde_json::to_value(messages.first().expect("one message")).unwrap();
+    let json = &json["content"][0];
 
     assert_eq!(json["type"], "file");
     assert_eq!(json["file"]["filename"], "document.pdf");
@@ -60,12 +62,15 @@ fn openai_file_id_only_fails_openrouter_user_content_conversion() {
         },
     };
 
-    let result: Result<OpenRouterUserContent, _> = openai_content.try_into();
+    let message = Message::User {
+        content: OneOrMany::one(RigUserContent::from(openai_content)),
+    };
+    let result = messages_from_rig_message(message);
 
     assert!(result.is_err());
     let error = result.unwrap_err().to_string();
     assert!(
-        error.contains("provider file IDs are not supported"),
+        error.contains("Provider file IDs are not supported"),
         "unexpected error: {error}"
     );
 }

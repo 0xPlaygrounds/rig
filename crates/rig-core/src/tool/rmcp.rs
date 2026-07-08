@@ -349,19 +349,16 @@ impl ToolDyn for McpTool {
         self.definition.name.to_string()
     }
 
-    fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
-        Box::pin(async move {
-            ToolDefinition {
-                name: self.definition.name.to_string(),
-                description: self
-                    .definition
-                    .description
-                    .clone()
-                    .unwrap_or(Cow::from(""))
-                    .to_string(),
-                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
-            }
-        })
+    fn description(&self) -> String {
+        self.definition
+            .description
+            .clone()
+            .unwrap_or(Cow::from(""))
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.definition.schema_as_json_value()
     }
 
     fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
@@ -799,6 +796,53 @@ mod tests {
         let returned = handler.get_info();
         assert_eq!(returned.client_info.name, "test-client");
         assert_eq!(returned.client_info.version, "1.0.0");
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_exposes_flattened_metadata() {
+        use super::McpTool;
+        use crate::tool::{ToolDyn, tool_definition};
+
+        let mut schema = serde_json::Map::new();
+        schema.insert("type".to_string(), json!("object"));
+        schema.insert(
+            "properties".to_string(),
+            json!({ "query": { "type": "string" } }),
+        );
+        let server_tool = Tool::new(
+            "search_docs".to_string(),
+            "Search the docs".to_string(),
+            Arc::new(schema),
+        );
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+        let server = DynamicToolServer::new(vec![server_tool.clone()]);
+        let server_task = tokio::spawn(async move {
+            let running = server
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+        let mcp_tool = McpTool::from_mcp_server(server_tool, client.peer().clone());
+        let definition = tool_definition(&mcp_tool);
+
+        assert_eq!(mcp_tool.name(), "search_docs");
+        assert_eq!(definition.name, "search_docs");
+        assert_eq!(definition.description, "Search the docs");
+        assert_eq!(
+            definition.parameters["properties"]["query"]["type"],
+            "string"
+        );
+
+        client.cancel().await.expect("client cancel failed");
+        server_task.abort();
     }
 
     /// Documents the unbounded escape hatch and the underlying issue #1914 hazard.

@@ -23,6 +23,7 @@ impl PlatformAuthenticator {
         _access_token_file: Option<PathBuf>,
         _api_key_file: Option<PathBuf>,
         _device_code_handler: DeviceCodeHandler,
+        _allow_device_flow: bool,
     ) -> Self {
         Self
     }

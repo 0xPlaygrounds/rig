@@ -17,7 +17,6 @@ use serde_json::{Value, json};
 
 use crate::{
     Embed, OneOrMany,
-    completion::ToolDefinition,
     embeddings::{Embedding, EmbeddingError},
     tool::Tool,
     vector_store::request::{Filter, FilterError, SearchFilter},
@@ -202,33 +201,31 @@ where
     type Args = VectorSearchRequest<F>;
     type Output = Vec<VectorStoreOutput>;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description:
-                "Retrieves the most relevant documents from a vector store based on a query."
-                    .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The query string to search for relevant documents in the vector store."
-                    },
-                    "samples": {
-                        "type": "integer",
-                        "description": "The maximum number of samples / documents to retrieve.",
-                        "default": 5,
-                        "minimum": 1
-                    },
-                    "threshold": {
-                        "type": "number",
-                        "description": "Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result."
-                    }
+    fn description(&self) -> String {
+        "Retrieves the most relevant documents from a vector store based on a query.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The query string to search for relevant documents in the vector store."
                 },
-                "required": ["query", "samples"]
-            }),
-        }
+                "samples": {
+                    "type": "integer",
+                    "description": "The maximum number of samples / documents to retrieve.",
+                    "default": 5,
+                    "minimum": 1
+                },
+                "threshold": {
+                    "type": "number",
+                    "description": "Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result."
+                }
+            },
+            "required": ["query", "samples"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

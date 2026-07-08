@@ -9,7 +9,6 @@
     clippy::unreachable
 )]
 
-use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 // No `required(...)` — should default to all params required
@@ -45,7 +44,7 @@ fn constant() -> Result<i32, rig_core::tool::ToolError> {
 
 #[tokio::test]
 async fn test_required_defaults_to_all_params() {
-    let def = AddImplicit.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&AddImplicit);
     let required = def.parameters["required"].as_array().unwrap();
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
 
@@ -62,7 +61,7 @@ async fn test_required_defaults_to_all_params() {
 
 #[tokio::test]
 async fn test_explicit_required_overrides_default() {
-    let def = AddExplicit.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&AddExplicit);
     let required = def.parameters["required"].as_array().unwrap();
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
 
@@ -75,7 +74,7 @@ async fn test_explicit_required_overrides_default() {
 
 #[tokio::test]
 async fn test_explicit_empty_required_overrides_default() {
-    let def = SearchOptional.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&SearchOptional);
     let required = def.parameters["required"].as_array().unwrap();
 
     assert!(
@@ -86,7 +85,7 @@ async fn test_explicit_empty_required_overrides_default() {
 
 #[tokio::test]
 async fn test_no_params_means_empty_required() {
-    let def = Constant.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&Constant);
     let required = def.parameters["required"].as_array().unwrap();
 
     assert!(

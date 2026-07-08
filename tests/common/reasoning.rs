@@ -11,7 +11,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::agent::{MultiTurnStreamItem, StreamingError};
-use rig::completion::request::ToolDefinition;
 use rig::completion::{self, CompletionModel};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
@@ -285,23 +284,21 @@ impl Tool for WeatherTool {
     type Args = WeatherArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "get_weather".to_string(),
-            description:
-                "Get the current weather for a city. Must be called for weather questions."
-                    .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "City name to get weather for"
-                    }
-                },
-                "required": ["city"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Get the current weather for a city. Must be called for weather questions.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "City name to get weather for"
+                }
+            },
+            "required": ["city"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

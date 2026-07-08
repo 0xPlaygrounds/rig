@@ -61,12 +61,12 @@ impl Tool for PlanTrip {
     type Args = PlanTripArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Book a trip from a nested itinerary object.".to_string(),
-            parameters: plan_trip_parameters(),
-        }
+    fn description(&self) -> String {
+        "Book a trip from a nested itinerary object.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        plan_trip_parameters()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -202,7 +202,7 @@ async fn nested_arguments_streaming() {
                 .completion_request(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .temperature(0.0)
-                .tool(PlanTrip.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&PlanTrip))
                 .build();
 
             let observation = collect_raw_stream_observation(

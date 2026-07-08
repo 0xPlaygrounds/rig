@@ -3,7 +3,6 @@
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::client::CompletionClient;
-use rig::completion::ToolDefinition;
 use rig::message::{Message, UserContent};
 use rig::providers::anthropic;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
@@ -205,8 +204,12 @@ impl Tool for OutOfOrderAlphaSignal {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, prompt: String) -> ToolDefinition {
-        AlphaSignal.definition(prompt).await
+    fn description(&self) -> String {
+        AlphaSignal.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        AlphaSignal.parameters()
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -224,8 +227,12 @@ impl Tool for OutOfOrderBetaSignal {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, prompt: String) -> ToolDefinition {
-        BetaSignal.definition(prompt).await
+    fn description(&self) -> String {
+        BetaSignal.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        BetaSignal.parameters()
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {

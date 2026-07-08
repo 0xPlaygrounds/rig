@@ -155,6 +155,7 @@ pub struct CopilotBuilder {
     access_token_file: Option<PathBuf>,
     api_key_file: Option<PathBuf>,
     device_code_handler: auth::DeviceCodeHandler,
+    allow_device_flow: bool,
 }
 
 #[derive(Clone)]
@@ -181,6 +182,7 @@ impl Default for CopilotBuilder {
             access_token_file: token_dir.as_ref().map(|dir| dir.join("access-token")),
             api_key_file: token_dir.map(|dir| dir.join("api-key.json")),
             device_code_handler: auth::DeviceCodeHandler::default(),
+            allow_device_flow: true,
         }
     }
 }
@@ -235,6 +237,7 @@ impl ProviderBuilder for CopilotBuilder {
                 ext.access_token_file.clone(),
                 ext.api_key_file.clone(),
                 ext.device_code_handler.clone(),
+                ext.allow_device_flow,
             ),
         })
     }
@@ -291,6 +294,19 @@ impl<H> ClientBuilder<H> {
     {
         self.over_ext(|mut ext| {
             ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
+            ext
+        })
+    }
+
+    /// Control whether OAuth may fall back to an interactive device-code login
+    /// when the cached token is missing or cannot refresh.
+    ///
+    /// Default is `true` for CLI-style interactive use. Services should set it
+    /// to `false` so unattended background work returns a clear auth error
+    /// instead of printing a device code and waiting.
+    pub fn allow_device_flow(self, allow: bool) -> Self {
+        self.over_ext(|mut ext| {
+            ext.allow_device_flow = allow;
             ext
         })
     }
@@ -775,6 +791,8 @@ where
             request: completion_request,
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
+            supports_response_format: true,
+            supports_tools: true,
         })
     }
 

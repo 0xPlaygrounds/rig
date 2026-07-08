@@ -20,6 +20,7 @@ const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
 pub(super) struct PlatformAuthenticator {
     auth_file: Option<PathBuf>,
     device_code_handler: DeviceCodeHandler,
+    allow_device_flow: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -65,10 +66,15 @@ enum RefreshTokensError {
 }
 
 impl PlatformAuthenticator {
-    pub(super) fn new(auth_file: Option<PathBuf>, device_code_handler: DeviceCodeHandler) -> Self {
+    pub(super) fn new(
+        auth_file: Option<PathBuf>,
+        device_code_handler: DeviceCodeHandler,
+        allow_device_flow: bool,
+    ) -> Self {
         Self {
             auth_file,
             device_code_handler,
+            allow_device_flow,
         }
     }
 
@@ -105,6 +111,13 @@ impl PlatformAuthenticator {
                 Err(RefreshTokensError::Reauthenticate) => {}
                 Err(RefreshTokensError::Auth(err)) => return Err(err),
             }
+        }
+
+        if !self.allow_device_flow {
+            return Err(AuthError::Message(
+                "ChatGPT sign-in required. Reconnect ChatGPT in Settings before using this provider."
+                    .into(),
+            ));
         }
 
         let fresh = self.login_device_flow().await?;
@@ -418,8 +431,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DeviceCodeResponse, OAuthErrorResponse, OAuthTokenResponse, build_auth_record,
-        format_refresh_error, should_reauthenticate_after_refresh,
+        DeviceCodeHandler, DeviceCodeResponse, OAuthErrorResponse, OAuthTokenResponse,
+        PlatformAuthenticator, build_auth_record, format_refresh_error,
+        should_reauthenticate_after_refresh,
     };
     use reqwest::StatusCode;
 
@@ -473,6 +487,18 @@ mod tests {
             StatusCode::UNAUTHORIZED,
             None
         ));
+    }
+
+    #[tokio::test]
+    async fn noninteractive_oauth_requires_sign_in_instead_of_device_flow() {
+        let auth = PlatformAuthenticator::new(None, DeviceCodeHandler::default(), false);
+        let err = auth
+            .auth_context_oauth()
+            .await
+            .expect_err("missing cached auth should not start device flow")
+            .to_string();
+
+        assert!(err.contains("ChatGPT sign-in required"), "{err}");
     }
 
     #[test]

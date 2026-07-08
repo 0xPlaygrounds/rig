@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rig::OneOrMany;
 use rig::client::CompletionClient;
-use rig::completion::{Chat, CompletionModel, Message, ToolDefinition, TypedPrompt};
+use rig::completion::{Chat, CompletionModel, Message, TypedPrompt};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
@@ -124,16 +124,16 @@ impl Tool for PingEmpty {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Return EMPTY-OK. This tool takes no arguments.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        }
+    fn description(&self) -> String {
+        "Return EMPTY-OK. This tool takes no arguments.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -148,38 +148,38 @@ impl Tool for InspectManifest {
     type Args = ManifestArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Validate a nested deployment manifest.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "project": { "type": "string" },
-                    "flags": {
+    fn description(&self) -> String {
+        "Validate a nested deployment manifest.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "project": { "type": "string" },
+                "flags": {
+                    "type": "object",
+                    "properties": {
+                        "critical": { "type": "boolean" },
+                        "retries": { "type": "integer" }
+                    },
+                    "required": ["critical", "retries"]
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
                         "type": "object",
                         "properties": {
-                            "critical": { "type": "boolean" },
-                            "retries": { "type": "integer" }
+                            "name": { "type": "string" },
+                            "weight": { "type": "integer" }
                         },
-                        "required": ["critical", "retries"]
-                    },
-                    "steps": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": { "type": "string" },
-                                "weight": { "type": "integer" }
-                            },
-                            "required": ["name", "weight"]
-                        }
-                    },
-                    "note": { "type": "string" }
+                        "required": ["name", "weight"]
+                    }
                 },
-                "required": ["project", "flags", "steps", "note"]
-            }),
-        }
+                "note": { "type": "string" }
+            },
+            "required": ["project", "flags", "steps", "note"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -199,22 +199,22 @@ impl Tool for JoinLabels {
     type Args = JoinArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Join label strings with the requested separator.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "labels": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                    },
-                    "separator": { "type": "string" }
+    fn description(&self) -> String {
+        "Join label strings with the requested separator.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "labels": {
+                    "type": "array",
+                    "items": { "type": "string" }
                 },
-                "required": ["labels", "separator"]
-            }),
-        }
+                "separator": { "type": "string" }
+            },
+            "required": ["labels", "separator"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -229,18 +229,18 @@ impl Tool for EscapeEcho {
     type Args = EchoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Echo a string containing escaping-sensitive characters.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "text": { "type": "string" }
-                },
-                "required": ["text"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Echo a string containing escaping-sensitive characters.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "text": { "type": "string" }
+            },
+            "required": ["text"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -573,7 +573,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                      Do not write normal text before the tool call.",
                 )
                 .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(tool.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -627,7 +627,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 })
                 .message(Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
                 .build();
 

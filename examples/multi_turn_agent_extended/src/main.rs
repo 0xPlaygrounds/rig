@@ -1,9 +1,5 @@
 use rig::prelude::*;
-use rig::{
-    completion::{Prompt, ToolDefinition},
-    providers::anthropic,
-    tool::Tool,
-};
+use rig::{completion::Prompt, providers::anthropic, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -74,24 +70,24 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "add".to_string(),
-            description: "Add x and y together".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first number to add"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second number to add"
-                    }
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                },
+                "y": {
+                    "type": "number",
+                    "description": "The second number to add"
                 }
-            }),
-        }
+            }
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -109,24 +105,24 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "subtract".to_string(),
-            description: "Subtract y from x (i.e.: x - y)".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The number to subtract from"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The number to subtract"
-                    }
+    fn description(&self) -> String {
+        "Subtract y from x (i.e.: x - y)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "The number to subtract from"
+                },
+                "y": {
+                    "type": "number",
+                    "description": "The number to subtract"
                 }
-            }),
-        }
+            }
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -144,24 +140,24 @@ impl Tool for Multiply {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "multiply".to_string(),
-            description: "Compute the product of x and y (i.e.: x * y)".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first factor in the product"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second factor in the product"
-                    }
+    fn description(&self) -> String {
+        "Compute the product of x and y (i.e.: x * y)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "The first factor in the product"
+                },
+                "y": {
+                    "type": "number",
+                    "description": "The second factor in the product"
                 }
-            }),
-        }
+            }
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -179,25 +175,24 @@ impl Tool for Divide {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "divide".to_string(),
-            description: "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The Dividend of the division. The number being divided"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The Divisor of the division. The number by which the dividend is being divided"
-                    }
+    fn description(&self) -> String {
+        "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "The Dividend of the division. The number being divided"
+                },
+                "y": {
+                    "type": "number",
+                    "description": "The Divisor of the division. The number by which the dividend is being divided"
                 }
-            }),
-        }
+            }
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

@@ -646,7 +646,7 @@ mod tests {
         },
         completion::{
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            StructuredOutputError, ToolDefinition, TypedPrompt, Usage,
+            StructuredOutputError, TypedPrompt, Usage,
         },
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
@@ -880,8 +880,12 @@ mod tests {
         type Args = MockOperationArgs;
         type Output = i32;
 
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            MockAddTool.definition(String::new()).await
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
