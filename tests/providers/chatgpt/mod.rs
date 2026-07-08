@@ -5,6 +5,7 @@ mod cassette {
     mod codex_sessions;
     mod codex_tool_args;
     mod codex_tool_choice;
+    mod noninteractive_oauth;
     mod streaming_tools;
 }
 
