@@ -60,6 +60,14 @@ When adding or changing a provider, use this checklist to keep the provider
 integration consistent with Rig's generic client architecture and contributor
 expectations:
 
+- New OpenAI-chat-compatible providers MUST drive completions through
+  `openai::completion::GenericCompletionModel<Ext>` by implementing
+  `OpenAICompatibleProvider` on the provider extension (see `minimax`, `zai`,
+  `groq`, or `deepseek` for the template). Wire-dialect differences belong in
+  the trait's hooks (`completion_path`, `prepare_request`,
+  `finalize_request_body`) — not in a hand-rolled `CompletionModel`, request
+  struct, or `TryFrom<message::Message>` conversion. The same applies to
+  Anthropic-shaped APIs via `AnthropicCompatibleProvider`.
 - `Client` and `ClientBuilder` public aliases use the correct generic types;
   the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`.
 - Provider extension and builder types are defined and wired through the

@@ -3,18 +3,9 @@
 //! From [Together AI Reference](https://docs.together.ai/docs/chat-overview)
 // ================================================================
 
-use crate::{
-    completion::{self, CompletionError},
-    http_client::HttpClientExt,
-    providers::openai,
-};
+use crate::providers::openai;
 
-use super::client::{Client, together_ai_api_types::ApiResponse};
-use crate::completion::CompletionRequest;
-use crate::streaming::StreamingCompletionResponse;
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
-use tracing::{Instrument, Level, enabled, info_span};
+use super::client::TogetherExt;
 
 // ================================================================
 // Together Completion Models
@@ -129,254 +120,21 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 // Rig Implementation Types
 // =================================================================
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct TogetherAICompletionRequest {
-    model: String,
-    pub messages: Vec<openai::Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<crate::providers::openai::completion::ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<ToolChoice>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-}
-
-impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let chat_history = req.chat_history_with_documents();
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for TogetherAI");
-        }
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut full_history: Vec<openai::Message> = match &req.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble)],
-            None => vec![],
-        };
-
-        let chat_history: Vec<openai::Message> = chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        if full_history.is_empty() {
-            return Err(CompletionError::RequestError(
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Together request has no provider-compatible messages after conversion",
-                )
-                .into(),
-            ));
-        }
-
-        let tool_choice = req
-            .tool_choice
-            .clone()
-            .map(ToolChoice::try_from)
-            .transpose()?;
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(crate::providers::openai::completion::ToolDefinition::from)
-                .collect::<Vec<_>>(),
-            tool_choice,
-            additional_params: req.additional_params,
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = openai::CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "together",
-                gen_ai.request.model = self.model.to_string(),
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        let request = TogetherAICompletionRequest::try_from((
-            self.model.to_string().as_ref(),
-            completion_request,
-        ))?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "TogetherAI completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(|x| CompletionError::HttpError(x.into()))?;
-
-        async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(
-                    &response_body,
-                )? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", &response.id);
-                        span.record("gen_ai.response.model", &response.model);
-                        if let Some(ref usage) = response.usage {
-                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-                            span.record(
-                                "gen_ai.usage.output_tokens",
-                                usage.total_tokens - usage.prompt_tokens,
-                            );
-                        }
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(
-                                target: "rig::completions",
-                                "TogetherAI completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-                        response.try_into()
-                    }
-                    ApiResponse::Error(err) => {
-                        tracing::warn!(
-                            message = %err.error,
-                            "provider returned an error response"
-                        );
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        CompletionModel::stream(self, request).await
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged, rename_all = "snake_case")]
-pub enum ToolChoice {
-    None,
-    Auto,
-    Function(Vec<ToolChoiceFunctionKind>),
-}
-
-impl TryFrom<crate::message::ToolChoice> for ToolChoice {
-    type Error = CompletionError;
-
-    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
-        let res = match value {
-            crate::message::ToolChoice::None => Self::None,
-            crate::message::ToolChoice::Auto => Self::Auto,
-            crate::message::ToolChoice::Specific { function_names } => {
-                let vec: Vec<ToolChoiceFunctionKind> = function_names
-                    .into_iter()
-                    .map(|name| ToolChoiceFunctionKind::Function { name })
-                    .collect();
-
-                Self::Function(vec)
-            }
-            choice => {
-                return Err(CompletionError::ProviderError(format!(
-                    "Unsupported tool choice type: {choice:?}"
-                )));
-            }
-        };
-
-        Ok(res)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "function")]
-pub enum ToolChoiceFunctionKind {
-    Function { name: String },
-}
+/// Together AI completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H = reqwest::Client> =
+    openai::completion::GenericCompletionModel<TogetherExt, H>;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::client::CompletionClient;
     use crate::completion::{CompletionError, CompletionModel};
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAIRequestParams,
+    };
     use crate::test_utils::RecordingHttpClient;
     use crate::{OneOrMany, message};
+
+    use super::super::client::Client;
 
     #[tokio::test]
     async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
@@ -418,7 +176,7 @@ mod tests {
 
     #[test]
     fn together_request_conversion_errors_when_all_messages_are_filtered() {
-        let request = CompletionRequest {
+        let request = crate::completion::CompletionRequest {
             preamble: None,
             chat_history: OneOrMany::one(message::Message::Assistant {
                 id: None,
@@ -434,7 +192,13 @@ mod tests {
             output_schema: None,
         };
 
-        let result = TogetherAICompletionRequest::try_from(("meta-llama/test-model", request));
+        let result = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "meta-llama/test-model".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: false,
+        });
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
     }
 }

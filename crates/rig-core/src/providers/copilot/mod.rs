@@ -775,6 +775,7 @@ where
             request: completion_request,
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
+            supports_response_format: true,
         })
     }
 

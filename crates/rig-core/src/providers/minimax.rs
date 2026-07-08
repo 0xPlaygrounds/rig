@@ -120,6 +120,8 @@ impl DebugExt for MiniMaxAnthropicExt {}
 
 impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
     const PROVIDER_NAME: &'static str = "minimax";
+
+    type Response = super::openai::CompletionResponse;
 }
 
 impl ProviderBuilder for MiniMaxBuilder {

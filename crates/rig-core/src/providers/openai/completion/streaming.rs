@@ -51,8 +51,10 @@ impl From<&StreamingToolCall> for CompatibleToolCallChunk {
 struct StreamingDelta {
     #[serde(default)]
     content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>, // This is not part of the official OpenAI API
+    // Not part of the official OpenAI API; some compatible providers (e.g.
+    // Groq) send the same payload under `reasoning`.
+    #[serde(default, alias = "reasoning")]
+    reasoning_content: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     tool_calls: Vec<StreamingToolCall>,
 }
@@ -103,19 +105,28 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
-        let request = super::CompletionRequest::try_from(OpenAIRequestParams {
+        let mut request = super::CompletionRequest::try_from(OpenAIRequestParams {
             model: self.model.clone(),
             request: completion_request,
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
+            supports_response_format: Ext::SUPPORTS_RESPONSE_FORMAT,
         })?;
+        self.client.ext().prepare_request(&mut request)?;
+
         let request_messages = serde_json::to_string(&request.messages)?;
+        let model = request.model.clone();
         let mut request_as_json = serde_json::to_value(request)?;
 
-        request_as_json = merge(
-            request_as_json,
-            json!({"stream": true, "stream_options": {"include_usage": true}}),
-        );
+        let stream_params = if Ext::STREAM_INCLUDE_USAGE {
+            json!({"stream": true, "stream_options": {"include_usage": true}})
+        } else {
+            json!({"stream": true})
+        };
+        request_as_json = merge(request_as_json, stream_params);
+        self.client
+            .ext()
+            .finalize_request_body(&mut request_as_json)?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -126,10 +137,11 @@ where
         }
 
         let req_body = serde_json::to_vec(&request_as_json)?;
+        let path = self.client.ext().completion_path(&model);
 
         let req = self
             .client
-            .post("/chat/completions")?
+            .post(&path)?
             .body(req_body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -198,10 +210,14 @@ impl CompatibleStreamProfile for OpenAICompatibleProfile {
                 data.usage,
                 &data.choices,
                 |choice| CompatibleChoiceData {
-                    finish_reason: if choice.finish_reason == Some(FinishReason::ToolCalls) {
-                        CompatibleFinishReason::ToolCalls
-                    } else {
-                        CompatibleFinishReason::Other
+                    // `function_call` is the deprecated pre-tools finish reason
+                    // some compatible providers still emit for tool calls.
+                    finish_reason: match &choice.finish_reason {
+                        Some(FinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
+                        Some(FinishReason::Other(other)) if other == "function_call" => {
+                            CompatibleFinishReason::ToolCalls
+                        }
+                        _ => CompatibleFinishReason::Other,
                     },
                     text: choice.delta.content.clone(),
                     reasoning: choice.delta.reasoning_content.clone(),

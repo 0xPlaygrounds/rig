@@ -142,6 +142,9 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
+    // Gemini-backed OpenAI-compatible gateways (e.g. OpenRouter) can answer
+    // with `role: "model"`; accept it on deserialization.
+    #[serde(alias = "model")]
     Assistant {
         #[serde(
             default,
@@ -152,7 +155,13 @@ pub enum Message {
         content: Vec<AssistantContent>,
         // OpenAI-compatible providers expose hidden reasoning on this non-standard
         // field, and some require it to be echoed back on assistant tool-call turns.
-        #[serde(skip_serializing_if = "Option::is_none", rename = "reasoning_content")]
+        // Serialized as `reasoning_content` (llama.cpp/DeepSeek dialect); the
+        // `reasoning` alias accepts OpenRouter responses.
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            rename = "reasoning_content",
+            alias = "reasoning"
+        )]
         reasoning: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
@@ -166,6 +175,16 @@ pub enum Message {
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
+        /// Structured reasoning blocks used by OpenAI-compatible providers
+        /// such as OpenRouter. Empty (and omitted from the wire) for
+        /// providers that do not emit or accept them.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        reasoning_details: Vec<ReasoningDetails>,
+        /// Generated images returned by image-generation models (OpenRouter's
+        /// sibling `images` array). Inbound only — never serialized back into
+        /// a request.
+        #[serde(default, skip_serializing)]
+        images: Vec<ResponseImage>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -192,6 +211,47 @@ fn history_contains_tool_result(messages: &[Message]) -> bool {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AudioAssistant {
     pub id: String,
+}
+
+/// Structured reasoning blocks attached to assistant messages by
+/// OpenAI-compatible providers such as OpenRouter (`reasoning_details`).
+///
+/// The `Option` fields are intentionally serialized even when `None`
+/// (`"format":null,"id":null`) to match the provider wire format.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReasoningDetails {
+    #[serde(rename = "reasoning.summary")]
+    Summary {
+        id: Option<String>,
+        format: Option<String>,
+        index: Option<usize>,
+        summary: String,
+    },
+    #[serde(rename = "reasoning.encrypted")]
+    Encrypted {
+        id: Option<String>,
+        format: Option<String>,
+        index: Option<usize>,
+        data: String,
+    },
+    #[serde(rename = "reasoning.text")]
+    Text {
+        id: Option<String>,
+        format: Option<String>,
+        index: Option<usize>,
+        text: Option<String>,
+        signature: Option<String>,
+    },
+}
+
+/// An image emitted by an image-generation model. OpenRouter returns generated
+/// images out-of-band from `content`, as a sibling `images` array on the
+/// assistant message. Each entry mirrors the request-side `image_url` content
+/// part structure.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ResponseImage {
+    pub image_url: ImageUrl,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -234,6 +294,9 @@ pub enum UserContent {
     Image {
         image_url: ImageUrl,
     },
+    /// Audio content part. Serialized with OpenAI's `input_audio` wire tag;
+    /// the legacy `audio` tag is still accepted on deserialization.
+    #[serde(rename = "input_audio", alias = "audio")]
     Audio {
         input_audio: InputAudio,
     },
@@ -245,13 +308,30 @@ pub enum UserContent {
     File {
         file: FileData,
     },
+    /// Video content part (URL or base64 data URI), used by OpenAI-compatible
+    /// providers such as OpenRouter. Wire tag: `video_url`.
+    #[serde(rename = "video_url")]
+    Video {
+        video_url: VideoUrl,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ImageUrl {
     pub url: String,
-    #[serde(default)]
-    pub detail: ImageDetail,
+    /// Image detail level. Optional so that providers whose wire format omits
+    /// it (e.g. OpenRouter) can leave the key out entirely.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ImageDetail>,
+}
+
+/// Video payload for [`UserContent::Video`].
+///
+/// `url` is either a publicly accessible URL or a base64 data URI
+/// (e.g. `data:video/mp4;base64,...`).
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct VideoUrl {
+    pub url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -402,23 +482,87 @@ impl ToolDefinition {
     }
 }
 
-#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub enum ToolChoice {
     #[default]
     Auto,
     None,
     Required,
+    /// Force the model to call one specific function:
+    /// `{"type": "function", "function": {"name": "..."}}`.
+    Function {
+        name: String,
+    },
+}
+
+#[derive(Deserialize, Serialize)]
+struct ToolChoiceFunctionName {
+    name: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ToolChoiceFunctionRepr {
+    Function { function: ToolChoiceFunctionName },
+}
+
+impl Serialize for ToolChoice {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Auto => serializer.serialize_str("auto"),
+            Self::None => serializer.serialize_str("none"),
+            Self::Required => serializer.serialize_str("required"),
+            Self::Function { name } => ToolChoiceFunctionRepr::Function {
+                function: ToolChoiceFunctionName { name: name.clone() },
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolChoice {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Mode(String),
+            Function(ToolChoiceFunctionRepr),
+        }
+
+        match Repr::deserialize(deserializer)? {
+            Repr::Mode(mode) => match mode.as_str() {
+                "auto" => Ok(Self::Auto),
+                "none" => Ok(Self::None),
+                "required" => Ok(Self::Required),
+                other => Err(serde::de::Error::custom(format!(
+                    "unknown tool_choice mode {other:?}"
+                ))),
+            },
+            Repr::Function(ToolChoiceFunctionRepr::Function {
+                function: ToolChoiceFunctionName { name },
+            }) => Ok(Self::Function { name }),
+        }
+    }
+}
+
+impl ToolChoice {
+    /// Force a call to the named function.
+    pub fn function(name: impl Into<String>) -> Self {
+        Self::Function { name: name.into() }
+    }
 }
 
 impl TryFrom<crate::message::ToolChoice> for ToolChoice {
     type Error = CompletionError;
     fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
         let res = match value {
-            message::ToolChoice::Specific { .. } => {
-                return Err(CompletionError::ProviderError(
-                    "Provider doesn't support only using specific tools".to_string(),
-                ));
+            message::ToolChoice::Specific { function_names } => {
+                let [name] = function_names.as_slice() else {
+                    return Err(CompletionError::ProviderError(
+                        "Provider only supports forcing exactly one specific tool".to_string(),
+                    ));
+                };
+                Self::function(name)
             }
             message::ToolChoice::Auto => Self::Auto,
             message::ToolChoice::None => Self::None,
@@ -459,7 +603,9 @@ impl TryFrom<message::ToolResult> for Message {
             .join("\n");
 
         Ok(Message::ToolResult {
-            tool_call_id: value.id,
+            // `call_id` carries the provider-issued call id when it differs
+            // from the rig-level tool-result id (e.g. Mistral, llama.cpp).
+            tool_call_id: value.call_id.unwrap_or(value.id),
             content: ToolResultContentValue::String(text),
         })
     }
@@ -480,7 +626,9 @@ impl TryFrom<message::UserContent> for UserContent {
                 DocumentSourceKind::Url(url) => Ok(UserContent::Image {
                     image_url: ImageUrl {
                         url,
-                        detail: detail.unwrap_or_default(),
+                        // OpenAI's wire format always carries a detail level;
+                        // absent rig-level detail maps to the default (auto).
+                        detail: Some(detail.unwrap_or_default()),
                     },
                 }),
                 DocumentSourceKind::Base64(data) => {
@@ -494,7 +642,7 @@ impl TryFrom<message::UserContent> for UserContent {
                         data
                     );
 
-                    let detail = detail.unwrap_or_default();
+                    let detail = Some(detail.unwrap_or_default());
 
                     Ok(UserContent::Image {
                         image_url: ImageUrl { url, detail },
@@ -591,9 +739,46 @@ impl TryFrom<message::UserContent> for UserContent {
             message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
                 "Tool result is in unsupported format".into(),
             )),
-            message::UserContent::Video(_) => Err(message::MessageError::ConversionError(
-                "Video is in unsupported format".into(),
-            )),
+            message::UserContent::Video(message::Video {
+                data, media_type, ..
+            }) => {
+                let url = match data {
+                    DocumentSourceKind::Url(url) => url,
+                    DocumentSourceKind::Base64(data) => {
+                        let mime = media_type
+                            .ok_or_else(|| {
+                                message::MessageError::ConversionError(
+                                    "Video media type required for base64 encoding".into(),
+                                )
+                            })?
+                            .to_mime_type();
+                        format!("data:{mime};base64,{data}")
+                    }
+                    DocumentSourceKind::Raw(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "Raw bytes not supported for video, encode as base64 first".into(),
+                        ));
+                    }
+                    DocumentSourceKind::FileId(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "File IDs are not supported for video".into(),
+                        ));
+                    }
+                    DocumentSourceKind::String(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "String source not supported for video".into(),
+                        ));
+                    }
+                    DocumentSourceKind::Unknown => {
+                        return Err(message::MessageError::ConversionError(
+                            "Video has no data".into(),
+                        ));
+                    }
+                };
+                Ok(UserContent::Video {
+                    video_url: VideoUrl { url },
+                })
+            }
         }
     }
 }
@@ -683,6 +868,8 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                 .into_iter()
                 .map(|tool_call| tool_call.into())
                 .collect::<Vec<_>>(),
+            reasoning_details: Vec::new(),
+            images: Vec::new(),
         }])
     }
 }
@@ -798,7 +985,7 @@ impl From<UserContent> for message::UserContent {
         match content {
             UserContent::Text { text, .. } => message::UserContent::text(text),
             UserContent::Image { image_url } => {
-                message::UserContent::image_url(image_url.url, None, Some(image_url.detail))
+                message::UserContent::image_url(image_url.url, None, image_url.detail)
             }
             UserContent::Audio { input_audio } => {
                 message::UserContent::audio(input_audio.data, Some(input_audio.format))
@@ -828,6 +1015,19 @@ impl From<UserContent> for message::UserContent {
                     None => message::UserContent::text(String::new()),
                 },
             },
+            UserContent::Video { video_url } => {
+                match video_url
+                    .url
+                    .strip_prefix("data:")
+                    .and_then(|rest| rest.split_once(";base64,"))
+                {
+                    Some((mime, data)) => message::UserContent::video(
+                        data,
+                        crate::message::VideoMediaType::from_mime_type(mime),
+                    ),
+                    None => message::UserContent::video_url(video_url.url, None),
+                }
+            }
         }
     }
 }
@@ -835,6 +1035,14 @@ impl From<UserContent> for message::UserContent {
 impl From<String> for UserContent {
     fn from(s: String) -> Self {
         UserContent::Text { text: s }
+    }
+}
+
+impl From<&str> for UserContent {
+    fn from(s: &str) -> Self {
+        UserContent::Text {
+            text: s.to_string(),
+        }
     }
 }
 
@@ -1149,10 +1357,58 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// When true, the shared streaming layer emits such calls as soon as they
     /// arrive instead of holding them until the stream ends.
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = false;
+
+    /// Whether `output_schema` maps to OpenAI's `response_format`. Providers
+    /// whose APIs reject `json_schema` response formats set this to false;
+    /// the schema is then dropped with a warning instead of being sent.
+    const SUPPORTS_RESPONSE_FORMAT: bool = true;
+
+    /// Whether streaming requests include
+    /// `"stream_options": {"include_usage": true}`. Providers that reject
+    /// unknown parameters and already report usage on the final chunk set
+    /// this to false.
+    const STREAM_INCLUDE_USAGE: bool = true;
+
+    /// The chat-completions payload this provider returns.
+    type Response: serde::de::DeserializeOwned
+        + Serialize
+        + crate::telemetry::ProviderResponseExt<Usage: GetTokenUsage>
+        + TryInto<completion::CompletionResponse<Self::Response>, Error = CompletionError>
+        + WasmCompatSend
+        + WasmCompatSync;
+
+    /// The request path for chat completions, resolved against the client
+    /// base URL by [`Provider::build_uri`](crate::client::Provider::build_uri).
+    /// Providers that route the model through the URL (e.g. Azure deployment
+    /// paths) or keep other capabilities on differently-versioned paths
+    /// override this.
+    fn completion_path(&self, model: &str) -> String {
+        let _ = model;
+        "/chat/completions".to_string()
+    }
+
+    /// Adjust the typed request before serialization (e.g. rewrite the model
+    /// identifier or fold provider-native tool definitions out of
+    /// `additional_params`).
+    fn prepare_request(&self, request: &mut CompletionRequest) -> Result<(), CompletionError> {
+        let _ = request;
+        Ok(())
+    }
+
+    /// Adjust the fully serialized request body — after any streaming
+    /// parameters are merged — immediately before it is sent. This is where
+    /// wire-level dialect differences live (e.g. Mistral's `"any"` tool
+    /// choice, DeepSeek's string-flattened message content).
+    fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
+        let _ = body;
+        Ok(())
+    }
 }
 
 impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
+
+    type Response = CompletionResponse;
 }
 
 #[doc(hidden)]
@@ -1215,18 +1471,18 @@ where
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompletionRequest {
-    model: String,
-    messages: Vec<Message>,
+    pub model: String,
+    pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
+    pub tools: Vec<ToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<ToolChoice>,
+    pub tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
+    pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u64>,
+    pub max_tokens: Option<u64>,
     #[serde(flatten)]
-    additional_params: Option<serde_json::Value>,
+    pub additional_params: Option<serde_json::Value>,
 }
 
 pub struct OpenAIRequestParams {
@@ -1234,6 +1490,9 @@ pub struct OpenAIRequestParams {
     pub request: CoreCompletionRequest,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
+    /// Maps `output_schema` to `response_format` when true; drops it with a
+    /// warning when false (providers whose APIs reject `json_schema`).
+    pub supports_response_format: bool,
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
@@ -1245,6 +1504,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             request: req,
             strict_tools,
             tool_result_array_content,
+            supports_response_format,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -1307,11 +1567,18 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             })
             .collect();
 
+        if output_schema.is_some() && !supports_response_format {
+            tracing::warn!(
+                "Structured outputs are not supported by this provider; ignoring output_schema"
+            );
+        }
+
         // Some OpenAI-compatible backends such as llama.cpp will skip tool execution
         // if `response_format` is sent on the first turn alongside tools. Delay the
         // schema until after the conversation contains a tool result.
-        let should_apply_response_format =
-            output_schema.is_some() && (tools.is_empty() || history_has_tool_result);
+        let should_apply_response_format = output_schema.is_some()
+            && supports_response_format
+            && (tools.is_empty() || history_has_tool_result);
 
         // Map output_schema to OpenAI's response_format and merge into additional_params
         let additional_params = if let Some(schema) = output_schema
@@ -1366,6 +1633,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
             request: req,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
     }
 }
@@ -1389,7 +1657,7 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = CompletionResponse;
+    type Response = Ext::Response;
     type StreamingResponse = StreamingCompletionResponse;
 
     type Client = crate::client::Client<Ext, H>;
@@ -1412,7 +1680,7 @@ where
     async fn completion(
         &self,
         completion_request: CoreCompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse<Ext::Response>, CompletionError> {
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -1431,26 +1699,32 @@ where
             tracing::Span::current()
         };
 
-        let request = CompletionRequest::try_from(OpenAIRequestParams {
+        let mut request = CompletionRequest::try_from(OpenAIRequestParams {
             model: self.model.to_owned(),
             request: completion_request,
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
+            supports_response_format: Ext::SUPPORTS_RESPONSE_FORMAT,
         })?;
+        self.client.ext().prepare_request(&mut request)?;
+
+        let mut request_body = serde_json::to_value(&request)?;
+        self.client.ext().finalize_request_body(&mut request_body)?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
                 "OpenAI Chat Completions completion request: {}",
-                serde_json::to_string_pretty(&request)?
+                serde_json::to_string_pretty(&request_body)?
             );
         }
 
-        let body = serde_json::to_vec(&request)?;
+        let body = serde_json::to_vec(&request_body)?;
+        let path = self.client.ext().completion_path(&request.model);
 
         let req = self
             .client
-            .post("/chat/completions")?
+            .post(&path)?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -1461,11 +1735,11 @@ where
             if status.is_success() {
                 let text = http_client::text(response).await?;
 
-                match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
+                match serde_json::from_str::<ApiResponse<Ext::Response>>(&text)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
-                        span.record_token_usage(&response.usage);
+                        span.record_token_usage(&response.get_usage());
 
                         if enabled!(Level::TRACE) {
                             tracing::trace!(
@@ -1552,6 +1826,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -1580,6 +1855,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -1604,6 +1880,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
 
@@ -1661,6 +1938,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
 
@@ -1761,6 +2039,8 @@ mod tests {
             audio: None,
             name: None,
             tool_calls: vec![],
+            reasoning_details: vec![],
+            images: vec![],
         };
 
         let rig_msg: message::Message = assistant.try_into().expect("convert back");
@@ -1802,6 +2082,8 @@ mod tests {
                     audio: None,
                     name: None,
                     tool_calls: vec![],
+                    reasoning_details: vec![],
+                    images: vec![],
                 },
                 logprobs: None,
                 finish_reason: "stop".to_owned(),
@@ -1832,6 +2114,8 @@ mod tests {
                     audio: None,
                     name: None,
                     tool_calls: vec![],
+                    reasoning_details: vec![],
+                    images: vec![],
                 },
                 logprobs: None,
                 finish_reason: "stop".to_owned(),
@@ -1862,6 +2146,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -1890,6 +2175,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -1921,6 +2207,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         });
 
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
@@ -1969,6 +2256,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
 
@@ -2037,6 +2325,7 @@ mod tests {
             request,
             strict_tools: false,
             tool_result_array_content: false,
+            supports_response_format: true,
         })
         .expect("request conversion should succeed");
 
@@ -2234,7 +2523,7 @@ mod tests {
         };
 
         assert_eq!(image_url.url, "data:image/png;base64,iVBORw0KGgo=");
-        assert_eq!(image_url.detail, ImageDetail::Auto);
+        assert_eq!(image_url.detail, Some(ImageDetail::Auto));
     }
 
     // Regression guard: callers passing markdown/plain text wrapped in

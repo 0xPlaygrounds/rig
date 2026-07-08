@@ -119,6 +119,33 @@ impl Provider for HuggingFaceExt {
     const VERIFY_PATH: &'static str = "/api/whoami-v2";
 }
 
+impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingFaceExt {
+    const PROVIDER_NAME: &'static str = "huggingface";
+
+    // Structured-output support varies by sub-provider; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    type Response = crate::providers::openai::CompletionResponse;
+
+    // Chat completions live under the router's `/v1` while verification,
+    // transcription, and image generation use root-relative paths, so the
+    // prefix cannot live in the client base URL.
+    fn completion_path(&self, _model: &str) -> String {
+        self.subprovider.completion_endpoint(_model)
+    }
+
+    fn prepare_request(
+        &self,
+        request: &mut crate::providers::openai::completion::CompletionRequest,
+    ) -> Result<(), crate::completion::CompletionError> {
+        // Some sub-providers (Fireworks) address models through a qualified
+        // identifier in the request body.
+        request.model = self.subprovider.model_identifier(&request.model);
+        Ok(())
+    }
+}
+
 impl<H> Capabilities<H> for HuggingFaceExt {
     type Completion = Capable<super::completion::CompletionModel<H>>;
     type Embeddings = Nothing;

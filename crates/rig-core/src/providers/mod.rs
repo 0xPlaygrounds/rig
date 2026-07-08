@@ -35,6 +35,13 @@
 //!
 //! When adding or changing a provider, verify that the integration includes:
 //!
+//! - for OpenAI-chat-compatible APIs: completions driven by
+//!   [`GenericCompletionModel`](crate::providers::openai::completion::GenericCompletionModel)
+//!   via an
+//!   [`OpenAICompatibleProvider`](crate::providers::openai::completion::OpenAICompatibleProvider)
+//!   impl on the provider extension (never a hand-rolled completion model,
+//!   request struct, or message conversion — dialect differences go in the
+//!   trait's hooks);
 //! - public `Client` and `ClientBuilder` aliases with the correct generics,
 //!   including a `ClientBuilder` API-key generic matching `ProviderBuilder::ApiKey`;
 //! - the `Provider`, `ProviderBuilder`, `Capabilities`, and `ProviderClient`

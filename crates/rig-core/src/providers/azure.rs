@@ -24,7 +24,7 @@
 
 use std::fmt::Debug;
 
-use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
+use super::openai::TranscriptionResponse;
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
@@ -32,18 +32,14 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm, bearer_auth_header};
-use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
-    completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
-    json_utils,
     providers::openai,
-    telemetry::SpanCombinator,
     transcription::{self},
 };
 use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 // ================================================================
 // Main Azure OpenAI Client
@@ -246,20 +242,6 @@ where
         );
 
         self.post(url)
-    }
-
-    fn post_chat_completion(
-        &self,
-        deployment_id: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!(
-            "{}/openai/deployments/{}/chat/completions?api-version={}",
-            self.endpoint(),
-            deployment_id.trim_start_matches('/'),
-            self.api_version()
-        );
-
-        self.post(&url)
     }
 
     fn post_transcription(&self, deployment_id: &str) -> http_client::Result<http_client::Builder> {
@@ -564,256 +546,27 @@ pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct AzureOpenAICompletionRequest {
-    model: String,
-    pub messages: Vec<openai::Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<openai::ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openai::ToolChoice>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-}
+/// Azure OpenAI completion model, driven by the shared OpenAI Chat Completions
+/// path. The deployment-scoped URL (including `api-version`) is produced by
+/// [`OpenAICompatibleProvider::completion_path`] on [`AzureExt`].
+pub type CompletionModel<H = reqwest::Client> =
+    openai::completion::GenericCompletionModel<AzureExt, H>;
 
-impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
-    type Error = CompletionError;
+impl openai::completion::OpenAICompatibleProvider for AzureExt {
+    const PROVIDER_NAME: &'static str = "azure";
 
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let chat_history = req.chat_history_with_documents();
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        if req.tool_choice.is_some() {
-            tracing::warn!("Tool choice is currently not supported in Azure OpenAI.");
-        }
-
-        let mut full_history: Vec<openai::Message> = match &req.preamble {
-            Some(preamble) => vec![openai::Message::system(preamble)],
-            None => vec![],
-        };
-
-        let chat_history: Vec<openai::Message> = chat_history
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        let tool_choice = req
-            .tool_choice
-            .clone()
-            .map(crate::providers::openai::ToolChoice::try_from)
-            .transpose()?;
-
-        let additional_params = if let Some(schema) = req.output_schema {
-            let name = schema
-                .as_object()
-                .and_then(|o| o.get("title"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("response_schema")
-                .to_string();
-            let mut schema_value = schema.to_value();
-            openai::sanitize_schema(&mut schema_value);
-            let response_format = serde_json::json!({
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": name,
-                        "strict": true,
-                        "schema": schema_value
-                    }
-                }
-            });
-            Some(match req.additional_params {
-                Some(existing) => json_utils::merge(existing, response_format),
-                None => response_format,
-            })
-        } else {
-            req.additional_params
-        };
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(openai::ToolDefinition::from)
-                .collect::<Vec<_>>(),
-            tool_choice,
-            additional_params,
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gpt-4o-mini)
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
     type Response = openai::CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
-    type Client = Client<T>;
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "azure.openai",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        let request =
-            AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Azure OpenAI completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post_chat_completion(&self.model)?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(
-                    &response_body,
-                )? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record_response_metadata(&response);
-                        span.record_token_usage(&response.usage);
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "Azure OpenAI completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => {
-                        tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body).into_owned(),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let mut request =
-            AzureOpenAICompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
-        );
-
-        request.additional_params = Some(params);
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Azure OpenAI completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post_chat_completion(&self.model)?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "azure.openai",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        tracing_futures::Instrument::instrument(
-            send_compatible_streaming_request(self.client.clone(), req),
-            span,
+    // Azure routes the deployment (model) through the URL path and versions
+    // the API via a query parameter; the client base URL is blank so this
+    // absolute URL passes through `build_uri` untouched.
+    fn completion_path(&self, model: &str) -> String {
+        format!(
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            self.endpoint,
+            model.trim_start_matches('/'),
+            self.api_version
         )
-        .await
     }
 }
 
@@ -916,7 +669,6 @@ where
 // ================================================================
 #[cfg(feature = "image")]
 pub use image_generation::*;
-use tracing::{Instrument, Level, enabled, info_span};
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
@@ -1081,6 +833,7 @@ mod azure_tests {
     use schemars::JsonSchema;
 
     use super::*;
+    use crate::completion::{CompletionError, CompletionRequest};
 
     use crate::OneOrMany;
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};

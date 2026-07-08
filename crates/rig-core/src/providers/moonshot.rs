@@ -26,21 +26,12 @@ use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
+use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
 };
-use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::StreamingCompletionResponse;
-use crate::{
-    completion::{self, CompletionError, CompletionRequest},
-    json_utils,
-    providers::openai,
-};
-use crate::{http_client, message};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use tracing::{Instrument, info_span};
+use crate::{completion::CompletionError, providers::openai};
 
 // ================================================================
 // Main Moonshot Client
@@ -278,23 +269,6 @@ fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
     Some(url.to_string())
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    error: MoonshotError,
-}
-
-#[derive(Debug, Deserialize)]
-struct MoonshotError {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
 // ================================================================
 // Moonshot Completion API
 // ================================================================
@@ -308,367 +282,70 @@ pub const KIMI_K2: &str = "kimi-k2";
 /// Kimi K2.5 — Native multimodal agentic model with 256K context
 pub const KIMI_K2_5: &str = "kimi-k2.5";
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct MoonshotCompletionRequest {
-    model: String,
-    pub messages: Vec<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<openai::ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-}
+/// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H = reqwest::Client> =
+    openai::completion::GenericCompletionModel<MoonshotExt, H>;
 
-impl TryFrom<(&str, CompletionRequest)> for MoonshotCompletionRequest {
-    type Error = CompletionError;
+impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
+    const PROVIDER_NAME: &'static str = "moonshot";
 
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let chat_history = req.chat_history_with_documents();
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Moonshot");
-        }
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        // Build up the order of messages.
-        let mut partial_history = vec![];
-        partial_history.extend(chat_history);
+    // Moonshot's API rejects the `json_schema` response format; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
-        let mut full_history: Vec<Value> = match &req.preamble {
-            Some(preamble) => vec![serde_json::to_value(openai::Message::system(preamble))?],
-            None => vec![],
-        };
+    type Response = openai::CompletionResponse;
 
-        full_history.extend(moonshot_history_values(partial_history)?);
-
-        let mut tool_choice = None;
-        let mut tool_choice_required = false;
-        if let Some(choice) = req.tool_choice.clone() {
-            match choice {
-                message::ToolChoice::Required => {
-                    tool_choice_required = true;
-                    tool_choice = Some(crate::providers::openai::completion::ToolChoice::Auto);
-                }
-                other => {
-                    tool_choice = Some(crate::providers::openai::ToolChoice::try_from(other)?);
-                }
-            }
-        }
-
-        if tool_choice_required {
+    fn prepare_request(
+        &self,
+        request: &mut openai::completion::CompletionRequest,
+    ) -> Result<(), CompletionError> {
+        // Moonshot does not support `tool_choice: "required"`; coerce it to
+        // `auto` and steer the model with an extra user message instead.
+        if matches!(
+            request.tool_choice,
+            Some(openai::completion::ToolChoice::Required)
+        ) {
             tracing::warn!(
                 "Moonshot does not support tool_choice=required; coercing to auto with an additional steering message"
             );
-            full_history.push(json!({
-                "role": "user",
-                "content": "Please select a tool to handle the current issue."
-            }));
+            request.tool_choice = Some(openai::completion::ToolChoice::Auto);
+            request.messages.push(openai::Message::User {
+                content: crate::OneOrMany::one(openai::UserContent::Text {
+                    text: "Please select a tool to handle the current issue.".to_string(),
+                }),
+                name: None,
+            });
         }
 
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            max_tokens: req.max_tokens,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(openai::ToolDefinition::from)
-                .collect::<Vec<_>>(),
-            tool_choice,
-            additional_params: req.additional_params,
-        })
+        Ok(())
     }
 }
 
-fn moonshot_history_values(history: Vec<message::Message>) -> Result<Vec<Value>, CompletionError> {
-    let mut result = Vec::new();
-
-    for message in history {
-        match message {
-            message::Message::Assistant { id: _, content } => {
-                if let Some(value) = moonshot_assistant_message_value(content)? {
-                    result.push(value);
-                }
-            }
-            other => {
-                result.extend(
-                    Vec::<openai::Message>::try_from(other)?
-                        .into_iter()
-                        .map(serde_json::to_value)
-                        .collect::<Result<Vec<_>, _>>()?,
-                );
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-fn moonshot_assistant_message_value(
-    content: crate::OneOrMany<message::AssistantContent>,
-) -> Result<Option<Value>, CompletionError> {
-    let mut text_content = Vec::new();
-    let mut tool_calls = Vec::new();
-    let mut reasoning_parts = Vec::new();
-
-    for item in content {
-        match item {
-            message::AssistantContent::Text(text) => {
-                text_content.push(openai::AssistantContent::Text { text: text.text });
-            }
-            message::AssistantContent::ToolCall(tool_call) => {
-                tool_calls.push(openai::ToolCall::from(tool_call));
-            }
-            message::AssistantContent::Reasoning(reasoning) => {
-                let display = reasoning.display_text();
-                if !display.is_empty() {
-                    reasoning_parts.push(display);
-                }
-            }
-            message::AssistantContent::Image(_) => {
-                return Err(CompletionError::ProviderError(
-                    "Moonshot does not support assistant image content in chat history".into(),
-                ));
-            }
-        }
-    }
-
-    if text_content.is_empty() && tool_calls.is_empty() && reasoning_parts.is_empty() {
-        return Ok(None);
-    }
-
-    let content_value = if text_content.is_empty() {
-        Value::String(String::new())
-    } else {
-        serde_json::to_value(text_content)?
-    };
-
-    let mut object = serde_json::Map::from_iter([
-        ("role".to_string(), Value::String("assistant".to_string())),
-        ("content".to_string(), content_value),
-    ]);
-
-    if !tool_calls.is_empty() {
-        object.insert("tool_calls".to_string(), serde_json::to_value(tool_calls)?);
-    }
-
-    if !reasoning_parts.is_empty() {
-        object.insert(
-            "reasoning_content".to_string(),
-            Value::String(reasoning_parts.join("\n")),
-        );
-    }
-
-    Ok(Some(Value::Object(object)))
-}
-
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = openai::CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "moonshot",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        let request =
-            MoonshotCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "MoonShot completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let async_block = async move {
-            let response = self.client.send::<_, bytes::Bytes>(req).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<openai::CompletionResponse>>(
-                    &response_body,
-                )? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", response.id.clone());
-                        span.record("gen_ai.response.model", response.model.clone());
-                        if let Some(ref usage) = response.usage {
-                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-                            span.record(
-                                "gen_ai.usage.output_tokens",
-                                usage.total_tokens - usage.prompt_tokens,
-                            );
-                        }
-                        if tracing::enabled!(tracing::Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "MoonShot completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => {
-                        tracing::warn!(message = %err.error.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body).into_owned(),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        };
-
-        async_block.instrument(span).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "moonshot",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &request.preamble);
-        let mut request = MoonshotCompletionRequest::try_from((self.model.as_ref(), request))?;
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
-        );
-
-        request.additional_params = Some(params);
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "MoonShot streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        send_compatible_streaming_request(self.client.clone(), req)
-            .instrument(span)
-            .await
-    }
-}
-
-#[derive(Default, Debug, Deserialize, Serialize)]
-pub enum ToolChoice {
-    None,
-    #[default]
-    Auto,
-}
-
-impl TryFrom<message::ToolChoice> for ToolChoice {
-    type Error = CompletionError;
-
-    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
-        let res = match value {
-            message::ToolChoice::None => Self::None,
-            message::ToolChoice::Auto => Self::Auto,
-            choice => {
-                return Err(CompletionError::ProviderError(format!(
-                    "Unsupported tool choice type: {choice:?}"
-                )));
-            }
-        };
-
-        Ok(res)
-    }
-}
 #[cfg(test)]
 mod tests {
-    use super::{
-        MoonshotCompletionRequest, normalize_anthropic_base_url, resolve_anthropic_base_override,
-    };
+    use super::{MoonshotExt, normalize_anthropic_base_url, resolve_anthropic_base_override};
     use crate::completion::CompletionRequest;
     use crate::message::{
         AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction,
     };
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
+    };
+
+    fn prepared_body(request: CompletionRequest, model: &str) -> serde_json::Value {
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: model.to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+        })
+        .expect("request should convert");
+        MoonshotExt
+            .prepare_request(&mut request)
+            .expect("prepare_request should succeed");
+        serde_json::to_value(request).expect("request should serialize")
+    }
 
     #[test]
     fn test_client_initialization() {
@@ -719,19 +396,10 @@ mod tests {
             output_schema: None,
         };
 
-        let converted =
-            MoonshotCompletionRequest::try_from(("kimi-k2-thinking", request)).expect("convert");
-        let assistant = converted
-            .messages
-            .first()
-            .and_then(|value| value.as_object())
-            .expect("assistant message");
-
+        let body = prepared_body(request, "kimi-k2-thinking");
         assert_eq!(
-            assistant
-                .get("reasoning_content")
-                .and_then(|value| value.as_str()),
-            Some("tool planning")
+            body["messages"][0]["reasoning_content"],
+            serde_json::json!("tool planning")
         );
     }
 
@@ -750,18 +418,14 @@ mod tests {
             output_schema: None,
         };
 
-        let converted =
-            MoonshotCompletionRequest::try_from(("kimi-k2.5", request)).expect("convert");
-        assert!(matches!(
-            converted.tool_choice,
-            Some(crate::providers::openai::completion::ToolChoice::Auto)
-        ));
+        let body = prepared_body(request, "kimi-k2.5");
+        assert_eq!(body["tool_choice"], "auto");
         assert_eq!(
-            converted
-                .messages
-                .last()
-                .and_then(|value| value.get("content"))
-                .and_then(|value| value.as_str()),
+            body["messages"]
+                .as_array()
+                .and_then(|messages| messages.last())
+                .and_then(|message| message.get("content"))
+                .and_then(|content| content.as_str()),
             Some("Please select a tool to handle the current issue.")
         );
     }

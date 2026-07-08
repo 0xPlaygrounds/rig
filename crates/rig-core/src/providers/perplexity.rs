@@ -12,24 +12,17 @@
 //! # }
 //! ```
 use crate::client::BearerAuth;
-use crate::completion::CompletionRequest;
+use crate::completion::CompletionError;
 use crate::providers::openai;
-use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::StreamingCompletionResponse;
 use crate::{
-    OneOrMany,
     client::{
         self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
     },
-    completion::{self, CompletionError, MessageError, message},
     http_client::{self, HttpClientExt},
 };
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
 
 // ================================================================
-// Main Cohere Client
+// Main Perplexity Client
 // ================================================================
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
@@ -46,6 +39,33 @@ impl Provider for PerplexityExt {
 
     // There is currently no way to verify a perplexity api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
+}
+
+impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
+    const PROVIDER_NAME: &'static str = "perplexity";
+
+    // Perplexity's structured-output support predates rig's `output_schema`
+    // mapping; keep the pre-migration behavior of dropping it with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    type Response = openai::CompletionResponse;
+
+    fn prepare_request(
+        &self,
+        request: &mut openai::completion::CompletionRequest,
+    ) -> Result<(), CompletionError> {
+        // Perplexity has no tool-calling support; drop tools rather than
+        // sending parameters its API rejects.
+        if !request.tools.is_empty() {
+            tracing::warn!("Tool use is not supported by Perplexity; tools will be ignored");
+            request.tools.clear();
+        }
+        if request.tool_choice.take().is_some() {
+            tracing::warn!("Tool choice is not supported by Perplexity and will be ignored");
+        }
+
+        Ok(())
+    }
 }
 
 impl<H> Capabilities<H> for PerplexityExt {
@@ -86,6 +106,10 @@ pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
 
+/// Perplexity completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H = reqwest::Client> =
+    openai::completion::GenericCompletionModel<PerplexityExt, H>;
+
 impl ProviderClient for Client {
     type Input = String;
     type Error = crate::client::ProviderClientError;
@@ -101,18 +125,6 @@ impl ProviderClient for Client {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
 // ================================================================
 // Perplexity Completion API
 // ================================================================
@@ -120,439 +132,14 @@ enum ApiResponse<T> {
 pub const SONAR_PRO: &str = "sonar_pro";
 pub const SONAR: &str = "sonar";
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CompletionResponse {
-    pub id: String,
-    pub model: String,
-    pub object: String,
-    pub created: u64,
-    #[serde(default)]
-    pub choices: Vec<Choice>,
-    pub usage: Usage,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct Message {
-    pub role: Role,
-    pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    System,
-    User,
-    Assistant,
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-pub struct Delta {
-    pub role: Role,
-    pub content: String,
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-pub struct Choice {
-    pub index: usize,
-    pub finish_reason: String,
-    pub message: Message,
-    pub delta: Delta,
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-pub struct Usage {
-    pub prompt_tokens: u32,
-    pub completion_tokens: u32,
-    pub total_tokens: u32,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {}\nCompletion tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.completion_tokens, self.total_tokens
-        )
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
-
-        match &choice.message {
-            Message {
-                role: Role::Assistant,
-                content,
-            } => Ok(completion::CompletionResponse {
-                choice: OneOrMany::one(content.clone().into()),
-                usage: completion::Usage {
-                    input_tokens: response.usage.prompt_tokens as u64,
-                    output_tokens: response.usage.completion_tokens as u64,
-                    total_tokens: response.usage.total_tokens as u64,
-                    cached_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                    tool_use_prompt_tokens: 0,
-                    reasoning_tokens: 0,
-                },
-                raw_response: response,
-                message_id: None,
-            }),
-            _ => Err(CompletionError::ResponseError(
-                "Response contained no assistant message".to_owned(),
-            )),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct PerplexityCompletionRequest {
-    model: String,
-    pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u64>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    additional_params: Option<serde_json::Value>,
-    pub stream: bool,
-}
-
-impl TryFrom<(&str, CompletionRequest)> for PerplexityCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let chat_history = req.chat_history_with_documents();
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Perplexity");
-        }
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut partial_history = vec![];
-        partial_history.extend(chat_history);
-
-        // Initialize full history with preamble (or empty if non-existent)
-        let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
-            vec![Message {
-                role: Role::System,
-                content: preamble,
-            }]
-        });
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Message>, _>>()?,
-        );
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            max_tokens: req.max_tokens,
-            additional_params: req.additional_params,
-            stream: false,
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl TryFrom<message::Message> for Message {
-    type Error = MessageError;
-
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        Ok(match message {
-            message::Message::System { content } => Message {
-                role: Role::System,
-                content,
-            },
-            message::Message::User { content } => {
-                let collapsed_content = content
-                    .into_iter()
-                    .map(|content| match content {
-                        message::UserContent::Text(message::Text { text, .. }) => Ok(text),
-                        _ => Err(MessageError::ConversionError(
-                            "Only text content is supported by Perplexity".to_owned(),
-                        )),
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .join("\n");
-
-                Message {
-                    role: Role::User,
-                    content: collapsed_content,
-                }
-            }
-
-            message::Message::Assistant { content, .. } => {
-                let collapsed_content = content
-                    .into_iter()
-                    .map(|content| {
-                        Ok(match content {
-                            message::AssistantContent::Text(message::Text { text, .. }) => text,
-                            _ => return Err(MessageError::ConversionError(
-                                "Only text assistant message content is supported by Perplexity"
-                                    .to_owned(),
-                            )),
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .join("\n");
-
-                Message {
-                    role: Role::Assistant,
-                    content: collapsed_content,
-                }
-            }
-        })
-    }
-}
-
-impl From<Message> for message::Message {
-    fn from(message: Message) -> Self {
-        match message.role {
-            Role::User => message::Message::user(message.content),
-            Role::Assistant => message::Message::assistant(message.content),
-
-            // System messages get coerced into user messages for ease of error handling.
-            // They should be handled on the outside of `Message` conversions via the preamble.
-            Role::System => message::Message::user(message.content),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "perplexity",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
-        }
-
-        if !completion_request.tools.is_empty() {
-            tracing::warn!("WARNING: `tools` not supported on Perplexity");
-        }
-        let request =
-            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Perplexity completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let async_block = async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
-                        span.record(
-                            "gen_ai.usage.output_tokens",
-                            response.usage.completion_tokens,
-                        );
-                        span.record("gen_ai.response.id", response.id.to_string());
-                        span.record("gen_ai.response.model", response.model.to_string());
-                        if tracing::enabled!(tracing::Level::TRACE) {
-                            tracing::trace!(target: "rig::responses",
-                                "Perplexity completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-                        Ok(response.try_into()?)
-                    }
-                    ApiResponse::Err(error) => {
-                        tracing::warn!(message = %error.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body).into_owned(),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        };
-
-        async_block.instrument(span).await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "perplexity",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Perplexity");
-        }
-
-        if !completion_request.tools.is_empty() {
-            tracing::warn!("WARNING: `tools` not supported on Perplexity");
-        }
-
-        let mut request =
-            PerplexityCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        request.stream = true;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Perplexity streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        send_compatible_streaming_request(self.client.clone(), req)
-            .instrument(span)
-            .await
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
+    };
+    use crate::test_utils::MockCompletionModel;
 
-    #[test]
-    fn test_deserialize_message() {
-        let json_data = r#"
-        {
-            "role": "user",
-            "content": "Hello, how can I help you?"
-        }
-        "#;
-
-        let message: Message = serde_json::from_str(json_data).unwrap();
-        assert_eq!(message.role, Role::User);
-        assert_eq!(message.content, "Hello, how can I help you?");
-    }
-
-    #[test]
-    fn test_serialize_message() {
-        let message = Message {
-            role: Role::Assistant,
-            content: "I am here to assist you.".to_string(),
-        };
-
-        let json_data = serde_json::to_string(&message).unwrap();
-        let expected_json = r#"{"role":"assistant","content":"I am here to assist you."}"#;
-        assert_eq!(json_data, expected_json);
-    }
-
-    #[test]
-    fn test_message_to_message_conversion() {
-        let user_message = message::Message::user("User message");
-        let assistant_message = message::Message::assistant("Assistant message");
-
-        let converted_user_message: Message = user_message.clone().try_into().unwrap();
-        let converted_assistant_message: Message = assistant_message.clone().try_into().unwrap();
-
-        assert_eq!(converted_user_message.role, Role::User);
-        assert_eq!(converted_user_message.content, "User message");
-
-        assert_eq!(converted_assistant_message.role, Role::Assistant);
-        assert_eq!(converted_assistant_message.content, "Assistant message");
-
-        let back_to_user_message: message::Message = converted_user_message.into();
-        let back_to_assistant_message: message::Message = converted_assistant_message.into();
-
-        assert_eq!(user_message, back_to_user_message);
-        assert_eq!(assistant_message, back_to_assistant_message);
-    }
     #[test]
     fn test_client_initialization() {
         let _client =
@@ -561,5 +148,36 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn perplexity_prepare_request_drops_tools() {
+        let request = crate::completion::CompletionRequestBuilder::new(
+            MockCompletionModel::default(),
+            "What's new today?",
+        )
+        .tool(crate::completion::ToolDefinition {
+            name: "lookup".to_string(),
+            description: "Lookup".to_string(),
+            parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+        })
+        .tool_choice(crate::message::ToolChoice::Required)
+        .build();
+
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: SONAR.to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: PerplexityExt::SUPPORTS_RESPONSE_FORMAT,
+        })
+        .expect("request should convert");
+        PerplexityExt
+            .prepare_request(&mut request)
+            .expect("prepare_request should succeed");
+
+        let body = serde_json::to_value(request).expect("request should serialize");
+        assert!(body.get("tools").is_none());
+        assert!(body.get("tool_choice").is_none());
     }
 }
