@@ -1,7 +1,9 @@
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, CompletionResponse, Usage};
-use rig_core::message::{AssistantContent, Text, ToolCall, ToolFunction};
+use rig_core::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -27,6 +29,13 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
         // vertexai internally uses a wkt::Struct (serde_json::Map<String, serde_json::Value>) in
         // function calling args. We need to convert that to serde_json::Value for rig_core::completion type matching
         for part in content.parts.iter() {
+            // Gemini "thinking" models attach an opaque `thoughtSignature` to (usually) the
+            // functionCall part. It must be echoed back verbatim on subsequent turns or Vertex
+            // rejects the request with INVALID_ARGUMENT ("missing a thought_signature"). We carry
+            // it through rig-core's `ToolCall.signature` (base64, since it is raw bytes).
+            let signature = (!part.thought_signature.is_empty())
+                .then(|| BASE64.encode(&part.thought_signature));
+
             if let Some(function_call) = part.function_call() {
                 let args_json = function_call
                     .args
@@ -34,12 +43,29 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                     .map(|s| serde_json::Value::Object(s.clone()))
                     .unwrap_or_else(|| serde_json::json!({}));
 
-                assistant_contents.push(AssistantContent::ToolCall(ToolCall::new(
-                    function_call.name.clone(),
-                    ToolFunction::new(function_call.name.clone(), args_json),
-                )));
+                assistant_contents.push(AssistantContent::ToolCall(
+                    ToolCall::new(
+                        function_call.name.clone(),
+                        ToolFunction::new(function_call.name.clone(), args_json),
+                    )
+                    .with_signature(signature),
+                ));
             } else if let Some(text) = part.text() {
-                assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));
+                if part.thought {
+                    assistant_contents.push(AssistantContent::Reasoning(
+                        Reasoning::new_with_signature(text, signature),
+                    ));
+                } else {
+                    assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));
+                }
+            } else if signature.is_some() {
+                // A signature-bearing part that is neither a function call nor text (e.g. a
+                // standalone "thinking" part). rig-core has no carrier for it, so it is dropped —
+                // log it so a later INVALID_ARGUMENT can be traced back here rather than being silent.
+                tracing::warn!(
+                    "Vertex response part carries a thought_signature but is neither a function \
+                     call nor text; signature dropped (no rig-core carrier)."
+                );
             }
         }
 
@@ -115,6 +141,77 @@ mod tests {
             .set_finish_reason(vertexai::model::candidate::FinishReason::Stop);
         let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
         VertexGenerateContentOutput(response)
+    }
+
+    fn create_signed_tool_call_response(
+        function_name: &str,
+        signature: &[u8],
+    ) -> VertexGenerateContentOutput {
+        let function_call = vertexai::model::FunctionCall::new()
+            .set_name(function_name.to_string())
+            .set_args(serde_json::Map::new());
+        let part = vertexai::model::Part::new()
+            .set_function_call(function_call)
+            .set_thought_signature(signature.to_vec());
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts([part]);
+        let candidate = vertexai::model::Candidate::new().set_content(content);
+        let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
+        VertexGenerateContentOutput(response)
+    }
+
+    #[test]
+    fn test_tool_call_response_captures_thought_signature() {
+        let raw = b"\x00\x01\x02thinking-sig\xff";
+        let response: CompletionResponse<VertexGenerateContentOutput> =
+            create_signed_tool_call_response("add", raw)
+                .try_into()
+                .unwrap();
+        match response.choice.first() {
+            AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, Some(BASE64.encode(raw))),
+            _ => panic!("Expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn test_tool_call_response_without_signature_is_none() {
+        let response: CompletionResponse<VertexGenerateContentOutput> =
+            create_tool_call_response("add", serde_json::json!({"x": 1}))
+                .try_into()
+                .unwrap();
+        match response.choice.first() {
+            AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, None),
+            _ => panic!("Expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn test_thought_text_response_captures_thought_signature() {
+        let raw = b"\x00\x01\x02thinking-text-sig\xff";
+        let part = vertexai::model::Part::new()
+            .set_text("thinking text".to_string())
+            .set_thought(true)
+            .set_thought_signature(raw.to_vec());
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts([part]);
+        let candidate = vertexai::model::Candidate::new().set_content(content);
+        let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
+
+        let response: CompletionResponse<VertexGenerateContentOutput> =
+            VertexGenerateContentOutput(response).try_into().unwrap();
+
+        match response.choice.first() {
+            AssistantContent::Reasoning(reasoning) => {
+                assert_eq!(reasoning.display_text(), "thinking text");
+                assert_eq!(
+                    reasoning.first_signature(),
+                    Some(BASE64.encode(raw).as_str())
+                );
+            }
+            _ => panic!("Expected Reasoning"),
+        }
     }
 
     #[test]

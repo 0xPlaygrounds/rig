@@ -9950,6 +9950,7 @@ name = "rig-vertexai"
 version = "0.39.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
  "rig-core",
