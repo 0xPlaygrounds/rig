@@ -388,6 +388,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("Groq request should convert");
         let json = serde_json::to_value(request).expect("request should serialize");
@@ -411,6 +412,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request should convert");
         let json = serde_json::to_value(no_tools_request).expect("request should serialize");
@@ -437,6 +439,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request should convert");
 
@@ -472,6 +475,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request should convert");
         let json = serde_json::to_value(request).expect("request should serialize");

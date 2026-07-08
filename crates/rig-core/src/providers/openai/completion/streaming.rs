@@ -30,6 +30,9 @@ pub(crate) struct StreamingFunction {
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct StreamingToolCall {
+    // Optional in several compatible dialects (e.g. Mistral); missing means
+    // a single in-flight tool call.
+    #[serde(default)]
     pub(crate) index: usize,
     pub(crate) id: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
@@ -68,10 +71,14 @@ where
 struct StreamingDelta {
     #[serde(default, deserialize_with = "deserialize_delta_content")]
     content: Option<String>,
-    // Not part of the official OpenAI API; some compatible providers (e.g.
-    // Groq) send the same payload under `reasoning`.
-    #[serde(default, alias = "reasoning")]
+    #[serde(default)]
     reasoning_content: Option<String>,
+    // Not part of the official OpenAI API; some compatible providers (e.g.
+    // Groq) send the same payload under `reasoning`. A separate field rather
+    // than a serde alias so a delta carrying BOTH keys is not a
+    // duplicate-field error that drops the whole chunk.
+    #[serde(default)]
+    reasoning: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     tool_calls: Vec<StreamingToolCall>,
 }
@@ -138,6 +145,7 @@ where
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
             supports_response_format: Ext::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: Ext::SUPPORTS_TOOLS,
         })?;
         self.client.ext().prepare_request(&mut request)?;
 
@@ -147,27 +155,36 @@ where
         let resolved_model = request.model.clone();
         let mut request_as_json = serde_json::to_value(request)?;
 
-        // `merge` is shallow: adding include_usage when the caller supplied
-        // their own stream_options would clobber their keys.
-        let include_usage =
-            Ext::STREAM_INCLUDE_USAGE && request_as_json.get("stream_options").is_none();
-        let stream_params = if include_usage {
-            json!({"stream": true, "stream_options": {"include_usage": true}})
-        } else {
-            json!({"stream": true})
-        };
-        request_as_json = merge(request_as_json, stream_params);
+        // `merge` is shallow, so include_usage is inserted into any
+        // caller-supplied stream_options rather than merged over it: the
+        // caller's keys survive and the usage chunk is still requested.
+        if Ext::STREAM_INCLUDE_USAGE {
+            match request_as_json.get_mut("stream_options") {
+                Some(serde_json::Value::Object(options)) => {
+                    options
+                        .entry("include_usage")
+                        .or_insert(serde_json::Value::Bool(true));
+                }
+                Some(_) => {}
+                None => {
+                    request_as_json = merge(
+                        request_as_json,
+                        json!({"stream_options": {"include_usage": true}}),
+                    );
+                }
+            }
+        }
+        request_as_json = merge(request_as_json, json!({"stream": true}));
         self.client
             .ext()
             .finalize_request_body(&mut request_as_json)?;
 
         // Serialized after the finalize hook so telemetry shows the messages
-        // that actually went to the wire.
-        let request_messages = request_as_json
-            .get("messages")
-            .map(serde_json::to_string)
-            .transpose()?
-            .unwrap_or_default();
+        // that actually went to the wire; if a hook moved them out of
+        // `messages`, fall back to the whole body rather than recording
+        // nothing.
+        let request_messages =
+            serde_json::to_string(request_as_json.get("messages").unwrap_or(&request_as_json))?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -272,7 +289,11 @@ where
                         _ => CompatibleFinishReason::Other,
                     },
                     text: choice.delta.content.clone(),
-                    reasoning: choice.delta.reasoning_content.clone(),
+                    reasoning: choice
+                        .delta
+                        .reasoning_content
+                        .clone()
+                        .or_else(|| choice.delta.reasoning.clone()),
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
                         &choice.delta.tool_calls,
                     ),

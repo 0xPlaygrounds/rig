@@ -483,6 +483,7 @@ impl ToolDefinition {
 }
 
 #[derive(Default, Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ToolChoice {
     #[default]
     Auto,
@@ -1102,7 +1103,11 @@ impl FromStr for SystemContent {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
+    // Defaulted on deserialization: some OpenAI-compatible gateways
+    // (HuggingFace router sub-providers, TGI variants) omit them.
+    #[serde(default)]
     pub object: String,
+    #[serde(default)]
     pub created: u64,
     pub model: String,
     pub system_fingerprint: Option<String>,
@@ -1373,6 +1378,12 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// arrive instead of holding them until the stream ends.
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = false;
 
+    /// Whether the provider supports tool calling. When false, `tools` and
+    /// `tool_choice` are dropped with a warning during request conversion —
+    /// before tool-choice validation, so unsupported tool configurations
+    /// never error client-side on a provider that ignores tools anyway.
+    const SUPPORTS_TOOLS: bool = true;
+
     /// Whether `output_schema` maps to OpenAI's `response_format`. Providers
     /// whose APIs reject `json_schema` response formats set this to false;
     /// the schema is then dropped with a warning instead of being sent.
@@ -1449,8 +1460,8 @@ impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
 pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
     pub(crate) client: crate::client::Client<Ext, H>,
     pub model: String,
-    pub strict_tools: bool,
-    pub tool_result_array_content: bool,
+    pub(crate) strict_tools: bool,
+    pub(crate) tool_result_array_content: bool,
 }
 
 /// The completion model struct for OpenAI's Chat Completions API.
@@ -1466,15 +1477,6 @@ where
     Ext: crate::client::Provider + Clone + 'static,
 {
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            strict_tools: false,
-            tool_result_array_content: false,
-        }
-    }
-
-    pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
         Self {
             client,
             model: model.into(),
@@ -1518,19 +1520,6 @@ pub struct CompletionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// Shared helper for provider `prepare_request` hooks whose APIs have no
-/// tool-calling support: drops `tools` and `tool_choice` with a warning
-/// instead of sending parameters the API may reject.
-pub(crate) fn strip_unsupported_tools(request: &mut CompletionRequest, provider: &str) {
-    if !request.tools.is_empty() {
-        tracing::warn!("Tool use is not supported by {provider}; tools will be ignored");
-        request.tools.clear();
-    }
-    if request.tool_choice.take().is_some() {
-        tracing::warn!("Tool choice is not supported by {provider} and will be ignored");
-    }
-}
-
 /// Shared helper for provider `finalize_request_body` hooks whose APIs take
 /// message `content` as a plain string: flattens a content-part array to the
 /// concatenation of its text parts. When `only_if_all_text` is set, arrays
@@ -1542,10 +1531,12 @@ pub(crate) fn flatten_text_content_parts(
     only_if_all_text: bool,
 ) {
     // Refusals are textual content too; flatten them alongside text parts.
+    // Checked per key so a null-padded `text` next to a string `refusal`
+    // still counts as textual.
     fn part_text(part: &serde_json::Value) -> Option<&str> {
         part.get("text")
-            .or_else(|| part.get("refusal"))
             .and_then(serde_json::Value::as_str)
+            .or_else(|| part.get("refusal").and_then(serde_json::Value::as_str))
     }
 
     let Some(parts) = content.as_array() else {
@@ -1581,14 +1572,17 @@ pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
 /// accept plain `{role, content}` chat messages: removes tool-exchange
 /// remnants left in shared histories (role `tool` messages, assistant
 /// `tool_calls`/`reasoning_content`), optionally flattens content-part arrays
-/// to strings, drops assistant turns left without content (pure tool-call
-/// scaffolding), and merges consecutive same-role messages — the removals can
-/// leave user/user as well as assistant/assistant adjacency, and strict
-/// role-alternation must survive both.
+/// to strings, and drops assistant turns left without content (pure
+/// tool-call scaffolding). With `merge_same_role`, consecutive same-role
+/// string-content messages are additionally merged — the removals can leave
+/// user/user as well as assistant/assistant adjacency, and alternation-strict
+/// APIs (Perplexity) reject both; providers without that constraint keep
+/// their turns separate.
 pub(crate) fn sanitize_plain_text_history(
     messages: &mut Vec<serde_json::Value>,
     flatten: Option<(&str, bool)>,
     strip_names: bool,
+    merge_same_role: bool,
 ) {
     messages
         .retain(|message| message.get("role").and_then(serde_json::Value::as_str) != Some("tool"));
@@ -1621,6 +1615,10 @@ pub(crate) fn sanitize_plain_text_history(
             Some(_) => true,
         }
     });
+
+    if !merge_same_role {
+        return;
+    }
 
     let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
     for message in std::mem::take(messages) {
@@ -1657,6 +1655,9 @@ pub struct OpenAIRequestParams {
     /// Maps `output_schema` to `response_format` when true; drops it with a
     /// warning when false (providers whose APIs reject `json_schema`).
     pub supports_response_format: bool,
+    /// Serializes `tools`/`tool_choice` when true; drops them with a warning
+    /// when false (providers without tool-calling support).
+    pub supports_tools: bool,
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
@@ -1669,6 +1670,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             strict_tools,
             tool_result_array_content,
             supports_response_format,
+            supports_tools,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -1721,15 +1723,25 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let history_has_tool_result = history_contains_tool_result(&full_history);
 
-        let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
-
-        let tools: Vec<ToolDefinition> = tools
-            .into_iter()
-            .map(|tool| {
-                let def = ToolDefinition::from(tool);
-                if strict_tools { def.with_strict() } else { def }
-            })
-            .collect();
+        let (tools, tool_choice) = if supports_tools {
+            let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
+            let tools: Vec<ToolDefinition> = tools
+                .into_iter()
+                .map(|tool| {
+                    let def = ToolDefinition::from(tool);
+                    if strict_tools { def.with_strict() } else { def }
+                })
+                .collect();
+            (tools, tool_choice)
+        } else {
+            if !tools.is_empty() {
+                tracing::warn!("Tool use is not supported by this provider; tools will be ignored");
+            }
+            if tool_choice.is_some() {
+                tracing::warn!("Tool choice is not supported by this provider and will be ignored");
+            }
+            (Vec::new(), None)
+        };
 
         if output_schema.is_some() && !supports_response_format {
             tracing::warn!(
@@ -1798,6 +1810,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
     }
 }
@@ -1838,7 +1851,11 @@ where
     // schema-constrained; `Native` is "guaranteed" only once tools have run.)
     // See issue #1928.
     fn composes_native_output_with_tools(&self) -> bool {
-        true
+        // Providers that drop `output_schema` (SUPPORTS_RESPONSE_FORMAT =
+        // false) cannot compose native structured output with tools; the
+        // agent then falls back to tool-mode enforcement as their
+        // pre-migration hand-rolled models did.
+        Ext::SUPPORTS_RESPONSE_FORMAT
     }
 
     async fn completion(
@@ -1869,6 +1886,7 @@ where
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
             supports_response_format: Ext::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: Ext::SUPPORTS_TOOLS,
         })?;
         self.client.ext().prepare_request(&mut request)?;
         // The span was opened with the configured model; report the model
@@ -1976,6 +1994,47 @@ mod tests {
     }
 
     #[test]
+    fn video_data_uri_with_unrecognized_mime_round_trips_as_url() {
+        let original = "data:video/quicktime;base64,AAAA";
+        let openai_content = UserContent::Video {
+            video_url: VideoUrl {
+                url: original.to_string(),
+            },
+        };
+
+        let rig_content: message::UserContent = openai_content.into();
+        // Unrecognized MIME: kept as a URL source, not decomposed.
+        assert!(matches!(
+            &rig_content,
+            message::UserContent::Video(video)
+                if matches!(&video.data, message::DocumentSourceKind::Url(url) if url == original)
+        ));
+
+        let back = UserContent::try_from(rig_content).expect("video should convert back");
+        assert!(matches!(
+            back,
+            UserContent::Video { video_url } if video_url.url == original
+        ));
+    }
+
+    #[test]
+    fn video_data_uri_with_known_mime_decomposes_to_base64() {
+        let openai_content = UserContent::Video {
+            video_url: VideoUrl {
+                url: "data:video/mp4;base64,AAAA".to_string(),
+            },
+        };
+
+        let rig_content: message::UserContent = openai_content.into();
+        assert!(matches!(
+            &rig_content,
+            message::UserContent::Video(video)
+                if video.media_type == Some(crate::message::VideoMediaType::MP4)
+                    && matches!(&video.data, message::DocumentSourceKind::Base64(data) if data == "AAAA")
+        ));
+    }
+
+    #[test]
     fn sanitize_plain_text_history_strips_tool_exchange_and_keeps_alternation() {
         let mut messages = vec![
             serde_json::json!({"role": "user", "content": "Look up the label."}),
@@ -1991,7 +2050,7 @@ mod tests {
             serde_json::json!({"role": "user", "content": "Thanks!"}),
         ];
 
-        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false);
+        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false, true);
 
         let roles = messages
             .iter()
@@ -2019,7 +2078,7 @@ mod tests {
             serde_json::json!({"role": "user", "content": "Ask again."}),
         ];
 
-        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false);
+        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false, true);
 
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
@@ -2046,7 +2105,7 @@ mod tests {
             serde_json::json!({"role": "assistant", "content": "Second."}),
         ];
 
-        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false);
+        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false, true);
 
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["content"], "First.\nSecond.");
@@ -2073,6 +2132,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -2102,6 +2162,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -2127,6 +2188,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
 
@@ -2185,6 +2247,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
 
@@ -2393,6 +2456,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -2422,6 +2486,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
         let serialized =
@@ -2454,6 +2519,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         });
 
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
@@ -2503,6 +2569,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
 
@@ -2572,6 +2639,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_tools: true,
         })
         .expect("request conversion should succeed");
 

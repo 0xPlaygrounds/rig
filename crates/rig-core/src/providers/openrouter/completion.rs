@@ -717,10 +717,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .unwrap_or((0, 0));
                 completion::Usage {
                     input_tokens: usage.prompt_tokens as u64,
-                    // Use the reported completion tokens like the streaming
-                    // path does; total - prompt can underflow on gateways
-                    // with divergent accounting.
-                    output_tokens: usage.completion_tokens as u64,
+                    // Reported completion tokens (like the streaming path),
+                    // falling back to saturating total - prompt for gateways
+                    // that omit the field (it deserializes to 0).
+                    output_tokens: if usage.completion_tokens > 0 {
+                        usage.completion_tokens as u64
+                    } else {
+                        usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64
+                    },
                     total_tokens: usage.total_tokens as u64,
                     cached_input_tokens: cached_input,
                     cache_creation_input_tokens: cache_creation,
@@ -1817,6 +1821,47 @@ mod tests {
     }
 
     #[test]
+    fn test_completion_response_usage_prefers_reported_completion_tokens() {
+        let json = json!({
+            "id": "gen-usage-divergent",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "anthropic/claude-3.5-sonnet",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }],
+            // Divergent accounting: total != prompt + completion.
+            "usage": {"prompt_tokens": 500, "completion_tokens": 10, "total_tokens": 505}
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        assert_eq!(converted.usage.output_tokens, 10);
+    }
+
+    #[test]
+    fn test_completion_response_usage_falls_back_when_completion_tokens_missing() {
+        let json = json!({
+            "id": "gen-usage-omitted",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "some/gateway-model",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 100, "total_tokens": 110}
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        assert_eq!(converted.usage.output_tokens, 10);
+    }
+
+    #[test]
     fn test_completion_response_maps_cache_token_accounting() {
         let json = json!({
             "id": "gen-cache-test",
@@ -2849,6 +2894,79 @@ mod tests {
                 signature: Some(signature),
                 ..
             }) if id == "rs_2" && text == "step" && signature == "sig_step"
+        ));
+    }
+
+    #[test]
+    fn test_tool_call_signature_without_params_uses_wire_id_for_encrypted_detail() {
+        let tool_call = message::ToolCall {
+            id: "call_wire".to_string(),
+            call_id: None,
+            function: message::ToolFunction {
+                name: "lookup".to_string(),
+                arguments: json!({}),
+            },
+            signature: Some("sig-data".to_string()),
+            additional_params: None,
+        };
+
+        let messages = assistant_contents_to_messages(OneOrMany::one(
+            message::AssistantContent::ToolCall(tool_call),
+        ))
+        .unwrap();
+
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted {
+                id: Some(id),
+                data,
+                ..
+            }) if id == "call_wire" && data == "sig-data"
+        ));
+    }
+
+    #[test]
+    fn test_tool_call_minimal_params_fall_back_to_wire_id() {
+        let tool_call = message::ToolCall {
+            id: "call_wire".to_string(),
+            call_id: None,
+            function: message::ToolFunction {
+                name: "lookup".to_string(),
+                arguments: json!({}),
+            },
+            signature: Some("sig-data".to_string()),
+            // Minimal params carrying only a format: the detail id must
+            // still correlate with the wire tool-call id.
+            additional_params: Some(json!({"format": "anthropic"})),
+        };
+
+        let messages = assistant_contents_to_messages(OneOrMany::one(
+            message::AssistantContent::ToolCall(tool_call),
+        ))
+        .unwrap();
+
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted {
+                id: Some(id),
+                format,
+                data,
+                ..
+            }) if id == "call_wire" && data == "sig-data" && format.as_deref() == Some("anthropic")
         ));
     }
 

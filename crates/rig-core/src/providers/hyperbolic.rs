@@ -55,20 +55,13 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
     // pre-migration behavior of dropping `output_schema` with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
+    // Hyperbolic does not support tool calling; `tools`/`tool_choice` are
+    // dropped with a warning during request conversion.
+    const SUPPORTS_TOOLS: bool = false;
+
     type StreamingUsage = crate::providers::openai::Usage;
 
     type Response = crate::providers::openai::CompletionResponse;
-
-    fn prepare_request(
-        &self,
-        request: &mut crate::providers::openai::completion::CompletionRequest,
-    ) -> Result<(), crate::completion::CompletionError> {
-        // Hyperbolic does not support tool calling; drop tools rather than
-        // sending parameters its API may reject.
-        crate::providers::openai::completion::strip_unsupported_tools(request, "Hyperbolic");
-
-        Ok(())
-    }
 
     fn finalize_request_body(
         &self,
@@ -81,7 +74,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
             .and_then(serde_json::Value::as_array_mut)
         {
             crate::providers::openai::completion::sanitize_plain_text_history(
-                messages, None, false,
+                messages, None, false, false,
             );
         }
 
@@ -464,6 +457,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: super::HyperbolicExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: false,
         })
         .expect("request should convert");
         super::HyperbolicExt

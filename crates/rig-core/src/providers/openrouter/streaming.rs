@@ -175,6 +175,11 @@ where
         request.additional_params = Some(params);
 
         let request_body = super::completion::final_request_body(&request, self.prompt_caching)?;
+        let request_messages = serde_json::to_string(
+            request_body
+                .get("messages")
+                .unwrap_or(&serde_json::Value::Null),
+        )?;
 
         if tracing::enabled!(tracing::Level::TRACE) {
             tracing::trace!(
@@ -204,6 +209,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = request_messages,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
             )
         } else {

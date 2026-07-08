@@ -198,6 +198,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: false,
+            supports_tools: true,
         });
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
     }

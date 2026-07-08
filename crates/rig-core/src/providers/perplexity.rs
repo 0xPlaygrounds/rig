@@ -46,6 +46,10 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
 
     type StreamingUsage = openai::Usage;
 
+    // Perplexity has no tool-calling support; `tools`/`tool_choice` are
+    // dropped with a warning during request conversion.
+    const SUPPORTS_TOOLS: bool = false;
+
     // Perplexity's structured-output support predates rig's `output_schema`
     // mapping; keep the pre-migration behavior of dropping it with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
@@ -55,17 +59,6 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
     const STREAM_INCLUDE_USAGE: bool = false;
 
     type Response = openai::CompletionResponse;
-
-    fn prepare_request(
-        &self,
-        request: &mut openai::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
-        // Perplexity has no tool-calling support; drop tools rather than
-        // sending parameters its API rejects.
-        openai::completion::strip_unsupported_tools(request, "Perplexity");
-
-        Ok(())
-    }
 
     fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
         // Perplexity historically only accepted plain `{role, content: String}`
@@ -78,7 +71,12 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
             .get_mut("messages")
             .and_then(serde_json::Value::as_array_mut)
         {
-            openai::completion::sanitize_plain_text_history(messages, Some(("\n", true)), false);
+            openai::completion::sanitize_plain_text_history(
+                messages,
+                Some(("\n", true)),
+                false,
+                true,
+            );
         }
 
         Ok(())
@@ -198,6 +196,48 @@ mod tests {
     }
 
     #[test]
+    fn perplexity_drops_tool_choice_instead_of_erroring() {
+        // Multi-name Specific errors on tool-supporting providers; with
+        // SUPPORTS_TOOLS = false it must be dropped before that validation.
+        let mut request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello!".into()),
+            documents: vec![],
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            tool_choice: Some(crate::message::ToolChoice::Specific {
+                function_names: vec!["a".to_string(), "b".to_string()],
+            }),
+            additional_params: None,
+            output_schema: None,
+        };
+        request.tools = vec![crate::completion::ToolDefinition {
+            name: "lookup".to_string(),
+            description: String::new(),
+            parameters: serde_json::json!({}),
+        }];
+
+        let converted = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: SONAR.to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: PerplexityExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: PerplexityExt::SUPPORTS_TOOLS,
+        })
+        .expect("unsupported tools should be dropped, not an error");
+
+        let json = serde_json::to_value(converted).expect("request should serialize");
+        assert!(
+            json.get("tools")
+                .is_none_or(|tools| tools.as_array().is_none_or(|tools| tools.is_empty()))
+        );
+        assert!(json.get("tool_choice").is_none());
+    }
+
+    #[test]
     fn perplexity_finalize_strips_tool_history_and_preserves_alternation() {
         let mut body = serde_json::json!({
             "model": SONAR,
@@ -247,6 +287,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: PerplexityExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: false,
         })
         .expect("request should convert");
         PerplexityExt

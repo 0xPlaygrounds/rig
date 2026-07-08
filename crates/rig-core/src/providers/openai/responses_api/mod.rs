@@ -1357,7 +1357,7 @@ where
 {
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        super::completion::CompletionModel::with_model(self.client.completions_api(), &self.model)
+        super::completion::CompletionModel::new(self.client.completions_api(), &self.model)
     }
 }
 

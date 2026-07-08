@@ -989,6 +989,56 @@ mod azure_tests {
     }
 
     #[tokio::test]
+    async fn completion_pins_deployment_url_under_model_override() {
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        // The error response keeps the test independent of response parsing;
+        // only the captured request matters here.
+        let http_client = RecordingHttpClient::with_error_response(
+            http::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"x"}}"#,
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = super::CompletionModel::new(client, GPT_4O_MINI);
+
+        let _ = model
+            .completion(CompletionRequest {
+                model: Some("other-deployment".to_string()),
+                preamble: None,
+                chat_history: OneOrMany::one("Hello!".into()),
+                documents: vec![],
+                max_tokens: None,
+                temperature: None,
+                tools: vec![],
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .await;
+
+        let requests = http_client.requests();
+        let request = requests.first().expect("request should be captured");
+        // The deployment URL stays pinned to the configured model; the
+        // override only changes the body.
+        assert!(
+            request
+                .uri
+                .contains("/openai/deployments/gpt-4o-mini/chat/completions"),
+            "unexpected uri: {}",
+            request.uri
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(&request.body).expect("captured body should be JSON");
+        assert_eq!(body["model"], "other-deployment");
+    }
+
+    #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
         use crate::completion::CompletionModel as _;
         use crate::test_utils::RecordingHttpClient;

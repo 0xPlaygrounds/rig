@@ -303,7 +303,9 @@ impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
     ) -> Result<(), CompletionError> {
         // Moonshot only supports `auto`/`none` tool choices. Forcing one
         // specific tool has no workaround; fail fast like the pre-migration
-        // conversion did.
+        // conversion did (on main, `openai::ToolChoice::try_from` returned
+        // "Provider doesn't support only using specific tools" for every
+        // `ToolChoice::Specific`, single- or multi-name).
         if matches!(
             request.tool_choice,
             Some(openai::completion::ToolChoice::Function { .. })
@@ -353,6 +355,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: true,
         })
         .expect("request should convert");
         MoonshotExt
@@ -440,6 +443,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: true,
         })
         .expect("request should convert");
 

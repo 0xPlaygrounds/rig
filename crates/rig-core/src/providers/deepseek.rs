@@ -521,6 +521,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: DeepSeekExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: true,
         })
         .expect("request should convert");
         let mut body = serde_json::to_value(request).expect("request should serialize");

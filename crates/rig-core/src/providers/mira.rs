@@ -54,6 +54,9 @@ impl DebugExt for MiraExt {}
 impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt {
     const PROVIDER_NAME: &'static str = "mira";
 
+    // Mira's gateway rejects tool parameters.
+    const SUPPORTS_TOOLS: bool = false;
+
     type StreamingUsage = crate::providers::openai::Usage;
 
     // Mira's gateway does not accept OpenAI structured-output parameters.
@@ -73,8 +76,8 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
         &self,
         request: &mut crate::providers::openai::completion::CompletionRequest,
     ) -> Result<(), CompletionError> {
-        // Mira's gateway rejects tool and pass-through parameters.
-        crate::providers::openai::completion::strip_unsupported_tools(request, "Mira");
+        // Mira's gateway rejects pass-through parameters (tools are dropped
+        // via `SUPPORTS_TOOLS = false` during conversion).
         if request.additional_params.take().is_some() {
             tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
         }
@@ -98,6 +101,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
                 messages,
                 Some(("\n", false)),
                 true,
+                false,
             );
         }
 
