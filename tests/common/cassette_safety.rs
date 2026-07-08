@@ -35,12 +35,17 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_chatgpt_cassette",
             "with_chatgpt_cassette_default_instructions",
+            "with_chatgpt_noninteractive_oauth_cassette",
         ],
     },
     ProviderCassetteSuite {
         provider: "copilot",
         source_dir: "tests/providers/copilot",
-        wrapper_names: &["with_copilot_cassette", "with_copilot_cassette_result"],
+        wrapper_names: &[
+            "with_copilot_cassette",
+            "with_copilot_cassette_result",
+            "with_copilot_noninteractive_oauth_cassette",
+        ],
     },
     ProviderCassetteSuite {
         provider: "anthropic",
