@@ -112,9 +112,16 @@ impl ProviderClient for Client {
     where
         Self: Sized,
     {
-        let key = crate::client::required_env_var("ANTHROPIC_API_KEY")?;
+        let base_url = crate::client::optional_env_var("ANTHROPIC_BASE_URL")?;
+        let api_key = crate::client::required_env_var("ANTHROPIC_API_KEY")?;
 
-        Self::builder().api_key(key).build().map_err(Into::into)
+        let mut builder = Self::builder().api_key(api_key);
+
+        if let Some(base) = base_url {
+            builder = builder.base_url(&base);
+        }
+
+        builder.build().map_err(Into::into)
     }
 
     fn from_val(input: Self::Input) -> Result<Self, Self::Error>
