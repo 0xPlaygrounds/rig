@@ -205,7 +205,10 @@ reqwest-middleware = { workspace = true, features = [
 ] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+# float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
+# (e.g. embedding vectors): without it, parse→print can oscillate between two
+# representations of the same decimal and the recorded YAML never stabilizes.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
 rusqlite = { workspace = true, features = ["bundled"] }
@@ -262,7 +265,6 @@ vertexai = ["dep:rig-vertexai"]
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 derive = ["rig-core/derive"]
-experimental = ["rig-core/experimental"]
 discord-bot = ["rig-core/discord-bot"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]

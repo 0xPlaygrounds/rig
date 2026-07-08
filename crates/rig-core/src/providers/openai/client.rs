@@ -302,9 +302,26 @@ impl ProviderClient for CompletionsClient {
     }
 }
 
+/// Error envelope returned by OpenAI-compatible providers alongside 2xx
+/// statuses. Providers spell the message field differently (`message`,
+/// `error`, nested objects), so anything that isn't a valid success payload
+/// is treated as an error envelope and the raw body is preserved for the
+/// caller; `message` is only used for logging.
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
+    #[serde(default, alias = "error", deserialize_with = "error_message_or_value")]
     pub(crate) message: String,
+}
+
+fn error_message_or_value<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value {
+        serde_json::Value::String(message) => message,
+        other => other.to_string(),
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -508,7 +525,7 @@ mod tests {
                         text: "What's in this image?".to_string()
                     }
                 );
-                assert_eq!(second, UserContent::Image { image_url: ImageUrl { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string(), detail: ImageDetail::default() } });
+                assert_eq!(second, UserContent::Image { image_url: ImageUrl { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string(), detail: None } });
             }
             _ => panic!("Expected user message"),
         }
@@ -580,6 +597,8 @@ mod tests {
             audio: None,
             name: None,
             tool_calls: vec![],
+            reasoning_details: vec![],
+            images: vec![],
         };
 
         let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
@@ -636,7 +655,7 @@ mod tests {
                 UserContent::Image {
                     image_url: ImageUrl {
                         url: "https://example.com/image.jpg".to_string(),
-                        detail: ImageDetail::default(),
+                        detail: Some(ImageDetail::default()),
                     },
                 },
             ])
@@ -657,7 +676,7 @@ mod tests {
             content: OneOrMany::one(UserContent::Image {
                 image_url: ImageUrl {
                     url: "https://example.com/image.jpg".to_string(),
-                    detail: ImageDetail::default(),
+                    detail: Some(ImageDetail::default()),
                 },
             }),
             name: None,

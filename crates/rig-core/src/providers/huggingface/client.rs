@@ -57,7 +57,20 @@ impl SubProvider {
 
     pub fn model_identifier(&self, model: &str) -> String {
         match self {
-            SubProvider::Fireworks => format!("accounts/fireworks/models/{model}"),
+            // Fireworks addresses models by a fully-qualified id. Guard against
+            // re-prefixing an already-qualified id (e.g. a per-request model
+            // override that is already fully qualified) — the generic path
+            // applies this to the resolved request model unconditionally, so
+            // without the guard a qualified override would become an invalid
+            // `accounts/fireworks/models/accounts/fireworks/models/...` id.
+            SubProvider::Fireworks => {
+                const FIREWORKS_PREFIX: &str = "accounts/fireworks/models/";
+                if model.starts_with(FIREWORKS_PREFIX) {
+                    model.to_string()
+                } else {
+                    format!("{FIREWORKS_PREFIX}{model}")
+                }
+            }
             _ => model.to_string(),
         }
     }
@@ -117,6 +130,35 @@ impl Provider for HuggingFaceExt {
     type Builder = HuggingFaceBuilder;
 
     const VERIFY_PATH: &'static str = "/api/whoami-v2";
+}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingFaceExt {
+    const PROVIDER_NAME: &'static str = "huggingface";
+
+    type StreamingUsage = crate::providers::openai::Usage;
+
+    // Structured-output support varies by sub-provider; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    type Response = crate::providers::openai::CompletionResponse;
+
+    // Chat completions live under the router's `/v1` while verification,
+    // transcription, and image generation use root-relative paths, so the
+    // prefix cannot live in the client base URL.
+    fn completion_path(&self, _model: &str) -> String {
+        self.subprovider.completion_endpoint(_model)
+    }
+
+    fn prepare_request(
+        &self,
+        request: &mut crate::providers::openai::completion::CompletionRequest,
+    ) -> Result<(), crate::completion::CompletionError> {
+        // Some sub-providers (Fireworks) address models through a qualified
+        // identifier in the request body.
+        request.model = self.subprovider.model_identifier(&request.model);
+        Ok(())
+    }
 }
 
 impl<H> Capabilities<H> for HuggingFaceExt {
@@ -189,6 +231,8 @@ impl<H> Client<H> {
 }
 #[cfg(test)]
 mod tests {
+    use super::SubProvider;
+
     #[test]
     fn test_client_initialization() {
         let _client =
@@ -197,5 +241,25 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn fireworks_model_identifier_is_idempotent() {
+        // A bare id is qualified once...
+        assert_eq!(
+            SubProvider::Fireworks.model_identifier("deepseek-v3"),
+            "accounts/fireworks/models/deepseek-v3"
+        );
+        // ...and an already-qualified id (e.g. a per-request model override)
+        // is left untouched rather than double-prefixed.
+        assert_eq!(
+            SubProvider::Fireworks.model_identifier("accounts/fireworks/models/deepseek-v3"),
+            "accounts/fireworks/models/deepseek-v3"
+        );
+        // Other sub-providers pass the id through verbatim.
+        assert_eq!(
+            SubProvider::HFInference.model_identifier("meta-llama/Llama-3.1-8B"),
+            "meta-llama/Llama-3.1-8B"
+        );
     }
 }

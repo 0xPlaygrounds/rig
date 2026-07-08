@@ -225,7 +225,7 @@ async fn long_history_replay_nonstreaming() {
                 })
                 .message(Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let response = model

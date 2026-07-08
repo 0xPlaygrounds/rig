@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 use rig::client::CompletionClient;
-use rig::completion::{Prompt, ToolDefinition};
+use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message};
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -41,22 +41,21 @@ impl Tool for Calculator {
     type Args = CalculatorArgs;
     type Output = f64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "calculator".to_string(),
-            description: "Evaluate arithmetic expressions with +, -, *, /, and parentheses."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "expression": {
-                        "type": "string",
-                        "description": "An arithmetic expression such as '25 + (2 * 40)'"
-                    }
-                },
-                "required": ["expression"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Evaluate arithmetic expressions with +, -, *, /, and parentheses.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string",
+                    "description": "An arithmetic expression such as '25 + (2 * 40)'"
+                }
+            },
+            "required": ["expression"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -210,22 +209,21 @@ impl Tool for DatabaseLookup {
     type Args = DatabaseLookupArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "database_lookup".to_string(),
-            description: "Look up customer_policy, shipping_rates, or product_inventory."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "One of customer_policy, shipping_rates, or product_inventory"
-                    }
-                },
-                "required": ["query"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Look up customer_policy, shipping_rates, or product_inventory.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "One of customer_policy, shipping_rates, or product_inventory"
+                }
+            },
+            "required": ["query"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

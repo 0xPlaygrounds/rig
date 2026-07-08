@@ -29,11 +29,9 @@ impl ToolSchema {
     /// # Example
     /// ```rust
     /// use rig_core::{
-    ///     completion::ToolDefinition,
     ///     embeddings::ToolSchema,
     ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},
     /// };
-    /// use serde_json::json;
     ///
     /// #[derive(Debug, thiserror::Error)]
     /// #[error("Math error")]
@@ -51,16 +49,15 @@ impl ToolSchema {
     ///     type Args = ();
     ///     type Output = ();
     ///
-    ///     async fn definition(&self, _prompt: String) -> ToolDefinition {
-    ///         serde_json::from_value(json!({
-    ///             "name": "nothing",
-    ///             "description": "nothing",
-    ///             "parameters": {}
-    ///         }))
-    ///         .expect("Tool Definition")
+    ///     fn description(&self) -> String {
+    ///         "nothing".to_string()
     ///     }
     ///
-    ///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    ///     fn parameters(&self) -> serde_json::Value {
+    ///         serde_json::json!({})
+    ///     }
+    ///
+    ///     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
     ///         Ok(())
     ///     }
     /// }
@@ -87,8 +84,20 @@ impl ToolSchema {
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
     pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbedError> {
+        Self::from_tool(tool.name(), tool)
+    }
+
+    /// Convert a tool to a schema using an explicit registered name.
+    ///
+    /// Registry paths should pass the key under which the tool was registered so
+    /// vector-store IDs resolve back to the same entry even if `tool.name()` is
+    /// computed dynamically.
+    pub fn from_tool(
+        name: impl Into<String>,
+        tool: &dyn ToolEmbeddingDyn,
+    ) -> Result<Self, EmbedError> {
         Ok(ToolSchema {
-            name: tool.name(),
+            name: name.into(),
             context: tool.context().map_err(EmbedError::new)?,
             embedding_docs: tool.embedding_docs(),
         })

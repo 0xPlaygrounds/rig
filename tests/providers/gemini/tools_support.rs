@@ -90,8 +90,12 @@ impl Tool for CountingAdd {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Add x and y together")
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -112,8 +116,12 @@ impl Tool for CountingSubtract {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)")
+    fn description(&self) -> String {
+        "Subtract y from x (i.e. x - y)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -140,16 +148,16 @@ impl Tool for CountingPing {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Return the current ping marker. Takes no arguments.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "required": [],
-            }),
-        }
+    fn description(&self) -> String {
+        "Return the current ping marker. Takes no arguments.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -184,18 +192,18 @@ impl Tool for CodewordLookup {
     type Args = CodewordArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Look up the secret codeword for a team.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "team": { "type": "string", "description": "The team name, lowercase" }
-                },
-                "required": ["team"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Look up the secret codeword for a team.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "team": { "type": "string", "description": "The team name, lowercase" }
+            },
+            "required": ["team"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -227,21 +235,21 @@ impl Tool for StrictRegister {
     type Args = StrictRegisterArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Register guests for the event.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "seats": {
-                        "type": "string",
-                        "description": "Number of seats, spelled out as a lowercase English word (e.g. \"four\")"
-                    }
-                },
-                "required": ["seats"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Register guests for the event.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "seats": {
+                    "type": "string",
+                    "description": "Number of seats, spelled out as a lowercase English word (e.g. \"four\")"
+                }
+            },
+            "required": ["seats"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -263,12 +271,12 @@ impl Tool for MottoTool {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Fetch the two-line workshop motto.".to_string(),
-            parameters: json!({ "type": "object", "properties": {}, "required": [] }),
-        }
+    fn description(&self) -> String {
+        "Fetch the two-line workshop motto.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({ "type": "object", "properties": {}, "required": [] })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -303,12 +311,12 @@ impl Tool for ConfigTool {
     type Args = EmptyArgs;
     type Output = ConfigOutput;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Fetch the service configuration object.".to_string(),
-            parameters: json!({ "type": "object", "properties": {}, "required": [] }),
-        }
+    fn description(&self) -> String {
+        "Fetch the service configuration object.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({ "type": "object", "properties": {}, "required": [] })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -330,13 +338,12 @@ impl Tool for BadgeImageTool {
     type Args = EmptyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Fetch the attendee badge as an image the assistant must inspect."
-                .to_string(),
-            parameters: json!({ "type": "object", "properties": {}, "required": [] }),
-        }
+    fn description(&self) -> String {
+        "Fetch the attendee badge as an image the assistant must inspect.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({ "type": "object", "properties": {}, "required": [] })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -500,8 +507,12 @@ macro_rules! embeddable_operation {
             type Args = OperationArgs;
             type Output = i64;
 
-            async fn definition(&self, _prompt: String) -> ToolDefinition {
-                operation_definition(Self::NAME, $description)
+            fn description(&self) -> String {
+                $description.to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                operation_definition(Self::NAME, $description).parameters
             }
 
             async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

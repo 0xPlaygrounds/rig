@@ -174,10 +174,22 @@ where
 
         request.additional_params = Some(params);
 
-        let body = serde_json::to_vec(&super::completion::final_request_body(
-            &request,
-            self.prompt_caching,
-        )?)?;
+        let request_body = super::completion::final_request_body(&request, self.prompt_caching)?;
+        let request_messages = serde_json::to_string(
+            request_body
+                .get("messages")
+                .unwrap_or(&serde_json::Value::Null),
+        )?;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenRouter streaming completion request: {}",
+                serde_json::to_string_pretty(&request_body)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request_body)?;
 
         let req = self
             .client
@@ -188,8 +200,8 @@ where
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
+                "chat",
+                gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "openrouter",
                 gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = preamble,
@@ -197,6 +209,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = request_messages,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
             )
         } else {

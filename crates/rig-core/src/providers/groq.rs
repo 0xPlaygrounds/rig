@@ -12,32 +12,18 @@
 //! # }
 //! ```
 use bytes::Bytes;
-use http::Request;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tracing::info_span;
 
-use super::openai::{
-    CompletionResponse, Message as OpenAIMessage, StreamingToolCall, TranscriptionResponse, Usage,
-};
+use super::openai::{self, TranscriptionResponse};
 use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
-use crate::completion::GetTokenUsage;
+use crate::completion::CompletionError;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm};
-use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-};
-
-use crate::{
-    completion::{self, CompletionError, CompletionRequest},
-    json_utils,
-    message::{self},
-    providers::openai::ToolDefinition,
-    transcription::{self, TranscriptionError},
-};
-use serde::{Deserialize, Serialize};
+use crate::transcription::{self, TranscriptionError};
 
 // ================================================================
 // Main Groq Client
@@ -54,6 +40,44 @@ type GroqApiKey = BearerAuth;
 impl Provider for GroqExt {
     type Builder = GroqBuilder;
     const VERIFY_PATH: &'static str = "/models";
+}
+
+impl openai::completion::OpenAICompatibleProvider for GroqExt {
+    const PROVIDER_NAME: &'static str = "groq";
+
+    type StreamingUsage = openai::Usage;
+
+    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
+
+    type Response = openai::CompletionResponse;
+
+    fn prepare_request(
+        &self,
+        request: &mut openai::completion::CompletionRequest,
+    ) -> Result<(), CompletionError> {
+        // Groq's provider-native tools (`browser_search`, `code_interpreter`,
+        // ...) arrive via `additional_params.tools`. Left in place they would
+        // clobber the function-tool array on serialization, so fold them into
+        // `compound_custom.enabled_tools` (deduplicated by tool type).
+        let Some(map) = request
+            .additional_params
+            .as_mut()
+            .and_then(Value::as_object_mut)
+        else {
+            return Ok(());
+        };
+        let Some(raw_tools) = map.remove("tools") else {
+            return Ok(());
+        };
+        let native_tools = serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
+            )
+        })?;
+        apply_native_tools_to_additional_params(map, native_tools);
+
+        Ok(())
+    }
 }
 
 impl<H> Capabilities<H> for GroqExt {
@@ -94,6 +118,13 @@ pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GroqBuilder, GroqApiKey, H>;
 
+/// Groq completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H = reqwest::Client> =
+    openai::completion::GenericCompletionModel<GroqExt, H>;
+
+/// Final streaming response, shared with the OpenAI Chat Completions path.
+pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
+
 impl ProviderClient for Client {
     type Input = String;
     type Error = crate::client::ProviderClientError;
@@ -121,251 +152,13 @@ enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-// ================================================================
-// Groq Completion API
-// ================================================================
-
-/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
-pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
-/// The `gemma2-9b-it` model. Used for chat completion.
-pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
-/// The `llama-3.1-8b-instant` model. Used for chat completion.
-pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
-/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
-/// The `llama-3.2-1b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
-/// The `llama-3.2-3b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
-/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
-/// The `llama-3.2-70b-specdec` model. Used for chat completion.
-pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
-/// The `llama-3.2-70b-versatile` model. Used for chat completion.
-pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
-/// The `llama-guard-3-8b` model. Used for chat completion.
-pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
-/// The `llama3-70b-8192` model. Used for chat completion.
-pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
-/// The `llama3-8b-8192` model. Used for chat completion.
-pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
-/// The `mixtral-8x7b-32768` model. Used for chat completion.
-pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ReasoningFormat {
-    Parsed,
-    Raw,
-    Hidden,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct GroqCompletionRequest {
-    model: String,
-    pub messages: Vec<OpenAIMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<GroqToolChoice>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<GroqAdditionalParameters>,
-    pub(super) stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) stream_options: Option<StreamOptions>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-enum GroqToolChoice {
-    Mode(GroqToolChoiceMode),
-    Function {
-        r#type: GroqToolChoiceFunctionKind,
-        function: GroqToolChoiceFunction,
-    },
-}
-
-#[derive(Default, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum GroqToolChoiceMode {
-    #[default]
-    Auto,
-    None,
-    Required,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum GroqToolChoiceFunctionKind {
-    Function,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GroqToolChoiceFunction {
-    name: String,
-}
-
-impl TryFrom<message::ToolChoice> for GroqToolChoice {
-    type Error = CompletionError;
-
-    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
-        match value {
-            message::ToolChoice::Auto => Ok(Self::Mode(GroqToolChoiceMode::Auto)),
-            message::ToolChoice::None => Ok(Self::Mode(GroqToolChoiceMode::None)),
-            message::ToolChoice::Required => Ok(Self::Mode(GroqToolChoiceMode::Required)),
-            message::ToolChoice::Specific { function_names } => {
-                specific_groq_tool_choice(function_names)
-            }
-        }
-    }
-}
-
-fn specific_groq_tool_choice(
-    function_names: Vec<String>,
-) -> Result<GroqToolChoice, CompletionError> {
-    let mut names = function_names.into_iter();
-    let Some(name) = names.next() else {
-        return Err(CompletionError::RequestError(
-            "ToolChoice::Specific requires at least one function name".into(),
-        ));
-    };
-    if names.next().is_some() {
-        return Err(CompletionError::RequestError(
-            "Groq only supports forcing one specific tool".into(),
-        ));
-    }
-
-    Ok(GroqToolChoice::Function {
-        r#type: GroqToolChoiceFunctionKind::Function,
-        function: GroqToolChoiceFunction { name },
-    })
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub(super) struct StreamOptions {
-    pub(super) include_usage: bool,
-}
-
-impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, mut req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let chat_history = req.chat_history_with_documents();
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        // Build up the order of messages.
-        let mut partial_history = vec![];
-        partial_history.extend(chat_history);
-
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<OpenAIMessage> = match &req.preamble {
-            Some(preamble) => vec![OpenAIMessage::system(preamble)],
-            None => vec![],
-        };
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<OpenAIMessage>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-        );
-
-        let tool_choice = req
-            .tool_choice
-            .clone()
-            .map(GroqToolChoice::try_from)
-            .transpose()?;
-
-        let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
-        let native_tools =
-            extract_native_tools_from_additional_params(&mut additional_params_payload)?;
-
-        if let Some(schema) = req.output_schema {
-            let name = schema
-                .as_object()
-                .and_then(|object| object.get("title"))
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("response_schema")
-                .to_string();
-            let mut schema_value = schema.to_value();
-            super::openai::sanitize_schema(&mut schema_value);
-            let response_format = serde_json::json!({
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": name,
-                        "strict": true,
-                        "schema": schema_value,
-                    }
-                }
-            });
-            additional_params_payload = if additional_params_payload.is_null() {
-                response_format
-            } else {
-                json_utils::merge(additional_params_payload, response_format)
-            };
-        }
-
-        let mut additional_params: Option<GroqAdditionalParameters> =
-            if additional_params_payload.is_null() {
-                None
-            } else {
-                Some(serde_json::from_value(additional_params_payload)?)
-            };
-        apply_native_tools_to_additional_params(&mut additional_params, native_tools);
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            max_tokens: req.max_tokens,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
-            tool_choice,
-            additional_params,
-            stream: false,
-            stream_options: None,
-        })
-    }
-}
-
-fn extract_native_tools_from_additional_params(
-    additional_params: &mut Value,
-) -> Result<Vec<Value>, CompletionError> {
-    if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_tools) = map.remove("tools")
-    {
-        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            CompletionError::RequestError(
-                format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
-            )
-        });
-    }
-
-    Ok(Vec::new())
-}
-
 fn apply_native_tools_to_additional_params(
-    additional_params: &mut Option<GroqAdditionalParameters>,
+    extra: &mut Map<String, Value>,
     native_tools: Vec<Value>,
 ) {
     if native_tools.is_empty() {
         return;
     }
-
-    let params = additional_params.get_or_insert_with(GroqAdditionalParameters::default);
-    let extra = params.extra.get_or_insert_with(Map::new);
 
     let mut compound_custom = match extra.remove("compound_custom") {
         Some(Value::Object(map)) => map,
@@ -409,7 +202,47 @@ fn native_tool_kind(value: &Value) -> Option<&str> {
     }
 }
 
-/// Additional parameters to send to the Groq API
+// ================================================================
+// Groq Completion API
+// ================================================================
+
+/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
+pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
+/// The `gemma2-9b-it` model. Used for chat completion.
+pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
+/// The `llama-3.1-8b-instant` model. Used for chat completion.
+pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
+/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
+/// The `llama-3.2-1b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
+/// The `llama-3.2-3b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
+/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
+/// The `llama-3.2-70b-specdec` model. Used for chat completion.
+pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
+/// The `llama-3.2-70b-versatile` model. Used for chat completion.
+pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
+/// The `llama-guard-3-8b` model. Used for chat completion.
+pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
+/// The `llama3-70b-8192` model. Used for chat completion.
+pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
+/// The `llama3-8b-8192` model. Used for chat completion.
+pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
+/// The `mixtral-8x7b-32768` model. Used for chat completion.
+pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningFormat {
+    Parsed,
+    Raw,
+    Hidden,
+}
+
+/// Additional parameters to send to the Groq API. Serialize this into the
+/// request's `additional_params` to set Groq's reasoning options.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GroqAdditionalParameters {
     /// The reasoning format. See Groq's API docs for more details.
@@ -423,186 +256,6 @@ pub struct GroqAdditionalParameters {
     pub extra: Option<Map<String, serde_json::Value>>,
 }
 
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "groq",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        let request = GroqCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Groq completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(|e| http_client::Error::Instance(e.into()))?;
-
-        let async_block = async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", response.id.clone());
-                        span.record("gen_ai.response.model", response.model.clone());
-                        if let Some(ref usage) = response.usage {
-                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-                            span.record(
-                                "gen_ai.usage.output_tokens",
-                                usage.token_usage().output_tokens,
-                            );
-                            span.record(
-                                "gen_ai.usage.cache_read.input_tokens",
-                                usage
-                                    .prompt_tokens_details
-                                    .as_ref()
-                                    .map(|d| d.cached_tokens)
-                                    .unwrap_or(0),
-                            );
-                        }
-
-                        if tracing::enabled!(tracing::Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "Groq completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => {
-                        tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body).into_owned(),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        };
-
-        tracing::Instrument::instrument(async_block, span).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "groq",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &request.preamble);
-
-        let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
-
-        request.stream = true;
-        request.stream_options = Some(StreamOptions {
-            include_usage: true,
-        });
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Groq streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(|e| http_client::Error::Instance(e.into()))?;
-
-        tracing::Instrument::instrument(
-            send_compatible_streaming_request(self.client.clone(), req),
-            span,
-        )
-        .await
-    }
-}
-
 // ================================================================
 // Groq Transcription API
 // ================================================================
@@ -614,7 +267,7 @@ pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 #[derive(Clone)]
 pub struct TranscriptionModel<T> {
     client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
+    /// Name of the model (e.g.: whisper-large-v3)
     pub model: String,
 }
 
@@ -707,215 +360,13 @@ where
     }
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum StreamingDelta {
-    Reasoning {
-        reasoning: String,
-    },
-    MessageContent {
-        #[serde(default)]
-        content: Option<String>,
-        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
-        tool_calls: Vec<StreamingToolCall>,
-    },
-}
-
-#[derive(Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
-enum FinishReason {
-    ToolCalls,
-    Stop,
-    Length,
-    ContentFilter,
-    FunctionCall,
-    #[serde(untagged)]
-    Other(String),
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamingChoice {
-    delta: StreamingDelta,
-    finish_reason: Option<FinishReason>,
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamingGroqMetadata {
-    usage: Option<Usage>,
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamingCompletionChunk {
-    id: Option<String>,
-    model: Option<String>,
-    choices: Vec<StreamingChoice>,
-    usage: Option<Usage>,
-    x_groq: Option<StreamingGroqMetadata>,
-}
-
-#[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct StreamingCompletionResponse {
-    pub usage: Usage,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage.token_usage()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct GroqCompatibleProfile;
-
-impl CompatibleStreamProfile for GroqCompatibleProfile {
-    type Usage = Usage;
-    type Detail = ();
-    type FinalResponse = StreamingCompletionResponse;
-
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
-            Ok(data) => data,
-            Err(error) => {
-                tracing::debug!(
-                    "Couldn't parse SSE payload as StreamingCompletionChunk: {:?}",
-                    error
-                );
-                return Ok(None);
-            }
-        };
-
-        let usage = data
-            .usage
-            .or_else(|| data.x_groq.and_then(|metadata| metadata.usage));
-
-        Ok(Some(
-            openai_chat_completions_compatible::normalize_first_choice_chunk(
-                data.id,
-                data.model,
-                usage,
-                &data.choices,
-                |choice| {
-                    let finish_reason = match choice.finish_reason {
-                        Some(FinishReason::ToolCalls | FinishReason::FunctionCall) => {
-                            CompatibleFinishReason::ToolCalls
-                        }
-                        _ => CompatibleFinishReason::Other,
-                    };
-                    match &choice.delta {
-                        StreamingDelta::Reasoning { reasoning } => CompatibleChoiceData {
-                            finish_reason,
-                            text: None,
-                            reasoning: Some(reasoning.clone()),
-                            tool_calls: Vec::new(),
-                            details: Vec::new(),
-                        },
-                        StreamingDelta::MessageContent {
-                            content,
-                            tool_calls,
-                        } => CompatibleChoiceData {
-                            finish_reason,
-                            text: content.clone(),
-                            reasoning: None,
-                            tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                                tool_calls,
-                            ),
-                            details: Vec::new(),
-                        },
-                    }
-                },
-            ),
-        ))
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
-    }
-
-    fn uses_distinct_tool_call_eviction(&self) -> bool {
-        true
-    }
-
-    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
-        true
-    }
-}
-
-pub async fn send_compatible_streaming_request<T>(
-    client: T,
-    req: Request<Vec<u8>>,
-) -> Result<
-    crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
-    CompletionError,
->
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    openai_chat_completions_compatible::send_compatible_streaming_request(
-        client,
-        req,
-        GroqCompatibleProfile,
-    )
-    .await
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{
-        OneOrMany,
-        completion::CompletionRequestBuilder,
-        providers::{
-            groq::{GroqAdditionalParameters, GroqCompletionRequest},
-            openai::{Message, UserContent},
-        },
-        test_utils::MockCompletionModel,
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
+    use crate::{completion::CompletionRequestBuilder, test_utils::MockCompletionModel};
 
-    #[test]
-    fn serialize_groq_request() {
-        let additional_params = GroqAdditionalParameters {
-            include_reasoning: Some(true),
-            reasoning_format: Some(super::ReasoningFormat::Parsed),
-            ..Default::default()
-        };
-
-        let groq = GroqCompletionRequest {
-            model: "openai/gpt-120b-oss".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            stream_options: None,
-            tools: Vec::new(),
-            messages: vec![Message::User {
-                content: OneOrMany::one(UserContent::Text {
-                    text: "Hello world!".to_string(),
-                }),
-                name: None,
-            }],
-            stream: false,
-            additional_params: Some(additional_params),
-        };
-
-        let json = serde_json::to_value(&groq).unwrap();
-
-        assert_eq!(
-            json,
-            serde_json::json!({
-                "model": "openai/gpt-120b-oss",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "Hello world!"
-                    }
-                ],
-                "stream": false,
-                "include_reasoning": true,
-                "reasoning_format": "parsed"
-            })
-        )
-    }
     #[test]
     fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
@@ -931,17 +382,106 @@ mod tests {
             .output_schema(schemars::schema_for!(serde_json::Value))
             .build();
 
-        let groq = GroqCompletionRequest::try_from(("llama-3.3-70b-versatile", request))
-            .expect("Groq request should serialize");
-        let json = serde_json::to_value(groq).expect("request should serialize");
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("Groq request should convert");
+        let json = serde_json::to_value(request).expect("request should serialize");
 
         assert_eq!(json["max_tokens"], 64);
         assert_eq!(
             json["tool_choice"],
             serde_json::json!({"type":"function","function":{"name":"choose_beta"}})
         );
+        // The shared path defers `response_format` while tools are present and
+        // no tool result exists yet (see `should_apply_response_format`).
+        assert_eq!(json["response_format"], serde_json::Value::Null);
+
+        let no_tools_request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
+                .output_schema(schemars::schema_for!(serde_json::Value))
+                .build();
+        let no_tools_request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request: no_tools_request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request should convert");
+        let json = serde_json::to_value(no_tools_request).expect("request should serialize");
         assert_eq!(json["response_format"]["type"], "json_schema");
         assert_eq!(json["response_format"]["json_schema"]["strict"], true);
+    }
+
+    #[test]
+    fn groq_prepare_request_merges_native_tools_into_compound_custom() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "search")
+            .tool(crate::completion::ToolDefinition {
+                name: "local_tool".to_string(),
+                description: "A local function tool".to_string(),
+                parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+            })
+            .additional_params(serde_json::json!({
+                "tools": [{"type": "browser_search"}, {"type": "browser_search"}],
+            }))
+            .build();
+
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request should convert");
+
+        super::GroqExt
+            .prepare_request(&mut request)
+            .expect("prepare_request should succeed");
+
+        let json = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(
+            json["compound_custom"]["enabled_tools"],
+            serde_json::json!([{"type": "browser_search"}])
+        );
+        // The rig-level function tool array must survive the native-tool merge.
+        assert_eq!(json["tools"][0]["function"]["name"], "local_tool");
+    }
+
+    #[test]
+    fn groq_reasoning_params_flatten_into_request_body() {
+        let additional_params = serde_json::to_value(super::GroqAdditionalParameters {
+            reasoning_format: Some(super::ReasoningFormat::Parsed),
+            include_reasoning: Some(true),
+            extra: None,
+        })
+        .expect("params should serialize");
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "Think about it")
+                .additional_params(additional_params)
+                .build();
+
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request should convert");
+        let json = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(json["reasoning_format"], "parsed");
+        assert_eq!(json["include_reasoning"], true);
     }
 
     #[test]

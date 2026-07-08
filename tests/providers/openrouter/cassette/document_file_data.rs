@@ -68,9 +68,9 @@ fn message_contains_base64_document(message: &RigMessage) -> bool {
 }
 
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
-    let messages: Vec<OpenRouterMessage> = message
-        .try_into()
-        .expect("generic message should convert to OpenRouter messages");
+    let messages: Vec<OpenRouterMessage> =
+        rig::providers::openrouter::messages_from_rig_message(message)
+            .expect("generic message should convert to OpenRouter messages");
     messages
         .into_iter()
         .map(|message| serde_json::to_value(message).expect("message should serialize"))

@@ -1,4 +1,3 @@
-use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -32,7 +31,7 @@ fn list_items(
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let def = ListItems.definition(String::default()).await;
+    let def = rig_core::tool::tool_definition(&ListItems);
     println!("Tool definition:\n{}", serde_json::to_string_pretty(&def)?);
 
     Ok(())

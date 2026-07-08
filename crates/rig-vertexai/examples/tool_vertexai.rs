@@ -1,9 +1,6 @@
 use anyhow::Result;
 use rig_core::prelude::*;
-use rig_core::{
-    completion::{Prompt, ToolDefinition},
-    tool::Tool,
-};
+use rig_core::{completion::Prompt, tool::Tool};
 use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -28,12 +25,12 @@ impl Tool for Adder {
     type Args = OperationArgs;
     type Output = i32;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "add".to_string(),
-            description: "Add x and y together".to_string(),
-            parameters: json!(schema_for!(OperationArgs)),
-        }
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!(schema_for!(OperationArgs))
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
