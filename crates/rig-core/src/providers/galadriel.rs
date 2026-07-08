@@ -198,6 +198,9 @@ pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 pub type CompletionModel<H = reqwest::Client> =
     crate::providers::openai::completion::GenericCompletionModel<GaladrielExt, H>;
 
+/// Raw completion payload, shared with the OpenAI Chat Completions path.
+pub type CompletionResponse = crate::providers::openai::CompletionResponse;
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -717,7 +717,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .unwrap_or((0, 0));
                 completion::Usage {
                     input_tokens: usage.prompt_tokens as u64,
-                    output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                    // Use the reported completion tokens like the streaming
+                    // path does; total - prompt can underflow on gateways
+                    // with divergent accounting.
+                    output_tokens: usage.completion_tokens as u64,
                     total_tokens: usage.total_tokens as u64,
                     cached_input_tokens: cached_input,
                     cache_creation_input_tokens: cache_creation,
@@ -1062,10 +1065,12 @@ fn assistant_contents_to_messages(
                             reasoning_details.push(full);
                         }
                         ToolCallAdditionalParams::Minimal { id, format } => {
-                            let id = id.or_else(|| tool_call.call_id.clone());
-                            if let Some(signature) = &tool_call.signature
-                                && let Some(id) = id
-                            {
+                            // Correlate with the id the wire tool call will
+                            // carry (call_id when present, else id).
+                            let id = id
+                                .or_else(|| tool_call.call_id.clone())
+                                .unwrap_or_else(|| tool_call.id.clone());
+                            if let Some(signature) = &tool_call.signature {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
                                     id: Some(id),
                                     format,
@@ -1077,7 +1082,12 @@ fn assistant_contents_to_messages(
                     }
                 } else if let Some(signature) = &tool_call.signature {
                     reasoning_details.push(ReasoningDetails::Encrypted {
-                        id: tool_call.call_id.clone(),
+                        id: Some(
+                            tool_call
+                                .call_id
+                                .clone()
+                                .unwrap_or_else(|| tool_call.id.clone()),
+                        ),
                         format: None,
                         index: None,
                         data: signature.clone(),

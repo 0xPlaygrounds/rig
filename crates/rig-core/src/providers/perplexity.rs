@@ -127,6 +127,9 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<PerplexityExt, H>;
 
+/// Raw completion payload, shared with the OpenAI Chat Completions path.
+pub type CompletionResponse = openai::CompletionResponse;
+
 impl ProviderClient for Client {
     type Input = String;
     type Error = crate::client::ProviderClientError;

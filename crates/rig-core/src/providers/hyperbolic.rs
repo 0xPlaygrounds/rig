@@ -179,12 +179,12 @@ pub const DEEPSEEK_R1_ZERO: &str = "deepseek-ai/DeepSeek-R1-Zero";
 /// Deepseek R1 model.
 pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
-/// A Hyperbolic completion object.
-///
-/// For more information, see this link: <https://docs.hyperbolic.xyz/reference/create_chat_completion_v1_chat_completions_post>
 /// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = reqwest::Client> =
     crate::providers::openai::completion::GenericCompletionModel<HyperbolicExt, H>;
+
+/// Raw completion payload, shared with the OpenAI Chat Completions path.
+pub type CompletionResponse = crate::providers::openai::CompletionResponse;
 
 // =======================================
 // Hyperbolic Image Generation API

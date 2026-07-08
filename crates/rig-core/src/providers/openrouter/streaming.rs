@@ -174,10 +174,17 @@ where
 
         request.additional_params = Some(params);
 
-        let body = serde_json::to_vec(&super::completion::final_request_body(
-            &request,
-            self.prompt_caching,
-        )?)?;
+        let request_body = super::completion::final_request_body(&request, self.prompt_caching)?;
+
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "OpenRouter streaming completion request: {}",
+                serde_json::to_string_pretty(&request_body)?
+            );
+        }
+
+        let body = serde_json::to_vec(&request_body)?;
 
         let req = self
             .client
@@ -188,8 +195,8 @@ where
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
+                "chat",
+                gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "openrouter",
                 gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = preamble,

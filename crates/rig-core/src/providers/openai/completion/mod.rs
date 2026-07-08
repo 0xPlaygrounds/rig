@@ -1019,15 +1019,20 @@ impl From<UserContent> for message::UserContent {
                 },
             },
             UserContent::Video { video_url } => {
-                match video_url
+                let decomposed = video_url
                     .url
                     .strip_prefix("data:")
                     .and_then(|rest| rest.split_once(";base64,"))
-                {
-                    Some((mime, data)) => message::UserContent::video(
-                        data,
-                        crate::message::VideoMediaType::from_mime_type(mime),
-                    ),
+                    .and_then(|(mime, data)| {
+                        // Only decompose data URIs whose media type survives
+                        // the round trip; unrecognized MIMEs (e.g.
+                        // video/quicktime, parameterized types) stay as URLs
+                        // so re-serialization reproduces the original URI.
+                        crate::message::VideoMediaType::from_mime_type(mime)
+                            .map(|media_type| (media_type, data))
+                    });
+                match decomposed {
+                    Some((media_type, data)) => message::UserContent::video(data, Some(media_type)),
                     None => message::UserContent::video_url(video_url.url, None),
                 }
             }
@@ -1351,6 +1356,13 @@ impl GetTokenUsage for Usage {
 /// format through [`GenericCompletionModel`]. Mirrors
 /// [`AnthropicCompatibleProvider`](crate::providers::anthropic::completion::AnthropicCompatibleProvider)
 /// on the Anthropic-compatible side.
+///
+/// Request construction runs the hooks in a fixed order:
+/// [`prepare_request`](Self::prepare_request) on the typed request, then
+/// serialization, then (for streaming) the `stream`/`stream_options` merge,
+/// and finally [`finalize_request_body`](Self::finalize_request_body) on the
+/// serialized body — so the finalize hook always sees the streaming
+/// parameters.
 pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
     const PROVIDER_NAME: &'static str;
@@ -1430,7 +1442,9 @@ impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
     type Response = CompletionResponse;
 }
 
-#[doc(hidden)]
+/// A chat-completions model over any [`OpenAICompatibleProvider`] extension.
+/// This is the advertised path for OpenAI-compatible providers; see the
+/// provider checklist in [`crate::providers`].
 #[derive(Clone)]
 pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
     pub(crate) client: crate::client::Client<Ext, H>,
@@ -1527,23 +1541,21 @@ pub(crate) fn flatten_text_content_parts(
     separator: &str,
     only_if_all_text: bool,
 ) {
+    // Refusals are textual content too; flatten them alongside text parts.
+    fn part_text(part: &serde_json::Value) -> Option<&str> {
+        part.get("text")
+            .or_else(|| part.get("refusal"))
+            .and_then(serde_json::Value::as_str)
+    }
+
     let Some(parts) = content.as_array() else {
         return;
     };
-    if only_if_all_text
-        && !parts.iter().all(|part| {
-            part.get("text")
-                .and_then(serde_json::Value::as_str)
-                .is_some()
-        })
-    {
+    if only_if_all_text && !parts.iter().all(|part| part_text(part).is_some()) {
         return;
     }
     let mut flattened = String::new();
-    for text in parts
-        .iter()
-        .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
-    {
+    for text in parts.iter().filter_map(part_text) {
         if !flattened.is_empty() {
             flattened.push_str(separator);
         }
@@ -1570,8 +1582,9 @@ pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
 /// remnants left in shared histories (role `tool` messages, assistant
 /// `tool_calls`/`reasoning_content`), optionally flattens content-part arrays
 /// to strings, drops assistant turns left without content (pure tool-call
-/// scaffolding), and merges consecutive assistant messages so strict
-/// role-alternation survives the removals.
+/// scaffolding), and merges consecutive same-role messages — the removals can
+/// leave user/user as well as assistant/assistant adjacency, and strict
+/// role-alternation must survive both.
 pub(crate) fn sanitize_plain_text_history(
     messages: &mut Vec<serde_json::Value>,
     flatten: Option<(&str, bool)>,
@@ -1611,10 +1624,12 @@ pub(crate) fn sanitize_plain_text_history(
 
     let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
     for message in std::mem::take(messages) {
-        let merged_text = if message.get("role").and_then(serde_json::Value::as_str)
-            == Some("assistant")
+        let merged_text = if let Some(role) = message
+            .get("role")
+            .and_then(serde_json::Value::as_str)
+            .filter(|role| matches!(*role, "assistant" | "user"))
             && let Some(previous) = merged.last()
-            && previous.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+            && previous.get("role").and_then(serde_json::Value::as_str) == Some(role)
             && let Some(previous_text) = previous.get("content").and_then(serde_json::Value::as_str)
             && let Some(text) = message.get("content").and_then(serde_json::Value::as_str)
         {
@@ -1856,6 +1871,9 @@ where
             supports_response_format: Ext::SUPPORTS_RESPONSE_FORMAT,
         })?;
         self.client.ext().prepare_request(&mut request)?;
+        // The span was opened with the configured model; report the model
+        // actually requested when a per-request override applies.
+        span.record("gen_ai.request.model", &request.model);
 
         let mut request_body = serde_json::to_value(&request)?;
         self.client.ext().finalize_request_body(&mut request_body)?;
@@ -1985,6 +2003,39 @@ mod tests {
         assert_eq!(messages[1]["content"], "The label is crimson.");
         assert!(messages[1].get("reasoning_content").is_none());
         assert!(messages[1].get("tool_calls").is_none());
+    }
+
+    #[test]
+    fn sanitize_plain_text_history_merges_consecutive_user_messages() {
+        // Dropping a tool exchange whose final assistant answer never made it
+        // into history leaves user/user adjacency, which alternation-strict
+        // APIs reject.
+        let mut messages = vec![
+            serde_json::json!({"role": "user", "content": "Look it up."}),
+            serde_json::json!({"role": "assistant", "tool_calls": [
+                {"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}
+            ]}),
+            serde_json::json!({"role": "tool", "tool_call_id": "call_1", "content": "crimson"}),
+            serde_json::json!({"role": "user", "content": "Ask again."}),
+        ];
+
+        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "Look it up.\nAsk again.");
+    }
+
+    #[test]
+    fn flatten_text_content_parts_treats_refusals_as_text() {
+        let mut content = serde_json::json!([
+            {"type": "text", "text": "Partly:"},
+            {"type": "refusal", "refusal": "I cannot help with that."}
+        ]);
+
+        flatten_text_content_parts(&mut content, "\n", true);
+
+        assert_eq!(content, "Partly:\nI cannot help with that.");
     }
 
     #[test]

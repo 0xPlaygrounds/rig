@@ -38,3 +38,6 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 /// are applied by [`HuggingFaceExt`]'s `OpenAICompatibleProvider` impl.
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<HuggingFaceExt, H>;
+
+/// Raw completion payload, shared with the OpenAI Chat Completions path.
+pub type CompletionResponse = openai::CompletionResponse;

@@ -141,13 +141,17 @@ where
         })?;
         self.client.ext().prepare_request(&mut request)?;
 
-        let request_messages = serde_json::to_string(&request.messages)?;
         // Deliberately the configured model, not the per-request override:
         // Azure's deployment URL is pinned to the model handle.
         let path = self.client.ext().completion_path(&self.model);
+        let resolved_model = request.model.clone();
         let mut request_as_json = serde_json::to_value(request)?;
 
-        let stream_params = if Ext::STREAM_INCLUDE_USAGE {
+        // `merge` is shallow: adding include_usage when the caller supplied
+        // their own stream_options would clobber their keys.
+        let include_usage =
+            Ext::STREAM_INCLUDE_USAGE && request_as_json.get("stream_options").is_none();
+        let stream_params = if include_usage {
             json!({"stream": true, "stream_options": {"include_usage": true}})
         } else {
             json!({"stream": true})
@@ -156,6 +160,14 @@ where
         self.client
             .ext()
             .finalize_request_body(&mut request_as_json)?;
+
+        // Serialized after the finalize hook so telemetry shows the messages
+        // that actually went to the wire.
+        let request_messages = request_as_json
+            .get("messages")
+            .map(serde_json::to_string)
+            .transpose()?
+            .unwrap_or_default();
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -179,7 +191,7 @@ where
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = Ext::PROVIDER_NAME,
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = resolved_model,
                 gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
