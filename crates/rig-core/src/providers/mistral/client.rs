@@ -73,15 +73,10 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
                     message.get("role").and_then(serde_json::Value::as_str) == Some("assistant");
 
                 // Mistral takes message `content` as a plain string.
-                if let Some(content) = message.get_mut("content")
-                    && let Some(parts) = content.as_array()
-                {
-                    let flattened = parts
-                        .iter()
-                        .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
-                        .collect::<Vec<_>>()
-                        .concat();
-                    *content = serde_json::Value::String(flattened);
+                if let Some(content) = message.get_mut("content") {
+                    crate::providers::openai::completion::flatten_text_content_parts(
+                        content, "", false,
+                    );
                 }
 
                 if is_assistant {

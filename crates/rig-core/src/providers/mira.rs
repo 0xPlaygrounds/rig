@@ -87,33 +87,18 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
             return Ok(());
         };
 
-        // Mira only understands plain `{role, content}` string messages.
+        // Mira only understands plain `{role, content}` string messages;
+        // strip tool-exchange remnants and message names, and flatten
+        // content-part arrays.
         if let Some(messages) = map
             .get_mut("messages")
             .and_then(serde_json::Value::as_array_mut)
         {
-            messages.retain(|message| {
-                message.get("role").and_then(serde_json::Value::as_str) != Some("tool")
-            });
-            for message in messages {
-                let Some(message) = message.as_object_mut() else {
-                    continue;
-                };
-                if let Some(content) = message.get_mut("content") {
-                    crate::providers::openai::completion::flatten_text_content_parts(
-                        content, "\n", false,
-                    );
-                }
-                message.remove("tool_calls");
-                message.remove("reasoning_content");
-                message.remove("name");
-                if !message.contains_key("content") {
-                    message.insert(
-                        "content".to_string(),
-                        serde_json::Value::String(String::new()),
-                    );
-                }
-            }
+            crate::providers::openai::completion::sanitize_plain_text_history(
+                messages,
+                Some(("\n", false)),
+                true,
+            );
         }
 
         Ok(())

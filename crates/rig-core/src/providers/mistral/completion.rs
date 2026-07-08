@@ -46,16 +46,7 @@ pub type MistralStreamingCompletionResponse = openai::StreamingCompletionRespons
 fn mistral_content_value_to_text(value: serde_json::Value) -> String {
     match value {
         serde_json::Value::String(text) => text,
-        serde_json::Value::Array(parts) => parts
-            .into_iter()
-            .filter_map(|part| {
-                (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
-                    .then(|| part.get("text").and_then(serde_json::Value::as_str))
-                    .flatten()
-                    .map(ToOwned::to_owned)
-            })
-            .collect::<Vec<_>>()
-            .join(""),
+        serde_json::Value::Array(parts) => openai::completion::joined_text_parts(&parts),
         _ => String::new(),
     }
 }
@@ -108,24 +99,6 @@ pub enum Message {
         /// The id of the tool call
         tool_call_id: String,
     },
-}
-
-impl Message {
-    pub fn user(content: String) -> Self {
-        Message::User { content }
-    }
-
-    pub fn assistant(content: String, tool_calls: Vec<ToolCall>, prefix: bool) -> Self {
-        Message::Assistant {
-            content,
-            tool_calls,
-            prefix,
-        }
-    }
-
-    pub fn system(content: String) -> Self {
-        Message::System { content }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]

@@ -654,6 +654,30 @@ mod tests {
     }
 
     #[test]
+    fn deepseek_finalize_joins_user_parts_with_newline_and_concats_assistant_parts() {
+        let mut body = serde_json::json!({
+            "model": "deepseek-v4-flash",
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "text", "text": "first part"},
+                    {"type": "text", "text": "second part"}
+                ]},
+                {"role": "assistant", "content": [
+                    {"type": "text", "text": "Hello"},
+                    {"type": "text", "text": " world"}
+                ]}
+            ]
+        });
+
+        DeepSeekExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+
+        assert_eq!(body["messages"][0]["content"], "first part\nsecond part");
+        assert_eq!(body["messages"][1]["content"], "Hello world");
+    }
+
+    #[test]
     fn deepseek_finalize_adds_tool_call_index_to_assistant_history() {
         let mut body = serde_json::json!({
             "model": "deepseek-v4-flash",

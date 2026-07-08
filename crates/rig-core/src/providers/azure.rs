@@ -548,7 +548,10 @@ pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
 /// Azure OpenAI completion model, driven by the shared OpenAI Chat Completions
 /// path. The deployment-scoped URL (including `api-version`) is produced by
-/// [`OpenAICompatibleProvider::completion_path`] on [`AzureExt`].
+/// [`completion_path`](crate::providers::openai::completion::OpenAICompatibleProvider::completion_path)
+/// on [`AzureExt`], pinned to the deployment this model handle was created
+/// with (a per-request `model` override changes only the request body, as
+/// before the migration).
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<AzureExt, H>;
 

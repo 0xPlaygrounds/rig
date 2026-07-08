@@ -69,31 +69,16 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
 
     fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
         // Perplexity historically only accepted plain `{role, content: String}`
-        // messages. Flatten text-only content-part arrays back to strings;
-        // arrays with non-text parts (e.g. images on sonar models) are left
-        // for the API's multimodal handling.
-        let Some(messages) = body
+        // messages, and its API accepts only system/user/assistant roles
+        // with strict user/assistant alternation. Strip tool-exchange
+        // remnants from shared histories and flatten text-only content-part
+        // arrays; arrays with non-text parts (e.g. images on sonar models)
+        // are left for the API's multimodal handling.
+        if let Some(messages) = body
             .get_mut("messages")
             .and_then(serde_json::Value::as_array_mut)
-        else {
-            return Ok(());
-        };
-
-        // Perplexity's API only accepts system/user/assistant roles; drop
-        // tool-exchange remnants that other providers may have left in a
-        // shared chat history.
-        messages.retain(|message| {
-            message.get("role").and_then(serde_json::Value::as_str) != Some("tool")
-        });
-
-        for message in messages {
-            if let Some(message) = message.as_object_mut() {
-                message.remove("tool_calls");
-                message.remove("reasoning_content");
-            }
-            if let Some(content) = message.get_mut("content") {
-                openai::completion::flatten_text_content_parts(content, "\n", true);
-            }
+        {
+            openai::completion::sanitize_plain_text_history(messages, Some(("\n", true)), false);
         }
 
         Ok(())
@@ -207,6 +192,36 @@ mod tests {
         assert_eq!(body["messages"][1]["content"], "First.\nSecond.");
         // Mixed content stays an array for the API's multimodal handling.
         assert!(body["messages"][2]["content"].is_array());
+    }
+
+    #[test]
+    fn perplexity_finalize_strips_tool_history_and_preserves_alternation() {
+        let mut body = serde_json::json!({
+            "model": SONAR,
+            "messages": [
+                {"role": "user", "content": "Look it up."},
+                {"role": "assistant", "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}
+                ]},
+                {"role": "tool", "tool_call_id": "call_1", "content": "result"},
+                {"role": "assistant", "content": "It is crimson.", "reasoning_content": "hmm"},
+                {"role": "user", "content": "Thanks!"}
+            ]
+        });
+
+        PerplexityExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+
+        let messages = body["messages"].as_array().expect("messages array");
+        let roles = messages
+            .iter()
+            .map(|m| m["role"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(roles, ["user", "assistant", "user"]);
+        assert_eq!(messages[1]["content"], "It is crimson.");
+        assert!(messages[1].get("reasoning_content").is_none());
+        assert!(messages[1].get("tool_calls").is_none());
     }
 
     #[test]

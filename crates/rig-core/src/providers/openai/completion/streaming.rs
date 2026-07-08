@@ -57,15 +57,7 @@ where
     Ok(value.and_then(|value| match value {
         serde_json::Value::String(text) => Some(text),
         serde_json::Value::Array(parts) => {
-            let text = parts
-                .iter()
-                .filter_map(|part| {
-                    (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
-                        .then(|| part.get("text").and_then(serde_json::Value::as_str))
-                        .flatten()
-                })
-                .collect::<Vec<_>>()
-                .join("");
+            let text = crate::providers::openai::completion::joined_text_parts(&parts);
             (!text.is_empty()).then_some(text)
         }
         _ => None,
@@ -139,6 +131,7 @@ where
         streaming::StreamingCompletionResponse<StreamingCompletionResponse<Ext::StreamingUsage>>,
         CompletionError,
     > {
+        let preamble = completion_request.preamble.clone();
         let mut request = super::CompletionRequest::try_from(OpenAIRequestParams {
             model: self.model.clone(),
             request: completion_request,
@@ -149,7 +142,9 @@ where
         self.client.ext().prepare_request(&mut request)?;
 
         let request_messages = serde_json::to_string(&request.messages)?;
-        let path = self.client.ext().completion_path(&request.model);
+        // Deliberately the configured model, not the per-request override:
+        // Azure's deployment URL is pinned to the model handle.
+        let path = self.client.ext().completion_path(&self.model);
         let mut request_as_json = serde_json::to_value(request)?;
 
         let stream_params = if Ext::STREAM_INCLUDE_USAGE {
@@ -185,6 +180,7 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = Ext::PROVIDER_NAME,
                 gen_ai.request.model = self.model,
+                gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,

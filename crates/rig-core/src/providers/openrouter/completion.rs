@@ -963,7 +963,9 @@ fn user_contents_to_messages(
             .into_iter()
             .map(|content| match content {
                 message::UserContent::ToolResult(tool_result) => Ok(Message::ToolResult {
-                    tool_call_id: tool_result.id,
+                    // Prefer the provider-issued call id, matching the
+                    // assistant echo (shared From<message::ToolCall>).
+                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
                     content: openai::completion::ToolResultContentValue::String(
                         tool_result
                             .content
@@ -1173,43 +1175,6 @@ pub fn messages_from_rig_message(
         message::Message::User { content } => user_contents_to_messages(content),
         message::Message::Assistant { content, .. } => assistant_contents_to_messages(content),
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged, rename_all = "snake_case")]
-pub enum ToolChoice {
-    None,
-    Auto,
-    Required,
-    Function(Vec<ToolChoiceFunctionKind>),
-}
-
-impl TryFrom<crate::message::ToolChoice> for ToolChoice {
-    type Error = CompletionError;
-
-    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
-        let res = match value {
-            crate::message::ToolChoice::None => Self::None,
-            crate::message::ToolChoice::Auto => Self::Auto,
-            crate::message::ToolChoice::Required => Self::Required,
-            crate::message::ToolChoice::Specific { function_names } => {
-                let vec: Vec<ToolChoiceFunctionKind> = function_names
-                    .into_iter()
-                    .map(|name| ToolChoiceFunctionKind::Function { name })
-                    .collect();
-
-                Self::Function(vec)
-            }
-        };
-
-        Ok(res)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "function")]
-pub enum ToolChoiceFunctionKind {
-    Function { name: String },
 }
 
 /// Apply explicit prompt-caching markers to an already-serialized OpenRouter

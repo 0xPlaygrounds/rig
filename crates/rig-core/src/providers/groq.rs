@@ -454,6 +454,33 @@ mod tests {
     }
 
     #[test]
+    fn groq_reasoning_params_flatten_into_request_body() {
+        let additional_params = serde_json::to_value(super::GroqAdditionalParameters {
+            reasoning_format: Some(super::ReasoningFormat::Parsed),
+            include_reasoning: Some(true),
+            extra: None,
+        })
+        .expect("params should serialize");
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "Think about it")
+                .additional_params(additional_params)
+                .build();
+
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+        })
+        .expect("request should convert");
+        let json = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(json["reasoning_format"], "parsed");
+        assert_eq!(json["include_reasoning"], true);
+    }
+
+    #[test]
     fn test_client_initialization() {
         let _client =
             crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");

@@ -70,6 +70,24 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
         Ok(())
     }
 
+    fn finalize_request_body(
+        &self,
+        body: &mut serde_json::Value,
+    ) -> Result<(), crate::completion::CompletionError> {
+        // Strip tool-exchange remnants that shared chat histories may carry;
+        // content-part arrays are kept as-is for Hyperbolic's vision models.
+        if let Some(messages) = body
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            crate::providers::openai::completion::sanitize_plain_text_history(
+                messages, None, false,
+            );
+        }
+
+        Ok(())
+    }
+
     // The client base URL is the bare host; image/audio generation build
     // their own v1 paths.
     fn completion_path(&self, _model: &str) -> String {

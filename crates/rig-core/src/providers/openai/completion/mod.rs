@@ -1398,7 +1398,8 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// base URL by [`Provider::build_uri`](crate::client::Provider::build_uri).
     /// Providers that route the model through the URL (e.g. Azure deployment
     /// paths) or keep other capabilities on differently-versioned paths
-    /// override this.
+    /// override this. `model` is the identifier the completion model handle
+    /// was created with; per-request model overrides only affect the body.
     fn completion_path(&self, model: &str) -> String {
         let _ = model;
         "/chat/completions".to_string()
@@ -1529,19 +1530,108 @@ pub(crate) fn flatten_text_content_parts(
     let Some(parts) = content.as_array() else {
         return;
     };
-    let texts = parts
-        .iter()
-        .map(|part| part.get("text").and_then(serde_json::Value::as_str))
-        .collect::<Vec<_>>();
-    if only_if_all_text && texts.iter().any(Option::is_none) {
+    if only_if_all_text
+        && !parts.iter().all(|part| {
+            part.get("text")
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+        })
+    {
         return;
     }
-    let flattened = texts
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(separator);
+    let mut flattened = String::new();
+    for text in parts
+        .iter()
+        .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
+    {
+        if !flattened.is_empty() {
+            flattened.push_str(separator);
+        }
+        flattened.push_str(text);
+    }
     *content = serde_json::Value::String(flattened);
+}
+
+/// Joins the `text` fields of `type == "text"` content parts, in order.
+pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
+    parts
+        .iter()
+        .filter_map(|part| {
+            (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
+                .then(|| part.get("text").and_then(serde_json::Value::as_str))
+                .flatten()
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+/// Shared helper for provider `finalize_request_body` hooks whose APIs only
+/// accept plain `{role, content}` chat messages: removes tool-exchange
+/// remnants left in shared histories (role `tool` messages, assistant
+/// `tool_calls`/`reasoning_content`), optionally flattens content-part arrays
+/// to strings, drops assistant turns left without content (pure tool-call
+/// scaffolding), and merges consecutive assistant messages so strict
+/// role-alternation survives the removals.
+pub(crate) fn sanitize_plain_text_history(
+    messages: &mut Vec<serde_json::Value>,
+    flatten: Option<(&str, bool)>,
+    strip_names: bool,
+) {
+    messages
+        .retain(|message| message.get("role").and_then(serde_json::Value::as_str) != Some("tool"));
+
+    for message in messages.iter_mut() {
+        let Some(object) = message.as_object_mut() else {
+            continue;
+        };
+        if object.get("role").and_then(serde_json::Value::as_str) == Some("assistant") {
+            object.remove("tool_calls");
+            object.remove("reasoning_content");
+        }
+        if strip_names {
+            object.remove("name");
+        }
+        if let Some((separator, only_if_all_text)) = flatten
+            && let Some(content) = object.get_mut("content")
+        {
+            flatten_text_content_parts(content, separator, only_if_all_text);
+        }
+    }
+
+    messages.retain(|message| {
+        if message.get("role").and_then(serde_json::Value::as_str) != Some("assistant") {
+            return true;
+        }
+        match message.get("content") {
+            Some(serde_json::Value::String(text)) => !text.is_empty(),
+            Some(serde_json::Value::Null) | None => false,
+            Some(_) => true,
+        }
+    });
+
+    let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+    for message in std::mem::take(messages) {
+        let merged_text = if message.get("role").and_then(serde_json::Value::as_str)
+            == Some("assistant")
+            && let Some(previous) = merged.last()
+            && previous.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+            && let Some(previous_text) = previous.get("content").and_then(serde_json::Value::as_str)
+            && let Some(text) = message.get("content").and_then(serde_json::Value::as_str)
+        {
+            Some(format!("{previous_text}\n{text}"))
+        } else {
+            None
+        };
+
+        if let Some(text) = merged_text
+            && let Some(previous) = merged.last_mut().and_then(serde_json::Value::as_object_mut)
+        {
+            previous.insert("content".to_string(), serde_json::Value::String(text));
+            continue;
+        }
+        merged.push(message);
+    }
+    *messages = merged;
 }
 
 pub struct OpenAIRequestParams {
@@ -1779,7 +1869,9 @@ where
         }
 
         let body = serde_json::to_vec(&request_body)?;
-        let path = self.client.ext().completion_path(&request.model);
+        // Deliberately the configured model, not the per-request override:
+        // Azure's deployment URL is pinned to the model handle.
+        let path = self.client.ext().completion_path(&self.model);
 
         let req = self
             .client
@@ -1863,6 +1955,50 @@ mod tests {
             text: text.to_string(),
             additional_props: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn sanitize_plain_text_history_strips_tool_exchange_and_keeps_alternation() {
+        let mut messages = vec![
+            serde_json::json!({"role": "user", "content": "Look up the label."}),
+            serde_json::json!({"role": "assistant", "tool_calls": [
+                {"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}
+            ]}),
+            serde_json::json!({"role": "tool", "tool_call_id": "call_1", "content": "crimson"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": [{"type": "text", "text": "The label is crimson."}],
+                "reasoning_content": "thinking"
+            }),
+            serde_json::json!({"role": "user", "content": "Thanks!"}),
+        ];
+
+        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false);
+
+        let roles = messages
+            .iter()
+            .map(|m| m["role"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>();
+        // tool message removed, tool-call-only assistant dropped, no
+        // consecutive assistants left.
+        assert_eq!(roles, ["user", "assistant", "user"]);
+        assert_eq!(messages[1]["content"], "The label is crimson.");
+        assert!(messages[1].get("reasoning_content").is_none());
+        assert!(messages[1].get("tool_calls").is_none());
+    }
+
+    #[test]
+    fn sanitize_plain_text_history_merges_consecutive_assistant_messages() {
+        let mut messages = vec![
+            serde_json::json!({"role": "assistant", "content": "First."}),
+            serde_json::json!({"role": "tool", "tool_call_id": "c", "content": "x"}),
+            serde_json::json!({"role": "assistant", "content": "Second."}),
+        ];
+
+        sanitize_plain_text_history(&mut messages, Some(("\n", true)), false);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["content"], "First.\nSecond.");
     }
 
     #[test]
