@@ -50,6 +50,10 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
     // mapping; keep the pre-migration behavior of dropping it with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
+    // The pre-migration streaming request sent `stream: true` with no
+    // `stream_options`.
+    const STREAM_INCLUDE_USAGE: bool = false;
+
     type Response = openai::CompletionResponse;
 
     fn prepare_request(
@@ -58,13 +62,7 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
     ) -> Result<(), CompletionError> {
         // Perplexity has no tool-calling support; drop tools rather than
         // sending parameters its API rejects.
-        if !request.tools.is_empty() {
-            tracing::warn!("Tool use is not supported by Perplexity; tools will be ignored");
-            request.tools.clear();
-        }
-        if request.tool_choice.take().is_some() {
-            tracing::warn!("Tool choice is not supported by Perplexity and will be ignored");
-        }
+        openai::completion::strip_unsupported_tools(request, "Perplexity");
 
         Ok(())
     }
@@ -81,19 +79,20 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
             return Ok(());
         };
 
+        // Perplexity's API only accepts system/user/assistant roles; drop
+        // tool-exchange remnants that other providers may have left in a
+        // shared chat history.
+        messages.retain(|message| {
+            message.get("role").and_then(serde_json::Value::as_str) != Some("tool")
+        });
+
         for message in messages {
-            let Some(content) = message.get_mut("content") else {
-                continue;
-            };
-            let Some(parts) = content.as_array() else {
-                continue;
-            };
-            let texts = parts
-                .iter()
-                .map(|part| part.get("text").and_then(serde_json::Value::as_str))
-                .collect::<Option<Vec<_>>>();
-            if let Some(texts) = texts {
-                *content = serde_json::Value::String(texts.join("\n"));
+            if let Some(message) = message.as_object_mut() {
+                message.remove("tool_calls");
+                message.remove("reasoning_content");
+            }
+            if let Some(content) = message.get_mut("content") {
+                openai::completion::flatten_text_content_parts(content, "\n", true);
             }
         }
 

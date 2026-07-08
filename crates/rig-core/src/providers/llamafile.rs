@@ -65,11 +65,6 @@ impl openai::completion::OpenAICompatibleProvider for LlamafileExt {
     // llama.cpp-based servers can emit a whole tool call in one streaming chunk.
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
 
-    // Older llamafile builds bundle llama.cpp servers that predate
-    // `json_schema` response formats; keep the pre-migration behavior of
-    // dropping `output_schema` with a warning.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-
     type Response = openai::CompletionResponse;
 }
 

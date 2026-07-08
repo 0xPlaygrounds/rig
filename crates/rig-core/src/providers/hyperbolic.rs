@@ -16,8 +16,6 @@ use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, Pr
 use crate::client::{BearerAuth, ProviderClient};
 use crate::http_client::{self, HttpClientExt};
 
-use serde::{Deserialize, Serialize};
-
 // ================================================================
 // Main Hyperbolic Client
 // ================================================================
@@ -67,13 +65,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
     ) -> Result<(), crate::completion::CompletionError> {
         // Hyperbolic does not support tool calling; drop tools rather than
         // sending parameters its API may reject.
-        if !request.tools.is_empty() {
-            tracing::warn!("`tools` not supported on Hyperbolic; tools will be ignored");
-            request.tools.clear();
-        }
-        if request.tool_choice.take().is_some() {
-            tracing::warn!("`tool_choice` not supported on Hyperbolic and will be ignored");
-        }
+        crate::providers::openai::completion::strip_unsupported_tools(request, "Hyperbolic");
 
         Ok(())
     }
@@ -124,6 +116,9 @@ impl ProviderClient for Client {
 }
 
 #[cfg(any(feature = "image", feature = "audio"))]
+use serde::Deserialize;
+
+#[cfg(any(feature = "image", feature = "audio"))]
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
     message: String,
@@ -135,29 +130,6 @@ struct ApiErrorResponse {
 enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingData {
-    pub object: String,
-    pub embedding: Vec<f64>,
-    pub index: usize,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
-    }
 }
 
 // ================================================================

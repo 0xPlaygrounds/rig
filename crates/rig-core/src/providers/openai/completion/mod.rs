@@ -889,7 +889,10 @@ impl TryFrom<message::Message> for Vec<Message> {
 impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
-            id: tool_call.id,
+            // Keep the assistant echo consistent with the tool-result side,
+            // which prefers the provider-issued `call_id` over the rig-level
+            // id (e.g. Responses-API history replayed via chat completions).
+            id: tool_call.call_id.unwrap_or(tool_call.id),
             r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
@@ -1498,6 +1501,47 @@ pub struct CompletionRequest {
     pub max_tokens: Option<u64>,
     #[serde(flatten)]
     pub additional_params: Option<serde_json::Value>,
+}
+
+/// Shared helper for provider `prepare_request` hooks whose APIs have no
+/// tool-calling support: drops `tools` and `tool_choice` with a warning
+/// instead of sending parameters the API may reject.
+pub(crate) fn strip_unsupported_tools(request: &mut CompletionRequest, provider: &str) {
+    if !request.tools.is_empty() {
+        tracing::warn!("Tool use is not supported by {provider}; tools will be ignored");
+        request.tools.clear();
+    }
+    if request.tool_choice.take().is_some() {
+        tracing::warn!("Tool choice is not supported by {provider} and will be ignored");
+    }
+}
+
+/// Shared helper for provider `finalize_request_body` hooks whose APIs take
+/// message `content` as a plain string: flattens a content-part array to the
+/// concatenation of its text parts. When `only_if_all_text` is set, arrays
+/// containing non-text parts are left untouched (for APIs with their own
+/// multimodal handling); otherwise non-text parts are dropped.
+pub(crate) fn flatten_text_content_parts(
+    content: &mut serde_json::Value,
+    separator: &str,
+    only_if_all_text: bool,
+) {
+    let Some(parts) = content.as_array() else {
+        return;
+    };
+    let texts = parts
+        .iter()
+        .map(|part| part.get("text").and_then(serde_json::Value::as_str))
+        .collect::<Vec<_>>();
+    if only_if_all_text && texts.iter().any(Option::is_none) {
+        return;
+    }
+    let flattened = texts
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(separator);
+    *content = serde_json::Value::String(flattened);
 }
 
 pub struct OpenAIRequestParams {

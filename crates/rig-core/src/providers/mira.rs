@@ -59,6 +59,9 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
     // Mira's gateway does not accept OpenAI structured-output parameters.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
+    // The gateway also rejects unknown parameters like `stream_options`.
+    const STREAM_INCLUDE_USAGE: bool = false;
+
     type Response = CompletionResponse;
 
     // The client base URL is the bare host; `list_models` builds its own v1 path.
@@ -71,13 +74,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
         request: &mut crate::providers::openai::completion::CompletionRequest,
     ) -> Result<(), CompletionError> {
         // Mira's gateway rejects tool and pass-through parameters.
-        if !request.tools.is_empty() {
-            tracing::warn!("Tool use is not supported by Mira; tools will be ignored");
-            request.tools.clear();
-        }
-        if request.tool_choice.take().is_some() {
-            tracing::warn!("Tool choice is not supported by Mira and will be ignored");
-        }
+        crate::providers::openai::completion::strip_unsupported_tools(request, "Mira");
         if request.additional_params.take().is_some() {
             tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
         }
@@ -102,15 +99,10 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
                 let Some(message) = message.as_object_mut() else {
                     continue;
                 };
-                if let Some(content) = message.get_mut("content")
-                    && let Some(parts) = content.as_array()
-                {
-                    let flattened = parts
-                        .iter()
-                        .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    *content = serde_json::Value::String(flattened);
+                if let Some(content) = message.get_mut("content") {
+                    crate::providers::openai::completion::flatten_text_content_parts(
+                        content, "\n", false,
+                    );
                 }
                 message.remove("tool_calls");
                 message.remove("reasoning_content");
@@ -336,7 +328,7 @@ impl crate::completion::GetTokenUsage for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = (self.total_tokens - self.prompt_tokens) as u64;
+        usage.output_tokens = self.total_tokens.saturating_sub(self.prompt_tokens) as u64;
         usage.total_tokens = self.total_tokens as u64;
         usage
     }
@@ -356,7 +348,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .as_ref()
                     .map(|usage| completion::Usage {
                         input_tokens: usage.prompt_tokens as u64,
-                        output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                        output_tokens: usage.total_tokens.saturating_sub(usage.prompt_tokens)
+                            as u64,
                         total_tokens: usage.total_tokens as u64,
                         cached_input_tokens: 0,
                         cache_creation_input_tokens: 0,

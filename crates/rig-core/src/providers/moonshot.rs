@@ -301,6 +301,18 @@ impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
         &self,
         request: &mut openai::completion::CompletionRequest,
     ) -> Result<(), CompletionError> {
+        // Moonshot only supports `auto`/`none` tool choices. Forcing one
+        // specific tool has no workaround; fail fast like the pre-migration
+        // conversion did.
+        if matches!(
+            request.tool_choice,
+            Some(openai::completion::ToolChoice::Function { .. })
+        ) {
+            return Err(CompletionError::ProviderError(
+                "Moonshot does not support forcing a specific tool".to_string(),
+            ));
+        }
+
         // Moonshot does not support `tool_choice: "required"`; coerce it to
         // `auto` and steer the model with an extra user message instead.
         if matches!(
@@ -403,6 +415,38 @@ mod tests {
             body["messages"][0]["reasoning_content"],
             serde_json::json!("tool planning")
         );
+    }
+
+    #[test]
+    fn moonshot_specific_tool_choice_is_rejected() {
+        let request = CompletionRequest {
+            model: Some("kimi-k2.5".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(ToolChoice::Specific {
+                function_names: vec!["lookup".to_string()],
+            }),
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "kimi-k2.5".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+        })
+        .expect("request should convert");
+
+        let error = MoonshotExt
+            .prepare_request(&mut request)
+            .expect_err("specific tool choice should be rejected");
+        assert!(error.to_string().contains("specific tool"));
     }
 
     #[test]

@@ -47,9 +47,34 @@ impl From<&StreamingToolCall> for CompatibleToolCallChunk {
     }
 }
 
+fn deserialize_delta_content<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // Some compatible providers (e.g. Mistral's reasoning models) stream
+    // delta content as an array of content parts rather than a string.
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| match value {
+        serde_json::Value::String(text) => Some(text),
+        serde_json::Value::Array(parts) => {
+            let text = parts
+                .iter()
+                .filter_map(|part| {
+                    (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
+                        .then(|| part.get("text").and_then(serde_json::Value::as_str))
+                        .flatten()
+                })
+                .collect::<Vec<_>>()
+                .join("");
+            (!text.is_empty()).then_some(text)
+        }
+        _ => None,
+    }))
+}
+
 #[derive(Deserialize, Debug)]
 struct StreamingDelta {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_delta_content")]
     content: Option<String>,
     // Not part of the official OpenAI API; some compatible providers (e.g.
     // Groq) send the same payload under `reasoning`.
@@ -124,7 +149,7 @@ where
         self.client.ext().prepare_request(&mut request)?;
 
         let request_messages = serde_json::to_string(&request.messages)?;
-        let model = request.model.clone();
+        let path = self.client.ext().completion_path(&request.model);
         let mut request_as_json = serde_json::to_value(request)?;
 
         let stream_params = if Ext::STREAM_INCLUDE_USAGE {
@@ -146,7 +171,6 @@ where
         }
 
         let req_body = serde_json::to_vec(&request_as_json)?;
-        let path = self.client.ext().completion_path(&model);
 
         let req = self
             .client

@@ -75,19 +75,9 @@ impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
                 };
                 let is_assistant = message.get("role").and_then(Value::as_str) == Some("assistant");
 
-                if let Some(content) = message.get_mut("content")
-                    && let Some(parts) = content.as_array()
-                {
-                    let texts = parts
-                        .iter()
-                        .filter_map(|part| part.get("text").and_then(Value::as_str))
-                        .collect::<Vec<_>>();
-                    let flattened = if is_assistant {
-                        texts.concat()
-                    } else {
-                        texts.join("\n")
-                    };
-                    *content = Value::String(flattened);
+                if let Some(content) = message.get_mut("content") {
+                    let separator = if is_assistant { "" } else { "\n" };
+                    openai::completion::flatten_text_content_parts(content, separator, false);
                 } else if is_assistant && !message.contains_key("content") {
                     // Tool-call-only assistant turns must still carry an
                     // (empty) string content field.

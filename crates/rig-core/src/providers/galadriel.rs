@@ -21,7 +21,6 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
-use serde::{Deserialize, Serialize};
 
 // ================================================================
 // Main Galadriel Client
@@ -145,22 +144,6 @@ impl ProviderClient for Client {
         }
 
         builder.build().map_err(Into::into)
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
     }
 }
 

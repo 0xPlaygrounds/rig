@@ -553,7 +553,7 @@ pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<AzureExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for AzureExt {
-    const PROVIDER_NAME: &'static str = "azure";
+    const PROVIDER_NAME: &'static str = "azure.openai";
 
     type StreamingUsage = openai::Usage;
 

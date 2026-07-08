@@ -1278,6 +1278,24 @@ pub(super) fn final_request_body(
     if prompt_caching {
         apply_prompt_caching(&mut body);
     }
+
+    // The shared assistant message serializes hidden reasoning under the
+    // llama.cpp/DeepSeek key `reasoning_content`; OpenRouter's documented
+    // assistant field is `reasoning`.
+    if let Some(messages) = body
+        .get_mut("messages")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for message in messages {
+            if let Some(message) = message.as_object_mut()
+                && message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                && let Some(reasoning) = message.remove("reasoning_content")
+            {
+                message.insert("reasoning".to_string(), reasoning);
+            }
+        }
+    }
+
     Ok(body)
 }
 
@@ -1653,6 +1671,41 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "openai/gpt-4o-mini");
+    }
+
+    #[test]
+    fn final_request_body_serializes_assistant_reasoning_under_openrouter_key() {
+        // Reasoning replay normally flows through `reasoning_details`; the
+        // plain string field must nevertheless hit the wire under
+        // OpenRouter's `reasoning` key, not the shared `reasoning_content`.
+        let request = OpenrouterCompletionRequest {
+            model: "openai/gpt-4o".to_string(),
+            messages: vec![Message::Assistant {
+                content: vec![],
+                reasoning: Some("thinking it through".to_string()),
+                refusal: None,
+                audio: None,
+                name: None,
+                tool_calls: vec![],
+                reasoning_details: vec![],
+                images: vec![],
+            }],
+            temperature: None,
+            tools: vec![],
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(
+            body["messages"][0]["reasoning"],
+            serde_json::json!("thinking it through")
+        );
+        assert!(
+            body["messages"][0].get("reasoning_content").is_none(),
+            "OpenRouter's assistant reasoning key is `reasoning`, not `reasoning_content`"
+        );
     }
 
     #[test]
