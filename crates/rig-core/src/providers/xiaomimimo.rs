@@ -112,6 +112,10 @@ impl<H> Capabilities<H> for XiaomiMimoAnthropicExt {
 impl DebugExt for XiaomiMimoExt {}
 impl DebugExt for XiaomiMimoAnthropicExt {}
 
+impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimoExt {
+    const PROVIDER_NAME: &'static str = "xiaomimimo";
+}
+
 impl ProviderBuilder for XiaomiMimoBuilder {
     type Extension<H>
         = XiaomiMimoExt

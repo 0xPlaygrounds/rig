@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(tool)* [**breaking**] flatten `Tool` / `ToolDyn` metadata: tool authors now implement `description()` and `parameters()` directly, and `Tool::definition(prompt)` / `ToolDyn::definition(prompt)` are removed. `ToolDefinition` remains a provider/request artifact generated from registered tools, with `Tool::NAME` / `Tool::name()` / `ToolDyn::name()` as the single source of truth for advertised and dispatched tool names.
 
+- *(providers)* [**breaking**] migrate `llamafile` onto the shared `GenericCompletionModel<Ext>` / `GenericEmbeddingModel<Ext>` path, deleting its hand-rolled completion model, request types, message flattening, and streaming profile. `llamafile::CompletionModel` / `llamafile::EmbeddingModel` are now type aliases for the generic models; the provider-specific `StreamingCompletionResponse` type is replaced by the shared OpenAI one. Requests now serialize messages in the shared OpenAI shape (single-text user content still flattens to a string; system/multi-part content is sent as a content-part array, which llama.cpp-family servers accept).
+- *(openai)* [**breaking**] new `OpenAICompatibleProvider` trait (mirroring `AnthropicCompatibleProvider`) is now required by `GenericCompletionModel`'s `Ext` parameter; it carries the telemetry provider name (so minimax/zai/xiaomimimo spans stop reporting as "openai") and an `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` flag for llama.cpp-style streaming tool calls.
+
 ### Removed
 
 - *(core)* [**breaking**] remove the unused `evals` module (`Eval` trait, judge metrics, and builders) along with the `experimental` feature flag that gated it
