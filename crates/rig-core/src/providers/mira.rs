@@ -12,19 +12,15 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
-use crate::message::{Document, DocumentSourceKind};
-use crate::providers::openai;
-use crate::providers::openai::send_compatible_streaming_request;
-use crate::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{self, CompletionError},
     message::{self, AssistantContent, Message, UserContent},
 };
 use serde::{Deserialize, Serialize};
 use std::string::FromUtf8Error;
 use thiserror::Error;
-use tracing::{self, Instrument, info_span};
+use tracing::{self};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MiraExt;
@@ -54,6 +50,64 @@ impl<H> Capabilities<H> for MiraExt {
 }
 
 impl DebugExt for MiraExt {}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt {
+    const PROVIDER_NAME: &'static str = "mira";
+
+    // Mira's gateway rejects tool parameters.
+    const SUPPORTS_TOOLS: bool = false;
+
+    type StreamingUsage = crate::providers::openai::Usage;
+
+    // Mira's gateway does not accept OpenAI structured-output parameters.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    // The gateway also rejects unknown parameters like `stream_options`.
+    const STREAM_INCLUDE_USAGE: bool = false;
+
+    type Response = CompletionResponse;
+
+    // The client base URL is the bare host; `list_models` builds its own v1 path.
+    fn completion_path(&self, _model: &str) -> String {
+        "/v1/chat/completions".to_string()
+    }
+
+    fn prepare_request(
+        &self,
+        request: &mut crate::providers::openai::completion::CompletionRequest,
+    ) -> Result<(), CompletionError> {
+        // Mira's gateway rejects pass-through parameters (tools are dropped
+        // via `SUPPORTS_TOOLS = false` during conversion).
+        if request.additional_params.take().is_some() {
+            tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
+        }
+
+        Ok(())
+    }
+
+    fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
+        let Some(map) = body.as_object_mut() else {
+            return Ok(());
+        };
+
+        // Mira only understands plain `{role, content}` string messages;
+        // strip tool-exchange remnants and message names, and flatten
+        // content-part arrays.
+        if let Some(messages) = map
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            crate::providers::openai::completion::sanitize_plain_text_history(
+                messages,
+                Some(("\n", false)),
+                true,
+                false,
+            );
+        }
+
+        Ok(())
+    }
+}
 
 impl ProviderBuilder for MiraBuilder {
     type Extension<H>
@@ -205,277 +259,67 @@ impl ProviderClient for Client {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct MiraCompletionRequest {
-    model: String,
-    pub messages: Vec<RawMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u64>,
-    pub stream: bool,
-}
+/// Mira completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H = reqwest::Client> =
+    crate::providers::openai::completion::GenericCompletionModel<MiraExt, H>;
 
-impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
-    type Error = CompletionError;
+impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+    type OutputMessage = ChatChoice;
+    type Usage = Usage;
 
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let chat_history = req.chat_history_with_documents();
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Mira");
+    fn get_response_id(&self) -> Option<String> {
+        match self {
+            Self::Structured { id, .. } => Some(id.clone()),
+            Self::Simple(_) => None,
         }
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut messages = Vec::new();
-
-        if let Some(content) = &req.preamble {
-            messages.push(RawMessage {
-                role: "user".to_string(),
-                content: content.to_string(),
-            });
-        }
-
-        for msg in chat_history {
-            let (role, content) = match msg {
-                Message::System { content } => ("system", content),
-                Message::User { content } => {
-                    let text =
-                        content
-                            .iter()
-                            .map(|c| match c {
-                                UserContent::Text(text) => &text.text,
-                                UserContent::Document(Document {
-                                    data:
-                                        DocumentSourceKind::Base64(data)
-                                        | DocumentSourceKind::String(data),
-                                    ..
-                                }) => data,
-                                _ => "",
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                    ("user", text)
-                }
-                Message::Assistant { content, .. } => {
-                    let text = content
-                        .iter()
-                        .map(|c| match c {
-                            AssistantContent::Text(text) => &text.text,
-                            _ => "",
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    ("assistant", text)
-                }
-            };
-            messages.push(RawMessage {
-                role: role.to_string(),
-                content,
-            });
-        }
-
-        Ok(Self {
-            model: model.to_string(),
-            messages,
-            temperature: req.temperature,
-            max_tokens: req.max_tokens,
-            stream: false,
-        })
     }
-}
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model
-    pub model: String,
-}
+    fn get_response_model_name(&self) -> Option<String> {
+        match self {
+            Self::Structured { model, .. } => Some(model.clone()),
+            Self::Simple(_) => None,
+        }
+    }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        match self {
+            Self::Structured { choices, .. } => choices
+                .iter()
+                .map(|choice| ChatChoice {
+                    message: choice.message.clone(),
+                    finish_reason: choice.finish_reason.clone(),
+                    index: choice.index,
+                })
+                .collect(),
+            Self::Simple(_) => Vec::new(),
+        }
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        match self {
+            Self::Structured { choices, .. } => choices
+                .iter()
+                .find(|choice| choice.message.role == "assistant")
+                .map(|choice| choice.message.content.clone()),
+            Self::Simple(text) => Some(text.clone()),
+        }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        match self {
+            Self::Structured { usage, .. } => usage.clone(),
+            Self::Simple(_) => None,
         }
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "mira",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        if !completion_request.tools.is_empty() {
-            tracing::warn!(target: "rig::completions",
-                "Tool calls are not supported by Mira AI. {len} tools will be ignored.",
-                len = completion_request.tools.len()
-            );
-        }
-
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
-        }
-
-        if completion_request.additional_params.is_some() {
-            tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
-        }
-
-        let request = MiraCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Mira completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let async_block = async move {
-            let response = self
-                .client
-                .send::<_, bytes::Bytes>(req)
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            let response: CompletionResponse = serde_json::from_slice(&response_body)?;
-
-            if tracing::enabled!(tracing::Level::TRACE) {
-                tracing::trace!(target: "rig::completions",
-                    "Mira completion response: {}",
-                    serde_json::to_string_pretty(&response)?
-                );
-            }
-
-            if let CompletionResponse::Structured {
-                id, model, usage, ..
-            } = &response
-            {
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.model", model);
-                span.record("gen_ai.response.id", id);
-                if let Some(usage) = usage {
-                    span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-                    span.record(
-                        "gen_ai.usage.output_tokens",
-                        usage.total_tokens - usage.prompt_tokens,
-                    );
-                }
-            }
-
-            response.try_into()
-        };
-
-        async_block.instrument(span).await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "mira",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        if !completion_request.tools.is_empty() {
-            tracing::warn!(target: "rig::completions",
-                "Tool calls are not supported by Mira AI. {len} tools will be ignored.",
-                len = completion_request.tools.len()
-            );
-        }
-
-        if completion_request.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Mira AI");
-        }
-
-        if completion_request.additional_params.is_some() {
-            tracing::warn!("WARNING: Additional parameters not supported on Mira AI");
-        }
-        let mut request =
-            MiraCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        request.stream = true;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Mira completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        send_compatible_streaming_request(self.client.clone(), req)
-            .instrument(span)
-            .await
+impl crate::completion::GetTokenUsage for Usage {
+    fn token_usage(&self) -> crate::completion::Usage {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.prompt_tokens as u64;
+        usage.output_tokens = self.total_tokens.saturating_sub(self.prompt_tokens) as u64;
+        usage.total_tokens = self.total_tokens as u64;
+        usage
     }
 }
 
@@ -493,7 +337,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .as_ref()
                     .map(|usage| completion::Usage {
                         input_tokens: usage.prompt_tokens as u64,
-                        output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                        output_tokens: usage.total_tokens.saturating_sub(usage.prompt_tokens)
+                            as u64,
                         total_tokens: usage.total_tokens as u64,
                         cached_input_tokens: 0,
                         cache_creation_input_tokens: 0,
@@ -584,182 +429,9 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl From<Message> for serde_json::Value {
-    fn from(msg: Message) -> Self {
-        match msg {
-            Message::System { content } => serde_json::json!({
-                "role": "system",
-                "content": content
-            }),
-            Message::User { content } => {
-                let text = content
-                    .iter()
-                    .map(|c| match c {
-                        UserContent::Text(text) => &text.text,
-                        _ => "",
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                serde_json::json!({
-                    "role": "user",
-                    "content": text
-                })
-            }
-            Message::Assistant { content, .. } => {
-                let text = content
-                    .iter()
-                    .map(|c| match c {
-                        AssistantContent::Text(text) => &text.text,
-                        _ => "",
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                serde_json::json!({
-                    "role": "assistant",
-                    "content": text
-                })
-            }
-        }
-    }
-}
-
-impl TryFrom<serde_json::Value> for Message {
-    type Error = CompletionError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let role = value
-            .get("role")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                CompletionError::ResponseError("Message missing role field".to_owned())
-            })?;
-
-        // Handle both string and array content formats
-        let content = match value.get("content") {
-            Some(content) => match content {
-                serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Array(arr) => arr
-                    .iter()
-                    .filter_map(|c| {
-                        c.get("text")
-                            .and_then(|t| t.as_str())
-                            .map(|text| text.to_string())
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                _ => {
-                    return Err(CompletionError::ResponseError(
-                        "Message content must be string or array".to_owned(),
-                    ));
-                }
-            },
-            None => {
-                return Err(CompletionError::ResponseError(
-                    "Message missing content field".to_owned(),
-                ));
-            }
-        };
-
-        match role {
-            "system" => Ok(Message::System { content }),
-            "user" => Ok(Message::User {
-                content: OneOrMany::one(UserContent::Text(message::Text::new(content))),
-            }),
-            "assistant" => Ok(Message::Assistant {
-                id: None,
-                content: OneOrMany::one(AssistantContent::Text(message::Text::new(content))),
-            }),
-            _ => Err(CompletionError::ResponseError(format!(
-                "Unsupported message role: {role}"
-            ))),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::UserContent;
-    use serde_json::json;
-
-    #[test]
-    fn test_deserialize_message() {
-        // Test string content format
-        let assistant_message_json = json!({
-            "role": "assistant",
-            "content": "Hello there, how may I assist you today?"
-        });
-
-        let user_message_json = json!({
-            "role": "user",
-            "content": "What can you help me with?"
-        });
-
-        // Test array content format
-        let assistant_message_array_json = json!({
-            "role": "assistant",
-            "content": [{
-                "type": "text",
-                "text": "Hello there, how may I assist you today?"
-            }]
-        });
-
-        let assistant_message = Message::try_from(assistant_message_json).unwrap();
-        let user_message = Message::try_from(user_message_json).unwrap();
-        let assistant_message_array = Message::try_from(assistant_message_array_json).unwrap();
-
-        // Test string content format
-        match assistant_message {
-            Message::Assistant { content, .. } => {
-                assert_eq!(
-                    content.first(),
-                    AssistantContent::Text(message::Text::new(
-                        "Hello there, how may I assist you today?".to_string()
-                    ))
-                );
-            }
-            _ => panic!("Expected assistant message"),
-        }
-
-        match user_message {
-            Message::User { content } => {
-                assert_eq!(
-                    content.first(),
-                    UserContent::Text(message::Text::new("What can you help me with?".to_string()))
-                );
-            }
-            _ => panic!("Expected user message"),
-        }
-
-        // Test array content format
-        match assistant_message_array {
-            Message::Assistant { content, .. } => {
-                assert_eq!(
-                    content.first(),
-                    AssistantContent::Text(message::Text::new(
-                        "Hello there, how may I assist you today?".to_string()
-                    ))
-                );
-            }
-            _ => panic!("Expected assistant message"),
-        }
-    }
-
-    #[test]
-    fn test_message_conversion() {
-        // Test converting from our Message type to Mira's format and back
-        let original_message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::text("Hello")),
-        };
-
-        // Convert to Mira format
-        let mira_value: serde_json::Value = original_message.clone().into();
-
-        // Convert back to our Message type
-        let converted_message: Message = mira_value.try_into().unwrap();
-
-        assert_eq!(original_message, converted_message);
-    }
 
     #[test]
     fn test_completion_response_conversion() {

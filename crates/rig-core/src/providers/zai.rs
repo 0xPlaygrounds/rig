@@ -119,6 +119,10 @@ impl DebugExt for ZAiAnthropicExt {}
 
 impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
     const PROVIDER_NAME: &'static str = "zai";
+
+    type StreamingUsage = super::openai::Usage;
+
+    type Response = super::openai::CompletionResponse;
 }
 
 impl ProviderBuilder for ZAiBuilder {

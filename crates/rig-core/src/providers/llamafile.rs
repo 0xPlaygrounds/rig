@@ -60,8 +60,12 @@ impl Provider for LlamafileExt {
 impl openai::completion::OpenAICompatibleProvider for LlamafileExt {
     const PROVIDER_NAME: &'static str = "llamafile";
 
+    type StreamingUsage = openai::Usage;
+
     // llama.cpp-based servers can emit a whole tool call in one streaming chunk.
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
+
+    type Response = openai::CompletionResponse;
 }
 
 impl<H> Capabilities<H> for LlamafileExt {
