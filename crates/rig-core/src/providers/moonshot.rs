@@ -421,6 +421,40 @@ mod tests {
     }
 
     #[test]
+    fn moonshot_joins_multiple_reasoning_blocks_with_newline() {
+        // A replayed assistant turn carrying two distinct reasoning blocks must
+        // keep them newline-separated on the wire, not glued together.
+        let assistant = Message::Assistant {
+            id: None,
+            content: crate::OneOrMany::many(vec![
+                AssistantContent::Reasoning(Reasoning::new("first thought")),
+                AssistantContent::Reasoning(Reasoning::new("second thought")),
+                AssistantContent::Text("done".into()),
+            ])
+            .expect("assistant content"),
+        };
+
+        let request = CompletionRequest {
+            model: Some("kimi-k2-thinking".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one(assistant),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = prepared_body(request, "kimi-k2-thinking");
+        assert_eq!(
+            body["messages"][0]["reasoning_content"],
+            serde_json::json!("first thought\nsecond thought")
+        );
+    }
+
+    #[test]
     fn moonshot_specific_tool_choice_is_rejected() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),

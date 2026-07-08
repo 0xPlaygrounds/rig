@@ -57,7 +57,20 @@ impl SubProvider {
 
     pub fn model_identifier(&self, model: &str) -> String {
         match self {
-            SubProvider::Fireworks => format!("accounts/fireworks/models/{model}"),
+            // Fireworks addresses models by a fully-qualified id. Guard against
+            // re-prefixing an already-qualified id (e.g. a per-request model
+            // override that is already fully qualified) — the generic path
+            // applies this to the resolved request model unconditionally, so
+            // without the guard a qualified override would become an invalid
+            // `accounts/fireworks/models/accounts/fireworks/models/...` id.
+            SubProvider::Fireworks => {
+                const FIREWORKS_PREFIX: &str = "accounts/fireworks/models/";
+                if model.starts_with(FIREWORKS_PREFIX) {
+                    model.to_string()
+                } else {
+                    format!("{FIREWORKS_PREFIX}{model}")
+                }
+            }
             _ => model.to_string(),
         }
     }
@@ -218,6 +231,8 @@ impl<H> Client<H> {
 }
 #[cfg(test)]
 mod tests {
+    use super::SubProvider;
+
     #[test]
     fn test_client_initialization() {
         let _client =
@@ -226,5 +241,25 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn fireworks_model_identifier_is_idempotent() {
+        // A bare id is qualified once...
+        assert_eq!(
+            SubProvider::Fireworks.model_identifier("deepseek-v3"),
+            "accounts/fireworks/models/deepseek-v3"
+        );
+        // ...and an already-qualified id (e.g. a per-request model override)
+        // is left untouched rather than double-prefixed.
+        assert_eq!(
+            SubProvider::Fireworks.model_identifier("accounts/fireworks/models/deepseek-v3"),
+            "accounts/fireworks/models/deepseek-v3"
+        );
+        // Other sub-providers pass the id through verbatim.
+        assert_eq!(
+            SubProvider::HFInference.model_identifier("meta-llama/Llama-3.1-8B"),
+            "meta-llama/Llama-3.1-8B"
+        );
     }
 }

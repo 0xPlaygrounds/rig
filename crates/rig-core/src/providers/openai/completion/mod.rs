@@ -830,14 +830,20 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
     fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
         let mut text_content = Vec::new();
         let mut tool_calls = Vec::new();
-        let mut reasoning_text = String::new();
+        // Distinct reasoning blocks are joined with a newline (matching
+        // `display_text()`'s own inter-block separator) rather than glued
+        // together, so replayed multi-block reasoning keeps its boundaries.
+        let mut reasoning_parts: Vec<String> = Vec::new();
 
         for content in value {
             match content {
                 message::AssistantContent::Text(text) => text_content.push(text),
                 message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
                 message::AssistantContent::Reasoning(reasoning) => {
-                    reasoning_text.push_str(&reasoning.display_text());
+                    let display = reasoning.display_text();
+                    if !display.is_empty() {
+                        reasoning_parts.push(display);
+                    }
                 }
                 message::AssistantContent::Image(_) => {
                     return Err(message::MessageError::ConversionError(
@@ -857,10 +863,10 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                 .into_iter()
                 .map(|content| content.text.into())
                 .collect::<Vec<_>>(),
-            reasoning: if reasoning_text.is_empty() {
+            reasoning: if reasoning_parts.is_empty() {
                 None
             } else {
-                Some(reasoning_text)
+                Some(reasoning_parts.join("\n"))
             },
             refusal: None,
             audio: None,
