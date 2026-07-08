@@ -96,6 +96,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_mistral_cassette_result"],
     },
     ProviderCassetteSuite {
+        provider: "perplexity",
+        source_dir: "tests/providers/perplexity/cassette",
+        wrapper_names: &["with_perplexity_cassette"],
+    },
+    ProviderCassetteSuite {
         provider: "mistralrs",
         source_dir: "tests/providers/mistralrs/cassette",
         wrapper_names: &[
