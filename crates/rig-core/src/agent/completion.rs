@@ -33,6 +33,7 @@ pub type DynamicContextStore = Arc<
 /// to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest<M: CompletionModel> {
     pub(crate) builder: CompletionRequestBuilder<M>,
+    pub(crate) message_telemetry_input: Vec<Message>,
     pub(crate) executable_tool_names: BTreeSet<String>,
     pub(crate) allowed_tool_names: BTreeSet<String>,
     /// When Tool output mode is active, the name of the synthetic output tool
@@ -258,6 +259,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         None,
         // No agent run loop, so no `CompletionCall` hook to override the request.
         None,
+        false,
     )
     .await?
     .builder)
@@ -282,6 +284,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
+    record_message_telemetry: bool,
 ) -> Result<PreparedCompletionRequest<M>, CompletionError> {
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
@@ -602,8 +605,15 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         allowed_tool_names.insert(name.clone());
     }
 
+    let message_telemetry_input = if record_message_telemetry {
+        completion_request.message_telemetry_input()
+    } else {
+        Vec::new()
+    };
+
     Ok(PreparedCompletionRequest {
         builder: completion_request,
+        message_telemetry_input,
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,
@@ -680,6 +690,7 @@ where
     pub memory: Option<Arc<dyn crate::memory::ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
     pub default_conversation_id: Option<String>,
+    pub(crate) record_message_telemetry: bool,
 }
 
 impl<M> Agent<M>

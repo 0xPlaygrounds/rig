@@ -92,6 +92,45 @@ impl SpanCombinator for tracing::Span {
     }
 }
 
+/// Record serialized model input messages on a span when the caller has explicitly opted in.
+///
+/// This may include prompts, chat history, documents, tool results, tool arguments,
+/// multimodal payload references or payload bytes, and other sensitive content.
+/// Callers must keep this disabled unless they have reviewed the privacy,
+/// compliance, and telemetry-cardinality impact of exporting message bodies.
+pub(crate) fn record_model_input<T>(span: &tracing::Span, enabled: bool, messages: &T)
+where
+    T: Serialize,
+{
+    record_message_field(span, enabled, "gen_ai.input.messages", messages);
+}
+
+/// Record serialized model output messages on a span when the caller has explicitly opted in.
+///
+/// This may include assistant text, tool calls and arguments, reasoning content,
+/// generated media metadata, and other sensitive model output. Callers must keep
+/// this disabled unless they have reviewed the privacy, compliance, and
+/// telemetry-cardinality impact of exporting message bodies.
+pub(crate) fn record_model_output<T>(span: &tracing::Span, enabled: bool, messages: &T)
+where
+    T: Serialize,
+{
+    record_message_field(span, enabled, "gen_ai.output.messages", messages);
+}
+
+fn record_message_field<T>(span: &tracing::Span, enabled: bool, field: &'static str, messages: &T)
+where
+    T: Serialize,
+{
+    if !enabled || span.is_disabled() {
+        return;
+    }
+
+    if let Ok(messages_as_json) = serde_json::to_string(messages) {
+        span.record(field, messages_as_json.as_str());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

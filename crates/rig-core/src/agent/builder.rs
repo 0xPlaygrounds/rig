@@ -131,6 +131,8 @@ where
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
     default_conversation_id: Option<String>,
+    /// Whether per-turn agent chat spans should record model input/output message content.
+    record_message_telemetry: bool,
 }
 
 impl<M, ToolState> AgentBuilder<M, ToolState>
@@ -268,6 +270,23 @@ where
         self
     }
 
+    /// Configure whether this agent records model input/output message content
+    /// into GenAI OpenTelemetry span fields.
+    ///
+    /// This is disabled by default. Enabling it records serialized per-turn
+    /// `gen_ai.input.messages` and `gen_ai.output.messages` on the agent chat
+    /// span as JSON-serialized Rig-normalized [`Message`](crate::completion::Message)
+    /// values after preamble/document normalization, not provider-native wire payloads,
+    /// and may export prompts, chat history, documents, tool arguments and
+    /// results, reasoning, multimodal payload references or payload bytes, and
+    /// other sensitive user/model data. It can also greatly increase telemetry
+    /// cardinality and storage cost. Enable it only when callers have reviewed
+    /// the privacy, compliance, and observability-backend impact.
+    pub fn record_message_telemetry(mut self, enabled: bool) -> Self {
+        self.record_message_telemetry = enabled;
+        self
+    }
+
     /// Attach a default hook to the agent. Each call appends to the agent's hook
     /// stack; hooks run for every prompt request (unless more are added per
     /// request) in registration order. How their results compose is
@@ -308,6 +327,7 @@ where
             output_mode: OutputMode::default(),
             memory: None,
             default_conversation_id: None,
+            record_message_telemetry: false,
         }
     }
 }
@@ -343,6 +363,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
         }
     }
 
@@ -374,6 +395,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
         }
     }
 
@@ -402,6 +424,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
             tool_state: WithBuilderTools {
                 static_tools,
                 tools,
@@ -503,6 +526,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
             tool_state: WithBuilderTools {
                 static_tools,
                 tools: ToolSet::from_tools(toolset),
@@ -538,6 +562,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
             tool_state: WithBuilderTools {
                 static_tools: vec![],
                 tools: toolset,
@@ -570,6 +595,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
         }
     }
 }
@@ -598,6 +624,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
         }
     }
 }
@@ -708,6 +735,7 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            record_message_telemetry: self.record_message_telemetry,
         }
     }
 }

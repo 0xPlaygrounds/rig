@@ -41,8 +41,9 @@ use super::{
     prompt_request::{
         PromptResponse,
         streaming::{
-            DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
-            drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
+            DriveItem, DriveStream, MultiTurnStreamItem, PendingMessageTelemetryOutput,
+            StreamingError, TurnSource, drive_agent, drive_tool_calls, record_usage_on_span,
+            streaming_error_into_prompt,
         },
         tool_result_message, tool_result_output,
     },
@@ -55,6 +56,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
+    telemetry::record_model_input,
     tool::{ToolCallExtensions, ToolExecutionResult, ToolOutcome, server::ToolServerHandle},
 };
 
@@ -290,6 +292,7 @@ where
     pub(crate) concurrency: usize,
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
+    pub(crate) record_message_telemetry: bool,
     pub(crate) hooks: HookStack<M>,
 }
 
@@ -321,6 +324,7 @@ where
             concurrency: 1,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
+            record_message_telemetry: agent.record_message_telemetry,
             hooks: agent.hooks.clone(),
         }
     }
@@ -833,12 +837,14 @@ pub(crate) struct UnaryTurnSource {
     /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
     /// `UnaryTurnSource: Sync` — which `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
+    pending_message_telemetry_output: Option<PendingMessageTelemetryOutput>,
 }
 
 impl UnaryTurnSource {
     pub(crate) fn new() -> Self {
         Self {
             current_span_id: AtomicU64::new(0),
+            pending_message_telemetry_output: None,
         }
     }
 
@@ -882,6 +888,12 @@ where
         current_prompt: Message,
     ) -> DriveStream<'a, M::Response> {
         Box::pin(async_stream::stream! {
+            record_model_input(
+                &chat_span,
+                runner.record_message_telemetry,
+                &prepared.message_telemetry_input,
+            );
+
             let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
                 Ok(resp) => resp,
                 Err(err) => {
@@ -963,6 +975,15 @@ where
                                 return;
                             }
                         }
+                        if let Some(output_message) = run.accepted_assistant_message() {
+                            self.pending_message_telemetry_output = Some(
+                                PendingMessageTelemetryOutput::new(
+                                    chat_span.clone(),
+                                    runner.record_message_telemetry,
+                                    output_message,
+                                ),
+                            );
+                        }
                         break;
                     }
                 }
@@ -1010,6 +1031,10 @@ where
         // The blocking surface folds the engine and discards the final item, so
         // building it (an extra full-response clone) is skipped entirely.
         None
+    }
+
+    fn take_pending_message_telemetry_output(&mut self) -> Option<PendingMessageTelemetryOutput> {
+        self.pending_message_telemetry_output.take()
     }
 }
 
@@ -1973,8 +1998,10 @@ mod tests {
         use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
         use crate::agent::AgentBuilder;
+        use crate::agent::run::OutputMode;
         use crate::completion::Usage;
         use crate::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
+        use schemars::JsonSchema;
 
         #[derive(Clone)]
         struct CapturedSpan {
@@ -1982,6 +2009,7 @@ mod tests {
             name: String,
             field_names: HashSet<String>,
             u64_fields: HashMap<String, u64>,
+            string_fields: HashMap<String, String>,
         }
 
         #[derive(Clone, Default)]
@@ -1998,16 +2026,24 @@ mod tests {
                     name: name.to_string(),
                     field_names: HashSet::new(),
                     u64_fields: HashMap::new(),
+                    string_fields: HashMap::new(),
                 });
             }
 
-            fn record(&self, id: &Id, names: HashSet<String>, u64s: HashMap<String, u64>) {
+            fn record(
+                &self,
+                id: &Id,
+                names: HashSet<String>,
+                u64s: HashMap<String, u64>,
+                strings: HashMap<String, String>,
+            ) {
                 let id = id.into_u64();
                 if let Ok(mut spans) = self.spans.lock()
                     && let Some(span) = spans.iter_mut().find(|s| s.id == id)
                 {
                     span.field_names.extend(names);
                     span.u64_fields.extend(u64s);
+                    span.string_fields.extend(strings);
                 }
             }
 
@@ -2047,7 +2083,8 @@ mod tests {
             fn on_record(&self, span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
                 let mut visitor = FieldVisitor::default();
                 values.record(&mut visitor);
-                self.captured.record(span, visitor.names, visitor.u64s);
+                self.captured
+                    .record(span, visitor.names, visitor.u64s, visitor.strings);
             }
 
             fn on_follows_from(&self, span: &Id, follows: &Id, _ctx: Context<'_, S>) {
@@ -2059,6 +2096,7 @@ mod tests {
         struct FieldVisitor {
             names: HashSet<String>,
             u64s: HashMap<String, u64>,
+            strings: HashMap<String, String>,
         }
 
         impl Visit for FieldVisitor {
@@ -2067,8 +2105,10 @@ mod tests {
                 self.u64s.insert(field.name().to_string(), value);
             }
 
-            fn record_str(&mut self, field: &Field, _value: &str) {
+            fn record_str(&mut self, field: &Field, value: &str) {
                 self.names.insert(field.name().to_string());
+                self.strings
+                    .insert(field.name().to_string(), value.to_string());
             }
 
             fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
@@ -2082,6 +2122,12 @@ mod tests {
                 output_tokens: output,
                 ..Usage::new()
             }
+        }
+
+        #[derive(JsonSchema)]
+        #[allow(dead_code)]
+        struct TelemetryAnswer {
+            answer: String,
         }
 
         /// Two-turn tool scenario: the blocking driver emits chat -> execute_tool
@@ -2103,6 +2149,154 @@ mod tests {
                 .tool(MockAddTool)
                 .build();
             let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
+        }
+
+        #[tokio::test]
+        async fn agent_message_telemetry_is_disabled_by_default() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            let agent = AgentBuilder::new(MockCompletionModel::text("hello back")).build();
+            let response = agent
+                .runner("hello")
+                .run()
+                .await
+                .expect("blocking run should succeed");
+            assert_eq!(response.output, "hello back");
+
+            let spans = captured.snapshot();
+            let chat_span = spans
+                .iter()
+                .find(|s| s.name == "chat")
+                .expect("blocking run should create a chat span");
+            assert!(
+                !chat_span.field_names.contains("gen_ai.input.messages"),
+                "default agents must not record input message content"
+            );
+            assert!(
+                !chat_span.field_names.contains("gen_ai.output.messages"),
+                "default agents must not record output message content"
+            );
+        }
+
+        #[tokio::test]
+        async fn agent_message_telemetry_opt_in_records_input_and_output_messages() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            let agent = AgentBuilder::new(MockCompletionModel::text("hello back"))
+                .preamble("You are concise")
+                .record_message_telemetry(true)
+                .build();
+            let response = agent
+                .runner("hello")
+                .run()
+                .await
+                .expect("blocking run should succeed");
+            assert_eq!(response.output, "hello back");
+
+            let spans = captured.snapshot();
+            let chat_span = spans
+                .iter()
+                .find(|s| s.name == "chat")
+                .expect("blocking run should create a chat span");
+            let input_json = chat_span
+                .string_fields
+                .get("gen_ai.input.messages")
+                .expect("opt-in agent should record input message content");
+            let output_json = chat_span
+                .string_fields
+                .get("gen_ai.output.messages")
+                .expect("opt-in agent should record output message content");
+
+            let input_messages: Vec<crate::completion::Message> =
+                serde_json::from_str(input_json).expect("input messages should be valid JSON");
+            assert!(matches!(
+                input_messages.as_slice(),
+                [
+                    crate::completion::Message::System { content },
+                    crate::completion::Message::User { .. },
+                ] if content == "You are concise"
+            ));
+            let output_messages: Vec<crate::completion::Message> =
+                serde_json::from_str(output_json).expect("output messages should be valid JSON");
+            assert!(matches!(
+                output_messages.as_slice(),
+                [crate::completion::Message::Assistant { content, .. }]
+                    if matches!(
+                        content.first(),
+                        crate::completion::AssistantContent::Text(text) if text.text == "hello back"
+                    )
+            ));
+        }
+
+        #[tokio::test]
+        async fn agent_message_telemetry_skips_structured_output_reprompt_turn() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            let agent = AgentBuilder::new(MockCompletionModel::from_turns([
+                MockTurn::text("plain text that should be retried"),
+                MockTurn::text(r#"{"answer":"done"}"#),
+            ]))
+            .output_schema::<TelemetryAnswer>()
+            .output_mode(OutputMode::Tool)
+            .record_message_telemetry(true)
+            .build();
+            let response = agent
+                .runner("answer in structured form")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("blocking run should reprompt and then succeed");
+            assert_eq!(response.output, r#"{"answer":"done"}"#);
+
+            let spans = captured.snapshot();
+            let chat_spans: Vec<&CapturedSpan> =
+                spans.iter().filter(|span| span.name == "chat").collect();
+            assert_eq!(chat_spans.len(), 2, "reprompt should create two chat spans");
+            assert!(
+                !chat_spans[0]
+                    .string_fields
+                    .contains_key("gen_ai.output.messages"),
+                "the retried first turn must not export output message content"
+            );
+            let output_json = chat_spans[1]
+                .string_fields
+                .get("gen_ai.output.messages")
+                .expect("accepted final turn should record output message content");
+            assert!(
+                !output_json.contains("plain text that should be retried"),
+                "retried output must not appear in accepted telemetry: {output_json}"
+            );
+            assert!(
+                output_json.contains("done"),
+                "accepted structured output should be recorded: {output_json}"
+            );
         }
 
         #[tokio::test]

@@ -17,6 +17,7 @@ use crate::{
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
+    telemetry::{record_model_input, record_model_output},
     tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
@@ -386,6 +387,36 @@ pub(crate) enum DriveItem<R> {
     Done(Box<PromptResponse>),
 }
 
+/// Deferred output-message telemetry for a model turn that passed its
+/// medium-specific hooks but has not yet passed the shared advance decision.
+pub(crate) struct PendingMessageTelemetryOutput {
+    span: tracing::Span,
+    enabled: bool,
+    message: Message,
+}
+
+impl PendingMessageTelemetryOutput {
+    pub(crate) fn new(span: tracing::Span, enabled: bool, message: Message) -> Self {
+        Self {
+            span,
+            enabled,
+            message,
+        }
+    }
+
+    fn record(self) {
+        record_model_output(&self.span, self.enabled, &vec![self.message]);
+    }
+
+    fn record_with_final_content(self, content: OneOrMany<AssistantContent>) {
+        let message = match self.message {
+            Message::Assistant { id, .. } => Message::Assistant { id, content },
+            message => message,
+        };
+        record_model_output(&self.span, self.enabled, &vec![message]);
+    }
+}
+
 /// The per-medium half of the agent loop: how a turn is fetched from the model,
 /// how its tools are executed, and how the run's spans/usage/final item are
 /// shaped. The medium-independent outer loop (turn counting, the `CompletionCall`
@@ -445,6 +476,10 @@ where
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem<Self::Raw>>;
+
+    /// Take any output-message telemetry that passed medium-specific hooks and
+    /// should be resolved by the shared post-advance decision.
+    fn take_pending_message_telemetry_output(&mut self) -> Option<PendingMessageTelemetryOutput>;
 }
 
 /// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
@@ -488,10 +523,29 @@ where
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
+                    let _ = source.take_pending_message_telemetry_output();
                     yield Err(Box::new(err).into());
                     break 'outer;
                 }
             };
+
+            let pending_message_telemetry = source.take_pending_message_telemetry_output();
+            match &step {
+                AgentRunStep::CallTools { .. } => {
+                    if let Some(pending) = pending_message_telemetry {
+                        pending.record();
+                    }
+                }
+                AgentRunStep::Done(response) => {
+                    if let Some(pending) = pending_message_telemetry {
+                        pending.record_with_final_content(response.content.clone());
+                    }
+                }
+                AgentRunStep::CallModel { .. } => {
+                    // The previous model turn became a retry/reprompt rather
+                    // than an accepted assistant output, so do not export it.
+                }
+            }
 
             match step {
                 AgentRunStep::CallModel { prompt, history, turn } => {
@@ -539,6 +593,7 @@ where
                         &runner.output_mode,
                         committed_output_tool.as_deref(),
                         request_patch.as_ref(),
+                        runner.record_message_telemetry,
                     )
                     .await
                     {
@@ -945,6 +1000,7 @@ pub(crate) struct StreamingTurnSource {
     /// Whether any hook is present — gates building the (history-cloning)
     /// invalid-tool diagnostic context.
     has_hooks: bool,
+    pending_message_telemetry_output: Option<PendingMessageTelemetryOutput>,
 }
 
 impl StreamingTurnSource {
@@ -961,6 +1017,7 @@ impl StreamingTurnSource {
             observes_text_delta: hooks.observes(StepEventKind::TextDelta),
             observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
             has_hooks: !hooks.is_empty(),
+            pending_message_telemetry_output: None,
         }
     }
 }
@@ -991,6 +1048,12 @@ where
         current_prompt: Message,
     ) -> DriveStream<'a, M::StreamingResponse> {
         Box::pin(async_stream::stream! {
+            record_model_input(
+                &chat_span,
+                runner.record_message_telemetry,
+                &prepared.message_telemetry_input,
+            );
+
             let mut stream = match prepared
                 .builder
                 .stream()
@@ -1291,6 +1354,10 @@ where
                 yield Err(Box::new(err).into());
                 return;
             }
+            let output_message = Message::Assistant {
+                id: stream.message_id.clone(),
+                content: canonical_choice.clone(),
+            };
 
             // Normalized per-turn event, fired once the turn is committed on the
             // streaming surface — including tool-only / reasoning-only turns that
@@ -1312,6 +1379,11 @@ where
                 return;
             }
 
+            self.pending_message_telemetry_output = Some(PendingMessageTelemetryOutput::new(
+                chat_span,
+                runner.record_message_telemetry,
+                output_message,
+            ));
             self.last_final_choice = final_turn_content;
         })
     }
@@ -1366,6 +1438,10 @@ where
             response.completion_calls.clone(),
             final_messages,
         ))
+    }
+
+    fn take_pending_message_telemetry_output(&mut self) -> Option<PendingMessageTelemetryOutput> {
+        self.pending_message_telemetry_output.take()
     }
 }
 
@@ -2029,6 +2105,7 @@ mod tests {
         name: String,
         parent_id: Option<u64>,
         fields: HashMap<String, u64>,
+        string_fields: HashMap<String, String>,
     }
 
     #[derive(Clone, Default)]
@@ -2049,15 +2126,22 @@ mod tests {
                     name: name.to_string(),
                     parent_id,
                     fields: HashMap::new(),
+                    string_fields: HashMap::new(),
                 });
             }
         }
 
-        fn record(&self, id: &Id, fields: Vec<(String, u64)>) {
+        fn record(
+            &self,
+            id: &Id,
+            fields: Vec<(String, u64)>,
+            string_fields: Vec<(String, String)>,
+        ) {
             if let Ok(mut spans) = self.0.lock()
                 && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
             {
                 span.fields.extend(fields);
+                span.string_fields.extend(string_fields);
             }
         }
 
@@ -2085,15 +2169,18 @@ mod tests {
 
         fn on_record(&self, span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
             let mut fields = Vec::new();
+            let mut string_fields = Vec::new();
             values.record(&mut SpanFieldCaptureVisitor {
                 fields: &mut fields,
+                string_fields: &mut string_fields,
             });
-            self.spans.record(span, fields);
+            self.spans.record(span, fields, string_fields);
         }
     }
 
     struct SpanFieldCaptureVisitor<'a> {
         fields: &'a mut Vec<(String, u64)>,
+        string_fields: &'a mut Vec<(String, String)>,
     }
 
     impl Visit for SpanFieldCaptureVisitor<'_> {
@@ -2103,8 +2190,10 @@ mod tests {
 
         // Capture the *presence* of non-numeric fields (e.g. `gen_ai.completion`)
         // with a placeholder value so tests can assert whether they were recorded.
-        fn record_str(&mut self, field: &Field, _value: &str) {
+        fn record_str(&mut self, field: &Field, value: &str) {
             self.fields.push((field.name().to_string(), 0));
+            self.string_fields
+                .push((field.name().to_string(), value.to_string()));
         }
 
         fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
@@ -2112,12 +2201,11 @@ mod tests {
         }
     }
 
-    async fn assert_stream_usage_recorded_on_chat_spans(
+    async fn capture_stream_spans(
         agent: crate::agent::Agent<MockCompletionModel>,
         prompt: &str,
         max_turns: usize,
-        expected_usages: &[Usage],
-    ) {
+    ) -> Vec<CapturedSpan> {
         // Scoped-subscriber tests must not run concurrently; the warm-up
         // below explains the callsite-interest hazard this guards against.
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
@@ -2176,7 +2264,75 @@ mod tests {
         .instrument(outer_span)
         .await;
 
-        let span_snapshot = spans.snapshot();
+        spans.snapshot()
+    }
+
+    async fn capture_stream_spans_with_model_turn_finished_termination(
+        agent: crate::agent::Agent<MockCompletionModel>,
+        prompt: &str,
+        max_turns: usize,
+    ) -> (Vec<CapturedSpan>, bool) {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let spans = CapturedSpans::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let _default = tracing::subscriber::set_default(subscriber);
+
+        let warmup_model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("warmup"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
+        let mut warmup_stream = warmup_agent.stream_prompt("warmup").max_turns(1).await;
+        while let Some(item) = warmup_stream
+            .try_next()
+            .await
+            .expect("warmup stream should not error")
+        {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
+        let empty_history: &[Message] = &[];
+        let outer_span = tracing::info_span!("outer", gen_ai.completion = tracing::field::Empty);
+        let mut saw_error = false;
+
+        async {
+            let mut stream = agent
+                .stream_prompt(prompt)
+                .history(empty_history)
+                .max_turns(max_turns)
+                .add_hook(TerminateOnModelTurnFinished)
+                .await;
+
+            loop {
+                match stream.try_next().await {
+                    Ok(Some(MultiTurnStreamItem::FinalResponse(_))) | Ok(None) => break,
+                    Ok(Some(_)) => {}
+                    Err(_) => {
+                        saw_error = true;
+                        break;
+                    }
+                }
+            }
+        }
+        .instrument(outer_span)
+        .await;
+
+        (spans.snapshot(), saw_error)
+    }
+
+    async fn assert_stream_usage_recorded_on_chat_spans(
+        agent: crate::agent::Agent<MockCompletionModel>,
+        prompt: &str,
+        max_turns: usize,
+        expected_usages: &[Usage],
+    ) {
+        let span_snapshot = capture_stream_spans(agent, prompt, max_turns).await;
         let outer_span_id = span_snapshot
             .iter()
             .find(|span| span.name == "outer")
@@ -2432,6 +2588,22 @@ mod tests {
                 StepEvent::StreamResponseFinish { .. } => {
                     Flow::terminate("stop after completion call")
                 }
+                _ => Flow::cont(),
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct TerminateOnModelTurnFinished;
+
+    impl AgentHook<MockCompletionModel> for TerminateOnModelTurnFinished {
+        async fn on_event(
+            &self,
+            _ctx: &HookContext,
+            event: StepEvent<'_, MockCompletionModel>,
+        ) -> Flow {
+            match event {
+                StepEvent::ModelTurnFinished { .. } => Flow::terminate("stop after model turn"),
                 _ => Flow::cont(),
             }
         }
@@ -5251,6 +5423,107 @@ mod tests {
             &[first_call_usage, second_call_usage],
         )
         .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_message_telemetry_is_disabled_by_default() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response(usage(10, 2)),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let spans = capture_stream_spans(agent, "say done", 1).await;
+        let chat_span = spans
+            .iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("streaming run should create a chat_streaming span");
+
+        assert!(
+            !chat_span.fields.contains_key("gen_ai.input.messages"),
+            "default streaming agents must not record input message content"
+        );
+        assert!(
+            !chat_span.fields.contains_key("gen_ai.output.messages"),
+            "default streaming agents must not record output message content"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_message_telemetry_opt_in_records_input_and_output_messages() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response(usage(10, 2)),
+        ]]);
+        let agent = AgentBuilder::new(model)
+            .preamble("You are concise")
+            .record_message_telemetry(true)
+            .build();
+
+        let spans = capture_stream_spans(agent, "say done", 1).await;
+        let chat_span = spans
+            .iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("streaming run should create a chat_streaming span");
+        let input_json = chat_span
+            .string_fields
+            .get("gen_ai.input.messages")
+            .expect("opt-in streaming agent should record input message content");
+        let output_json = chat_span
+            .string_fields
+            .get("gen_ai.output.messages")
+            .expect("opt-in streaming agent should record output message content");
+
+        let input_messages: Vec<Message> =
+            serde_json::from_str(input_json).expect("input messages should be valid JSON");
+        assert!(matches!(
+            input_messages.as_slice(),
+            [Message::System { content }, Message::User { .. }] if content == "You are concise"
+        ));
+        let output_messages: Vec<Message> =
+            serde_json::from_str(output_json).expect("output messages should be valid JSON");
+        assert!(matches!(
+            output_messages.as_slice(),
+            [Message::Assistant { content, .. }]
+                if matches!(
+                    content.first(),
+                    AssistantContent::Text(text) if text.text == "done"
+                )
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_message_telemetry_skips_output_when_model_turn_finished_terminates() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response(usage(10, 2)),
+        ]]);
+        let agent = AgentBuilder::new(model)
+            .record_message_telemetry(true)
+            .build();
+
+        let (spans, saw_error) =
+            capture_stream_spans_with_model_turn_finished_termination(agent, "say done", 1).await;
+        assert!(
+            saw_error,
+            "ModelTurnFinished termination should surface a streaming error"
+        );
+        let chat_span = spans
+            .iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("streaming run should create a chat_streaming span");
+        assert!(
+            chat_span
+                .string_fields
+                .contains_key("gen_ai.input.messages"),
+            "opt-in streaming agent may record input before the model call"
+        );
+        assert!(
+            !chat_span
+                .string_fields
+                .contains_key("gen_ai.output.messages"),
+            "terminated streaming turn must not record output message content"
+        );
     }
 
     #[tokio::test]

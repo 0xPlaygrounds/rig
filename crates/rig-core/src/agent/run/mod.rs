@@ -829,6 +829,18 @@ impl AgentRun {
         }));
     }
 
+    /// Return the assistant message for the currently accepted turn, if one is pending advance.
+    pub(crate) fn accepted_assistant_message(&self) -> Option<Message> {
+        let RunState::AwaitingAdvance(turn) = &self.state else {
+            return None;
+        };
+        let content = OneOrMany::from_iter_optional(turn.items.clone())?;
+        Some(Message::Assistant {
+            id: turn.message_id.clone(),
+            content,
+        })
+    }
+
     /// Answer a pending [`ModelTurnOutcome::NeedsResolution`].
     ///
     /// Applies the agent loop's recovery semantics:

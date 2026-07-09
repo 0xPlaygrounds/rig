@@ -1040,6 +1040,23 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    pub(crate) fn message_telemetry_input(&self) -> Vec<Message> {
+        let mut chat_history = self.chat_history.clone();
+        if let Some(preamble) = &self.preamble {
+            chat_history.insert(0, Message::system(preamble.clone()));
+        }
+
+        chat_history.push(self.prompt.clone());
+        if let Some(documents) = CompletionRequest::normalized_documents_from(&self.documents) {
+            let insert_at = chat_history
+                .iter()
+                .position(|message| !matches!(message, Message::System { .. }))
+                .unwrap_or(chat_history.len());
+            chat_history.insert(insert_at, documents);
+        }
+        chat_history
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         // Build the final message list, prepending preamble if present
