@@ -99,6 +99,7 @@ pub mod chatgpt;
 pub mod cohere;
 pub mod copilot;
 pub mod deepseek;
+pub mod doubleword;
 pub mod gemini;
 pub mod groq;
 pub mod huggingface;
