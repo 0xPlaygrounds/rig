@@ -74,7 +74,7 @@ where
             .agent
             .stream_prompt(prompt)
             .history(history.clone())
-            .multi_turn(self.max_turns)
+            .max_turns(self.max_turns)
             .await;
 
         let mut acc = String::new();

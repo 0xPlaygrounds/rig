@@ -20,6 +20,7 @@
 //! classifies its own error type via [`Tool::classify_error`] and can return
 //! richer outcomes/metadata via [`Tool::call_structured`] and [`ToolReturn`].
 
+pub mod builtin;
 mod extensions;
 mod result;
 pub mod server;

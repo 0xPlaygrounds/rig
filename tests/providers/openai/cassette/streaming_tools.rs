@@ -144,7 +144,7 @@ async fn responses_stream_preserves_tool_result_flow() {
 
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-                .multi_turn(5)
+                .max_turns(5)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

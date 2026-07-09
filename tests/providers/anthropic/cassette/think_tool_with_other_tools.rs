@@ -10,7 +10,7 @@ use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message};
 use rig::providers::anthropic;
 use rig::tool::Tool;
-use rig::tools::ThinkTool;
+use rig::tool::builtin::ThinkTool;
 use serde::Deserialize;
 use serde_json::json;
 

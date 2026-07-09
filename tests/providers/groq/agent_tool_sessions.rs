@@ -536,7 +536,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
 
             let mut stream = agent
                 .stream_chat(COMPLEX_SESSION_PROMPT, Vec::<Message>::new())
-                .multi_turn(10)
+                .max_turns(10)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -646,7 +646,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
 
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .multi_turn(5)
+                .max_turns(5)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

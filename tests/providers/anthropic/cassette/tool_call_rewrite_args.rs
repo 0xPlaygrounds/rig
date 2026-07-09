@@ -181,7 +181,7 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
                 .add_hook(PinUnitsToCelsius)
                 .build();
 
-            let mut stream = agent.stream_prompt(WEATHER_PROMPT).multi_turn(5).await;
+            let mut stream = agent.stream_prompt(WEATHER_PROMPT).max_turns(5).await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming weather prompt should succeed");

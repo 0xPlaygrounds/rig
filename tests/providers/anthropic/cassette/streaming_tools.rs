@@ -58,7 +58,7 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
 
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .multi_turn(8)
+                .max_turns(8)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -120,7 +120,7 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
 
         let mut stream = agent
             .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-            .multi_turn(8)
+            .max_turns(8)
             .tool_concurrency(2)
             .await;
         let observation = tokio::time::timeout(

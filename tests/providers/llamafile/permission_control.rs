@@ -263,7 +263,7 @@ async fn permission_control_streaming_example() -> Result<()> {
              Never describe a tool call in plain text; emit the tool call directly. \
              Do not ask any follow-up questions. After a tool succeeds, reply with exactly the file content.",
         )
-        .multi_turn(3)
+        .max_turns(3)
         .add_hook(hook)
         .await;
 

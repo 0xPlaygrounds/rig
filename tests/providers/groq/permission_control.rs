@@ -209,7 +209,7 @@ async fn permission_control_streaming_example() -> Result<()> {
              Both tools take zero arguments and return the file content. \
              Do not ask any follow-up questions. After a tool succeeds, reply with the exact file content.",
         )
-        .multi_turn(5)
+        .max_turns(5)
         .add_hook(hook)
         .await;
 

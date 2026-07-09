@@ -266,7 +266,7 @@ async fn messages_adaptive_thinking_streaming_tool_roundtrip_smoke() {
 
             let stream = agent
                 .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
-                .multi_turn(3)
+                .max_turns(3)
                 .await;
 
             let stats = reasoning::collect_stream_stats(stream, "anthropic").await;

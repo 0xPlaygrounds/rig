@@ -119,7 +119,7 @@ async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent.stream_prompt(CHAINED_PROMPT).multi_turn(5).await;
+            let mut stream = agent.stream_prompt(CHAINED_PROMPT).max_turns(5).await;
             let observation = crate::support::collect_stream_observation(&mut stream).await;
 
             assert!(

@@ -194,7 +194,7 @@ async fn streaming_structured_output_with_tools() {
                     "What is the current weather in Tokyo? Use the get_weather tool, then return \
                      the city and a one-sentence summary of the conditions.",
                 )
-                .multi_turn(5)
+                .max_turns(5)
                 .await;
             let response = collect_stream_final_response(&mut stream)
                 .await

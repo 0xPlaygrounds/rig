@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
 
     let mut stream = agent
         .stream_prompt("Check ticket RIG-usage-42 and summarize the result in one sentence.")
-        .multi_turn(4)
+        .max_turns(4)
         .await;
 
     let mut final_response = None;

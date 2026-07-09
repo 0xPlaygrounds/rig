@@ -158,7 +158,7 @@ async fn sequential_tool_calls_streaming() {
 
             let mut stream = agent
                 .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
-                .multi_turn(6)
+                .max_turns(6)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -380,7 +380,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
 
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-                .multi_turn(5)
+                .max_turns(5)
                 .await;
 
             let mut saw_tool_result = false;
