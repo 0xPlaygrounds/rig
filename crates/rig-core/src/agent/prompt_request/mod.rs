@@ -253,6 +253,7 @@ where
 /// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
 /// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "PromptResponseRepr")]
 #[non_exhaustive]
 pub struct PromptResponse {
     /// Concatenated assistant text for the final turn.
@@ -274,14 +275,39 @@ pub struct PromptResponse {
     ///
     /// Where [`output`](Self::output) is the concatenated text, this preserves
     /// the individual content parts (text, reasoning, images, …).
-    #[serde(default = "empty_final_content")]
     pub content: OneOrMany<AssistantContent>,
 }
 
-/// Serde default for [`PromptResponse::content`] so runs serialized before the
-/// field existed still deserialize.
-fn empty_final_content() -> OneOrMany<AssistantContent> {
-    OneOrMany::one(AssistantContent::text(""))
+/// Deserialization shadow for [`PromptResponse`]. `content` is optional here so
+/// runs serialized before the field existed still deserialize: a missing
+/// `content` reconstructs the structured final turn from `output` (a single
+/// text part), keeping [`PromptResponse::output`] and [`PromptResponse::content`]
+/// consistent for legacy data rather than defaulting to empty text.
+#[derive(Deserialize)]
+struct PromptResponseRepr {
+    output: String,
+    usage: Usage,
+    #[serde(default)]
+    completion_calls: Vec<CompletionCall>,
+    #[serde(default)]
+    messages: Option<Vec<Message>>,
+    #[serde(default)]
+    content: Option<OneOrMany<AssistantContent>>,
+}
+
+impl From<PromptResponseRepr> for PromptResponse {
+    fn from(repr: PromptResponseRepr) -> Self {
+        let content = repr
+            .content
+            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(repr.output.clone())));
+        Self {
+            output: repr.output,
+            usage: repr.usage,
+            completion_calls: repr.completion_calls,
+            messages: repr.messages,
+            content,
+        }
+    }
 }
 
 impl std::fmt::Display for PromptResponse {
@@ -1080,6 +1106,73 @@ mod tests {
                 CompletionCall::new(1, usage(3, 4))
             ]
         );
+    }
+
+    #[test]
+    fn prompt_response_missing_content_reconstructs_from_output() {
+        // Runs serialized before `content` existed must not deserialize to empty
+        // text: the structured final turn is reconstructed from `output`, so
+        // `output()` and `content()` stay consistent for legacy data.
+        let mut value = serde_json::to_value(PromptResponse::new("hello", Usage::new()))
+            .expect("serialize prompt response");
+        value
+            .as_object_mut()
+            .expect("prompt response serializes to a JSON object")
+            .remove("content");
+        assert!(
+            value.get("content").is_none(),
+            "fixture must omit the content field to model legacy data"
+        );
+
+        let response: PromptResponse = serde_json::from_value(value)
+            .expect("legacy response without content should deserialize");
+
+        assert_eq!(response.output(), "hello");
+        assert_eq!(response.content().iter().count(), 1);
+        assert_eq!(response.content().first(), AssistantContent::text("hello"));
+    }
+
+    #[test]
+    fn prompt_response_missing_content_empty_output_stays_empty_text() {
+        let mut value =
+            serde_json::to_value(PromptResponse::empty()).expect("serialize prompt response");
+        value
+            .as_object_mut()
+            .expect("prompt response serializes to a JSON object")
+            .remove("content");
+
+        let response: PromptResponse = serde_json::from_value(value)
+            .expect("legacy empty response without content should deserialize");
+
+        assert_eq!(response.output(), "");
+        assert_eq!(response.content().first(), AssistantContent::text(""));
+    }
+
+    #[test]
+    fn prompt_response_roundtrip_preserves_explicit_content() {
+        // An explicitly-set `content` (e.g. the streaming surface's structured
+        // final turn) must survive a serialize/deserialize round-trip and is not
+        // clobbered by the output-derived fallback.
+        let response = PromptResponse::new("visible text", Usage::new())
+            .with_content(crate::OneOrMany::one(AssistantContent::text("structured")));
+
+        let value = serde_json::to_value(&response).expect("serialize prompt response");
+        assert!(
+            value.get("content").is_some(),
+            "content is part of the serialized shape"
+        );
+
+        let round: PromptResponse =
+            serde_json::from_value(value).expect("deserialize prompt response");
+        assert_eq!(round.output(), "visible text");
+        // The stored content is "structured" — distinct from `output` — proving the
+        // output-derived fallback only fills a genuinely absent `content`. (Compare
+        // the text directly to sidestep the unrelated `Text::additional_params`
+        // serde round-trip asymmetry.)
+        let AssistantContent::Text(text) = round.content().first() else {
+            panic!("expected text content, got {:?}", round.content().first());
+        };
+        assert_eq!(text.text, "structured");
     }
 
     #[tokio::test]
