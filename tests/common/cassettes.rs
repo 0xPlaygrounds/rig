@@ -186,7 +186,7 @@ pub(crate) enum CassetteMode {
 }
 
 impl CassetteMode {
-    fn current() -> Self {
+    pub(crate) fn current() -> Self {
         match std::env::var(MODE_ENV) {
             Ok(value) if value.eq_ignore_ascii_case("record") => Self::Record,
             Ok(value) if value.eq_ignore_ascii_case("replay") => Self::Replay,
@@ -197,6 +197,34 @@ impl CassetteMode {
 
     fn records(self) -> bool {
         matches!(self, Self::Record)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DirectRecorder {
+    interactions: Arc<Mutex<Vec<CassetteInteraction>>>,
+    policy: CassettePolicy,
+}
+
+impl DirectRecorder {
+    pub(crate) async fn record_http_interaction(
+        &self,
+        method: &str,
+        uri: &str,
+        request_headers: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        request_body: &[u8],
+        status: u16,
+        response_headers: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        response_body: &[u8],
+    ) {
+        let mut scrubber = CassetteScrubber::new(self.policy);
+        let mut interaction = CassetteInteraction {
+            when: recorded_request(self.policy, method, uri, request_headers, request_body),
+            then: recorded_response(status, response_headers, response_body),
+        };
+        scrubber.scrub_request(&mut interaction.when);
+        scrubber.scrub_response(&mut interaction.then);
+        self.interactions.lock().await.push(interaction);
     }
 }
 
@@ -211,13 +239,20 @@ pub(crate) struct ProviderCassette {
 
 enum CassetteServer {
     Recording(MockServer),
+    DirectRecording(DirectRecordingServer),
     Replay(ReplayServer),
+}
+
+struct DirectRecordingServer {
+    base_url: String,
+    interactions: Arc<Mutex<Vec<CassetteInteraction>>>,
 }
 
 impl CassetteServer {
     fn base_url(&self) -> String {
         match self {
             Self::Recording(server) => server.base_url(),
+            Self::DirectRecording(server) => server.base_url.clone(),
             Self::Replay(server) => server.base_url(),
         }
     }
@@ -290,6 +325,59 @@ impl ProviderCassette {
         }
     }
 
+    pub(crate) async fn start_direct_recording(
+        provider: &'static str,
+        spec: impl Into<CassetteSpec>,
+        real_base_url: &str,
+    ) -> Self {
+        let spec = spec.into();
+        let scenario = spec.scenario;
+        let mode = CassetteMode::current();
+        let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
+        let cassette_path = cassette_path(provider, scenario);
+        let upstream = UpstreamBase::parse(real_base_url);
+        let (server, recording_id) = if mode.records() {
+            let interactions = Arc::new(Mutex::new(Vec::new()));
+            (
+                CassetteServer::DirectRecording(DirectRecordingServer {
+                    base_url: upstream.origin.clone(),
+                    interactions,
+                }),
+                None,
+            )
+        } else {
+            if !cassette_path.exists() {
+                panic!(
+                    "missing provider cassette {}; run with {MODE_ENV}=record and the real API key to create it",
+                    cassette_path.display()
+                );
+            }
+            (
+                CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await),
+                None,
+            )
+        };
+
+        Self {
+            server,
+            cassette_path,
+            base_path: upstream.path,
+            mode,
+            policy,
+            recording_id,
+        }
+    }
+
+    pub(crate) fn direct_recorder(&self) -> Option<DirectRecorder> {
+        match &self.server {
+            CassetteServer::DirectRecording(server) => Some(DirectRecorder {
+                interactions: server.interactions.clone(),
+                policy: self.policy,
+            }),
+            _ => None,
+        }
+    }
+
     pub(crate) fn base_url(&self) -> String {
         format!("{}{}", self.server.base_url(), self.base_path)
     }
@@ -324,6 +412,19 @@ impl ProviderCassette {
                 }
                 return;
             }
+            CassetteServer::DirectRecording(server) => {
+                let yaml = {
+                    let interactions = server.interactions.lock().await;
+                    assert!(
+                        !interactions.is_empty(),
+                        "provider cassette {} should contain at least one interaction",
+                        cassette_path.display()
+                    );
+                    serialize_cassette_interactions(&interactions)
+                };
+                write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
+                return;
+            }
             CassetteServer::Recording(server) => server,
         };
 
@@ -338,18 +439,7 @@ impl ProviderCassette {
             .expect("provider cassette should export")
             .expect("provider cassette should contain at least one interaction");
         let yaml = String::from_utf8(bytes.to_vec()).expect("cassette YAML should be UTF-8");
-        let redacted = scrub_cassette_contents_with_policy(policy, &yaml);
-        let failures = cassette_safety_failures_with_policy(policy, &cassette_path, &redacted);
-        assert!(
-            failures.is_empty(),
-            "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
-            cassette_path.display(),
-            failures.join("\n")
-        );
-
-        write_cassette_atomically(&cassette_path, redacted.as_bytes())
-            .await
-            .expect("provider cassette should be written");
+        write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
     }
 
     pub(crate) async fn finish_after_test(self, test_result: Result<(), PanicPayload>) {
@@ -733,6 +823,92 @@ fn request_matches(
         )
 }
 
+fn recorded_request<N, V>(
+    policy: CassettePolicy,
+    method: &str,
+    uri: &str,
+    headers: impl IntoIterator<Item = (N, V)>,
+    body: &[u8],
+) -> CassetteRequest
+where
+    N: AsRef<str>,
+    V: AsRef<str>,
+{
+    let parsed = parse_recorded_uri(uri);
+    CassetteRequest {
+        path: parsed.path().to_string(),
+        method: method.to_ascii_uppercase(),
+        query_param: parsed
+            .query_pairs()
+            .into_owned()
+            .map(|(name, value)| NameValue { name, value })
+            .collect(),
+        header: recorded_request_headers(policy, headers),
+        body: recorded_body(body),
+    }
+}
+
+fn recorded_response<N, V>(
+    status: u16,
+    headers: impl IntoIterator<Item = (N, V)>,
+    body: &[u8],
+) -> CassetteResponse
+where
+    N: AsRef<str>,
+    V: AsRef<str>,
+{
+    CassetteResponse {
+        status,
+        header: headers
+            .into_iter()
+            .map(|(name, value)| NameValue {
+                name: name.as_ref().to_ascii_lowercase(),
+                value: value.as_ref().to_string(),
+            })
+            .collect(),
+        body: recorded_body(body),
+    }
+}
+
+fn parse_recorded_uri(uri: &str) -> url::Url {
+    url::Url::parse(uri).unwrap_or_else(|_| {
+        url::Url::parse(&format!("http://cassette.invalid{uri}"))
+            .unwrap_or_else(|error| panic!("recorded URI {uri:?} should parse: {error}"))
+    })
+}
+
+fn recorded_request_headers<N, V>(
+    policy: CassettePolicy,
+    headers: impl IntoIterator<Item = (N, V)>,
+) -> Vec<NameValue>
+where
+    N: AsRef<str>,
+    V: AsRef<str>,
+{
+    headers
+        .into_iter()
+        .filter_map(|(name, value)| {
+            let name = name.as_ref();
+            contains_case_insensitive(policy.recorded_request_headers, name).then(|| NameValue {
+                name: name.to_ascii_lowercase(),
+                value: value.as_ref().to_string(),
+            })
+        })
+        .collect()
+}
+
+fn recorded_body(body: &[u8]) -> Option<String> {
+    if body.is_empty() {
+        None
+    } else {
+        Some(
+            std::str::from_utf8(body)
+                .expect("recorded cassette body should be UTF-8")
+                .to_string(),
+        )
+    }
+}
+
 fn query_matches(query: Option<&str>, expected: &[NameValue]) -> bool {
     let actual = parsed_query_pairs(query);
     query_pair_counts(actual)
@@ -808,7 +984,7 @@ fn has_nonempty_header(actual: &axum::http::HeaderMap, name: &str) -> bool {
 }
 
 fn body_matches(
-    _policy: CassettePolicy,
+    policy: CassettePolicy,
     actual_headers: &axum::http::HeaderMap,
     expected_headers: &[NameValue],
     actual: &[u8],
@@ -828,9 +1004,11 @@ fn body_matches(
     let Ok(actual) = std::str::from_utf8(actual) else {
         return false;
     };
+    let actual = CassetteScrubber::new(policy).scrub_body(actual);
+    let expected = CassetteScrubber::new(policy).scrub_body(expected);
 
     if let (Some(actual_json), Some(expected_json)) =
-        (canonical_json(actual), canonical_json(expected))
+        (canonical_json(&actual), canonical_json(&expected))
     {
         return actual_json == expected_json;
     }
@@ -1277,6 +1455,21 @@ fn cassette_safety_failures_with_policy(
     failures
 }
 
+async fn write_scrubbed_cassette(cassette_path: &Path, policy: CassettePolicy, yaml: &str) {
+    let redacted = scrub_cassette_contents_with_policy(policy, yaml);
+    let failures = cassette_safety_failures_with_policy(policy, cassette_path, &redacted);
+    assert!(
+        failures.is_empty(),
+        "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
+        cassette_path.display(),
+        failures.join("\n")
+    );
+
+    write_cassette_atomically(cassette_path, redacted.as_bytes())
+        .await
+        .expect("provider cassette should be written");
+}
+
 fn serialize_cassette_interactions(interactions: &[CassetteInteraction]) -> String {
     let mut output = String::new();
 
@@ -1345,6 +1538,12 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "openai-organization",
     "openai-project",
     "anthropic-organization-id",
+    "aws4-hmac-sha256",
+    "credential=",
+    "signedheaders=",
+    "x-amz-credential",
+    "x-amz-signature",
+    "x-amz-security-token",
 ];
 
 const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
@@ -1371,10 +1570,21 @@ const SENSITIVE_HEADER_NAMES: &[&str] = &[
     "openai-organization",
     "openai-project",
     "anthropic-organization-id",
+    "x-amz-security-token",
+    "x-amz-content-sha256",
+    "x-amz-date",
     "key",
 ];
 
-const SENSITIVE_QUERY_PARAMS: &[&str] = &["key", "api_key", "apikey", "access_token"];
+const SENSITIVE_QUERY_PARAMS: &[&str] = &[
+    "key",
+    "api_key",
+    "apikey",
+    "access_token",
+    "x-amz-credential",
+    "x-amz-signature",
+    "x-amz-security-token",
+];
 
 const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type"];
 
@@ -1426,6 +1636,7 @@ const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
     TokenPrefix::new("asst_", "asst_", 8),
     TokenPrefix::new("batch_", "batch_", 8),
     TokenPrefix::new("upload_", "upload_", 8),
+    TokenPrefix::new("document-", "document-", 8),
 ];
 
 struct CassetteScrubber {
@@ -2168,6 +2379,16 @@ mod tests {
     }
 
     #[test]
+    fn body_matching_scrubs_generated_document_names() {
+        let policy = CassettePolicy::default();
+        let headers = axum::http::HeaderMap::new();
+        let expected = r#"{"document":{"name":"document-REDACTED_1"}}"#;
+        let actual = br#"{"document":{"name":"document-d472a47d2451423eac893453a8c2fed9"}}"#;
+
+        assert!(body_matches(policy, &headers, &[], actual, Some(expected)));
+    }
+
+    #[test]
     fn replay_matching_is_ordered_by_default() {
         let policy = CassettePolicy::default();
         let request = incoming_request("/v1/second", Bytes::new());
@@ -2269,6 +2490,49 @@ mod tests {
             .insert("x-goog-api-key", HeaderValue::from_static("[REDACTED]"));
 
         assert!(required_headers_present(policy, &request.headers));
+    }
+
+    #[tokio::test]
+    async fn direct_recorder_omits_sigv4_headers() {
+        let policy = CassettePolicy::for_scenario(
+            "bedrock",
+            "agent/completion_smoke",
+            ReplayMatching::Ordered,
+        );
+        let interactions = Arc::new(Mutex::new(Vec::new()));
+        let recorder = DirectRecorder {
+            interactions: interactions.clone(),
+            policy,
+        };
+
+        recorder
+            .record_http_interaction(
+                "POST",
+                "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
+                [
+                    ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
+                    ("x-amz-date", "20260709T000000Z"),
+                    ("x-amz-security-token", "session-token"),
+                    ("content-type", "application/json"),
+                ],
+                br#"{"ok":true}"#,
+                200,
+                [
+                    ("content-type", "application/json"),
+                    ("x-amzn-requestid", "request-id"),
+                ],
+                br#"{"ok":true}"#,
+            )
+            .await;
+
+        let interactions = interactions.lock().await;
+        let interaction = interactions
+            .first()
+            .expect("interaction should be recorded");
+        assert_eq!(interaction.when.header.len(), 1);
+        assert_eq!(interaction.when.header[0].name, "content-type");
+        assert_eq!(interaction.then.header.len(), 1);
+        assert_eq!(interaction.then.header[0].name, "content-type");
     }
 
     #[test]
