@@ -14,7 +14,6 @@
 
 pub mod client;
 pub mod completion;
-pub mod decoders;
 pub mod model_listing;
 pub mod streaming;
 

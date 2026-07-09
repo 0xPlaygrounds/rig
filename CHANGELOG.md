@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - *(core)* [**breaking**] remove the unused `evals` module (`Eval` trait, judge metrics, and builders) along with the `experimental` feature flag that gated it
+- *(anthropic)* [**breaking**] remove the unused public `providers::anthropic::decoders` module; Anthropic streaming uses the shared SSE machinery.
 - *(providers)* [**breaking**] remove the Galadriel provider integration (`providers::galadriel`), including its client, model constants, environment-variable support, and ignored live tests.
 
 ## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/v0.38.2...v0.39.0) - 2026-06-19
