@@ -166,7 +166,7 @@ async fn multi_turn_streaming_tools() {
 
             let mut stream = agent
                 .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
-                .multi_turn(10)
+                .max_turns(10)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

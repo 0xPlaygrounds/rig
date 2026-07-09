@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing_futures::Instrument;
 
-use super::{CompletionCall, PromptResponse};
+use super::{CompletionCall, PromptResponse, forward_prompt_setters};
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -322,7 +322,7 @@ impl From<crate::memory::MemoryError> for StreamingError {
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
-/// If you expect to continuously call tools, you will want to ensure you use the `.multi_turn()`
+/// If you expect to continuously call tools, you will want to ensure you use the `.max_turns()`
 /// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
@@ -356,16 +356,11 @@ where
         }
     }
 
-    /// Set the maximum Turns for multi-turn conversations (the maximum number of
-    /// turns an LLM can take calling tools before writing a text response).
-    pub fn multi_turn(mut self, turns: usize) -> Self {
-        self.runner = self.runner.max_turns(turns);
-        self
-    }
-
-    /// Set the maximum number of turns for multi-turn tool-calling.
+    /// Set the maximum number of turns for multi-turn tool-calling (the maximum
+    /// number of turns an LLM can take calling tools before writing a text
+    /// response).
     ///
-    /// Alias for [`Self::multi_turn`], named to match the blocking
+    /// Named to match the blocking
     /// [`PromptRequest::max_turns`](super::PromptRequest::max_turns) and
     /// [`TypedPromptRequest::max_turns`](super::TypedPromptRequest::max_turns)
     /// builders so the same call reads identically on either surface.
@@ -386,27 +381,6 @@ where
         self
     }
 
-    /// Attach a per-call [`ToolCallExtensions`] for this streaming request.
-    ///
-    /// Every tool the agent executes during this request can read the
-    /// caller-provided values (auth tokens, session IDs, conversation state, …)
-    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
-    /// without the model ever seeing them.
-    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
-        self.runner = self.runner.tool_extensions(extensions);
-        self
-    }
-
-    /// Add chat history to the prompt request.
-    pub fn history<H, T>(mut self, history: H) -> Self
-    where
-        H: IntoIterator<Item = T>,
-        T: Into<Message>,
-    {
-        self.runner = self.runner.history(history);
-        self
-    }
-
     /// Append a hook to this request's hook stack (on top of any the agent
     /// already carries). Hooks run in registration order; how their results
     /// compose is event-dependent (`CompletionCall` request patches accumulate
@@ -421,25 +395,7 @@ where
         self
     }
 
-    /// Set the retry budget for invalid tool-call recovery.
-    ///
-    /// Invalid tool-call retries also consume normal multi-turn depth.
-    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.runner = self.runner.max_invalid_tool_call_retries(retries);
-        self
-    }
-
-    /// Set the conversation id used to load and persist memory for this request.
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.runner = self.runner.conversation(id);
-        self
-    }
-
-    /// Disable conversation memory for this request.
-    pub fn without_memory(mut self) -> Self {
-        self.runner = self.runner.without_memory();
-        self
-    }
+    forward_prompt_setters!(runner);
 
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
         self.runner.stream().await
@@ -2235,7 +2191,7 @@ mod tests {
             MockStreamEvent::final_response(Usage::default()),
         ]]);
         let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
-        let mut warmup_stream = warmup_agent.stream_prompt("warmup").multi_turn(1).await;
+        let mut warmup_stream = warmup_agent.stream_prompt("warmup").max_turns(1).await;
         while let Some(item) = warmup_stream
             .try_next()
             .await
@@ -2257,7 +2213,7 @@ mod tests {
             let mut stream = agent
                 .stream_prompt(prompt)
                 .history(empty_history)
-                .multi_turn(max_turns)
+                .max_turns(max_turns)
                 .await;
 
             while let Some(item) = stream.try_next().await.expect("stream should not error") {
@@ -2848,7 +2804,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("do tool work")
             .history(empty_history)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_tool_call = false;
         let mut saw_tool_result = false;
@@ -2930,7 +2886,7 @@ mod tests {
         let drive = async {
             let mut stream = agent
                 .stream_prompt("hit the barrier twice")
-                .multi_turn(3)
+                .max_turns(3)
                 .tool_concurrency(2)
                 .await;
             while let Some(item) = stream.next().await {
@@ -2969,7 +2925,7 @@ mod tests {
             .stream_prompt("do tool work")
             .tool_extensions(extensions)
             .history(empty_history)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
 
         while let Some(item) = stream.next().await {
@@ -3006,7 +2962,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("do tool work")
             .history(empty_history)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
 
         while let Some(item) = stream.next().await {
@@ -3042,7 +2998,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_tool_call = false;
         let mut error = None;
@@ -3106,7 +3062,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(RepairDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .await;
         let mut saw_repaired_tool_call = false;
@@ -3172,7 +3128,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(invalid_hook.clone())
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut error = None;
 
@@ -3222,7 +3178,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(SkipDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
@@ -3311,7 +3267,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(RetryDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
@@ -3436,7 +3392,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(SkipDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
@@ -3543,7 +3499,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(SkipDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .await;
 
@@ -3599,7 +3555,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(RetryDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
@@ -3647,7 +3603,7 @@ mod tests {
             .add_hook(RecordingTextAndSkipInvalidToolHook {
                 text: text_hook.clone(),
             })
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .await;
 
@@ -3707,7 +3663,7 @@ mod tests {
             .add_hook(RecordingDeltaAndRetryInvalidToolHook {
                 delta: delta_hook.clone(),
             })
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
@@ -3834,7 +3790,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(invalid_hook.clone())
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut error = None;
 
@@ -3897,7 +3853,7 @@ mod tests {
             .add_hook(RecordingTextAndRetryInvalidToolHook {
                 text: text_hook.clone(),
             })
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
@@ -3957,7 +3913,7 @@ mod tests {
             .add_hook(RecordingDeltaAndSkipInvalidToolHook {
                 delta: delta_hook.clone(),
             })
-            .multi_turn(3)
+            .max_turns(3)
             .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
@@ -4070,7 +4026,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(RetryDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .max_invalid_tool_call_retries(0)
             .await;
         let mut error = None;
@@ -4130,7 +4086,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(RetryDefaultApiHook)
-            .multi_turn(3)
+            .max_turns(3)
             .max_invalid_tool_call_retries(0)
             .await;
         let mut error = None;
@@ -4190,7 +4146,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the tool")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_text = false;
         let mut saw_completion_call = false;
@@ -4291,7 +4247,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use tools")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_completion_call = false;
         let mut saw_tool_call = false;
@@ -4381,7 +4337,7 @@ mod tests {
             })
             .build();
 
-        let mut stream = agent.stream_prompt("use tools").multi_turn(3).await;
+        let mut stream = agent.stream_prompt("use tools").max_turns(3).await;
         let mut tool_call_names = Vec::new();
         let mut tool_result_ids = Vec::new();
         let mut final_response_text = None;
@@ -4450,7 +4406,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the allowed tool")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_tool_call = false;
         let mut error = None;
@@ -4531,7 +4487,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use the allowed tool")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_tool_call = false;
         let mut saw_tool_result = false;
@@ -4609,7 +4565,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("do not use tools")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_tool_call = false;
         let mut error = None;
@@ -4673,7 +4629,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("do not use tools")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_delta = false;
         let mut error = None;
@@ -4734,7 +4690,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("stream a bad tool call")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_delta = false;
         let mut error = None;
@@ -4795,7 +4751,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("stream a bad tool call")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_delta = false;
         let mut error = None;
@@ -4934,7 +4890,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("stream an incomplete tool call")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_delta = false;
         let mut saw_completion_call = false;
@@ -5002,7 +4958,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("do not use tools")
             .add_hook(PanicOnUnknownToolHook)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut saw_delta = false;
         let mut error = None;
@@ -5255,7 +5211,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("do tool work")
             .history(empty_history)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut completion_calls_events = Vec::new();
         let mut final_response = None;
@@ -5405,7 +5361,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("do tool work")
             .history(empty_history)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
         let mut completion_calls_events = Vec::new();
         let mut final_response = None;
@@ -5539,7 +5495,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("use a tool with citations")
             .history(empty_history)
-            .multi_turn(3)
+            .max_turns(3)
             .await;
 
         while let Some(item) = stream.next().await {

@@ -635,9 +635,12 @@ pub trait StreamingCompletion<M: CompletionModel> {
         T: Into<Message>;
 }
 
-/// A helper function to stream a completion request to stdout.
+/// A helper function to stream a low-level [`StreamingCompletionResponse`] to stdout.
+///
+/// Named to disambiguate from the high-level [`agent::stream_to_stdout`](crate::agent::stream_to_stdout),
+/// which drives a [`StreamingResult`](crate::agent::StreamingResult) and returns a `FinalResponse`.
 /// Tool call deltas are ignored as tool calls are generally much easier to handle when received in their entirety rather than using deltas.
-pub async fn stream_to_stdout<M>(
+pub async fn stream_completion_to_stdout<M>(
     agent: &'static Agent<M>,
     stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
 ) -> Result<(), std::io::Error>

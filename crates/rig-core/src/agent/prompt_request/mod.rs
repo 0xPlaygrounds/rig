@@ -13,23 +13,14 @@ use std::{future::IntoFuture, marker::PhantomData};
 
 /// Generate the request-builder setters that forward verbatim to an inner
 /// receiver — `AgentRunner` for the blocking builder, the wrapped
-/// `PromptRequest` for the typed builder. Only the setters whose signature *and*
-/// documentation are identical across builders live here; `max_turns` and
-/// `add_hook`, whose docs are builder-specific, stay hand-written. `$recv` is
-/// the field name to delegate through (`runner` or `inner`).
+/// `PromptRequest` for the typed builder, and the `AgentRunner` for the
+/// streaming builder. Only the setters whose signature *and* documentation are
+/// identical across all three builders live here; `max_turns`, `add_hook`, and
+/// `tool_concurrency`, whose docs are builder-specific, stay hand-written (the
+/// blocking builders share `tool_concurrency` via [`forward_tool_concurrency`]).
+/// `$recv` is the field name to delegate through (`runner` or `inner`).
 macro_rules! forward_prompt_setters {
     ($recv:ident) => {
-        /// Execute up to `concurrency` of a turn's tool calls at once.
-        ///
-        /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: the tool
-        /// batch commits and surfaces atomically, so persisted history and streamed
-        /// tool results are both in tool-call order (results are surfaced only after
-        /// the whole batch settles successfully).
-        pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-            self.$recv = self.$recv.tool_concurrency(concurrency);
-            self
-        }
-
         /// Attach a per-call [`ToolCallExtensions`] for this request.
         ///
         /// Every tool the agent executes during this request can read the
@@ -77,6 +68,26 @@ macro_rules! forward_prompt_setters {
         }
     };
 }
+pub(crate) use forward_prompt_setters;
+
+/// Generate the `tool_concurrency` setter for the blocking builders, whose doc
+/// is identical to each other but differs from the streaming builder's (the
+/// streaming version documents how tool items are ordered in the emitted
+/// stream). `$recv` is the field name to delegate through (`runner` or `inner`).
+macro_rules! forward_tool_concurrency {
+    ($recv:ident) => {
+        /// Execute up to `concurrency` of a turn's tool calls at once.
+        ///
+        /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: the tool
+        /// batch commits and surfaces atomically, so persisted history and streamed
+        /// tool results are both in tool-call order (results are surfaced only after
+        /// the whole batch settles successfully).
+        pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
+            self.$recv = self.$recv.tool_concurrency(concurrency);
+            self
+        }
+    };
+}
 
 pub trait PromptType {}
 pub struct Standard;
@@ -88,7 +99,7 @@ impl PromptType for Extended {}
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
-/// If you expect to continuously call tools, you will want to ensure you use the `.multi_turn()`
+/// If you expect to continuously call tools, you will want to ensure you use the `.max_turns()`
 /// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
@@ -158,6 +169,7 @@ where
     }
 
     forward_prompt_setters!(runner);
+    forward_tool_concurrency!(runner);
 }
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
@@ -549,6 +561,7 @@ where
     }
 
     forward_prompt_setters!(inner);
+    forward_tool_concurrency!(inner);
 }
 
 /// Deserialize a typed structured response from the model's final text.

@@ -158,7 +158,7 @@ async fn streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer() {
             let history: &[Message] = &[];
             let mut stream = agent
                 .stream_chat(TWO_TOOL_STREAM_PROMPT, history)
-                .multi_turn(8)
+                .max_turns(8)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -187,7 +187,7 @@ async fn streaming_chat_emits_tool_call_before_later_text() {
             let history: &[Message] = &[];
             let mut stream = agent
                 .stream_chat(ORDERED_TOOL_STREAM_PROMPT, history)
-                .multi_turn(5)
+                .max_turns(5)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

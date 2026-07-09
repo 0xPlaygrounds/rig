@@ -365,10 +365,10 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }) = tool_result_content
                                 else {
                                     return Err(CompletionError::ProviderError(
-                                        "This thing only supports text!".to_string(),
+                                        "The OpenAI Responses API only supports text tool results"
+                                            .to_string(),
                                     ));
                                 };
-                                // let output = serde_json::from_str(&text)?;
                                 items.push(InputItem {
                                     role: None,
                                     input: InputContent::FunctionCallOutput(ToolResult {

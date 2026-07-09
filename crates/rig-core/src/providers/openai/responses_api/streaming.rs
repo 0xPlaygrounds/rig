@@ -861,8 +861,6 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        // let request_builder = self.client.post_reqwest("/responses").json(&request);
-
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -1667,7 +1665,7 @@ mod tests {
         let chat_history: Vec<Message> = Vec::new();
         let mut stream = agent
             .stream_chat("Call my example tool", &chat_history)
-            .multi_turn(5)
+            .max_turns(5)
             .await;
 
         while let Some(item) = stream.next().await {

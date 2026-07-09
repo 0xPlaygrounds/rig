@@ -86,7 +86,7 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
             "Use the tool once, then answer with the dominant color in the returned image.",
         )
         .history(empty_history)
-        .multi_turn(4)
+        .max_turns(4)
         .await;
 
     let mut final_response = None;

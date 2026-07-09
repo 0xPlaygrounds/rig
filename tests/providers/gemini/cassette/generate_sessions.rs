@@ -153,7 +153,7 @@ async fn sequential_tool_calls_ordering_streaming() {
 
             let mut stream = agent
                 .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
-                .multi_turn(6)
+                .max_turns(6)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

@@ -209,7 +209,7 @@ async fn permission_control_streaming_example() -> Result<()> {
             "Use the available tools to read test.txt now. \
              Do not ask any follow-up questions; just read the file and report its content.",
         )
-        .multi_turn(5)
+        .max_turns(5)
         .add_hook(hook)
         .await;
 
