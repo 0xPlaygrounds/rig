@@ -49,28 +49,6 @@ pub enum TranscriptionError {
 
 crate::provider_response::impl_provider_response_helpers!(TranscriptionError);
 
-/// Trait defining a low-level LLM transcription interface
-pub trait Transcription<M>
-where
-    M: TranscriptionModel,
-{
-    /// Generates a transcription request builder for the given `file`.
-    /// This function is meant to be called by the user to further customize the
-    /// request at transcription time before sending it.
-    ///
-    /// ❗IMPORTANT: The type that implements this trait might have already
-    /// populated fields in the builder (the exact fields depend on the type).
-    /// For fields that have already been set by the model, calling the corresponding
-    /// method on the builder will overwrite the value set by the model.
-    fn transcription(
-        &self,
-        filename: &str,
-        data: &[u8],
-    ) -> impl std::future::Future<
-        Output = Result<TranscriptionRequestBuilder<M, Provided<Vec<u8>>>, TranscriptionError>,
-    > + WasmCompatSend;
-}
-
 /// General transcription response struct that contains the transcription text
 /// and the raw response.
 pub struct TranscriptionResponse<T> {

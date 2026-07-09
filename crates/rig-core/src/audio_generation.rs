@@ -47,30 +47,6 @@ pub enum AudioGenerationError {
 
 crate::provider_response::impl_provider_response_helpers!(AudioGenerationError);
 
-pub trait AudioGeneration<M>
-where
-    M: AudioGenerationModel,
-{
-    /// Generates an audio generation request builder for the given `text` and `voice`.
-    /// This function is meant to be called by the user to further customize the
-    /// request at generation time before sending it.
-    ///
-    /// ❗IMPORTANT: The type that implements this trait might have already
-    /// populated fields in the builder (the exact fields depend on the type).
-    /// For fields that have already been set by the model, calling the corresponding
-    /// method on the builder will overwrite the value set by the model.
-    fn audio_generation(
-        &self,
-        text: &str,
-        voice: &str,
-    ) -> impl std::future::Future<
-        Output = Result<
-            AudioGenerationRequestBuilder<M, Provided<String>, Provided<String>>,
-            AudioGenerationError,
-        >,
-    > + Send;
-}
-
 pub struct AudioGenerationResponse<T> {
     pub audio: Vec<u8>,
     pub response: T,
