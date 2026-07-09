@@ -18,7 +18,7 @@ async fn collect_stream_final_response<R>(stream: &mut StreamingResult<R>) -> Re
 
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item? {
-            final_response = Some(response.response().to_owned());
+            final_response = Some(response.output().to_owned());
         }
     }
 

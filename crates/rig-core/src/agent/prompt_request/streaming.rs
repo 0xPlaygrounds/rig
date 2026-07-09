@@ -107,87 +107,24 @@ pub enum MultiTurnStreamItem<R> {
     /// }
     /// ```
     CompletionCall(CompletionCall),
-    /// The final result from the stream.
-    FinalResponse(FinalResponse),
+    /// The final result from the stream: the unified [`PromptResponse`] shared
+    /// with the blocking surface.
+    FinalResponse(PromptResponse),
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct FinalResponse {
-    /// Structured assistant content for the final turn.
+/// Build the unified [`PromptResponse`] for the streaming surface from the
+/// final turn's structured content.
+fn final_response_from_content(
     content: OneOrMany<AssistantContent>,
-    /// Concatenated assistant text for the final turn.
-    /// This is empty only when the turn completed without emitting any text.
-    response: String,
     aggregated_usage: crate::completion::Usage,
-    /// Successfully completed completion requests made by this agent stream.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     completion_calls: Vec<CompletionCall>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<Vec<Message>>,
-}
-
-impl FinalResponse {
-    pub fn empty() -> Self {
-        Self::new(
-            OneOrMany::one(AssistantContent::text("")),
-            crate::completion::Usage::new(),
-            None,
-        )
-    }
-
-    pub fn new(
-        content: OneOrMany<AssistantContent>,
-        aggregated_usage: crate::completion::Usage,
-        history: Option<Vec<Message>>,
-    ) -> Self {
-        let response = assistant_text_from_choice(&content);
-        Self {
-            content,
-            response,
-            aggregated_usage,
-            completion_calls: Vec::new(),
-            history,
-        }
-    }
-
-    /// Returns the concatenated assistant text for the final turn.
-    pub fn response(&self) -> &str {
-        &self.response
-    }
-
-    /// Returns the structured assistant content for the final turn.
-    pub fn content(&self) -> &OneOrMany<AssistantContent> {
-        &self.content
-    }
-
-    /// Returns the structured assistant content for the final turn.
-    pub fn assistant_content(&self) -> &OneOrMany<AssistantContent> {
-        &self.content
-    }
-
-    pub fn usage(&self) -> crate::completion::Usage {
-        self.aggregated_usage
-    }
-
-    /// Returns successfully completed completion requests made by this agent stream, with usage when available.
-    ///
-    /// Each entry represents one provider completion request. Usage is a
-    /// whole-request provider snapshot, not incremental usage per streamed
-    /// token. Streaming providers may omit usage for some calls; those calls
-    /// have an entry with zero-valued usage.
-    pub fn completion_calls(&self) -> &[CompletionCall] {
-        &self.completion_calls
-    }
-
-    /// Number of completion requests this agent run made.
-    pub fn requests(&self) -> usize {
-        self.completion_calls.len()
-    }
-
-    pub fn history(&self) -> Option<&[Message]> {
-        self.history.as_deref()
-    }
+) -> PromptResponse {
+    let mut response = PromptResponse::new(assistant_text_from_choice(&content), aggregated_usage)
+        .with_content(content)
+        .with_completion_calls(completion_calls);
+    response.messages = history;
+    response
 }
 
 impl<R> MultiTurnStreamItem<R> {
@@ -199,7 +136,12 @@ impl<R> MultiTurnStreamItem<R> {
         content: OneOrMany<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
     ) -> Self {
-        Self::FinalResponse(FinalResponse::new(content, aggregated_usage, None))
+        Self::FinalResponse(final_response_from_content(
+            content,
+            aggregated_usage,
+            Vec::new(),
+            None,
+        ))
     }
 
     pub fn final_response_with_history(
@@ -207,7 +149,12 @@ impl<R> MultiTurnStreamItem<R> {
         aggregated_usage: crate::completion::Usage,
         history: Option<Vec<Message>>,
     ) -> Self {
-        Self::FinalResponse(FinalResponse::new(content, aggregated_usage, history))
+        Self::FinalResponse(final_response_from_content(
+            content,
+            aggregated_usage,
+            Vec::new(),
+            history,
+        ))
     }
 
     pub(crate) fn final_response_with_completion_calls(
@@ -216,9 +163,12 @@ impl<R> MultiTurnStreamItem<R> {
         completion_calls: Vec<CompletionCall>,
         history: Option<Vec<Message>>,
     ) -> Self {
-        let mut response = FinalResponse::new(content, aggregated_usage, history);
-        response.completion_calls = completion_calls;
-        Self::FinalResponse(response)
+        Self::FinalResponse(final_response_from_content(
+            content,
+            aggregated_usage,
+            completion_calls,
+            history,
+        ))
     }
 }
 
@@ -267,11 +217,12 @@ pub(crate) fn record_usage_on_span(span: &tracing::Span, usage: crate::completio
 /// call (a real tool call would have routed to `CallTools`, not `Done`). In that
 /// case the tool call AND the model's prose are dropped, any reasoning/image
 /// content is kept, and `output` is appended as the final text — so the streamed
-/// `response()` string is the structured output rather than the prose, with no
-/// unanswered tool_use, matching the non-streaming `output`. Note this shapes
-/// only the surfaced `FinalResponse.content()`; the persisted message history is
-/// built by the state machine (which keeps the prose, like the blocking driver),
-/// so `content()` and `history()` intentionally differ on prose in this case.
+/// [`PromptResponse::output`] string is the structured output rather than the
+/// prose, with no unanswered tool_use, matching the non-streaming `output`. Note
+/// this shapes only the surfaced [`PromptResponse::content`]; the persisted
+/// message history is built by the state machine (which keeps the prose, like the
+/// blocking driver), so `content` and `messages` intentionally differ on prose in
+/// this case.
 /// Otherwise returns `None` and the caller surfaces the turn's content unchanged.
 fn finalize_streamed_choice(
     last_final_choice: &OneOrMany<AssistantContent>,
@@ -1510,12 +1461,12 @@ where
 ///
 /// This helper prints streamed assistant text and reasoning only. Streaming
 /// metadata events, such as `MultiTurnStreamItem::CompletionCall`, are not
-/// printed; metadata is returned on the `FinalResponse` via accessors such as
-/// `FinalResponse::completion_calls`.
+/// printed; metadata is returned on the [`PromptResponse`] via accessors such as
+/// [`PromptResponse::completion_calls`].
 pub async fn stream_to_stdout<R>(
     stream: &mut StreamingResult<R>,
-) -> Result<FinalResponse, std::io::Error> {
-    let mut final_res = FinalResponse::empty();
+) -> Result<PromptResponse, std::io::Error> {
+    let mut final_res = PromptResponse::empty();
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
@@ -2382,7 +2333,7 @@ mod tests {
         let value = serde_json::to_value(&item).expect("serialize final response");
 
         assert_eq!(
-            value.get("completionCalls"),
+            value.get("completion_calls"),
             Some(&serde_json::json!([
                 {
                     "call_index": 0,
@@ -2832,8 +2783,8 @@ mod tests {
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                     saw_final_response = true;
-                    final_response_text = Some(res.response().to_owned());
-                    final_history = res.history().map(|history| history.to_vec());
+                    final_response_text = Some(res.output().to_owned());
+                    final_history = res.messages().map(|history| history.to_vec());
                     break;
                 }
                 Ok(_) => {}
@@ -3090,7 +3041,7 @@ mod tests {
                     saw_tool_result = true;
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    final_response_text = Some(response.response().to_string());
+                    final_response_text = Some(response.output().to_string());
                     break;
                 }
                 Ok(_) => {}
@@ -3194,7 +3145,7 @@ mod tests {
                     skipped_tool_result = Some(tool_result);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    final_response_text = Some(response.response().to_string());
+                    final_response_text = Some(response.output().to_string());
                     break;
                 }
                 Ok(_) => {}
@@ -3282,7 +3233,7 @@ mod tests {
                     completion_call_events.push(completion_call);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    final_response_text = Some(response.response().to_string());
+                    final_response_text = Some(response.output().to_string());
                     final_response_usage = response.usage();
                     final_completion_calls = response.completion_calls().to_vec();
                     break;
@@ -3407,7 +3358,7 @@ mod tests {
                     skipped_tool_result = Some(tool_result);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    final_response_text = Some(response.response().to_string());
+                    final_response_text = Some(response.output().to_string());
                     break;
                 }
                 Ok(_) => {}
@@ -3681,7 +3632,7 @@ mod tests {
                     StreamedAssistantContent::ToolCallDelta { .. },
                 )) => panic!("invalid tool-call delta should not be emitted"),
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    final_response_text = Some(response.response().to_string());
+                    final_response_text = Some(response.output().to_string());
                     final_response_usage = response.usage();
                     final_completion_calls = response.completion_calls().to_vec();
                     break;
@@ -3932,7 +3883,7 @@ mod tests {
                     skipped_tool_result = Some(tool_result);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    final_response_text = Some(response.response().to_string());
+                    final_response_text = Some(response.output().to_string());
                     break;
                 }
                 Ok(_) => {}
@@ -4356,7 +4307,7 @@ mod tests {
                     tool_result_ids.push(tool_result.id);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    final_response_text = Some(response.response().to_owned());
+                    final_response_text = Some(response.output().to_owned());
                     break;
                 }
                 Ok(_) => {}
@@ -5404,7 +5355,7 @@ mod tests {
                     text,
                 ))) => streamed_text.push_str(&text.text),
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    final_response_text = Some(res.response().to_owned());
+                    final_response_text = Some(res.output().to_owned());
                     break;
                 }
                 Ok(_) => {}
@@ -5435,7 +5386,7 @@ mod tests {
         }
 
         let final_response = final_response.expect("expected final response");
-        assert_eq!(final_response.response(), "cited answer");
+        assert_eq!(final_response.output(), "cited answer");
         let metadata = text_metadata(final_response.content())
             .expect("expected text metadata in final content");
         assert_eq!(
@@ -5468,7 +5419,7 @@ mod tests {
 
         let final_response = final_response.expect("expected final response");
         let history = final_response
-            .history()
+            .messages()
             .expect("with_history should include final history");
         let assistant_content = history
             .iter()
@@ -5538,7 +5489,7 @@ mod tests {
                     text,
                 ))) => streamed_text.push_str(&text.text),
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    final_response_text = Some(res.response().to_owned());
+                    final_response_text = Some(res.output().to_owned());
                     break;
                 }
                 Ok(_) => {}
@@ -5653,7 +5604,7 @@ mod tests {
     /// history is provided via `.history(..)`.
     ///
     /// This verifies that:
-    /// 1. FinalResponse.history() returns Some when a starting history was provided
+    /// 1. PromptResponse.messages() returns Some when a starting history was provided
     /// 2. The history contains both the user prompt and assistant response
     #[tokio::test]
     #[ignore = "This requires an API key"]
@@ -5686,7 +5637,7 @@ mod tests {
                     response_text.push_str(&text.text);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    final_history = res.history().map(|h| h.to_vec());
+                    final_history = res.messages().map(|h| h.to_vec());
                     break;
                 }
                 Err(e) => {
@@ -5740,7 +5691,7 @@ mod tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    history_in_final = res.history().map(|h| h.to_vec());
+                    history_in_final = res.messages().map(|h| h.to_vec());
                     break;
                 }
                 Ok(_) => {}
@@ -5749,7 +5700,7 @@ mod tests {
         }
 
         let final_history = history_in_final
-            .expect("FinalResponse.history should be populated when memory is configured");
+            .expect("PromptResponse.messages should be populated when memory is configured");
         assert_eq!(
             final_history.len(),
             2,
@@ -5778,7 +5729,7 @@ mod tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    history_in_final = res.history().map(|h| h.to_vec());
+                    history_in_final = res.messages().map(|h| h.to_vec());
                     break;
                 }
                 Ok(_) => {}
@@ -5787,7 +5738,7 @@ mod tests {
         }
 
         let final_history = history_in_final
-            .expect("FinalResponse.history should be populated when with_history is used");
+            .expect("PromptResponse.messages should be populated when with_history is used");
         assert_eq!(
             final_history.len(),
             2,

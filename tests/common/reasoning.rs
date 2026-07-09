@@ -456,7 +456,7 @@ pub(crate) async fn collect_stream_stats<R>(
                 }
             },
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                stats.final_response_text = Some(response.response().to_owned());
+                stats.final_response_text = Some(response.output().to_owned());
                 stats.got_final_response = true;
             }
             Ok(_) => {}
@@ -540,7 +540,7 @@ pub(crate) fn assert_universal(
     assert_eq!(
         stats.final_response_text.as_deref(),
         Some(stats.final_turn_text.as_str()),
-        "[{provider}] FinalResponse.response() diverged from streamed text."
+        "[{provider}] FinalResponse.output() diverged from streamed text."
     );
 }
 

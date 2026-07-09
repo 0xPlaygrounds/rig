@@ -243,10 +243,28 @@ where
     Ok(Option::<Usage>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// The result of an agent run, returned by **both** the blocking
+/// ([`PromptRequest`]) and streaming ([`StreamingPromptRequest`]) surfaces so a
+/// call site reads identically whether it used `.prompt()` or `.stream_prompt()`.
+///
+/// On the streaming surface this is the payload of the terminal
+/// [`MultiTurnStreamItem::FinalResponse`] item.
+///
+/// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
+/// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
 #[derive(Debug, Clone, Serialize, Deserialize)]
+// Serialize *and* deserialize both go through `PromptResponseRepr` so the two
+// directions agree on `content`'s wire shape (an `Option`). Routing only
+// deserialize through the shadow would make serialize write a bare `OneOrMany`
+// while deserialize expects an `Option`, breaking round-trips for positional /
+// non-self-describing formats (e.g. bincode). The repr carries the field serde
+// attributes, so the JSON shape is unchanged.
+#[serde(from = "PromptResponseRepr", into = "PromptResponseRepr")]
 #[non_exhaustive]
 pub struct PromptResponse {
+    /// Concatenated assistant text for the final turn.
     pub output: String,
+    /// Aggregated token usage across the whole run.
     pub usage: Usage,
     /// Successfully completed completion requests made by this agent run.
     ///
@@ -254,9 +272,60 @@ pub struct PromptResponse {
     /// entry's usage to inspect the final completion request's prompt/context
     /// length. Zero-valued entry usage means the provider reported no usage
     /// metrics for that request.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
+    /// Accumulated message history for the run (the run's persisted transcript),
+    /// unless memory/history bookkeeping was disabled for the request.
     pub messages: Option<Vec<Message>>,
+    /// Structured assistant content for the final turn.
+    ///
+    /// Where [`output`](Self::output) is the concatenated text, this preserves
+    /// the individual content parts (text, reasoning, images, …).
+    pub content: OneOrMany<AssistantContent>,
+}
+
+/// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
+/// serialized before the field existed still deserialize: a missing `content`
+/// reconstructs the structured final turn from `output` (a single text part),
+/// keeping [`PromptResponse::output`] and [`PromptResponse::content`] consistent
+/// for legacy data rather than defaulting to empty text. It carries the field
+/// serde attributes for both directions, keeping the serialized shape identical
+/// (`completion_calls` omitted when empty; `messages`/`content` always present).
+#[derive(Serialize, Deserialize)]
+struct PromptResponseRepr {
+    output: String,
+    usage: Usage,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    completion_calls: Vec<CompletionCall>,
+    messages: Option<Vec<Message>>,
+    #[serde(default)]
+    content: Option<OneOrMany<AssistantContent>>,
+}
+
+impl From<PromptResponseRepr> for PromptResponse {
+    fn from(repr: PromptResponseRepr) -> Self {
+        let content = repr
+            .content
+            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(repr.output.clone())));
+        Self {
+            output: repr.output,
+            usage: repr.usage,
+            completion_calls: repr.completion_calls,
+            messages: repr.messages,
+            content,
+        }
+    }
+}
+
+impl From<PromptResponse> for PromptResponseRepr {
+    fn from(response: PromptResponse) -> Self {
+        Self {
+            output: response.output,
+            usage: response.usage,
+            completion_calls: response.completion_calls,
+            messages: response.messages,
+            content: Some(response.content),
+        }
+    }
 }
 
 impl std::fmt::Display for PromptResponse {
@@ -267,12 +336,19 @@ impl std::fmt::Display for PromptResponse {
 
 impl PromptResponse {
     pub fn new(output: impl Into<String>, usage: Usage) -> Self {
+        let output = output.into();
         Self {
-            output: output.into(),
+            content: OneOrMany::one(AssistantContent::text(output.clone())),
+            output,
             usage,
             completion_calls: Vec::new(),
             messages: None,
         }
+    }
+
+    /// An empty run result (empty output, zero usage, no history).
+    pub fn empty() -> Self {
+        Self::new(String::new(), Usage::new())
     }
 
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
@@ -284,6 +360,32 @@ impl PromptResponse {
     pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
         self.completion_calls = completion_calls;
         self
+    }
+
+    /// Set the structured assistant content for the final turn.
+    pub fn with_content(mut self, content: OneOrMany<AssistantContent>) -> Self {
+        self.content = content;
+        self
+    }
+
+    /// The concatenated assistant text for the final turn.
+    pub fn output(&self) -> &str {
+        &self.output
+    }
+
+    /// Aggregated token usage across the whole run.
+    pub fn usage(&self) -> Usage {
+        self.usage
+    }
+
+    /// The run's accumulated message history, if tracked.
+    pub fn messages(&self) -> Option<&[Message]> {
+        self.messages.as_deref()
+    }
+
+    /// The structured assistant content for the final turn.
+    pub fn content(&self) -> &OneOrMany<AssistantContent> {
+        &self.content
     }
 
     /// Returns successfully completed completion requests made by this agent run.
@@ -651,7 +753,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{CompletionCall, PromptResponse, TypedPromptResponse};
+    use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
     use crate::{
         agent::{
             AgentBuilder,
@@ -1021,6 +1123,105 @@ mod tests {
                 CompletionCall::new(0, Usage::new()),
                 CompletionCall::new(1, usage(3, 4))
             ]
+        );
+    }
+
+    #[test]
+    fn prompt_response_missing_content_reconstructs_from_output() {
+        // Runs serialized before `content` existed must not deserialize to empty
+        // text: the structured final turn is reconstructed from `output`, so
+        // `output()` and `content()` stay consistent for legacy data.
+        let mut value = serde_json::to_value(PromptResponse::new("hello", Usage::new()))
+            .expect("serialize prompt response");
+        value
+            .as_object_mut()
+            .expect("prompt response serializes to a JSON object")
+            .remove("content");
+        assert!(
+            value.get("content").is_none(),
+            "fixture must omit the content field to model legacy data"
+        );
+
+        let response: PromptResponse = serde_json::from_value(value)
+            .expect("legacy response without content should deserialize");
+
+        assert_eq!(response.output(), "hello");
+        assert_eq!(response.content().iter().count(), 1);
+        assert_eq!(response.content().first(), AssistantContent::text("hello"));
+    }
+
+    #[test]
+    fn prompt_response_missing_content_empty_output_stays_empty_text() {
+        let mut value =
+            serde_json::to_value(PromptResponse::empty()).expect("serialize prompt response");
+        value
+            .as_object_mut()
+            .expect("prompt response serializes to a JSON object")
+            .remove("content");
+
+        let response: PromptResponse = serde_json::from_value(value)
+            .expect("legacy empty response without content should deserialize");
+
+        assert_eq!(response.output(), "");
+        assert_eq!(response.content().first(), AssistantContent::text(""));
+    }
+
+    #[test]
+    fn prompt_response_roundtrip_preserves_explicit_content() {
+        // An explicitly-set `content` (e.g. the streaming surface's structured
+        // final turn) must survive a serialize/deserialize round-trip and is not
+        // clobbered by the output-derived fallback.
+        let response = PromptResponse::new("visible text", Usage::new())
+            .with_content(crate::OneOrMany::one(AssistantContent::text("structured")));
+
+        let value = serde_json::to_value(&response).expect("serialize prompt response");
+        assert!(
+            value.get("content").is_some(),
+            "content is part of the serialized shape"
+        );
+
+        let round: PromptResponse =
+            serde_json::from_value(value).expect("deserialize prompt response");
+        assert_eq!(round.output(), "visible text");
+        // The stored content is "structured" — distinct from `output` — proving the
+        // output-derived fallback only fills a genuinely absent `content`. (Compare
+        // the text directly to sidestep the unrelated `Text::additional_params`
+        // serde round-trip asymmetry.)
+        let AssistantContent::Text(text) = round.content().first() else {
+            panic!("expected text content, got {:?}", round.content().first());
+        };
+        assert_eq!(text.text, "structured");
+    }
+
+    #[test]
+    fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
+        // Serialize *and* deserialize both route through `PromptResponseRepr`, so
+        // the two directions agree on `content`'s wire shape (an `Option`).
+        // Routing only deserialize through the shadow would make serialize write a
+        // bare `OneOrMany` while deserialize expects an `Option`, breaking
+        // round-trips for positional / non-self-describing formats. Assert this
+        // structurally: the message content types use `#[serde(flatten)]`, which no
+        // length-prefixed binary format can encode, and self-describing formats
+        // (JSON) collapse `Some(x)` and `x` to identical bytes, hiding the mismatch.
+        let response = PromptResponse::new("hi", usage(1, 2))
+            .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2))]);
+
+        let from_response = serde_json::to_value(&response).expect("serialize response");
+        let from_shadow = serde_json::to_value(PromptResponseRepr::from(response.clone()))
+            .expect("serialize shadow");
+        assert_eq!(
+            from_response, from_shadow,
+            "serialize must route through the same shadow as deserialize"
+        );
+
+        // ...and the value still round-trips back to an equivalent response.
+        let round: PromptResponse =
+            serde_json::from_value(from_response).expect("deserialize response");
+        assert_eq!(round.output(), "hi");
+        assert_eq!(round.usage(), usage(1, 2));
+        assert_eq!(
+            round.completion_calls(),
+            &[CompletionCall::new(0, usage(1, 2))]
         );
     }
 

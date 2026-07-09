@@ -636,16 +636,20 @@ impl AgentRun {
                         .cloned()
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
-                    if let Some(content) = OneOrMany::from_iter_optional(final_items) {
+                    let final_content = OneOrMany::from_iter_optional(final_items);
+                    if let Some(content) = final_content.clone() {
                         self.new_messages.push(Message::Assistant {
                             id: message_id,
                             content,
                         });
                     }
 
-                    let response = PromptResponse::new(output, self.usage)
+                    let mut response = PromptResponse::new(output, self.usage)
                         .with_messages(self.new_messages.clone())
                         .with_completion_calls(self.completion_calls.clone());
+                    if let Some(content) = final_content {
+                        response = response.with_content(content);
+                    }
                     self.state = RunState::Done(Box::new(response.clone()));
                     return Ok(AgentRunStep::Done(response));
                 }
@@ -712,7 +716,8 @@ impl AgentRun {
                     let response =
                         PromptResponse::new(assistant_text_from_choice(&choice), self.usage)
                             .with_messages(self.new_messages.clone())
-                            .with_completion_calls(self.completion_calls.clone());
+                            .with_completion_calls(self.completion_calls.clone())
+                            .with_content(choice.clone());
                     self.state = RunState::Done(Box::new(response.clone()));
                     Ok(AgentRunStep::Done(response))
                 }

@@ -217,14 +217,14 @@ async fn permission_control_streaming_example() -> Result<()> {
 
             let final_response = stream_to_stdout(&mut stream).await?;
             let last = last_result.lock().expect("lock last_result").clone();
-            assert_nonempty_response(final_response.response());
+            assert_nonempty_response(final_response.output());
             anyhow::ensure!(
                 final_response
-                    .response()
+                    .output()
                     .to_ascii_lowercase()
                     .contains("hello world"),
                 "expected the streamed final response to mention the file content, got {:?}",
-                final_response.response()
+                final_response.output()
             );
             anyhow::ensure!(last.as_deref() == Some("hello world"));
             anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);

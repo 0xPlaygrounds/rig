@@ -1224,7 +1224,7 @@ mod tests {
 
         // Same final output.
         assert_eq!(blocking.output, "the answer is 5");
-        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(final_response.output(), blocking.output);
 
         // Same medium-independent hook event sequence (model call, tool call,
         // tool result, second model call).
@@ -1249,7 +1249,7 @@ mod tests {
         // Same final message history (compared via serialized form to normalize).
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -2439,7 +2439,7 @@ mod tests {
 
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -2536,7 +2536,7 @@ mod tests {
     /// its final response.
     async fn drive_to_final_response<R: Send + 'static>(
         mut stream: crate::agent::prompt_request::streaming::StreamingResult<R>,
-    ) -> crate::agent::prompt_request::streaming::FinalResponse {
+    ) -> crate::agent::prompt_request::PromptResponse {
         let mut final_response = None;
         while let Some(item) = stream.next().await {
             if let MultiTurnStreamItem::FinalResponse(resp) =
@@ -2612,7 +2612,7 @@ mod tests {
 
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -2659,7 +2659,7 @@ mod tests {
         .await
         .expect("streamed tools must run concurrently, not deadlock on the first call");
 
-        let messages = final_response.history().expect("history").to_vec();
+        let messages = final_response.messages().expect("history").to_vec();
         // History stays in call order (tc1 then tc2), even though tc2 finished first.
         assert_eq!(
             tool_result_ids(&messages),
@@ -2721,7 +2721,7 @@ mod tests {
         );
         let final_response = final_response.expect("stream should yield a final response");
         assert_eq!(
-            tool_result_ids(final_response.history().expect("history")),
+            tool_result_ids(final_response.messages().expect("history")),
             vec!["tc1".to_string(), "tc2".to_string()]
         );
     }
@@ -3546,7 +3546,7 @@ mod tests {
         );
         let final_response = final_response.expect("stream should yield a final response");
         // The skip result is committed to history (the model sees the reason).
-        let history = final_response.history().expect("history");
+        let history = final_response.messages().expect("history");
         assert!(
             history.iter().any(|m| serde_json::to_string(m)
                 .map(|s| s.contains("blocked by policy"))
@@ -3990,7 +3990,7 @@ mod tests {
 
         // Same recovered output.
         assert_eq!(blocking.output, "the answer is 5");
-        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(final_response.output(), blocking.output);
 
         // Both drivers reported the invalid tool call to the hook, then executed
         // the repaired tool, so the shared event sequences match.
@@ -4010,7 +4010,7 @@ mod tests {
         // Same final message history.
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -4178,9 +4178,9 @@ mod tests {
         let final_response =
             final_response.expect("streaming scenario should yield a final response");
         ParityOutcome {
-            output: final_response.response().to_string(),
+            output: final_response.output().to_string(),
             messages: final_response
-                .history()
+                .messages()
                 .expect("streaming history")
                 .to_vec(),
             shared_events: hook.shared_events(),
@@ -4343,7 +4343,7 @@ mod tests {
             final_response.expect("stream should recover and yield a final response");
 
         assert_eq!(blocking.output, "acknowledged");
-        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(final_response.output(), blocking.output);
         assert_eq!(
             blocking_hook.shared_events(),
             streaming_hook.shared_events()
@@ -4357,7 +4357,7 @@ mod tests {
 
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -4582,7 +4582,7 @@ mod tests {
         let final_response = final_response.expect("stream should yield a final response");
 
         assert_eq!(blocking.output, "acknowledged");
-        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(final_response.output(), blocking.output);
         assert_eq!(
             blocking_hook.shared_events(),
             streaming_hook.shared_events()
@@ -4599,7 +4599,7 @@ mod tests {
 
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -4722,7 +4722,7 @@ mod tests {
         // model's emitted 2 + 3 = 5 — on both drivers.
         assert_eq!(blocking_hook.tool_results(), vec!["42".to_string()]);
         assert_eq!(blocking.output, "acknowledged");
-        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(final_response.output(), blocking.output);
         assert_eq!(
             blocking_hook.shared_events(),
             streaming_hook.shared_events()
@@ -4834,7 +4834,7 @@ mod tests {
         let final_response = final_response.expect("stream should yield a final response");
 
         assert_eq!(blocking.output, "acknowledged");
-        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(final_response.output(), blocking.output);
 
         // The ToolResult event observes the tool's ACTUAL output (5) on both
         // drivers — the replacement is applied after the event fires.
@@ -4845,7 +4845,7 @@ mod tests {
         // byte-identical across drivers.
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -5305,7 +5305,7 @@ mod tests {
             "the overridden history reaches the provider on the streaming surface too"
         );
         assert!(
-            !messages_have_sentinel(final_response.history().expect("history")),
+            !messages_have_sentinel(final_response.messages().expect("history")),
             "the persisted transcript is untouched by the per-turn history override on \
              the streaming surface too"
         );
@@ -5701,7 +5701,7 @@ mod tests {
     /// A structured-output Tool-mode output-tool call finalizes the run directly, so
     /// on the streaming surface it is **not** re-emitted as a complete
     /// `StreamAssistantItem(StreamedAssistantContent::ToolCall)` item (it bypasses
-    /// `drive_tool_calls`); its structured result is surfaced in the `FinalResponse`.
+    /// `drive_tool_calls`); its structured result is surfaced in the final `PromptResponse`.
     /// Guards the narrowed `StreamAssistantItem` contract.
     #[tokio::test]
     async fn output_tool_finalization_emits_no_complete_tool_call_stream_item() {
@@ -5728,7 +5728,7 @@ mod tests {
                     saw_complete_output_tool_call = true;
                 }
                 MultiTurnStreamItem::FinalResponse(res) => {
-                    final_has_output = res.response().contains("done");
+                    final_has_output = res.output().contains("done");
                 }
                 _ => {}
             }
@@ -5918,7 +5918,7 @@ mod tests {
         );
 
         assert_eq!(blocking.output, "done");
-        assert_eq!(final_response.response(), blocking.output);
+        assert_eq!(final_response.output(), blocking.output);
         assert_eq!(
             blocking_recorder.shared_events(),
             streaming_recorder.shared_events()
@@ -5929,7 +5929,7 @@ mod tests {
         // 101 (not the model's 1 + 1 = 2).
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
-            .history()
+            .messages()
             .expect("streaming history")
             .to_vec();
         assert_eq!(
@@ -5994,7 +5994,7 @@ mod tests {
             match item {
                 Err(err) => stream_error = Some(format!("{err}")),
                 Ok(MultiTurnStreamItem::FinalResponse(resp)) => {
-                    panic!("aborted stream must not finalize, got: {}", resp.response())
+                    panic!("aborted stream must not finalize, got: {}", resp.output())
                 }
                 Ok(_) => {}
             }

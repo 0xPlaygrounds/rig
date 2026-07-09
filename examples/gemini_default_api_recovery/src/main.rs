@@ -6,7 +6,7 @@
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, FinalResponse, Flow, HookContext, InvalidToolCallContext, MultiTurnStreamItem,
+    AgentHook, Flow, HookContext, InvalidToolCallContext, MultiTurnStreamItem, PromptResponse,
     StepEvent, StreamingResult,
 };
 use rig::client::{CompletionClient, ProviderClient};
@@ -172,7 +172,7 @@ where
 struct WorkspaceStreamObservation {
     streamed_text: String,
     reasoning_text: String,
-    final_response: Option<FinalResponse>,
+    final_response: Option<PromptResponse>,
     tool_calls: Vec<String>,
     tool_call_deltas: usize,
     executions: Vec<JavaScriptProgram>,
@@ -187,7 +187,7 @@ impl WorkspaceStreamObservation {
     fn final_response_text(&self) -> Option<&str> {
         self.final_response
             .as_ref()
-            .map(|response| response.response())
+            .map(|response| response.output())
     }
 
     fn diagnostic_summary(&self) -> String {
@@ -417,12 +417,12 @@ async fn main() -> anyhow::Result<()> {
         let Some(final_response) = observation.final_response.as_ref() else {
             anyhow::bail!("attempt {attempt}: stream should yield a final response. {diagnostics}");
         };
-        if final_response.response().trim().is_empty() {
+        if final_response.output().trim().is_empty() {
             anyhow::bail!(
                 "attempt {attempt}: final response should not be empty after the tool roundtrip. {diagnostics}"
             );
         }
-        if !final_response.response().contains(JAVASCRIPT_MARKER) {
+        if !final_response.output().contains(JAVASCRIPT_MARKER) {
             anyhow::bail!(
                 "attempt {attempt}: final response should mention the tool marker. {diagnostics}"
             );

@@ -537,7 +537,7 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                     })) => events.push("tool_result"),
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                         saw_final = true;
-                        final_text = response.response().to_owned();
+                        final_text = response.output().to_owned();
                         events.push("final_response");
                     }
                     Ok(_) => {}

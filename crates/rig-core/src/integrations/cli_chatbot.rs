@@ -95,7 +95,7 @@ where
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
                     self.usage = final_response.usage();
-                    messages = final_response.history().map(|history| history.to_vec());
+                    messages = final_response.messages().map(|history| history.to_vec());
                 }
                 Err(e) => {
                     break Err(PromptError::CompletionError(

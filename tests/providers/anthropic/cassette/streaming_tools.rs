@@ -282,9 +282,9 @@ async fn collect_concurrent_tool_observation<R>(
                 observation.events.push("tool_result");
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                observation.final_response_text = Some(response.response().to_owned());
+                observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
-                if let Some(history) = response.history() {
+                if let Some(history) = response.messages() {
                     observation.history_tool_results =
                         tool_result_names_in_history(history, &tool_names_by_id);
                     observation.last_history_tool_result_message =

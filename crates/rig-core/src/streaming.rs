@@ -590,7 +590,7 @@ where
 {
     /// Stream a chat with history to the model.
     ///
-    /// The messages returned by the model can be accessed via `FinalResponse::history()`
+    /// The messages returned by the model can be accessed via `PromptResponse::messages()`
     ///
     /// You are responsible for managing history, a simple linear solution could look like:
     /// ```ignore
@@ -603,7 +603,7 @@ where
     ///      while let Some(msg) = stream.next().await {
     ///         match msg {
     ///              Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-    ///                  history.extend_from_slice(fin.history().unwrap_or_default());
+    ///                  history.extend_from_slice(fin.messages().unwrap_or_default());
     ///                  break;
     ///             }
     ///             Ok(_other) => { /* Do something with this chunk */ }
@@ -638,7 +638,7 @@ pub trait StreamingCompletion<M: CompletionModel> {
 /// A helper function to stream a low-level [`StreamingCompletionResponse`] to stdout.
 ///
 /// Named to disambiguate from the high-level [`agent::stream_to_stdout`](crate::agent::stream_to_stdout),
-/// which drives a [`StreamingResult`](crate::agent::StreamingResult) and returns a `FinalResponse`.
+/// which drives a [`StreamingResult`](crate::agent::StreamingResult) and returns a `PromptResponse`.
 /// Tool call deltas are ignored as tool calls are generally much easier to handle when received in their entirety rather than using deltas.
 pub async fn stream_completion_to_stdout<M>(
     agent: &'static Agent<M>,

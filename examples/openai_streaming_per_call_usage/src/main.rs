@@ -158,7 +158,7 @@ async fn main() -> Result<()> {
 
     let response = final_response.ok_or_else(|| anyhow!("stream ended without final response"))?;
 
-    println!("\n\nfinal response: {}", response.response());
+    println!("\n\nfinal response: {}", response.output());
     print_usage("aggregate agent usage", response.usage());
 
     if let Some(final_completion_call) = response.completion_calls().last().copied() {
