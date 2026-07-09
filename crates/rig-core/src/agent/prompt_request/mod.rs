@@ -253,7 +253,13 @@ where
 /// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
 /// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "PromptResponseRepr")]
+// Serialize *and* deserialize both go through `PromptResponseRepr` so the two
+// directions agree on `content`'s wire shape (an `Option`). Routing only
+// deserialize through the shadow would make serialize write a bare `OneOrMany`
+// while deserialize expects an `Option`, breaking round-trips for positional /
+// non-self-describing formats (e.g. bincode). The repr carries the field serde
+// attributes, so the JSON shape is unchanged.
+#[serde(from = "PromptResponseRepr", into = "PromptResponseRepr")]
 #[non_exhaustive]
 pub struct PromptResponse {
     /// Concatenated assistant text for the final turn.
@@ -266,7 +272,6 @@ pub struct PromptResponse {
     /// entry's usage to inspect the final completion request's prompt/context
     /// length. Zero-valued entry usage means the provider reported no usage
     /// metrics for that request.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
     /// Accumulated message history for the run (the run's persisted transcript),
     /// unless memory/history bookkeeping was disabled for the request.
@@ -278,18 +283,19 @@ pub struct PromptResponse {
     pub content: OneOrMany<AssistantContent>,
 }
 
-/// Deserialization shadow for [`PromptResponse`]. `content` is optional here so
-/// runs serialized before the field existed still deserialize: a missing
-/// `content` reconstructs the structured final turn from `output` (a single
-/// text part), keeping [`PromptResponse::output`] and [`PromptResponse::content`]
-/// consistent for legacy data rather than defaulting to empty text.
-#[derive(Deserialize)]
+/// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
+/// serialized before the field existed still deserialize: a missing `content`
+/// reconstructs the structured final turn from `output` (a single text part),
+/// keeping [`PromptResponse::output`] and [`PromptResponse::content`] consistent
+/// for legacy data rather than defaulting to empty text. It carries the field
+/// serde attributes for both directions, keeping the serialized shape identical
+/// (`completion_calls` omitted when empty; `messages`/`content` always present).
+#[derive(Serialize, Deserialize)]
 struct PromptResponseRepr {
     output: String,
     usage: Usage,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     completion_calls: Vec<CompletionCall>,
-    #[serde(default)]
     messages: Option<Vec<Message>>,
     #[serde(default)]
     content: Option<OneOrMany<AssistantContent>>,
@@ -306,6 +312,18 @@ impl From<PromptResponseRepr> for PromptResponse {
             completion_calls: repr.completion_calls,
             messages: repr.messages,
             content,
+        }
+    }
+}
+
+impl From<PromptResponse> for PromptResponseRepr {
+    fn from(response: PromptResponse) -> Self {
+        Self {
+            output: response.output,
+            usage: response.usage,
+            completion_calls: response.completion_calls,
+            messages: response.messages,
+            content: Some(response.content),
         }
     }
 }
@@ -735,7 +753,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{CompletionCall, PromptResponse, TypedPromptResponse};
+    use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
     use crate::{
         agent::{
             AgentBuilder,
@@ -1173,6 +1191,38 @@ mod tests {
             panic!("expected text content, got {:?}", round.content().first());
         };
         assert_eq!(text.text, "structured");
+    }
+
+    #[test]
+    fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
+        // Serialize *and* deserialize both route through `PromptResponseRepr`, so
+        // the two directions agree on `content`'s wire shape (an `Option`).
+        // Routing only deserialize through the shadow would make serialize write a
+        // bare `OneOrMany` while deserialize expects an `Option`, breaking
+        // round-trips for positional / non-self-describing formats. Assert this
+        // structurally: the message content types use `#[serde(flatten)]`, which no
+        // length-prefixed binary format can encode, and self-describing formats
+        // (JSON) collapse `Some(x)` and `x` to identical bytes, hiding the mismatch.
+        let response = PromptResponse::new("hi", usage(1, 2))
+            .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2))]);
+
+        let from_response = serde_json::to_value(&response).expect("serialize response");
+        let from_shadow = serde_json::to_value(PromptResponseRepr::from(response.clone()))
+            .expect("serialize shadow");
+        assert_eq!(
+            from_response, from_shadow,
+            "serialize must route through the same shadow as deserialize"
+        );
+
+        // ...and the value still round-trips back to an equivalent response.
+        let round: PromptResponse =
+            serde_json::from_value(from_response).expect("deserialize response");
+        assert_eq!(round.output(), "hi");
+        assert_eq!(round.usage(), usage(1, 2));
+        assert_eq!(
+            round.completion_calls(),
+            &[CompletionCall::new(0, usage(1, 2))]
+        );
     }
 
     #[tokio::test]
