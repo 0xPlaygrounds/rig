@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dead code removed: the never-constructed Gemini embedding request structs (`EmbedContentRequest` and friends; the live response types are kept), commented-out lines in the OpenAI Responses API, and a placeholder tool-result error string replaced with a descriptive message (no API change).
 - *(tool)* [**breaking**] flatten `Tool` and `ToolDyn`: tool implementations now provide `description()` and `parameters()` directly, while provider-facing `ToolDefinition`s are generated at registration/request boundaries. `Tool::definition(prompt)` and `ToolDyn::definition(prompt)` are removed, and the registered `Tool::NAME` / `Tool::name()` / `ToolDyn::name()` is the only advertised dispatch identity.
 
+### Removed
+
+- *(anthropic)* [**breaking**] remove the unused public `providers::anthropic::decoders` module; Anthropic streaming uses the shared SSE machinery.
+
 ### Added
 
 - *(agent)* [**breaking**] hook system v2 — composable middleware for the agent run loop. Builds on the unified `AgentHook` below and makes hooks compose the way production middleware needs:
