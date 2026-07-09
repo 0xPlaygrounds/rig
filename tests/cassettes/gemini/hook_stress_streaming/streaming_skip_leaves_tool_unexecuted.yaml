@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Add 14 and 6, and subtract 9 from 40. Report what you can.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the provided tools. If a tool reports it is unavailable, acknowledge that and report any results you have.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e. x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":14,\"y\":6},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"},{\"functionCall\":{\"args\":{\"x\":40,\"y\":9},\"name\":\"subtract\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":38,\"promptTokenCount\":162,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":162}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":48,\"totalTokenCount\":248}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Add 14 and 6, and subtract 9 from 40. Report what you can.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":14,"y":6},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{"x":40,"y":9},"name":"subtract"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":20}},"thought":false},{"functionResponse":{"name":"subtract","response":{"result":"the subtract tool is offline; continue without it"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the provided tools. If a tool reports it is unavailable, acknowledge that and report any results you have.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e. x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"I added\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":281,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":281}],\"serviceTier\":\"standard\",\"totalTokenCount\":283}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" 14 and 6, which resulted in 20. The subtract tool is offline\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":281,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":281}],\"serviceTier\":\"standard\",\"totalTokenCount\":301}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\", so I am unable to subtract 9 from 40.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":34,\"promptTokenCount\":281,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":281}],\"serviceTier\":\"standard\",\"totalTokenCount\":315}}\r\n\r\n"

@@ -16,6 +16,7 @@ pub(super) struct PlatformAuthenticator {
     access_token_file: Option<PathBuf>,
     api_key_file: Option<PathBuf>,
     device_code_handler: DeviceCodeHandler,
+    allow_device_flow: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -58,11 +59,13 @@ impl PlatformAuthenticator {
         access_token_file: Option<PathBuf>,
         api_key_file: Option<PathBuf>,
         device_code_handler: DeviceCodeHandler,
+        allow_device_flow: bool,
     ) -> Self {
         Self {
             access_token_file,
             api_key_file,
             device_code_handler,
+            allow_device_flow,
         }
     }
 
@@ -291,6 +294,12 @@ impl PlatformAuthenticator {
     }
 
     async fn reauthenticate_access_token(&self) -> Result<String, AuthError> {
+        if !self.allow_device_flow {
+            return Err(AuthError::Message(
+                "GitHub Copilot sign-in required. Reconnect Copilot in Settings before using this provider."
+                    .into(),
+            ));
+        }
         let token = self.login_device_flow().await?;
         self.write_access_token(&token)?;
         Ok(token)
@@ -452,8 +461,9 @@ fn should_retry_with_fresh_access_token_status(status: Option<reqwest::StatusCod
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyRecord, bootstrap_token_fingerprint, next_poll_interval_seconds,
-        normalize_poll_interval_seconds, should_retry_with_fresh_access_token_status,
+        ApiKeyRecord, DeviceCodeHandler, PlatformAuthenticator, bootstrap_token_fingerprint,
+        next_poll_interval_seconds, normalize_poll_interval_seconds,
+        should_retry_with_fresh_access_token_status,
     };
     use reqwest::StatusCode;
 
@@ -474,6 +484,18 @@ mod tests {
             record.api_base().as_deref(),
             Some("https://api.individual.githubcopilot.com")
         );
+    }
+
+    #[tokio::test]
+    async fn noninteractive_oauth_requires_sign_in_instead_of_device_flow() {
+        let auth = PlatformAuthenticator::new(None, None, DeviceCodeHandler::default(), false);
+        let err = auth
+            .auth_context_oauth()
+            .await
+            .expect_err("missing cached auth should not start device flow")
+            .to_string();
+
+        assert!(err.contains("GitHub Copilot sign-in required"), "{err}");
     }
 
     #[test]

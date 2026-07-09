@@ -36,7 +36,7 @@ async fn required_forces_a_tool_call() {
             let request = model
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(Adder.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -69,7 +69,7 @@ async fn none_suppresses_tool_calls() {
             let request = model
                 .completion_request("What is 2 plus 3? Reply with just the number.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(Adder.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::None)
                 .build();
 
@@ -109,8 +109,8 @@ async fn specific_single_function_targets_named_tool() {
             let request = model
                 .completion_request("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(Adder.definition(String::new()).await)
-                .tool(Subtract.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
                 })
@@ -168,9 +168,9 @@ async fn specific_multiple_functions_use_allowed_tools() {
             let request = model
                 .completion_request("What is 2 plus 3? Use exactly one tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(Adder.definition(String::new()).await)
-                .tool(Subtract.definition(String::new()).await)
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Subtract))
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Adder::NAME.to_string(), Subtract::NAME.to_string()],
                 })

@@ -72,8 +72,12 @@ impl Tool for Notify {
     type Args = NotifyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        notify_tool_definition()
+    fn description(&self) -> String {
+        "Send a short notification for a user status update.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        notify_tool_definition().parameters
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

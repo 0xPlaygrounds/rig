@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use anyhow::Result;
 use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt, ToolDefinition};
+use rig::completion::{CompletionModel, Prompt};
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -45,16 +45,16 @@ impl Tool for SearchWeb {
     type Args = SearchArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Search the web for a query (read-only).".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": { "query": { "type": "string", "description": "Search query" } },
-                "required": ["query"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Search the web for a query (read-only).".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": { "query": { "type": "string", "description": "Search query" } },
+            "required": ["query"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -77,19 +77,19 @@ impl Tool for TransferFunds {
     type Args = TransferArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Transfer funds to an account.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "to": { "type": "string", "description": "Destination account id" },
-                    "amount": { "type": "integer", "description": "Amount in whole dollars" }
-                },
-                "required": ["to", "amount"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Transfer funds to an account.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "to": { "type": "string", "description": "Destination account id" },
+                "amount": { "type": "integer", "description": "Amount in whole dollars" }
+            },
+            "required": ["to", "amount"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

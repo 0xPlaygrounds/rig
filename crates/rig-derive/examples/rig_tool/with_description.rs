@@ -1,7 +1,6 @@
 use rig_core::client::{CompletionClient, ProviderClient};
 use rig_core::completion::Prompt;
 use rig_core::providers;
-use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 // Demonstrates explicit attribute override.
@@ -51,7 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "CALCULATOR: {}",
-        serde_json::to_string_pretty(&CALCULATOR.definition(String::default()).await)?
+        serde_json::to_string_pretty(&rig_core::tool::tool_definition(&CALCULATOR))?
     );
 
     for prompt in [

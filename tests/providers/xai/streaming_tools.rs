@@ -2,7 +2,7 @@
 
 use rig::OneOrMany;
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, ToolDefinition};
+use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message};
 use rig::providers::xai;
@@ -42,16 +42,16 @@ impl Tool for StatusWordTool {
     type Args = NoArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Return a harmless status word.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "required": [],
-            }),
-        }
+    fn description(&self) -> String {
+        "Return a harmless status word.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+        })
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -114,7 +114,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let request = model
                 .completion_request(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
-                .tool(StatusWordTool.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&StatusWordTool))
                 .build();
 
             let first_turn = collect_raw_stream_observation(

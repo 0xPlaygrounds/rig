@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Compute 12 + 8, then compute 30 - 7. Report whichever you can.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. Use a provided tool for any arithmetic you can; if a tool is unavailable, say so and continue.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":12,\"y\":8},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":101,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":101}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":67,\"totalTokenCount\":187}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Compute 12 + 8, then compute 30 - 7. Report whichever you can.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":12,"y":8},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":20}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. Use a provided tool for any arithmetic you can; if a tool is unavailable, say so and continue.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"I\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":201,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":201}],\"serviceTier\":\"standard\",\"totalTokenCount\":202}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" can compute 12 + 8 = 20. I cannot help\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":17,\"promptTokenCount\":201,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":201}],\"serviceTier\":\"standard\",\"totalTokenCount\":218}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" with subtraction.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":201,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":201}],\"serviceTier\":\"standard\",\"totalTokenCount\":221}}\r\n\r\n"

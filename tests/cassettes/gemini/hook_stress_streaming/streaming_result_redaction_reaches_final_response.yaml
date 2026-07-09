@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 5 and 5, then report the exact tool result.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":5,\"y\":5},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":91,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":91}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":49,\"totalTokenCount\":158}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 5 and 5, then report the exact tool result.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":5,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":"STREAM-REDACTED-Q3"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":178,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":178}],\"serviceTier\":\"standard\",\"totalTokenCount\":179}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"add_response\\\": {\\\"result\\\": \\\"STREAM-REDACTED-Q3\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":17,\"promptTokenCount\":178,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":178}],\"serviceTier\":\"standard\",\"totalTokenCount\":195}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\\"}}\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":178,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":178}],\"serviceTier\":\"standard\",\"totalTokenCount\":196}}\r\n\r\n"

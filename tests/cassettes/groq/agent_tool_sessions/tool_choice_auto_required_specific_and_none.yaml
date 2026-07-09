@@ -7,13 +7,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object.","role":"user"}],"model":"llama-3.3-70b-versatile","stream":false,"tool_choice":"auto","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object.","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":"auto","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.016450879,"completion_tokens":13,"prompt_time":0.012078655,"prompt_tokens":223,"queue_time":0.176464712,"total_time":0.028529534,"total_tokens":236},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":1679597799}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.021927912,"completion_tokens":13,"prompt_time":0.014274497,"prompt_tokens":223,"queue_time":0.174977728,"total_time":0.036202409,"total_tokens":236},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":2001603573}}'
 ---
 when:
   path: /openai/v1/chat/completions
@@ -24,13 +24,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object and do not answer in prose.","role":"user"}],"model":"llama-3.3-70b-versatile","stream":false,"tool_choice":"required","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object and do not answer in prose.","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":"required","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.017010148,"completion_tokens":10,"prompt_time":0.038180495,"prompt_tokens":245,"queue_time":1.081336217,"total_time":0.055190643,"total_tokens":255},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_2","seed":1082240246}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_2","usage":{"completion_time":0.016424491,"completion_tokens":10,"prompt_time":0.124405994,"prompt_tokens":245,"queue_time":0.174998454,"total_time":0.140830485,"total_tokens":255},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_2","seed":1078942677}}'
 ---
 when:
   path: /openai/v1/chat/completions
@@ -41,13 +41,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call the orchard-label tool exactly once with an empty object and do not call any other tool.","role":"user"}],"model":"llama-3.3-70b-versatile","stream":false,"tool_choice":{"function":{"name":"lookup_orchard_label"},"type":"function"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"Call the orchard-label tool exactly once with an empty object and do not call any other tool.","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":{"function":{"name":"lookup_orchard_label"},"type":"function"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"call_REDACTED_3","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_2","usage":{"completion_time":0.027428093,"completion_tokens":5,"prompt_time":0.022998352,"prompt_tokens":304,"queue_time":0.359437857,"total_time":0.050426445,"total_tokens":309},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_3","seed":98218926}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"call_REDACTED_3","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_3","usage":{"completion_time":0.027099985,"completion_tokens":5,"prompt_time":0.017971389,"prompt_tokens":304,"queue_time":0.070917625,"total_time":0.045071374,"total_tokens":309},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_3","seed":1013582742}}'
 ---
 when:
   path: /openai/v1/chat/completions
@@ -58,10 +58,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Do not call tools. Reply with exactly this phrase: no-tool-answer","role":"user"}],"model":"llama-3.3-70b-versatile","stream":false,"tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"Do not call tools. Reply with exactly this phrase: no-tool-answer","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"no-tool-answer","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_3","usage":{"completion_time":0.008695341,"completion_tokens":4,"prompt_time":0.003336324,"prompt_tokens":76,"queue_time":0.174372834,"total_time":0.012031665,"total_tokens":80},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_4","seed":1298742563}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"no-tool-answer","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.009857455,"completion_tokens":4,"prompt_time":0.003658059,"prompt_tokens":76,"queue_time":0.174900047,"total_time":0.013515514,"total_tokens":80},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_4","seed":626683360}}'

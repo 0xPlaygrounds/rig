@@ -23,7 +23,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt, ToolDefinition};
+use rig::completion::{CompletionModel, Prompt};
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -52,20 +52,20 @@ impl Tool for SendEmail {
     type Args = SendEmailArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Send an email to a recipient.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "to": { "type": "string", "description": "Recipient email address" },
-                    "subject": { "type": "string", "description": "Email subject line" },
-                    "body": { "type": "string", "description": "Email body" }
-                },
-                "required": ["to", "subject", "body"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Send an email to a recipient.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "to": { "type": "string", "description": "Recipient email address" },
+                "subject": { "type": "string", "description": "Email subject line" },
+                "body": { "type": "string", "description": "Email body" }
+            },
+            "required": ["to", "subject", "body"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -93,18 +93,18 @@ impl Tool for DeleteFile {
     type Args = DeleteFileArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Permanently delete a file at the given path.".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "description": "Absolute path of the file to delete" }
-                },
-                "required": ["path"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Permanently delete a file at the given path.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "Absolute path of the file to delete" }
+            },
+            "required": ["path"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

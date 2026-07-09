@@ -10,6 +10,7 @@ impl PlatformAuthenticator {
     pub(super) fn new(
         _auth_file: Option<PathBuf>,
         _device_code_handler: DeviceCodeHandler,
+        _allow_device_flow: bool,
     ) -> Self {
         Self
     }

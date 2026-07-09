@@ -117,6 +117,14 @@ impl<H> Capabilities<H> for ZAiAnthropicExt {
 impl DebugExt for ZAiExt {}
 impl DebugExt for ZAiAnthropicExt {}
 
+impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
+    const PROVIDER_NAME: &'static str = "zai";
+
+    type StreamingUsage = super::openai::Usage;
+
+    type Response = super::openai::CompletionResponse;
+}
+
 impl ProviderBuilder for ZAiBuilder {
     type Extension<H>
         = ZAiExt

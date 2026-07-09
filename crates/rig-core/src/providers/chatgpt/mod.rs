@@ -87,6 +87,7 @@ pub struct ChatGPTBuilder {
     auth_file: Option<PathBuf>,
     default_instructions: Option<String>,
     device_code_handler: auth::DeviceCodeHandler,
+    allow_device_flow: bool,
     originator: String,
     user_agent: Option<String>,
 }
@@ -125,6 +126,7 @@ impl Default for ChatGPTBuilder {
                     .unwrap_or_else(|| DEFAULT_INSTRUCTIONS.to_string()),
             ),
             device_code_handler: auth::DeviceCodeHandler::default(),
+            allow_device_flow: true,
             originator: std::env::var("CHATGPT_ORIGINATOR")
                 .ok()
                 .filter(|value| !value.is_empty())
@@ -213,6 +215,7 @@ impl ProviderBuilder for ChatGPTBuilder {
                 auth,
                 ext.auth_file.clone(),
                 ext.device_code_handler.clone(),
+                ext.allow_device_flow,
             ),
             default_instructions: ext.default_instructions.clone(),
             originator: ext.originator.clone(),
@@ -266,6 +269,19 @@ impl<H> ClientBuilder<H> {
     {
         self.over_ext(|mut ext| {
             ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
+            ext
+        })
+    }
+
+    /// Control whether OAuth may fall back to an interactive device-code login
+    /// when the cached token is missing or cannot be refreshed.
+    ///
+    /// Default is `true` for CLI-style interactive use. Long-running services
+    /// should set this to `false` so a stale refresh token returns an actionable
+    /// auth error instead of printing a device code and waiting unattended.
+    pub fn allow_device_flow(self, allow: bool) -> Self {
+        self.over_ext(|mut ext| {
+            ext.allow_device_flow = allow;
             ext
         })
     }

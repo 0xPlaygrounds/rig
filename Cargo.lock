@@ -12627,6 +12627,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tool_result_outcomes"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "tower"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"

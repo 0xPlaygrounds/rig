@@ -51,8 +51,12 @@ impl Tool for Add {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Add x and y together")
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -68,8 +72,12 @@ impl Tool for Subtract {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)")
+    fn description(&self) -> String {
+        "Subtract y from x (i.e. x - y)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -87,8 +95,12 @@ impl Tool for Sum {
     type Args = OperationArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        operation_definition(Self::NAME, "Add x and y together (alias of add)")
+    fn description(&self) -> String {
+        "Add x and y together (alias of add)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        operation_definition(Self::NAME, "Add x and y together (alias of add)").parameters
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
