@@ -23,7 +23,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, Flow, HookContext, RequestPatch, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt, PromptError, ToolDefinition};
+use rig::completion::{CompletionModel, Prompt, PromptError};
 use rig::message::ToolChoice;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -57,19 +57,19 @@ impl Tool for Add {
     type Args = AddArgs;
     type Output = i64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Add x and y together".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": { "type": "number", "description": "The first addend" },
-                    "y": { "type": "number", "description": "The second addend" }
-                },
-                "required": ["x", "y"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": { "type": "number", "description": "The first addend" },
+                "y": { "type": "number", "description": "The second addend" }
+            },
+            "required": ["x", "y"]
+        })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
