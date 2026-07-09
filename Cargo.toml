@@ -113,7 +113,7 @@ reqwest-middleware = { version = "0.5.2", default-features = false }
 reqwest-retry = "0.9"
 rmcp = "1.7.0"
 url = "2.5"
-rusqlite = "0.32"
+rusqlite = "0.40.1"
 scylla = "1.2.0"
 schemars = "1.0.4"
 serde = "1.0.219"
