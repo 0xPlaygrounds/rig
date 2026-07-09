@@ -243,10 +243,21 @@ where
     Ok(Option::<Usage>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// The result of an agent run, returned by **both** the blocking
+/// ([`PromptRequest`]) and streaming ([`StreamingPromptRequest`]) surfaces so a
+/// call site reads identically whether it used `.prompt()` or `.stream_prompt()`.
+///
+/// On the streaming surface this is the payload of the terminal
+/// [`MultiTurnStreamItem::FinalResponse`] item.
+///
+/// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
+/// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PromptResponse {
+    /// Concatenated assistant text for the final turn.
     pub output: String,
+    /// Aggregated token usage across the whole run.
     pub usage: Usage,
     /// Successfully completed completion requests made by this agent run.
     ///
@@ -256,7 +267,21 @@ pub struct PromptResponse {
     /// metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
+    /// Accumulated message history for the run (the run's persisted transcript),
+    /// unless memory/history bookkeeping was disabled for the request.
     pub messages: Option<Vec<Message>>,
+    /// Structured assistant content for the final turn.
+    ///
+    /// Where [`output`](Self::output) is the concatenated text, this preserves
+    /// the individual content parts (text, reasoning, images, …).
+    #[serde(default = "empty_final_content")]
+    pub content: OneOrMany<AssistantContent>,
+}
+
+/// Serde default for [`PromptResponse::content`] so runs serialized before the
+/// field existed still deserialize.
+fn empty_final_content() -> OneOrMany<AssistantContent> {
+    OneOrMany::one(AssistantContent::text(""))
 }
 
 impl std::fmt::Display for PromptResponse {
@@ -267,12 +292,19 @@ impl std::fmt::Display for PromptResponse {
 
 impl PromptResponse {
     pub fn new(output: impl Into<String>, usage: Usage) -> Self {
+        let output = output.into();
         Self {
-            output: output.into(),
+            content: OneOrMany::one(AssistantContent::text(output.clone())),
+            output,
             usage,
             completion_calls: Vec::new(),
             messages: None,
         }
+    }
+
+    /// An empty run result (empty output, zero usage, no history).
+    pub fn empty() -> Self {
+        Self::new(String::new(), Usage::new())
     }
 
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
@@ -284,6 +316,32 @@ impl PromptResponse {
     pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
         self.completion_calls = completion_calls;
         self
+    }
+
+    /// Set the structured assistant content for the final turn.
+    pub fn with_content(mut self, content: OneOrMany<AssistantContent>) -> Self {
+        self.content = content;
+        self
+    }
+
+    /// The concatenated assistant text for the final turn.
+    pub fn output(&self) -> &str {
+        &self.output
+    }
+
+    /// Aggregated token usage across the whole run.
+    pub fn usage(&self) -> Usage {
+        self.usage
+    }
+
+    /// The run's accumulated message history, if tracked.
+    pub fn messages(&self) -> Option<&[Message]> {
+        self.messages.as_deref()
+    }
+
+    /// The structured assistant content for the final turn.
+    pub fn content(&self) -> &OneOrMany<AssistantContent> {
+        &self.content
     }
 
     /// Returns successfully completed completion requests made by this agent run.

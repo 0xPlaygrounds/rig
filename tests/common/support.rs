@@ -384,7 +384,7 @@ pub(crate) async fn collect_stream_final_response<R>(
 
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item? {
-            final_response = Some(response.response().to_owned());
+            final_response = Some(response.output().to_owned());
         }
     }
 
@@ -524,7 +524,7 @@ pub(crate) async fn collect_stream_observation<R>(
                 observation.events.push("tool_result");
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                observation.final_response_text = Some(response.response().to_owned());
+                observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
                 observation.events.push("final_response");
             }
@@ -629,7 +629,7 @@ pub(crate) fn assert_two_tool_roundtrip_contract(
     assert_eq!(
         observation.final_response_text.as_deref(),
         Some(observation.final_turn_text.as_str()),
-        "FinalResponse.response() should match the final turn's streamed text"
+        "FinalResponse.output() should match the final turn's streamed text"
     );
     assert!(
         observation.tool_results >= expected_tools.len(),
@@ -713,7 +713,7 @@ pub(crate) fn assert_tool_call_precedes_later_text(
     assert_eq!(
         observation.final_response_text.as_deref(),
         Some(observation.final_turn_text.as_str()),
-        "FinalResponse.response() should match the final turn's streamed text"
+        "FinalResponse.output() should match the final turn's streamed text"
     );
     assert!(
         observation

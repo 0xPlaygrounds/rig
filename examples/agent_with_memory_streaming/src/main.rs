@@ -17,7 +17,7 @@ async fn collect_final<R>(stream: &mut StreamingResult<R>) -> Result<String> {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item? {
-            final_response = Some(response.response().to_owned());
+            final_response = Some(response.output().to_owned());
         }
     }
     final_response.ok_or_else(|| anyhow!("stream finished without a final response"))

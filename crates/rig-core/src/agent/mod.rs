@@ -124,8 +124,7 @@ pub use hook::{
     RequestPatch, RunId, Scratchpad, StepEvent, StepEventKind,
 };
 pub use prompt_request::streaming::{
-    FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
-    stream_to_stdout,
+    MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };
 pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,

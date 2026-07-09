@@ -314,7 +314,7 @@ async fn extended_details_works_without_with_history() {
         .tool(MockAddTool)
         .build();
 
-    // Note: NO .history() call — this is the new use case
+    // Note: NO .messages() call — this is the new use case
     let resp = agent
         .prompt("compute 2+3")
         .max_turns(5)

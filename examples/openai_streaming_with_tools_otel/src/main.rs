@@ -145,7 +145,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let res = stream_to_stdout(&mut stream).await?;
 
     println!("Token usage response: {usage:?}", usage = res.usage());
-    println!("Final text response: {message:?}", message = res.response());
+    println!("Final text response: {message:?}", message = res.output());
 
     let _ = provider.shutdown();
 

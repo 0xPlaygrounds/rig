@@ -182,7 +182,7 @@ async fn multi_turn_streaming_tools() {
             assert_eq!(
                 observation.final_response_text.as_deref(),
                 Some(observation.final_turn_text.as_str()),
-                "FinalResponse.response() should match the final turn's streamed text"
+                "FinalResponse.output() should match the final turn's streamed text"
             );
             assert!(
                 observation.tool_results >= 4,
