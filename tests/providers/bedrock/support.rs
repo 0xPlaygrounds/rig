@@ -94,9 +94,10 @@ impl HttpClient for RecordingBedrockHttpClient {
     }
 }
 
-// The direct Bedrock recorder is intentionally scoped to the current cassette
-// scenarios: non-streaming UTF-8 JSON request/response bodies. Add explicit
-// handling before using it for binary payloads or event-stream responses.
+// The direct Bedrock recorder buffers in-memory request bodies and full response
+// bodies before handing the response back to the AWS SDK. This lets Bedrock
+// event-stream responses replay from binary cassette bodies without proxying or
+// rewriting SigV4-signed requests.
 #[derive(Clone, Debug)]
 struct RecordingBedrockConnector {
     client: reqwest::Client,

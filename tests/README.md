@@ -47,7 +47,10 @@ cargo test -p rig --all-features --test bedrock bedrock::cassette -- --nocapture
 
 Bedrock cassette replay does not require AWS credentials. Bedrock record mode uses the AWS
 SDK credential provider chain and a direct SigV4-aware recorder, so it requires AWS credentials
-with Bedrock model access in `us-east-1` and overwrites existing cassette files.
+with Bedrock model access in `us-east-1` and overwrites existing cassette files. The Bedrock
+recorder buffers streaming/event-stream responses and stores non-UTF-8 cassette bodies as base64;
+those opaque bodies are intended for replay fidelity, and safety checks also scan their decoded
+bytes for credential-shaped material.
 
 Record mode requires the relevant provider credentials in the environment and overwrites existing
 cassette files:
