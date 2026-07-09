@@ -41,11 +41,6 @@ pub trait SpanCombinator {
     fn record_response_metadata<R>(&self, response: &R)
     where
         R: ProviderResponseExt;
-
-    /// Record serialized model output messages.
-    fn record_model_output<T>(&self, messages: &T)
-    where
-        T: Serialize;
 }
 
 impl SpanCombinator for tracing::Span {
@@ -93,19 +88,6 @@ impl SpanCombinator for tracing::Span {
 
         if let Some(model_name) = response.get_response_model_name() {
             self.record("gen_ai.response.model", model_name);
-        }
-    }
-
-    fn record_model_output<T>(&self, output: &T)
-    where
-        T: Serialize,
-    {
-        if self.is_disabled() {
-            return;
-        }
-
-        if let Ok(output_as_json_string) = serde_json::to_string(output) {
-            self.record("gen_ai.output.messages", output_as_json_string);
         }
     }
 }
