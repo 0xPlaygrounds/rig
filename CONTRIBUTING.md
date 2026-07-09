@@ -90,6 +90,9 @@ expectations:
   streaming normalization patterns.
 - Provider error responses preserve status/body details through the relevant Rig
   error helpers, so callers can inspect provider response details.
+- Non-2xx completion responses surface through the capability error's
+  `from_http_response(status, body)` helper so retry/status logic can inspect
+  `provider_response_status()` and the raw provider body.
 - `ProviderResponseExt`, telemetry spans, and GenAI fields are populated
   consistently with nearby providers where applicable.
 - Tests cover the smallest reliable scope: unit tests, cassette-backed provider

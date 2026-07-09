@@ -1,0 +1,16 @@
+when:
+  path: /backend-api/codex/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"hello","type":"input_text"}],"role":"user","type":"message"}],"instructions":"","model":"gpt-5.4","store":false,"stream":true}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"detail":"Could not parse your authentication token. Please try signing in again."}'
