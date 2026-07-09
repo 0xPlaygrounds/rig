@@ -277,6 +277,7 @@ where
     pub(crate) temperature: Option<f64>,
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
+    pub(crate) record_message_content: bool,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Per-call runtime extensions made available to every tool executed during
     /// this run via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
@@ -312,6 +313,7 @@ where
             temperature: agent.temperature,
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
+            record_message_content: agent.record_message_content,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
@@ -370,6 +372,20 @@ where
         T: Into<Message>,
     {
         self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Opt in or out of recording model input/output message contents on GenAI
+    /// telemetry spans for this run.
+    ///
+    /// Defaults to the agent's setting, which defaults to `false`. Enabling this
+    /// can expose prompts, retrieved context, tool results, model responses, and
+    /// other sensitive or high-cardinality data through OpenTelemetry span
+    /// attributes, which can increase observability backend storage and query
+    /// costs. Only enable it when message-content telemetry is acceptable for
+    /// this run.
+    pub fn record_message_telemetry(mut self, enabled: bool) -> Self {
+        self.record_message_content = enabled;
         self
     }
 

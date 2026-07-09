@@ -213,6 +213,7 @@ pub(crate) fn create_request_body(
         tool_choice,
         mut additional_params,
         output_schema,
+        record_message_content: _,
     } = completion_request;
 
     let mut full_history = Vec::new();
@@ -2308,6 +2309,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let request_model = resolve_request_model("gemini-2.0-flash", &request);
@@ -2335,6 +2337,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         assert_eq!(
@@ -3169,6 +3172,7 @@ mod tests {
             temperature: None,
             model: None,
             output_schema: None,
+            record_message_content: false,
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
@@ -3188,6 +3192,7 @@ mod tests {
             temperature: None,
             model: None,
             output_schema: None,
+            record_message_content: false,
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
@@ -3256,6 +3261,7 @@ mod tests {
             tool_choice: None,
             model: None,
             output_schema: None,
+            record_message_content: false,
             additional_params: None,
         };
 

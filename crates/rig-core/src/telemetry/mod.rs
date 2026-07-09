@@ -6,6 +6,45 @@
 use crate::completion::GetTokenUsage;
 use serde::Serialize;
 
+fn record_message_content<T>(span: &tracing::Span, field: &'static str, messages: &T, enabled: bool)
+where
+    T: Serialize,
+{
+    if !enabled || span.is_disabled() {
+        return;
+    }
+
+    if let Ok(messages_as_json_string) = serde_json::to_string(messages) {
+        span.record(field, messages_as_json_string);
+    }
+}
+
+/// Records serialized model input messages on `gen_ai.input.messages` when
+/// message-content telemetry is explicitly enabled.
+///
+/// Message content can contain prompts, retrieved context, tool results, and
+/// other sensitive or high-cardinality data. Keep this disabled unless the
+/// caller has explicitly opted in for debugging/observability.
+pub fn record_model_input<T>(span: &tracing::Span, messages: &T, enabled: bool)
+where
+    T: Serialize,
+{
+    record_message_content(span, "gen_ai.input.messages", messages, enabled);
+}
+
+/// Records serialized model output messages on `gen_ai.output.messages` when
+/// message-content telemetry is explicitly enabled.
+///
+/// Message content can contain model responses, tool calls, and other sensitive
+/// or high-cardinality data. Keep this disabled unless the caller has explicitly
+/// opted in for debugging/observability.
+pub fn record_model_output<T>(span: &tracing::Span, messages: &T, enabled: bool)
+where
+    T: Serialize,
+{
+    record_message_content(span, "gen_ai.output.messages", messages, enabled);
+}
+
 /// Provider response metadata used to populate GenAI telemetry spans.
 pub trait ProviderResponseExt {
     /// Provider-native output message type.

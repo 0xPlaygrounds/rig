@@ -71,6 +71,7 @@ where
         additional_params: agent.additional_params.clone(),
         model: None,
         output_schema: None,
+        record_message_content: false,
     };
 
     let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
@@ -130,6 +131,7 @@ where
         additional_params: agent.additional_params.clone(),
         model: None,
         output_schema: None,
+        record_message_content: false,
     };
 
     let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
@@ -180,6 +182,7 @@ where
         additional_params: agent.additional_params.clone(),
         model: None,
         output_schema: None,
+        record_message_content: false,
     };
 
     let response = agent
@@ -226,6 +229,7 @@ where
         additional_params: agent.additional_params.clone(),
         model: None,
         output_schema: None,
+        record_message_content: false,
     };
 
     let response2 = agent

@@ -145,6 +145,7 @@ where
         CompletionError,
     > {
         let preamble = completion_request.preamble.clone();
+        let record_message_content = completion_request.record_message_content;
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
@@ -187,6 +188,8 @@ where
             .ext()
             .finalize_request_body_with_options(&mut request_as_json, options)?;
 
+        let request_messages = request_as_json.get("messages").unwrap_or(&request_as_json);
+
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
@@ -222,6 +225,8 @@ where
         } else {
             tracing::Span::current()
         };
+
+        crate::telemetry::record_model_input(&span, request_messages, record_message_content);
 
         let client = self.client.clone();
 

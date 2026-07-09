@@ -108,6 +108,7 @@ pub(crate) fn create_grpc_request(
         tool_choice: _,
         additional_params: _,
         output_schema: _,
+        record_message_content: _,
     } = completion_request;
 
     let (history_system, chat_history) = split_system_messages_from_history(chat_history);
@@ -977,6 +978,7 @@ mod tests {
                 tool_choice: None,
                 additional_params: None,
                 output_schema: None,
+                record_message_content: false,
             },
         )
         .expect("request build");

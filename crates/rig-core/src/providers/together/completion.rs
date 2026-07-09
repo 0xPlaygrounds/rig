@@ -190,6 +190,7 @@ mod tests {
             additional_params: None,
             model: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let result = OpenAICompletionRequest::try_from(OpenAIRequestParams {

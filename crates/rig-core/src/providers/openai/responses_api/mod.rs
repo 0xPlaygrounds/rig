@@ -1947,6 +1947,7 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+        let record_message_content = completion_request.record_message_content;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -1969,6 +1970,7 @@ where
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
         let request = self.create_completion_request(completion_request)?;
+        crate::telemetry::record_model_input(&span, &request.input, record_message_content);
         let body = serde_json::to_vec(&request)?;
 
         if enabled!(Level::TRACE) {
@@ -1994,6 +1996,11 @@ where
                 let span = tracing::Span::current();
                 span.record("gen_ai.response.id", &response.id);
                 span.record("gen_ai.response.model", &response.model);
+                crate::telemetry::record_model_output(
+                    &span,
+                    &response.output,
+                    record_message_content,
+                );
                 if let Some(ref usage) = response.usage {
                     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
                     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
@@ -2535,6 +2542,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         }
     }
 
@@ -2657,6 +2665,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         }
     }
 
@@ -2672,6 +2681,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         }
     }
 
@@ -3092,6 +3102,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
@@ -3703,6 +3714,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))

@@ -842,6 +842,7 @@ where
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let record_message_content = completion_request.record_message_content;
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
@@ -873,12 +874,15 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
         };
         span.record("gen_ai.provider.name", "openai");
         span.record("gen_ai.request.model", &self.model);
+        crate::telemetry::record_model_input(&span, &request.input, record_message_content);
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
 

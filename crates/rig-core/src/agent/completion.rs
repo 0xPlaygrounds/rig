@@ -234,6 +234,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     additional_params: Option<&serde_json::Value>,
+    record_message_content: bool,
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
@@ -248,6 +249,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         temperature,
         max_tokens,
         additional_params,
+        record_message_content,
         tool_choice,
         tool_server_handle,
         dynamic_context,
@@ -275,6 +277,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     additional_params: Option<&serde_json::Value>,
+    record_message_content: bool,
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
@@ -558,6 +561,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         .temperature_opt(temperature)
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params)
+        .record_message_telemetry(record_message_content)
         .documents(static_context.to_vec())
         .tools(tooldefs);
 
@@ -660,6 +664,13 @@ where
     pub max_tokens: Option<u64>,
     /// Additional parameters to be passed to the model
     pub additional_params: Option<serde_json::Value>,
+    /// Whether to record model input/output message contents on GenAI telemetry spans.
+    ///
+    /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
+    /// tool results, model responses, and other sensitive or high-cardinality data
+    /// through OpenTelemetry span attributes, which can increase observability
+    /// backend storage and query costs.
+    pub record_message_content: bool,
     pub tool_server_handle: ToolServerHandle,
     /// List of vector store, with the sample number
     pub dynamic_context: DynamicContextStore,
@@ -722,6 +733,7 @@ where
             self.temperature,
             self.max_tokens,
             self.additional_params.as_ref(),
+            self.record_message_content,
             self.tool_choice.as_ref(),
             &self.tool_server_handle,
             &self.dynamic_context,

@@ -53,6 +53,10 @@ use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
 use thiserror::Error;
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 // Errors
 /// Errors returned by completion models.
 ///
@@ -691,6 +695,21 @@ pub struct CompletionRequest {
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub output_schema: Option<schemars::Schema>,
+    /// Whether to record model input/output message contents on GenAI telemetry spans.
+    ///
+    /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
+    /// tool results, model responses, and other sensitive or high-cardinality data
+    /// through OpenTelemetry span attributes, which can increase observability
+    /// backend storage and query costs. Only enable it when the caller has
+    /// explicitly opted in to message-content telemetry.
+    ///
+    /// Providers and higher-level agent drivers that support GenAI message
+    /// fields use this flag to decide whether to record message contents.
+    /// Low-level streaming output recording is provider- or
+    /// agent-driver-dependent because stream aggregation happens while the
+    /// returned stream is consumed.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub record_message_content: bool,
 }
 
 impl CompletionRequest {
@@ -862,6 +881,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     tool_choice: Option<ToolChoice>,
     additional_params: Option<serde_json::Value>,
     output_schema: Option<schemars::Schema>,
+    record_message_content: bool,
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
@@ -880,6 +900,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         }
     }
 
@@ -1040,6 +1061,34 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Opt in or out of recording model input/output message contents on GenAI
+    /// telemetry spans for this request.
+    ///
+    /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
+    /// tool results, model responses, and other sensitive or high-cardinality data
+    /// through OpenTelemetry span attributes, which can increase observability
+    /// backend storage and query costs. Only enable it when message-content
+    /// telemetry is acceptable for this request.
+    ///
+    /// This low-level builder stores the opt-in on the built request; providers
+    /// and higher-level agent drivers that support GenAI message fields own the
+    /// actual span attributes. Low-level streaming output recording depends on
+    /// the provider (or the higher-level agent streaming driver) because stream
+    /// aggregation happens as the returned stream is consumed.
+    pub fn record_message_telemetry(mut self, enabled: bool) -> Self {
+        self.record_message_content = enabled;
+        self
+    }
+
+    pub(crate) fn messages_for_telemetry(&self) -> Vec<Message> {
+        let mut chat_history = self.chat_history.clone();
+        if let Some(preamble) = &self.preamble {
+            chat_history.insert(0, Message::system(preamble.clone()));
+        }
+        chat_history.push(self.prompt.clone());
+        chat_history
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         // Build the final message list, prepending preamble if present
@@ -1069,6 +1118,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             tool_choice: self.tool_choice,
             additional_params,
             output_schema: self.output_schema,
+            record_message_content: self.record_message_content,
         }
     }
 
@@ -1106,6 +1156,46 @@ mod tests {
 
     use super::*;
     use crate::test_utils::MockCompletionModel;
+
+    #[test]
+    fn completion_request_message_telemetry_is_opt_in() {
+        let default_request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
+                .build();
+        assert!(!default_request.record_message_content);
+
+        let default_json = serde_json::to_value(&default_request).expect("serialize request");
+        assert!(
+            default_json.get("record_message_content").is_none(),
+            "safe default should not serialize the telemetry opt-in field"
+        );
+        let default_roundtrip: CompletionRequest =
+            serde_json::from_value(default_json).expect("deserialize default request");
+        assert!(!default_roundtrip.record_message_content);
+
+        let opt_in_request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
+                .record_message_telemetry(true)
+                .build();
+        assert!(opt_in_request.record_message_content);
+
+        let mut opt_in_json =
+            serde_json::to_value(&opt_in_request).expect("serialize opt-in request");
+        assert_eq!(
+            opt_in_json.get("record_message_content"),
+            Some(&serde_json::Value::Bool(true))
+        );
+        opt_in_json
+            .as_object_mut()
+            .expect("request should serialize as an object")
+            .remove("record_message_content");
+        let legacy_roundtrip: CompletionRequest =
+            serde_json::from_value(opt_in_json).expect("deserialize legacy request");
+        assert!(
+            !legacy_roundtrip.record_message_content,
+            "missing field should deserialize to the safe default"
+        );
+    }
 
     fn test_document(id: &str, text: &str) -> Document {
         Document {
@@ -1187,6 +1277,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let expected = Message::User {
@@ -1219,6 +1310,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         assert_eq!(request.normalized_documents(), None);
@@ -1344,6 +1436,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         assert_eq!(request.documents.len(), 1);
@@ -1377,6 +1470,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let history = request.chat_history_with_documents();
@@ -1414,6 +1508,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let history = request.chat_history_with_documents();

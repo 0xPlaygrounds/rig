@@ -708,6 +708,7 @@ where
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
+        let record_message_content = request.record_message_content;
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
@@ -721,6 +722,8 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -769,6 +772,9 @@ where
 
         let stream = try_stream! {
             let span = tracing::Span::current();
+            let mut tool_calls_final = Vec::new();
+            let mut text_response = String::new();
+            let mut thinking_response = String::new();
             let mut line_buf = NdjsonBuffer::new();
 
             while let Some(chunk) = byte_stream.next().await {
@@ -781,6 +787,7 @@ where
 
                     if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
+                            thinking_response += &thinking_content;
                             yield RawStreamingChoice::ReasoningDelta {
                                 id: None,
                                 reasoning: thinking_content,
@@ -788,10 +795,12 @@ where
                         }
 
                         if !content.is_empty() {
+                            text_response += &content;
                             yield RawStreamingChoice::Message(content);
                         }
 
                         for tool_call in tool_calls {
+                            tool_calls_final.push(tool_call.clone());
                             yield RawStreamingChoice::ToolCall(
                                 crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
                             );
@@ -801,6 +810,18 @@ where
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
+                        let message = Message::Assistant {
+                            content: text_response.clone(),
+                            thinking: if thinking_response.is_empty() { None } else { Some(thinking_response.clone()) },
+                            images: None,
+                            name: None,
+                            tool_calls: tool_calls_final.clone()
+                        };
+                        crate::telemetry::record_model_output(
+                            &span,
+                            &vec![message],
+                            record_message_content,
+                        );
                         yield RawStreamingChoice::FinalResponse(
                             StreamingCompletionResponse {
                                 total_duration: response.total_duration,
@@ -1678,6 +1699,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_message_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1744,6 +1766,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_message_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1810,6 +1833,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_message_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1876,6 +1900,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_message_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1942,6 +1967,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_message_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1972,6 +1998,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2037,6 +2064,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: Some(schema),
+            record_message_content: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -2080,6 +2108,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))

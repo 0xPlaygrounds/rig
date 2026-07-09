@@ -728,6 +728,7 @@ data: [DONE]"#;
                 tool_choice: None,
                 additional_params: None,
                 output_schema: None,
+                record_message_content: false,
             })
             .expect("request")
     }
@@ -787,6 +788,7 @@ data: [DONE]"#;
                 tool_choice: None,
                 additional_params: None,
                 output_schema: None,
+                record_message_content: false,
             })
             .expect("request");
 

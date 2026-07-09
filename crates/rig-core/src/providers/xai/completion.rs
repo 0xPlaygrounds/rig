@@ -340,6 +340,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
