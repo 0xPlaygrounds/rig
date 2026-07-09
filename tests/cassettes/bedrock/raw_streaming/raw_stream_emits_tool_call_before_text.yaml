@@ -1,0 +1,15 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse-stream
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{},"messages":[{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output."}],"role":"user"}],"system":[{"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output."}],"toolConfig":{"toolChoice":{"tool":{"name":"lookup_harbor_label"}},"tools":[{"toolSpec":{"description":"Return the alpha signal marker.","inputSchema":{"json":{"properties":{},"required":[],"type":"object"}},"name":"lookup_harbor_label"}}]}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/vnd.amazon.eventstream
+  body: AAAAgwAAAFIWASXzCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2RlZiIsInJvbGUiOiJhc3Npc3RhbnQifQzWKawAAADsAAAAV30JMeALOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tTdGFydA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJwIjoiYWJjZGVmZyIsInN0YXJ0Ijp7InRvb2xVc2UiOnsibmFtZSI6Imxvb2t1cF9oYXJib3JfbGFiZWwiLCJ0b29sVXNlSWQiOiJ0b29sdXNlX01JRUV6YjNYRnVuWVIwdXRjUkRMcGIifX19+EXQTwAAAMcAAABXyxgv9Qs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRvb2xVc2UiOnsiaW5wdXQiOiJ7fSJ9fSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREUifWA9xhYAAACTAAAAVnGMdmgLOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsInAiOiJhYmNkZWZnaGlqa2xtbm8ifbjlxxgAAACDAAAAUY8IdEkLOmV2ZW50LXR5cGUHAAttZXNzYWdlU3RvcA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7InAiOiJhYiIsInN0b3BSZWFzb24iOiJ0b29sX3VzZSJ9UiLJ2QAAAQ8AAABOvUr3igs6ZXZlbnQtdHlwZQcACG1ldGFkYXRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsibWV0cmljcyI6eyJsYXRlbmN5TXMiOjMyOH0sInAiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ekFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaMDEyMyIsInVzYWdlIjp7ImlucHV0VG9rZW5zIjo0NTcsIm91dHB1dFRva2VucyI6MTYsInNlcnZlclRvb2xVc2FnZSI6e30sInRvdGFsVG9rZW5zIjo0NzN9fTwMF1c=
+  body_encoding: base64

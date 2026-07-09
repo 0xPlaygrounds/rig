@@ -47,6 +47,10 @@ impl AwsCompletionRequest {
     }
 
     pub fn tools_config(&self) -> Result<Option<ToolConfiguration>, CompletionError> {
+        if self.inner.tool_choice == Some(rig_core::message::ToolChoice::None) {
+            return Ok(None);
+        }
+
         let mut tools = vec![];
         for tool_definition in self.inner.tools.iter() {
             let doc: AwsDocument = tool_definition.parameters.clone().into();
@@ -330,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_tool_choice_none_conversion() {
-        // Test that rig's ToolChoice::None results in no tool_choice set
+        // Test that rig's ToolChoice::None disables Bedrock tool configuration entirely.
         let request = CompletionRequest {
             model: None,
             tool_choice: Some(ToolChoice::None),
@@ -350,10 +354,7 @@ mod tests {
             .tools_config()
             .expect("Should build tool config");
 
-        assert!(tool_config.is_some());
-        let config = tool_config.unwrap();
-        // None should result in no tool_choice being set
-        assert!(config.tool_choice().is_none());
+        assert!(tool_config.is_none());
     }
 
     #[test]

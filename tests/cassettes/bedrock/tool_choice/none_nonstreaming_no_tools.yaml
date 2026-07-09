@@ -1,0 +1,14 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"temperature":0.0},"messages":[{"content":[{"text":"Calculate 20 + 22 directly in text. Do not call tools."}],"role":"user"}],"system":[{"text":"You are a deterministic calculator test. Answer directly in text."}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":337},"output":{"message":{"content":[{"text":"20 + 22 = 42"}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":29,"outputTokens":12,"serverToolUsage":{},"totalTokens":41}}'

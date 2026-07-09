@@ -1,0 +1,15 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse-stream
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"temperature":0.0},"messages":[{"content":[{"text":"Use the add tool to calculate 20 + 22. Do not use subtraction."}],"role":"user"}],"toolConfig":{"toolChoice":{"tool":{"name":"add"}},"tools":[{"toolSpec":{"description":"Add x and y together","inputSchema":{"json":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"name":"add"}},{"toolSpec":{"description":"Subtract y from x (i.e.: x - y)","inputSchema":{"json":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"name":"subtract"}}]}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/vnd.amazon.eventstream
+  body: AAAArQAAAFJo8LSWCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSktMTU5PUFFSU1RVViIsInJvbGUiOiJhc3Npc3RhbnQiff/V9LIAAADsAAAAV30JMeALOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tTdGFydA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnciLCJzdGFydCI6eyJ0b29sVXNlIjp7Im5hbWUiOiJhZGQiLCJ0b29sVXNlSWQiOiJ0b29sdXNlX2pCeFhRMkw2SzVNU0FHSGhMREJmRHgifX19svuwqQAAAM4AAABXxghNhAs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRvb2xVc2UiOnsiaW5wdXQiOiJ7XCJ4XCI6MjAsXCJ5XCI6MjJ9In19LCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1In26KbPLAAAAsgAAAFaNLXDcCzpldmVudC10eXBlBwAQY29udGVudEJsb2NrU3RvcA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0xNTk9QUVJTVCJ9ja+jywAAAJsAAABR35ioCgs6ZXZlbnQtdHlwZQcAC21lc3NhZ2VTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6Iiwic3RvcFJlYXNvbiI6InRvb2xfdXNlIn3G9aHeAAABEwAAAE4YWo0JCzpldmVudC10eXBlBwAIbWV0YWRhdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJtZXRyaWNzIjp7ImxhdGVuY3lNcyI6MzcyfSwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2NyIsInVzYWdlIjp7ImlucHV0VG9rZW5zIjo1MTIsIm91dHB1dFRva2VucyI6MjEsInNlcnZlclRvb2xVc2FnZSI6e30sInRvdGFsVG9rZW5zIjo1MzN9ferEiTw=
+  body_encoding: base64

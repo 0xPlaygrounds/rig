@@ -1,0 +1,15 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse-stream
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{},"messages":[{"content":[{"text":"Call the ping tool with no arguments. Do not answer with normal text before the tool call."}],"role":"user"}],"toolConfig":{"toolChoice":{"any":{}},"tools":[{"toolSpec":{"description":"A zero-argument tool named ping.","inputSchema":{"json":{"properties":{},"required":[],"type":"object"}},"name":"ping"}}]}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/vnd.amazon.eventstream
+  body: AAAAgQAAAFJswXaTCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicCI6ImFiY2QiLCJyb2xlIjoiYXNzaXN0YW50In31EqAFAAABAwAAAFcc0bJLCzpldmVudC10eXBlBwARY29udGVudEJsb2NrU3RhcnQNOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwicCI6ImFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSktMTU5PUFFSUyIsInN0YXJ0Ijp7InRvb2xVc2UiOnsibmFtZSI6InBpbmciLCJ0b29sVXNlSWQiOiJ0b29sdXNlX0xuQ05VQzJIM2Z1TkN5Z05ISExiZ2kifX19VVGxbAAAALoAAABXyloLiws6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRvb2xVc2UiOnsiaW5wdXQiOiJ7fSJ9fSwicCI6ImFiY2RlZmdoaWprbG1ub3BxciJ97FeFywAAAIYAAABW2Yxumgs6ZXZlbnQtdHlwZQcAEGNvbnRlbnRCbG9ja1N0b3ANOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwicCI6ImFiIn3zOIogAAAApAAAAFH86YddCzpldmVudC10eXBlBwALbWVzc2FnZVN0b3ANOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJwIjoiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSEkiLCJzdG9wUmVhc29uIjoidG9vbF91c2UifcDeTmoAAADjAAAATpsyDvELOmV2ZW50LXR5cGUHAAhtZXRhZGF0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7Im1ldHJpY3MiOnsibGF0ZW5jeU1zIjoyNjd9LCJwIjoiYWJjZGVmZ2hpamtsIiwidXNhZ2UiOnsiaW5wdXRUb2tlbnMiOjQwMiwib3V0cHV0VG9rZW5zIjoxMSwic2VydmVyVG9vbFVzYWdlIjp7fSwidG90YWxUb2tlbnMiOjQxM3191Iw4ZQ==
+  body_encoding: base64

@@ -1,0 +1,14 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"temperature":0.0},"messages":[{"content":[{"text":"Use the add tool to calculate 20 + 22."}],"role":"user"}],"toolConfig":{"toolChoice":{"any":{}},"tools":[{"toolSpec":{"description":"Add x and y together","inputSchema":{"json":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"name":"add"}}]}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":353},"output":{"message":{"content":[{"toolUse":{"input":{"x":20,"y":22},"name":"add","toolUseId":"tooluse_OA0u1oR2Cdb1YE0aMR1YAc"}}],"role":"assistant"}},"stopReason":"tool_use","usage":{"inputTokens":434,"outputTokens":21,"serverToolUsage":{},"totalTokens":455}}'
