@@ -1363,6 +1363,18 @@ impl GetTokenUsage for Usage {
     }
 }
 
+/// Per-model options that affect request conversion/finalization for the shared
+/// OpenAI-compatible chat-completions path.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CompletionModelOptions {
+    /// Whether tool schemas should be sanitized for strict-mode validation.
+    pub strict_tools: bool,
+    /// Whether tool-result messages should serialize their content as arrays.
+    pub tool_result_array_content: bool,
+    /// Whether the model requested provider-specific prompt caching markers.
+    pub prompt_caching: bool,
+}
+
 /// Contract for provider extensions that speak the OpenAI Chat Completions wire
 /// format through [`GenericCompletionModel`]. Mirrors
 /// [`AnthropicCompatibleProvider`](crate::providers::anthropic::completion::AnthropicCompatibleProvider)
@@ -1371,9 +1383,10 @@ impl GetTokenUsage for Usage {
 /// Request construction runs the hooks in a fixed order:
 /// [`prepare_request`](Self::prepare_request) on the typed request, then
 /// serialization, then (for streaming) the `stream`/`stream_options` merge,
-/// and finally [`finalize_request_body`](Self::finalize_request_body) on the
-/// serialized body — so the finalize hook always sees the streaming
-/// parameters.
+/// and finally
+/// [`finalize_request_body_with_options`](Self::finalize_request_body_with_options)
+/// on the serialized body — so the finalize hook always sees the streaming
+/// parameters and model-level options.
 pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
     const PROVIDER_NAME: &'static str;
@@ -1434,6 +1447,26 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         "/chat/completions".to_string()
     }
 
+    /// Build the typed chat-completions request. Providers that share the
+    /// OpenAI transport but need provider-specific message conversion can
+    /// override this while still using [`GenericCompletionModel`] for sending,
+    /// streaming, error handling, and telemetry.
+    fn build_completion_request(
+        &self,
+        model: String,
+        request: CoreCompletionRequest,
+        options: CompletionModelOptions,
+    ) -> Result<CompletionRequest, CompletionError> {
+        CompletionRequest::try_from(OpenAIRequestParams {
+            model,
+            request,
+            strict_tools: options.strict_tools,
+            tool_result_array_content: options.tool_result_array_content,
+            supports_response_format: Self::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: Self::SUPPORTS_TOOLS,
+        })
+    }
+
     /// Adjust the typed request before serialization (e.g. rewrite the model
     /// identifier or fold provider-native tool definitions out of
     /// `additional_params`).
@@ -1449,6 +1482,28 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
         let _ = body;
         Ok(())
+    }
+
+    /// Adjust the fully serialized request body with model-level options.
+    /// Providers that do not need model-instance options should override
+    /// [`finalize_request_body`](Self::finalize_request_body) instead.
+    fn finalize_request_body_with_options(
+        &self,
+        body: &mut serde_json::Value,
+        options: CompletionModelOptions,
+    ) -> Result<(), CompletionError> {
+        let _ = options;
+        self.finalize_request_body(body)
+    }
+
+    /// Decorate streamed tool calls from provider-specific streaming detail
+    /// payloads. Most OpenAI-compatible providers do not emit such details.
+    fn decorate_streaming_tool_call(
+        &self,
+        detail: &serde_json::Value,
+        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
+    ) {
+        let _ = (detail, tool_calls);
     }
 }
 
@@ -1468,6 +1523,7 @@ pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest
     pub model: String,
     pub(crate) strict_tools: bool,
     pub(crate) tool_result_array_content: bool,
+    pub(crate) prompt_caching: bool,
 }
 
 /// The completion model struct for OpenAI's Chat Completions API.
@@ -1488,6 +1544,7 @@ where
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
+            prompt_caching: false,
         }
     }
 
@@ -1886,21 +1943,25 @@ where
             tracing::Span::current()
         };
 
-        let mut request = CompletionRequest::try_from(OpenAIRequestParams {
-            model: self.model.to_owned(),
-            request: completion_request,
+        let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
-            supports_response_format: Ext::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: Ext::SUPPORTS_TOOLS,
-        })?;
+            prompt_caching: self.prompt_caching,
+        };
+        let mut request = self.client.ext().build_completion_request(
+            self.model.to_owned(),
+            completion_request,
+            options,
+        )?;
         self.client.ext().prepare_request(&mut request)?;
         // The span was opened with the configured model; report the model
         // actually requested when a per-request override applies.
         span.record("gen_ai.request.model", &request.model);
 
         let mut request_body = serde_json::to_value(&request)?;
-        self.client.ext().finalize_request_body(&mut request_body)?;
+        self.client
+            .ext()
+            .finalize_request_body_with_options(&mut request_body, options)?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(

@@ -94,7 +94,7 @@ pub(crate) enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     #[serde(default)]

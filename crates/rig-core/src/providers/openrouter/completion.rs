@@ -1,20 +1,14 @@
-use super::{
-    client::{ApiResponse, Client, Usage},
-    streaming::StreamingCompletionResponse,
-};
+use super::client::{OpenRouterExt, Usage};
 use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::ProviderResponseExt;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    http_client::HttpClientExt,
     json_utils,
     providers::openai,
 };
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
 // OpenRouter Completion API
@@ -570,7 +564,7 @@ impl ProviderPreferences {
 /// A openrouter completion object.
 ///
 /// For more information, see this link: <https://docs.openrouter.xyz/reference/create_chat_completion_v1_chat_completions_post>
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
@@ -741,6 +735,65 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             message_id: None,
         })
     }
+}
+
+impl ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Choice;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.clone())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.choices.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let response = self
+            .choices
+            .iter()
+            .filter_map(|choice| assistant_message_text_response(&choice.message))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        (!response.is_empty()).then_some(response)
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.usage.clone()
+    }
+}
+
+fn assistant_message_text_response(message: &Message) -> Option<String> {
+    let Message::Assistant {
+        content, refusal, ..
+    } = message
+    else {
+        return None;
+    };
+
+    let mut segments = content
+        .iter()
+        .filter_map(|content| match content {
+            openai::AssistantContent::Text { text, .. } => (!text.is_empty()).then(|| text.clone()),
+            openai::AssistantContent::Refusal { refusal } => {
+                (!refusal.is_empty()).then(|| refusal.clone())
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(refusal) = refusal
+        && !refusal.is_empty()
+    {
+        segments.push(refusal.clone());
+    }
+
+    (!segments.is_empty()).then(|| segments.join("\n"))
 }
 
 // OpenRouter shares OpenAI's Chat Completions message model. The request and
@@ -1017,7 +1070,7 @@ fn user_contents_to_messages(
 // Response Types
 // ================================================================
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Choice {
     pub index: usize,
     pub native_finish_reason: Option<String>,
@@ -1249,13 +1302,9 @@ pub(super) fn apply_prompt_caching(body: &mut serde_json::Value) {
     }
 }
 
-pub(super) fn final_request_body(
-    request: &OpenrouterCompletionRequest,
-    prompt_caching: bool,
-) -> Result<serde_json::Value, CompletionError> {
-    let mut body = serde_json::to_value(request)?;
+pub(super) fn finalize_openrouter_request_body(body: &mut serde_json::Value, prompt_caching: bool) {
     if prompt_caching {
-        apply_prompt_caching(&mut body);
+        apply_prompt_caching(body);
     }
 
     // The shared assistant message serializes hidden reasoning under the
@@ -1274,23 +1323,19 @@ pub(super) fn final_request_body(
             }
         }
     }
+}
 
+#[cfg(test)]
+pub(super) fn final_request_body(
+    request: &OpenrouterCompletionRequest,
+    prompt_caching: bool,
+) -> Result<serde_json::Value, CompletionError> {
+    let mut body = serde_json::to_value(request)?;
+    finalize_openrouter_request_body(&mut body, prompt_caching);
     Ok(body)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct OpenrouterCompletionRequest {
-    model: String,
-    pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<crate::providers::openai::completion::ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-}
+pub(super) type OpenrouterCompletionRequest = openai::completion::CompletionRequest;
 
 /// Parameters for building an OpenRouter CompletionRequest
 pub struct OpenRouterRequestParams<'a> {
@@ -1373,6 +1418,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             model,
             messages: full_history,
             temperature: req.temperature,
+            max_tokens: None,
             tools,
             tool_choice,
             additional_params,
@@ -1393,32 +1439,70 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-    /// Enable strict mode for tool schemas.
-    /// When enabled, tool schemas are sanitized to meet OpenAI's strict mode requirements.
-    pub strict_tools: bool,
-    /// Enable explicit prompt caching via OpenRouter.
-    ///
-    /// When true, the outgoing JSON body is post-processed to attach
-    /// `cache_control: {"type": "ephemeral"}` to the system prompt. This is
-    /// intended for models and providers that support explicit cache
-    /// breakpoints.
-    pub prompt_caching: bool,
-}
+impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
+    const PROVIDER_NAME: &'static str = "openrouter";
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            strict_tools: false,
-            prompt_caching: false,
-        }
+    type StreamingUsage = Usage;
+    type Response = CompletionResponse;
+
+    const STREAM_INCLUDE_USAGE: bool = false;
+
+    fn build_completion_request(
+        &self,
+        model: String,
+        request: CompletionRequest,
+        options: openai::completion::CompletionModelOptions,
+    ) -> Result<openai::completion::CompletionRequest, CompletionError> {
+        OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: &model,
+            request,
+            strict_tools: options.strict_tools,
+        })
     }
 
+    fn finalize_request_body_with_options(
+        &self,
+        body: &mut serde_json::Value,
+        options: openai::completion::CompletionModelOptions,
+    ) -> Result<(), CompletionError> {
+        finalize_openrouter_request_body(body, options.prompt_caching);
+        Ok(())
+    }
+
+    fn decorate_streaming_tool_call(
+        &self,
+        detail: &serde_json::Value,
+        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
+    ) {
+        let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
+            serde_json::from_value::<ReasoningDetails>(detail.clone())
+        else {
+            return;
+        };
+        let Some(id) = id else {
+            return;
+        };
+        let Some(tool_call) = tool_calls
+            .values_mut()
+            .find(|tool_call| tool_call.id.eq(&id))
+        else {
+            return;
+        };
+
+        tool_call.signature = Some(data);
+        tool_call.additional_params = Some(detail.clone());
+    }
+}
+
+/// OpenRouter completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H = reqwest::Client> =
+    openai::completion::GenericCompletionModel<OpenRouterExt, H>;
+
+/// Final streaming response, shared with the OpenAI Chat Completions path.
+pub type StreamingCompletionResponse =
+    openai::completion::streaming::StreamingCompletionResponse<Usage>;
+
+impl<H> openai::completion::GenericCompletionModel<OpenRouterExt, H> {
     /// Enable explicit prompt caching for supported OpenRouter models.
     ///
     /// Adds `cache_control: {"type": "ephemeral"}` to the system-prompt
@@ -1428,138 +1512,6 @@ impl<T> CompletionModel<T> {
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
-    }
-
-    /// Enable strict mode for tool schemas.
-    ///
-    /// When enabled, tool schemas are automatically sanitized to meet OpenAI's strict mode requirements:
-    /// - `additionalProperties: false` is added to all objects
-    /// - All properties are marked as required
-    /// - `strict: true` is set on each function definition
-    ///
-    /// Note: Not all models on OpenRouter support strict mode. This works best with OpenAI models.
-    pub fn with_strict_tools(mut self) -> Self {
-        self.strict_tools = true;
-        self
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let preamble = completion_request.preamble.clone();
-        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
-            model: request_model.as_ref(),
-            request: completion_request,
-            strict_tools: self.strict_tools,
-        })?;
-
-        let body = final_request_body(&request, self.prompt_caching)?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenRouter completion request: {}",
-                serde_json::to_string_pretty(&body)?
-            );
-        }
-
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "openrouter",
-                gen_ai.request.model = &request_model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        let body = serde_json::to_vec(&body)?;
-
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(|x| CompletionError::HttpError(x.into()))?;
-
-        async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                let parsed: ApiResponse<CompletionResponse> =
-                    serde_json::from_slice(&response_body).map_err(|e| {
-                        CompletionError::ResponseError(format!(
-                            "Failed to parse OpenRouter completion response: {}, response body: {}",
-                            e,
-                            String::from_utf8_lossy(&response_body)
-                        ))
-                    })?;
-                match parsed {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record_token_usage(&response.usage);
-                        span.record("gen_ai.response.id", &response.id);
-                        span.record("gen_ai.response.model", &response.model);
-
-                        tracing::debug!(target: "rig::completions",
-                            "OpenRouter response: {response:?}");
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => {
-                        tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body).into_owned(),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        CompletionModel::stream(self, completion_request).await
     }
 }
 
@@ -1670,6 +1622,7 @@ mod tests {
                 images: vec![],
             }],
             temperature: None,
+            max_tokens: None,
             tools: vec![],
             tool_choice: None,
             additional_params: None,

@@ -11,7 +11,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     CompatibleToolCallChunk,
 };
 use crate::providers::openai::completion::{
-    GenericCompletionModel, OpenAICompatibleProvider, OpenAIRequestParams, Usage,
+    CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
 };
 use crate::streaming;
 
@@ -81,6 +81,8 @@ struct StreamingDelta {
     reasoning: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     tool_calls: Vec<StreamingToolCall>,
+    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+    reasoning_details: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize, Debug, PartialEq)]
@@ -129,7 +131,11 @@ where
 impl<Ext, H> GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + 'static,
-    Ext: crate::client::Provider + OpenAICompatibleProvider + Clone + 'static,
+    Ext: crate::client::Provider
+        + OpenAICompatibleProvider
+        + Clone
+        + crate::wasm_compat::WasmCompatSend
+        + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -139,14 +145,16 @@ where
         CompletionError,
     > {
         let preamble = completion_request.preamble.clone();
-        let mut request = super::CompletionRequest::try_from(OpenAIRequestParams {
-            model: self.model.clone(),
-            request: completion_request,
+        let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
-            supports_response_format: Ext::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: Ext::SUPPORTS_TOOLS,
-        })?;
+            prompt_caching: self.prompt_caching,
+        };
+        let mut request = self.client.ext().build_completion_request(
+            self.model.clone(),
+            completion_request,
+            options,
+        )?;
         self.client.ext().prepare_request(&mut request)?;
 
         // Deliberately the configured model, not the per-request override:
@@ -177,7 +185,7 @@ where
         request_as_json = merge(request_as_json, json!({"stream": true}));
         self.client
             .ext()
-            .finalize_request_body(&mut request_as_json)?;
+            .finalize_request_body_with_options(&mut request_as_json, options)?;
 
         // Serialized after the finalize hook so telemetry shows the messages
         // that actually went to the wire; if a hook moved them out of
@@ -228,7 +236,8 @@ where
             openai_chat_completions_compatible::send_compatible_streaming_request(
                 client,
                 req,
-                OpenAICompatibleProfile::<Ext::StreamingUsage> {
+                OpenAICompatibleProfile::<Ext, Ext::StreamingUsage> {
+                    provider: self.client.ext().clone(),
                     emits_complete_single_chunk_tool_calls:
                         Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
                     usage: std::marker::PhantomData,
@@ -241,13 +250,15 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile<U = Usage> {
+struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletionsExt, U = Usage> {
+    provider: Ext,
     emits_complete_single_chunk_tool_calls: bool,
     usage: std::marker::PhantomData<U>,
 }
 
-impl<U> CompatibleStreamProfile for OpenAICompatibleProfile<U>
+impl<Ext, U> CompatibleStreamProfile for OpenAICompatibleProfile<Ext, U>
 where
+    Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::WasmCompatSend,
     U: Clone
         + Default
         + GetTokenUsage
@@ -257,7 +268,7 @@ where
         + 'static,
 {
     type Usage = U;
-    type Detail = ();
+    type Detail = serde_json::Value;
     type FinalResponse = StreamingCompletionResponse<U>;
 
     fn normalize_chunk(
@@ -297,7 +308,7 @@ where
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
                         &choice.delta.tool_calls,
                     ),
-                    details: Vec::new(),
+                    details: choice.delta.reasoning_details.clone(),
                 },
             ),
         ))
@@ -305,6 +316,15 @@ where
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
         StreamingCompletionResponse { usage }
+    }
+
+    fn decorate_tool_call(
+        &self,
+        detail: &Self::Detail,
+        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
+    ) {
+        self.provider
+            .decorate_streaming_tool_call(detail, tool_calls);
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -326,7 +346,7 @@ where
     openai_chat_completions_compatible::send_compatible_streaming_request(
         http_client,
         req,
-        OpenAICompatibleProfile::default(),
+        OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletionsExt, Usage>::default(),
     )
     .await
 }
