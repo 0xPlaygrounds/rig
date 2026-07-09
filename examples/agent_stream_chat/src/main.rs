@@ -4,11 +4,8 @@
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
-use rig::agent::{MultiTurnStreamItem, StreamingResult};
-use rig::client::{CompletionClient, ProviderClient};
-use rig::message::Message;
+use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingChat;
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
