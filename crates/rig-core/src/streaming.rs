@@ -9,7 +9,6 @@
 //!
 
 use crate::OneOrMany;
-use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
@@ -633,78 +632,6 @@ pub trait StreamingCompletion<M: CompletionModel> {
     where
         I: IntoIterator<Item = T> + WasmCompatSend,
         T: Into<Message>;
-}
-
-/// A helper function to stream a low-level [`StreamingCompletionResponse`] to stdout.
-///
-/// Named to disambiguate from the high-level [`agent::stream_to_stdout`](crate::agent::stream_to_stdout),
-/// which drives a [`StreamingResult`](crate::agent::StreamingResult) and returns a `PromptResponse`.
-/// Tool call deltas are ignored as tool calls are generally much easier to handle when received in their entirety rather than using deltas.
-pub async fn stream_completion_to_stdout<M>(
-    agent: &'static Agent<M>,
-    stream: &mut StreamingCompletionResponse<M::StreamingResponse>,
-) -> Result<(), std::io::Error>
-where
-    M: CompletionModel,
-{
-    let mut is_reasoning = false;
-    print!("Response: ");
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(StreamedAssistantContent::Text(text)) => {
-                if is_reasoning {
-                    is_reasoning = false;
-                    println!("\n---\n");
-                }
-                print!("{}", text.text);
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Ok(StreamedAssistantContent::ToolCall {
-                tool_call,
-                internal_call_id: _,
-            }) => {
-                let res = agent
-                    .tool_server_handle
-                    .call_tool(
-                        &tool_call.function.name,
-                        &tool_call.function.arguments.to_string(),
-                    )
-                    .await
-                    .map_err(|x| std::io::Error::other(x.to_string()))?;
-                println!("\nResult: {res}");
-            }
-            Ok(StreamedAssistantContent::Final(res)) => {
-                if let Ok(json_res) = serde_json::to_string_pretty(&res) {
-                    println!();
-                    tracing::info!("Final result: {json_res}");
-                }
-            }
-            Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
-                if !is_reasoning {
-                    is_reasoning = true;
-                    println!();
-                    println!("Thinking: ");
-                }
-                let reasoning = reasoning.display_text();
-
-                print!("{reasoning}");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Err(e) => {
-                if e.to_string().contains("aborted") {
-                    println!("\nStream cancelled.");
-                    break;
-                }
-                eprintln!("Error: {e}");
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    println!(); // New line after streaming completes
-
-    Ok(())
 }
 
 // Test module
