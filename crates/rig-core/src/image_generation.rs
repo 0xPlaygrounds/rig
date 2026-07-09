@@ -39,27 +39,6 @@ pub enum ImageGenerationError {
 
 crate::provider_response::impl_provider_response_helpers!(ImageGenerationError);
 
-pub trait ImageGeneration<M>
-where
-    M: ImageGenerationModel,
-{
-    /// Generates an image generation request builder for the given prompt and size.
-    /// This function is meant to be called by the user to further customize the
-    /// request at image generation time before sending it.
-    ///
-    /// ❗IMPORTANT: The type that implements this trait might have already
-    /// populated fields in the builder (the exact fields depend on the type).
-    /// For fields that have already been set by the model, calling the corresponding
-    /// method on the builder will overwrite the value set by the model.
-    fn image_generation(
-        &self,
-        prompt: &str,
-        size: &(u32, u32),
-    ) -> impl std::future::Future<
-        Output = Result<ImageGenerationRequestBuilder<M, Provided<String>>, ImageGenerationError>,
-    > + Send;
-}
-
 /// A unified response for a model image generation, returning both the image and the raw response.
 #[derive(Debug)]
 pub struct ImageGenerationResponse<T> {
