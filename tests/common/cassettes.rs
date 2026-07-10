@@ -10,6 +10,7 @@ use axum::extract::State;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use axum::{Router, routing::any};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use futures::{FutureExt, stream};
 use httpmock::MockServer;
 use serde::{Deserialize, Serialize};
@@ -186,7 +187,7 @@ pub(crate) enum CassetteMode {
 }
 
 impl CassetteMode {
-    fn current() -> Self {
+    pub(crate) fn current() -> Self {
         match std::env::var(MODE_ENV) {
             Ok(value) if value.eq_ignore_ascii_case("record") => Self::Record,
             Ok(value) if value.eq_ignore_ascii_case("replay") => Self::Replay,
@@ -197,6 +198,77 @@ impl CassetteMode {
 
     fn records(self) -> bool {
         matches!(self, Self::Record)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DirectRecorder {
+    interactions: Arc<Mutex<Vec<CassetteInteraction>>>,
+    policy: CassettePolicy,
+}
+
+pub(crate) struct DirectHttpRequest<'a, Headers> {
+    pub(crate) method: &'a str,
+    pub(crate) uri: &'a str,
+    pub(crate) headers: Headers,
+    pub(crate) body: &'a [u8],
+}
+
+pub(crate) struct DirectHttpResponse<'a, Headers> {
+    pub(crate) status: u16,
+    pub(crate) headers: Headers,
+    pub(crate) body: &'a [u8],
+}
+
+impl DirectRecorder {
+    pub(crate) async fn record_http_interaction<RequestHeaders, ResponseHeaders>(
+        &self,
+        request: DirectHttpRequest<'_, RequestHeaders>,
+        response: DirectHttpResponse<'_, ResponseHeaders>,
+    ) where
+        RequestHeaders: IntoIterator,
+        RequestHeaders::Item: DirectHeader,
+        ResponseHeaders: IntoIterator,
+        ResponseHeaders::Item: DirectHeader,
+    {
+        let mut scrubber = CassetteScrubber::new(self.policy);
+        let mut interaction = CassetteInteraction {
+            when: recorded_request(
+                self.policy,
+                request.method,
+                request.uri,
+                request.headers.into_iter().map(DirectHeader::into_pair),
+                request.body,
+            ),
+            then: recorded_response(
+                response.status,
+                response.headers.into_iter().map(DirectHeader::into_pair),
+                response.body,
+            ),
+        };
+        scrubber.scrub_request(&mut interaction.when);
+        scrubber.scrub_response(&mut interaction.then);
+        self.interactions.lock().await.push(interaction);
+    }
+}
+
+pub(crate) trait DirectHeader {
+    type Name: AsRef<str>;
+    type Value: AsRef<str>;
+
+    fn into_pair(self) -> (Self::Name, Self::Value);
+}
+
+impl<Name, Value> DirectHeader for (Name, Value)
+where
+    Name: AsRef<str>,
+    Value: AsRef<str>,
+{
+    type Name = Name;
+    type Value = Value;
+
+    fn into_pair(self) -> (Self::Name, Self::Value) {
+        self
     }
 }
 
@@ -211,13 +283,20 @@ pub(crate) struct ProviderCassette {
 
 enum CassetteServer {
     Recording(MockServer),
+    DirectRecording(DirectRecordingServer),
     Replay(ReplayServer),
+}
+
+struct DirectRecordingServer {
+    base_url: String,
+    interactions: Arc<Mutex<Vec<CassetteInteraction>>>,
 }
 
 impl CassetteServer {
     fn base_url(&self) -> String {
         match self {
             Self::Recording(server) => server.base_url(),
+            Self::DirectRecording(server) => server.base_url.clone(),
             Self::Replay(server) => server.base_url(),
         }
     }
@@ -290,6 +369,59 @@ impl ProviderCassette {
         }
     }
 
+    pub(crate) async fn start_direct_recording(
+        provider: &'static str,
+        spec: impl Into<CassetteSpec>,
+        real_base_url: &str,
+    ) -> Self {
+        let spec = spec.into();
+        let scenario = spec.scenario;
+        let mode = CassetteMode::current();
+        let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
+        let cassette_path = cassette_path(provider, scenario);
+        let upstream = UpstreamBase::parse(real_base_url);
+        let (server, recording_id) = if mode.records() {
+            let interactions = Arc::new(Mutex::new(Vec::new()));
+            (
+                CassetteServer::DirectRecording(DirectRecordingServer {
+                    base_url: upstream.origin.clone(),
+                    interactions,
+                }),
+                None,
+            )
+        } else {
+            if !cassette_path.exists() {
+                panic!(
+                    "missing provider cassette {}; run with {MODE_ENV}=record and the real API key to create it",
+                    cassette_path.display()
+                );
+            }
+            (
+                CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await),
+                None,
+            )
+        };
+
+        Self {
+            server,
+            cassette_path,
+            base_path: upstream.path,
+            mode,
+            policy,
+            recording_id,
+        }
+    }
+
+    pub(crate) fn direct_recorder(&self) -> Option<DirectRecorder> {
+        match &self.server {
+            CassetteServer::DirectRecording(server) => Some(DirectRecorder {
+                interactions: server.interactions.clone(),
+                policy: self.policy,
+            }),
+            _ => None,
+        }
+    }
+
     pub(crate) fn base_url(&self) -> String {
         format!("{}{}", self.server.base_url(), self.base_path)
     }
@@ -324,6 +456,19 @@ impl ProviderCassette {
                 }
                 return;
             }
+            CassetteServer::DirectRecording(server) => {
+                let yaml = {
+                    let interactions = server.interactions.lock().await;
+                    assert!(
+                        !interactions.is_empty(),
+                        "provider cassette {} should contain at least one interaction",
+                        cassette_path.display()
+                    );
+                    serialize_cassette_interactions(&interactions)
+                };
+                write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
+                return;
+            }
             CassetteServer::Recording(server) => server,
         };
 
@@ -338,18 +483,7 @@ impl ProviderCassette {
             .expect("provider cassette should export")
             .expect("provider cassette should contain at least one interaction");
         let yaml = String::from_utf8(bytes.to_vec()).expect("cassette YAML should be UTF-8");
-        let redacted = scrub_cassette_contents_with_policy(policy, &yaml);
-        let failures = cassette_safety_failures_with_policy(policy, &cassette_path, &redacted);
-        assert!(
-            failures.is_empty(),
-            "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
-            cassette_path.display(),
-            failures.join("\n")
-        );
-
-        write_cassette_atomically(&cassette_path, redacted.as_bytes())
-            .await
-            .expect("provider cassette should be written");
+        write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
     }
 
     pub(crate) async fn finish_after_test(self, test_result: Result<(), PanicPayload>) {
@@ -497,6 +631,8 @@ struct CassetteRequest {
     #[serde(default)]
     header: Vec<NameValue>,
     body: Option<String>,
+    #[serde(default, skip_serializing_if = "BodyEncoding::is_utf8")]
+    body_encoding: BodyEncoding,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -505,6 +641,22 @@ struct CassetteResponse {
     #[serde(default)]
     header: Vec<NameValue>,
     body: Option<String>,
+    #[serde(default, skip_serializing_if = "BodyEncoding::is_utf8")]
+    body_encoding: BodyEncoding,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum BodyEncoding {
+    #[default]
+    Utf8,
+    Base64,
+}
+
+impl BodyEncoding {
+    fn is_utf8(&self) -> bool {
+        matches!(self, Self::Utf8)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -671,6 +823,7 @@ fn replay_miss_message(
                 &interaction.when.header,
                 &request.body,
                 interaction.when.body.as_deref(),
+                interaction.when.body_encoding,
             );
 
             json!({
@@ -730,7 +883,111 @@ fn request_matches(
             &expected.header,
             &request.body,
             expected.body.as_deref(),
+            expected.body_encoding,
         )
+}
+
+fn recorded_request<N, V>(
+    policy: CassettePolicy,
+    method: &str,
+    uri: &str,
+    headers: impl IntoIterator<Item = (N, V)>,
+    body: &[u8],
+) -> CassetteRequest
+where
+    N: AsRef<str>,
+    V: AsRef<str>,
+{
+    let parsed = parse_recorded_uri(uri);
+    let recorded_body = recorded_body(body);
+    CassetteRequest {
+        path: parsed.path().to_string(),
+        method: method.to_ascii_uppercase(),
+        query_param: parsed
+            .query_pairs()
+            .into_owned()
+            .map(|(name, value)| NameValue { name, value })
+            .collect(),
+        header: recorded_request_headers(policy, headers),
+        body: recorded_body.body,
+        body_encoding: recorded_body.encoding,
+    }
+}
+
+fn recorded_response<N, V>(
+    status: u16,
+    headers: impl IntoIterator<Item = (N, V)>,
+    body: &[u8],
+) -> CassetteResponse
+where
+    N: AsRef<str>,
+    V: AsRef<str>,
+{
+    let recorded_body = recorded_body(body);
+    CassetteResponse {
+        status,
+        header: headers
+            .into_iter()
+            .map(|(name, value)| NameValue {
+                name: name.as_ref().to_ascii_lowercase(),
+                value: value.as_ref().to_string(),
+            })
+            .collect(),
+        body: recorded_body.body,
+        body_encoding: recorded_body.encoding,
+    }
+}
+
+fn parse_recorded_uri(uri: &str) -> url::Url {
+    url::Url::parse(uri).unwrap_or_else(|_| {
+        url::Url::parse(&format!("http://cassette.invalid{uri}"))
+            .unwrap_or_else(|error| panic!("recorded URI {uri:?} should parse: {error}"))
+    })
+}
+
+fn recorded_request_headers<N, V>(
+    policy: CassettePolicy,
+    headers: impl IntoIterator<Item = (N, V)>,
+) -> Vec<NameValue>
+where
+    N: AsRef<str>,
+    V: AsRef<str>,
+{
+    headers
+        .into_iter()
+        .filter_map(|(name, value)| {
+            let name = name.as_ref();
+            contains_case_insensitive(policy.recorded_request_headers, name).then(|| NameValue {
+                name: name.to_ascii_lowercase(),
+                value: value.as_ref().to_string(),
+            })
+        })
+        .collect()
+}
+
+struct RecordedBody {
+    body: Option<String>,
+    encoding: BodyEncoding,
+}
+
+fn recorded_body(body: &[u8]) -> RecordedBody {
+    if body.is_empty() {
+        return RecordedBody {
+            body: None,
+            encoding: BodyEncoding::Utf8,
+        };
+    }
+
+    match std::str::from_utf8(body) {
+        Ok(body) => RecordedBody {
+            body: Some(body.to_string()),
+            encoding: BodyEncoding::Utf8,
+        },
+        Err(_) => RecordedBody {
+            body: Some(BASE64_STANDARD.encode(body)),
+            encoding: BodyEncoding::Base64,
+        },
+    }
 }
 
 fn query_matches(query: Option<&str>, expected: &[NameValue]) -> bool {
@@ -808,34 +1065,49 @@ fn has_nonempty_header(actual: &axum::http::HeaderMap, name: &str) -> bool {
 }
 
 fn body_matches(
-    _policy: CassettePolicy,
+    policy: CassettePolicy,
     actual_headers: &axum::http::HeaderMap,
     expected_headers: &[NameValue],
     actual: &[u8],
     expected: Option<&str>,
+    expected_encoding: BodyEncoding,
 ) -> bool {
     let Some(expected) = expected else {
         return actual.is_empty();
     };
+    let expected_bytes = decode_body(expected, expected_encoding)
+        .unwrap_or_else(|error| panic!("cassette request body should decode: {error}"));
     if is_multipart_request(actual_headers, expected_headers) {
-        return multipart_bodies_match(
-            actual_headers,
-            expected_headers,
-            actual,
-            expected.as_bytes(),
-        );
+        return multipart_bodies_match(actual_headers, expected_headers, actual, &expected_bytes);
     }
+
+    if expected_encoding == BodyEncoding::Base64 {
+        return actual == expected_bytes;
+    }
+
     let Ok(actual) = std::str::from_utf8(actual) else {
         return false;
     };
+    let Ok(expected) = std::str::from_utf8(&expected_bytes) else {
+        return false;
+    };
+    let actual = CassetteScrubber::new(policy).scrub_body(actual);
+    let expected = CassetteScrubber::new(policy).scrub_body(expected);
 
     if let (Some(actual_json), Some(expected_json)) =
-        (canonical_json(actual), canonical_json(expected))
+        (canonical_json(&actual), canonical_json(&expected))
     {
         return actual_json == expected_json;
     }
 
     actual == expected
+}
+
+fn decode_body(body: &str, encoding: BodyEncoding) -> Result<Vec<u8>, base64::DecodeError> {
+    match encoding {
+        BodyEncoding::Utf8 => Ok(body.as_bytes().to_vec()),
+        BodyEncoding::Base64 => BASE64_STANDARD.decode(body),
+    }
 }
 
 fn is_multipart_request(
@@ -1085,6 +1357,12 @@ fn cassette_response(response: &CassetteResponse, cassette_path: &Path) -> Respo
 
 fn response_body(response: &CassetteResponse) -> Body {
     let body = response.body.clone().unwrap_or_default();
+    if response.body_encoding == BodyEncoding::Base64 {
+        let bytes = decode_body(&body, BodyEncoding::Base64)
+            .expect("base64 cassette response body should decode");
+        return Body::from(bytes);
+    }
+
     if is_sse_response(&response.header) {
         let chunks = sse_body_chunks(&body)
             .into_iter()
@@ -1232,13 +1510,23 @@ fn cassette_safety_failures_with_policy(
     }
 
     let lower = contents.to_ascii_lowercase();
+    let decoded_base64_body_texts = decoded_base64_body_texts(contents);
     for pattern in policy.forbidden_patterns {
-        if lower.contains(pattern) {
+        if lower.contains(pattern)
+            || decoded_base64_body_texts
+                .iter()
+                .any(|body| body.to_ascii_lowercase().contains(pattern))
+        {
             failures.push(format!("{} contains {pattern:?}", cassette_path.display()));
         }
     }
+    let contents_with_decoded_base64 = if decoded_base64_body_texts.is_empty() {
+        contents.to_string()
+    } else {
+        format!("{}\n{}", contents, decoded_base64_body_texts.join("\n"))
+    };
 
-    let generated_tokens = generated_tokens(policy, contents);
+    let generated_tokens = generated_tokens(policy, &contents_with_decoded_base64);
     if !generated_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} unsanitized provider artifact(s)",
@@ -1247,7 +1535,7 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
-    let openai_api_key_tokens = openai_api_key_tokens(contents);
+    let openai_api_key_tokens = openai_api_key_tokens(&contents_with_decoded_base64);
     if !openai_api_key_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} OpenAI API key-shaped token(s)",
@@ -1256,7 +1544,7 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
-    let anthropic_api_key_tokens = anthropic_api_key_tokens(contents);
+    let anthropic_api_key_tokens = anthropic_api_key_tokens(&contents_with_decoded_base64);
     if !anthropic_api_key_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} Anthropic API key-shaped token(s)",
@@ -1265,7 +1553,7 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
-    let google_api_key_tokens = google_api_key_tokens(contents);
+    let google_api_key_tokens = google_api_key_tokens(&contents_with_decoded_base64);
     if !google_api_key_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} Google API key-shaped token(s)",
@@ -1274,7 +1562,58 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
+    let aws_access_key_tokens = aws_access_key_tokens(&contents_with_decoded_base64);
+    if !aws_access_key_tokens.is_empty() {
+        failures.push(format!(
+            "{} contains {} AWS access key-shaped token(s)",
+            cassette_path.display(),
+            aws_access_key_tokens.len()
+        ));
+    }
+
     failures
+}
+
+async fn write_scrubbed_cassette(cassette_path: &Path, policy: CassettePolicy, yaml: &str) {
+    let redacted = scrub_cassette_contents_with_policy(policy, yaml);
+    let failures = cassette_safety_failures_with_policy(policy, cassette_path, &redacted);
+    assert!(
+        failures.is_empty(),
+        "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
+        cassette_path.display(),
+        failures.join("\n")
+    );
+
+    write_cassette_atomically(cassette_path, redacted.as_bytes())
+        .await
+        .expect("provider cassette should be written");
+}
+
+fn decoded_base64_body_texts(contents: &str) -> Vec<String> {
+    parse_cassette_interactions(Path::new("<cassette>"), contents)
+        .into_iter()
+        .flat_map(|interaction| {
+            [
+                interaction.when,
+                cassette_request_from_response(interaction.then),
+            ]
+        })
+        .filter(|request| request.body_encoding == BodyEncoding::Base64)
+        .filter_map(|request| request.body)
+        .filter_map(|body| decode_body(&body, BodyEncoding::Base64).ok())
+        .map(|body| String::from_utf8_lossy(&body).into_owned())
+        .collect()
+}
+
+fn cassette_request_from_response(response: CassetteResponse) -> CassetteRequest {
+    CassetteRequest {
+        path: String::new(),
+        method: String::new(),
+        query_param: Vec::new(),
+        header: response.header,
+        body: response.body,
+        body_encoding: response.body_encoding,
+    }
 }
 
 fn serialize_cassette_interactions(interactions: &[CassetteInteraction]) -> String {
@@ -1345,6 +1684,12 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "openai-organization",
     "openai-project",
     "anthropic-organization-id",
+    "aws4-hmac-sha256",
+    "credential=",
+    "signedheaders=",
+    "x-amz-credential",
+    "x-amz-signature",
+    "x-amz-security-token",
 ];
 
 const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
@@ -1371,10 +1716,21 @@ const SENSITIVE_HEADER_NAMES: &[&str] = &[
     "openai-organization",
     "openai-project",
     "anthropic-organization-id",
+    "x-amz-security-token",
+    "x-amz-content-sha256",
+    "x-amz-date",
     "key",
 ];
 
-const SENSITIVE_QUERY_PARAMS: &[&str] = &["key", "api_key", "apikey", "access_token"];
+const SENSITIVE_QUERY_PARAMS: &[&str] = &[
+    "key",
+    "api_key",
+    "apikey",
+    "access_token",
+    "x-amz-credential",
+    "x-amz-signature",
+    "x-amz-security-token",
+];
 
 const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type"];
 
@@ -1406,6 +1762,7 @@ const GENERATED_ID_KEYS: &[&str] = &[
     "responseid",
     "tool_call_id",
     "tool_use_id",
+    "tooluseid",
 ];
 
 const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
@@ -1414,6 +1771,7 @@ const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
     TokenPrefix::new("msg_", "msg_", 8),
     TokenPrefix::new("call_", "call_", 8),
     TokenPrefix::new("toolu_", "toolu_", 8),
+    TokenPrefix::new("tooluse_", "tooluse_", 8),
     TokenPrefix::new("file_", "file_", 6),
     TokenPrefix::new("req_", "req_", 8),
     TokenPrefix::new("rs_", "rs_", 8),
@@ -1426,6 +1784,7 @@ const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
     TokenPrefix::new("asst_", "asst_", 8),
     TokenPrefix::new("batch_", "batch_", 8),
     TokenPrefix::new("upload_", "upload_", 8),
+    TokenPrefix::new("document-", "document-", 8),
 ];
 
 struct CassetteScrubber {
@@ -1453,7 +1812,7 @@ impl CassetteScrubber {
         }
 
         if let Some(body) = &mut request.body {
-            *body = self.scrub_body(body);
+            *body = self.scrub_encoded_body(body, request.body_encoding);
         }
     }
 
@@ -1461,7 +1820,22 @@ impl CassetteScrubber {
         scrub_headers(self.policy, &mut response.header, HeaderMode::Response);
 
         if let Some(body) = &mut response.body {
-            *body = self.scrub_body(body);
+            *body = self.scrub_encoded_body(body, response.body_encoding);
+        }
+    }
+
+    fn scrub_encoded_body(&mut self, body: &str, encoding: BodyEncoding) -> String {
+        match encoding {
+            BodyEncoding::Utf8 => self.scrub_body(body),
+            BodyEncoding::Base64 => {
+                let Ok(bytes) = decode_body(body, BodyEncoding::Base64) else {
+                    return body.to_string();
+                };
+                let Ok(text) = std::str::from_utf8(&bytes) else {
+                    return body.to_string();
+                };
+                BASE64_STANDARD.encode(self.scrub_body(text))
+            }
         }
     }
 
@@ -1779,6 +2153,7 @@ fn placeholder_kind_for_value(policy: CassettePolicy, value: &str, fallback: &st
         "signature" | "thoughtsignature" => "signature_",
         "system_fingerprint" => "fp_",
         "tool_use_id" => "toolu_",
+        "tooluseid" => "tooluse_",
         "url" => "url_",
         _ => "id_",
     })
@@ -1992,6 +2367,33 @@ fn token_suffix_is_plausible_secret(suffix: &str, min_len: usize) -> bool {
         && suffix.chars().any(|ch| ch.is_ascii_alphabetic())
 }
 
+fn aws_access_key_tokens(contents: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+
+    for prefix in ["AKIA", "ASIA"] {
+        let mut remaining = contents;
+        while let Some(index) = remaining.find(prefix) {
+            let after_prefix = &remaining[index + prefix.len()..];
+            let suffix_len = after_prefix
+                .chars()
+                .take_while(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit())
+                .map(char::len_utf8)
+                .sum::<usize>();
+            let token = &remaining[index..index + prefix.len() + suffix_len];
+
+            if suffix_len == 16 {
+                tokens.push(token.to_string());
+            }
+
+            remaining = &remaining[index + prefix.len()..];
+        }
+    }
+
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
 fn google_api_key_tokens(contents: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut remaining = contents;
@@ -2095,6 +2497,7 @@ mod tests {
             query_param: Vec::new(),
             header: Vec::new(),
             body: None,
+            body_encoding: BodyEncoding::Utf8,
         }
     }
 
@@ -2103,6 +2506,7 @@ mod tests {
             status: 200,
             header: Vec::new(),
             body: None,
+            body_encoding: BodyEncoding::Utf8,
         }
     }
 
@@ -2157,13 +2561,38 @@ mod tests {
         let policy = CassettePolicy::default();
         let headers = axum::http::HeaderMap::new();
 
-        assert!(body_matches(policy, &headers, &[], &[], None));
+        assert!(body_matches(
+            policy,
+            &headers,
+            &[],
+            &[],
+            None,
+            BodyEncoding::Utf8
+        ));
         assert!(!body_matches(
             policy,
             &headers,
             &[],
             br#"{"unexpected":true}"#,
-            None
+            None,
+            BodyEncoding::Utf8
+        ));
+    }
+
+    #[test]
+    fn body_matching_scrubs_generated_document_names() {
+        let policy = CassettePolicy::default();
+        let headers = axum::http::HeaderMap::new();
+        let expected = r#"{"document":{"name":"document-REDACTED_1"}}"#;
+        let actual = br#"{"document":{"name":"document-d472a47d2451423eac893453a8c2fed9"}}"#;
+
+        assert!(body_matches(
+            policy,
+            &headers,
+            &[],
+            actual,
+            Some(expected),
+            BodyEncoding::Utf8
         ));
     }
 
@@ -2269,6 +2698,53 @@ mod tests {
             .insert("x-goog-api-key", HeaderValue::from_static("[REDACTED]"));
 
         assert!(required_headers_present(policy, &request.headers));
+    }
+
+    #[tokio::test]
+    async fn direct_recorder_omits_sigv4_headers() {
+        let policy = CassettePolicy::for_scenario(
+            "bedrock",
+            "agent/completion_smoke",
+            ReplayMatching::Ordered,
+        );
+        let interactions = Arc::new(Mutex::new(Vec::new()));
+        let recorder = DirectRecorder {
+            interactions: interactions.clone(),
+            policy,
+        };
+
+        recorder
+            .record_http_interaction(
+                DirectHttpRequest {
+                    method: "POST",
+                    uri: "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
+                    headers: [
+                        ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
+                        ("x-amz-date", "20260709T000000Z"),
+                        ("x-amz-security-token", "session-token"),
+                        ("content-type", "application/json"),
+                    ],
+                    body: br#"{"ok":true}"#,
+                },
+                DirectHttpResponse {
+                    status: 200,
+                    headers: [
+                        ("content-type", "application/json"),
+                        ("x-amzn-requestid", "request-id"),
+                    ],
+                    body: br#"{"ok":true}"#,
+                },
+            )
+            .await;
+
+        let interactions = interactions.lock().await;
+        let interaction = interactions
+            .first()
+            .expect("interaction should be recorded");
+        assert_eq!(interaction.when.header.len(), 1);
+        assert_eq!(interaction.when.header[0].name, "content-type");
+        assert_eq!(interaction.then.header.len(), 1);
+        assert_eq!(interaction.then.header[0].name, "content-type");
     }
 
     #[test]
@@ -2446,6 +2922,7 @@ mod tests {
                 value: "application/json".to_string(),
             }],
             body: Some(r#"{"ok":true}"#.to_string()),
+            body_encoding: BodyEncoding::Utf8,
         };
 
         let response = super::cassette_response(&response, Path::new("fixture.yaml"));
@@ -2454,6 +2931,68 @@ mod tests {
             .expect("non-SSE cassette body should collect");
 
         assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#));
+    }
+
+    #[tokio::test]
+    async fn cassette_response_decodes_base64_body() {
+        let response = CassetteResponse {
+            status: 200,
+            header: vec![NameValue {
+                name: "content-type".to_string(),
+                value: "application/vnd.amazon.eventstream".to_string(),
+            }],
+            body: Some(BASE64_STANDARD.encode([0, 159, 146, 150])),
+            body_encoding: BodyEncoding::Base64,
+        };
+
+        let response = super::cassette_response(&response, Path::new("fixture.yaml"));
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("base64 cassette body should collect");
+
+        assert_eq!(body, Bytes::from_static(&[0, 159, 146, 150]));
+    }
+
+    #[test]
+    fn recorded_body_base64_encodes_non_utf8_bytes() {
+        let recorded = recorded_body(&[0, 159, 146, 150]);
+
+        assert_eq!(recorded.encoding, BodyEncoding::Base64);
+        assert_eq!(recorded.body.as_deref(), Some("AJ+Slg=="));
+    }
+
+    #[test]
+    fn body_matching_compares_base64_bytes() {
+        let policy = CassettePolicy::default();
+        let headers = axum::http::HeaderMap::new();
+        let expected = BASE64_STANDARD.encode([0, 159, 146, 150]);
+
+        assert!(body_matches(
+            policy,
+            &headers,
+            &[],
+            &[0, 159, 146, 150],
+            Some(&expected),
+            BodyEncoding::Base64
+        ));
+    }
+
+    #[test]
+    fn safety_detects_aws_keys_in_base64_bodies_without_echoing_value() {
+        let leaked = "AKIA1234567890ABCDEF";
+        let cassette = format!(
+            "when:\n  path: /model/test/converse-stream\n  method: POST\nthen:\n  status: 200\n  body: {}\n  body_encoding: base64\n",
+            BASE64_STANDARD.encode(format!(r#"{{"leaked":"{leaked}"}}"#))
+        );
+
+        let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
+
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("AWS access key-shaped token(s)"))
+        );
+        assert!(failures.iter().all(|failure| !failure.contains(leaked)));
     }
 
     #[test]
@@ -2589,6 +3128,31 @@ then:
         assert_eq!(scrubbed.matches("file_REDACTED_1").count(), 5);
         assert!(scrubbed.contains("msg_REDACTED_1"));
         assert!(scrubbed.contains("rig-file-id-page-two-verifier-8c27"));
+        assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+    }
+
+    #[test]
+    fn scrubber_preserves_repeated_bedrock_tool_use_ids_across_json_bodies() {
+        let cassette = r#"when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+then:
+  status: 200
+  body: '{"output":{"message":{"content":[{"toolUse":{"toolUseId":"tooluse_A3wBRw65LYralyPMOxFhuj","name":"subtract","input":{"x":2,"y":5}}}]}}}'
+---
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  body: '{"messages":[{"content":[{"toolResult":{"toolUseId":"tooluse_A3wBRw65LYralyPMOxFhuj","content":[{"text":"-3"}]}}]}]}'
+then:
+  status: 200
+  body: '{"output":{"message":{"content":[{"text":"Done"}]}}}'
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(!scrubbed.contains("tooluse_A3wBRw65LYralyPMOxFhuj"));
+        assert_eq!(scrubbed.matches("tooluse_REDACTED_1").count(), 2);
         assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
     }
 
