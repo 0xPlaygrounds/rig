@@ -145,8 +145,8 @@ async fn main() -> Result<()> {
     {
         Ok(answer) => println!("(unexpected) got a final answer: {answer}\n"),
         Err(PromptError::MaxTurnsError { max_turns, .. }) => println!(
-            "hit MaxTurnsError after {max_turns} turns — every turn re-forced a tool call, so the \
-             model never produced a final answer.\n"
+            "hit MaxTurnsError after {max_turns} model calls — every turn re-forced a tool call, so \
+             the model never produced a final answer.\n"
         ),
         Err(err) => println!("run failed: {err}\n"),
     }

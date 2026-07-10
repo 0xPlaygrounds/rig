@@ -58,6 +58,7 @@ async fn nonstreaming() {
                         "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
                     }
                 }))
+                .default_max_turns(2)
                 .build();
 
             let result = agent

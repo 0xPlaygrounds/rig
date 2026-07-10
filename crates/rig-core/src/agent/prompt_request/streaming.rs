@@ -273,11 +273,10 @@ impl From<crate::memory::MemoryError> for StreamingError {
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
-/// If you expect to continuously call tools, you will want to ensure you use the `.max_turns()`
-/// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
-/// attempting to await (which will send the prompt request) can potentially return
-/// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
-/// back to back.
+/// When the agent has no configured `default_max_turns`, the implicit budget is
+/// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
+/// configured or implicit budget; a tool call followed by a model-authored final
+/// answer generally requires at least two model calls.
 pub struct StreamingPromptRequest<M>
 where
     M: CompletionModel,
@@ -307,9 +306,9 @@ where
         }
     }
 
-    /// Set the maximum number of turns for multi-turn tool-calling (the maximum
-    /// number of turns an LLM can take calling tools before writing a text
-    /// response).
+    /// Set the total model-call budget, including the initial call and every
+    /// retry or continuation. Zero emits no model calls; one permits only the
+    /// initial call.
     ///
     /// Named to match the blocking
     /// [`PromptRequest::max_turns`](super::PromptRequest::max_turns) and
@@ -594,9 +593,8 @@ where
                     }
                 }
                 AgentRunStep::Done(response) => {
-                    // Run-completion marker, unifying the blocking driver's
-                    // "Depth reached" and the streaming driver's "multi-turn
-                    // stream finished" logs into one shared event.
+                    // Run-completion marker, unifying the blocking and streaming
+                    // drivers' run-finished logs into one shared event.
                     tracing::info!(
                         turn = run.turn(),
                         max_turns = runner.max_turns,

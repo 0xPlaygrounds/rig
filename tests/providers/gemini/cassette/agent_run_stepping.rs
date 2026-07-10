@@ -268,9 +268,10 @@ async fn max_turns_error_carries_pending_tool_results_message() {
                 .build();
             let names = tool_names(&["add"]);
 
-            // max_turns 0: the run errors once tool results demand a second
+            // max_turns 2: the run errors once tool results demand a third
             // model call.
-            let mut run = AgentRun::new("What is 21 + 21? Use the add tool.");
+            let mut run =
+                AgentRun::new("What is 21 + 21? Use the add tool.").max_turns(2);
             let error = loop {
                 match run.next_step() {
                     Ok(AgentRunStep::CallModel {
@@ -300,7 +301,7 @@ async fn max_turns_error_carries_pending_tool_results_message() {
             else {
                 panic!("expected MaxTurnsError, got {error:?}");
             };
-            assert_eq!(max_turns, 0);
+            assert_eq!(max_turns, 2);
             // Pins the divergence resolved by #1899: the error carries the
             // actual pending message (the tool-results user message), not a
             // reconstruction of its text.

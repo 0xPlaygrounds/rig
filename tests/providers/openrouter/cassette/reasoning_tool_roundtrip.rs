@@ -52,6 +52,7 @@ async fn nonstreaming() {
                     "reasoning": { "effort": "high" },
                     "include_reasoning": true
                 }))
+                .default_max_turns(2)
                 .build();
 
             let result = agent

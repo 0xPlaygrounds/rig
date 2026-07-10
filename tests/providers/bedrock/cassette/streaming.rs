@@ -37,6 +37,7 @@ async fn streaming_tools_smoke() {
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .max_tokens(1024)
             .tool(Subtract)
+            .default_max_turns(2)
             .build();
 
         let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;

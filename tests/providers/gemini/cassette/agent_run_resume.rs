@@ -271,7 +271,7 @@ async fn resume_after_invalid_tool_call_retry_rollback() {
             else {
                 panic!("a rolled-back run must retry with a model call");
             };
-            assert_eq!(turn, 2, "the retry consumes multi-turn depth");
+            assert_eq!(turn, 2, "the retry consumes model-call budget");
             assert!(
                 history_has_assistant_tool_call(&history, "add"),
                 "the rolled-back assistant turn stays in history: {history:?}"

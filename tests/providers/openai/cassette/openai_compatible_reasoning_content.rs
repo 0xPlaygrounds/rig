@@ -43,6 +43,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
                 .additional_params(json!({
                     "reasoning": { "effort": "medium" }
                 }))
+                .default_max_turns(2)
                 .build();
 
             let result = agent

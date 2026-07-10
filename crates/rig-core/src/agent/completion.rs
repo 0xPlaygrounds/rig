@@ -665,7 +665,8 @@ where
     pub dynamic_context: DynamicContextStore,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub tool_choice: Option<ToolChoice>,
-    /// Default maximum depth for recursive agent calls
+    /// Default total model-call budget, including the initial call and every
+    /// retry or continuation. `None` uses the implicit budget of one.
     pub default_max_turns: Option<usize>,
     /// Default hook stack applied to every prompt request and runner created
     /// from this agent. Empty by default.

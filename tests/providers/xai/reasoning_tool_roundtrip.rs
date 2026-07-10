@@ -47,6 +47,7 @@ async fn nonstreaming() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
+                .default_max_turns(2)
                 .build();
 
             let result = agent

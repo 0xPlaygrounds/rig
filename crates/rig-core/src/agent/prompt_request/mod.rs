@@ -61,7 +61,7 @@ macro_rules! forward_prompt_setters {
 
         /// Set the retry budget for invalid tool-call recovery.
         ///
-        /// Invalid tool-call retries also consume normal multi-turn depth.
+        /// Invalid tool-call retries also consume the total model-call budget.
         pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
             self.$recv = self.$recv.max_invalid_tool_call_retries(retries);
             self
@@ -99,11 +99,10 @@ impl PromptType for Extended {}
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
-/// If you expect to continuously call tools, you will want to ensure you use the `.max_turns()`
-/// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
-/// attempting to await (which will send the prompt request) can potentially return
-/// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
-/// back to back.
+/// When the agent has no configured `default_max_turns`, the implicit budget is
+/// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
+/// configured or implicit budget; a tool call followed by a model-authored final
+/// answer generally requires at least two model calls.
 pub struct PromptRequest<S, M>
 where
     S: PromptType,
@@ -147,10 +146,12 @@ where
         }
     }
 
-    /// Set the maximum number of turns for multi-turn conversations. A given agent may require multiple turns for tool-calling before giving an answer.
-    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
-    pub fn max_turns(mut self, depth: usize) -> Self {
-        self.runner = self.runner.max_turns(depth);
+    /// Set the total model-call budget, including the initial call and every
+    /// retry or continuation. Zero emits no model calls; one permits only the
+    /// initial call. Exceeding the budget returns
+    /// [`crate::completion::request::PromptError::MaxTurnsError`].
+    pub fn max_turns(mut self, max_turns: usize) -> Self {
+        self.runner = self.runner.max_turns(max_turns);
         self
     }
 
@@ -642,13 +643,12 @@ where
         }
     }
 
-    /// Set the maximum number of turns for multi-turn conversations.
-    ///
-    /// A given agent may require multiple turns for tool-calling before giving an answer.
-    /// If the maximum turn number is exceeded, it will return a
+    /// Set the total model-call budget, including the initial call and every
+    /// retry or continuation. Zero emits no model calls; one permits only the
+    /// initial call. Exceeding the budget returns a
     /// [`StructuredOutputError::PromptError`] wrapping a `MaxTurnsError`.
-    pub fn max_turns(mut self, depth: usize) -> Self {
-        self.inner = self.inner.max_turns(depth);
+    pub fn max_turns(mut self, max_turns: usize) -> Self {
+        self.inner = self.inner.max_turns(max_turns);
         self
     }
 

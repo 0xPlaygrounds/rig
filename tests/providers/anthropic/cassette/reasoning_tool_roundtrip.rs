@@ -66,6 +66,7 @@ async fn nonstreaming() {
                 .additional_params(serde_json::json!({
                     "thinking": { "type": "adaptive" }
                 }))
+                .default_max_turns(2)
                 .build();
 
             let result = agent

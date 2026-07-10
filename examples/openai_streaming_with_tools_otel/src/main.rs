@@ -135,6 +135,7 @@ async fn main() -> Result<(), anyhow::Error> {
             like 20 words",
         )
         .max_tokens(1024)
+        .default_max_turns(2)
         .tool(Adder)
         .tool(Subtract)
         .name("Bob")

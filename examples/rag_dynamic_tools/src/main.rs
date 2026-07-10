@@ -153,6 +153,7 @@ async fn main() -> Result<(), anyhow::Error> {
         // Add a dynamic tool source with a sample rate of 1 (i.e.: only
         // 1 additional tool will be added to prompts)
         .dynamic_tools(1, index, toolset)
+        .default_max_turns(2)
         .build();
 
     // Prompt the agent and print the response

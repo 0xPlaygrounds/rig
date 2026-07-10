@@ -55,6 +55,7 @@ async fn nonstreaming() {
                 .additional_params(serde_json::json!({
                     "reasoning": { "effort": "high" }
                 }))
+                .default_max_turns(2)
                 .build();
 
             let result = agent

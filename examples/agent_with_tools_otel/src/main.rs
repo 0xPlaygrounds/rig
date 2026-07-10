@@ -143,6 +143,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .agent(providers::openai::GPT_4O)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
+        .default_max_turns(2)
         .tool(Adder)
         .tool(Subtract)
         .build();

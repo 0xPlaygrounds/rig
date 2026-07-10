@@ -303,7 +303,7 @@ where
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or_default(),
+            max_turns: agent.default_max_turns.unwrap_or(1),
             max_invalid_tool_call_retries: 0,
             model: agent.model.clone(),
             agent_name: agent.name.clone(),
@@ -344,10 +344,11 @@ impl<M> AgentRunner<M>
 where
     M: CompletionModel,
 {
-    /// Set the maximum multi-turn depth (tool-calling rounds before a final
-    /// answer). Exceeding it returns [`PromptError::MaxTurnsError`].
-    pub fn max_turns(mut self, depth: usize) -> Self {
-        self.max_turns = depth;
+    /// Set the total model-call budget, including the initial call and every
+    /// retry or continuation. Zero emits no model calls; one permits only the
+    /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
+    pub fn max_turns(mut self, max_turns: usize) -> Self {
+        self.max_turns = max_turns;
         self
     }
 
@@ -412,7 +413,7 @@ where
     }
 
     /// Set the retry budget for invalid tool-call recovery. Invalid tool-call
-    /// retries also consume normal multi-turn depth.
+    /// retries also consume the total model-call budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
         self.max_invalid_tool_call_retries = retries;
         self
@@ -1094,9 +1095,9 @@ mod tests {
     };
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
-    use crate::completion::{CompletionModel, Message, PromptError};
+    use crate::completion::{CompletionModel, Message, Prompt, PromptError};
     use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
-    use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
+    use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
         MockSubtractTool, MockToolError, MockTurn,
@@ -1184,6 +1185,85 @@ mod tests {
         ])
     }
 
+    /// `AgentRunner::from_agent` preserves the distinction between an absent
+    /// agent default (the implicit one-call budget) and an explicit zero budget.
+    #[tokio::test]
+    async fn from_agent_preserves_implicit_one_and_explicit_zero_budgets() {
+        let implicit_model = blocking_model();
+        let implicit_recorded = implicit_model.clone();
+        let implicit_agent = AgentBuilder::new(implicit_model).tool(MockAddTool).build();
+        let implicit_runner = super::AgentRunner::from_agent(&implicit_agent, "add 2 and 3");
+        assert_eq!(implicit_runner.max_turns, 1);
+
+        let implicit_err = implicit_runner
+            .run()
+            .await
+            .expect_err("implicit budget should reject the second model call");
+        assert!(matches!(
+            implicit_err,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(implicit_recorded.request_count(), 1);
+
+        let zero_model = MockCompletionModel::text("should not be requested");
+        let zero_recorded = zero_model.clone();
+        let zero_agent = AgentBuilder::new(zero_model).default_max_turns(0).build();
+        let zero_runner = super::AgentRunner::from_agent(&zero_agent, "do not call");
+        assert_eq!(zero_runner.max_turns, 0);
+
+        let zero_err = zero_runner
+            .run()
+            .await
+            .expect_err("explicit zero budget should reject the initial model call");
+        assert!(matches!(
+            zero_err,
+            PromptError::MaxTurnsError { max_turns: 0, .. }
+        ));
+        assert_eq!(zero_recorded.request_count(), 0);
+    }
+
+    /// The public blocking and streaming prompt surfaces enforce the one-call
+    /// boundary identically after executing a tool-producing first turn.
+    #[tokio::test]
+    async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
+        let blocking_model = blocking_model();
+        let blocking_recorded = blocking_model.clone();
+        let blocking_agent = AgentBuilder::new(blocking_model).tool(MockAddTool).build();
+        let blocking_err = blocking_agent
+            .prompt("add 2 and 3")
+            .max_turns(1)
+            .await
+            .expect_err("blocking prompt should reject request two");
+        assert!(matches!(
+            blocking_err,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(blocking_recorded.request_count(), 1);
+
+        let streaming_model = streaming_model();
+        let streaming_recorded = streaming_model.clone();
+        let streaming_agent = AgentBuilder::new(streaming_model).tool(MockAddTool).build();
+        let mut stream = streaming_agent
+            .stream_prompt("add 2 and 3")
+            .max_turns(1)
+            .await;
+        let mut streaming_err = None;
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                streaming_err = Some(err);
+                break;
+            }
+        }
+        match streaming_err {
+            Some(StreamingError::Prompt(err)) => assert!(matches!(
+                *err,
+                PromptError::MaxTurnsError { max_turns: 1, .. }
+            )),
+            other => panic!("expected streaming max-turns error, got {other:?}"),
+        }
+        assert_eq!(streaming_recorded.request_count(), 1);
+    }
+
     /// run() and stream() of the same tool-calling scenario produce the same
     /// final output, the same final message history, the same tool-result
     /// content, and the same medium-independent hook event sequence.
@@ -1194,7 +1274,7 @@ mod tests {
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
-            .max_turns(3)
+            .max_turns(2)
             .add_hook(blocking_hook.clone())
             .run()
             .await
@@ -1207,7 +1287,7 @@ mod tests {
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
-            .max_turns(3)
+            .max_turns(2)
             .add_hook(streaming_hook.clone())
             .stream()
             .await;

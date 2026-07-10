@@ -77,6 +77,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
                  DO NOT modify the description from the tool result.",
             )
             .tool(WeatherTool::new(call_count.clone()))
+            .default_max_turns(2)
             .build();
 
         let response: WeatherResponse = agent

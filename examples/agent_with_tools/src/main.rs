@@ -93,6 +93,7 @@ async fn main() -> Result<()> {
         )
         .tools(boxed_tools())
         .max_tokens(1024)
+        .default_max_turns(2)
         .build();
 
     let response = agent.prompt("Calculate 2 - 5.").await?;

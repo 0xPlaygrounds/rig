@@ -168,6 +168,8 @@ impl<M> ChatBotBuilder<Provided<AgentImpl<M>>>
 where
     M: CompletionModel + 'static,
 {
+    /// Set the total model-call budget for each prompt, including the initial
+    /// call and every retry or continuation. Zero emits no model calls.
     pub fn max_turns(self, max_turns: usize) -> Self {
         ChatBotBuilder(Provided(AgentImpl {
             max_turns,

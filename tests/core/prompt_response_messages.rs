@@ -383,6 +383,7 @@ async fn chat_appends_prompt_and_assistant_to_history() {
 async fn chat_appends_tool_roundtrip_to_history() {
     let agent = AgentBuilder::new(tool_then_text_model())
         .tool(MockAddTool)
+        .default_max_turns(2)
         .build();
     let mut history = Vec::<Message>::new();
 

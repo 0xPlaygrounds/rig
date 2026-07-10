@@ -118,6 +118,7 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                         "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
                     }
                 }))
+                .default_max_turns(2)
                 .build();
             let mut chat_history = Vec::<Message>::new();
 
@@ -159,6 +160,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
                 "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
             }
         }))
+        .default_max_turns(2)
         .build();
 
     let mut chat_history = Vec::<Message>::new();
