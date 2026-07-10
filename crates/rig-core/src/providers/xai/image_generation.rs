@@ -98,6 +98,12 @@ where
             .post("/v1/images/generations")?
             .body(body)
             .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
+        let request = self
+            .client
+            .ext()
+            .authorize_request(request)
+            .await
+            .map_err(ImageGenerationError::HttpError)?;
 
         let response = self.client.send(request).await?;
 

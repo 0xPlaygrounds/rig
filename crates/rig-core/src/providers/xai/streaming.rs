@@ -49,6 +49,12 @@ where
             .post("/v1/responses")?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        let req = self
+            .client
+            .ext()
+            .authorize_request(req)
+            .await
+            .map_err(CompletionError::HttpError)?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(

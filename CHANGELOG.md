@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(xai)* add SuperGrok subscription OAuth from an existing xAI `auth.json` token cache. `Client::from_env()` uses it when `XAI_API_KEY` is not set, and callers can select a cache with `Client::builder().oauth().token_dir(...)` or `XAI_OAUTH_AUTH_FILE` / `XAI_OAUTH_TOKEN_DIR`.
+
 ### Changed
 
 - *(tool)* [**breaking**] flatten `Tool` / `ToolDyn` metadata: tool authors now implement `description()` and `parameters()` directly, and `Tool::definition(prompt)` / `ToolDyn::definition(prompt)` are removed. `ToolDefinition` remains a provider/request artifact generated from registered tools, with `Tool::NAME` / `Tool::name()` / `ToolDyn::name()` as the single source of truth for advertised and dispatched tool names.

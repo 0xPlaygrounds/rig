@@ -66,6 +66,7 @@ where
             .post("/v1/tts")?
             .body(body)
             .map_err(http_client::Error::from)?;
+        let req = self.client.ext().authorize_request(req).await?;
 
         let response = self.client.send(req).await?;
 

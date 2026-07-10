@@ -11,10 +11,29 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! SuperGrok subscription OAuth is also supported for callers that already
+//! have an xAI `auth.json` token cache. `Client::from_env()` falls back to this
+//! cache when `XAI_API_KEY` is not set, or configure it explicitly:
+//!
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::xai};
+//!
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = xai::Client::builder()
+//!     .oauth()
+//!     .token_dir("/path/to/xai_oauth")
+//!     .build()?;
+//!
+//! let grok = client.completion_model(xai::GROK_4);
+//! # Ok(())
+//! # }
+//! ```
 
 mod api;
 #[cfg(feature = "audio")]
 pub mod audio_generation;
+mod auth;
 pub mod client;
 pub mod completion;
 #[cfg(feature = "image")]
