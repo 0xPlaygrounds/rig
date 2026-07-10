@@ -28,6 +28,7 @@ async fn streaming_tools_smoke() {
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
+                .default_max_turns(2)
                 .build();
 
             let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
@@ -53,6 +54,7 @@ async fn example_streaming_with_tools() {
             .max_tokens(1024)
             .tool(Adder)
             .tool(Subtract)
+            .default_max_turns(2)
             .build();
 
         let mut stream = agent.stream_prompt("Calculate 2 - 5").await;

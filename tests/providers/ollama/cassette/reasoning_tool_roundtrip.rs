@@ -37,6 +37,7 @@ async fn nonstreaming() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(think_params())
+                .default_max_turns(2)
                 .build();
 
             let mut chat_history = Vec::<Message>::new();

@@ -60,6 +60,7 @@ async fn tool_roundtrip_smoke() {
             .max_tokens(1024)
             .tool(Adder)
             .tool(Subtract)
+            .default_max_turns(2)
             .build();
 
         let response = agent

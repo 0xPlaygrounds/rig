@@ -85,6 +85,7 @@ async fn tools_smoke() {
             .preamble(TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)
+            .default_max_turns(2)
             .build();
 
         let response = agent

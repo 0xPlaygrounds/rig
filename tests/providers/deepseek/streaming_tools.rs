@@ -39,6 +39,7 @@ async fn streaming_chat_with_tools() {
                 .tool(Adder)
                 .tool(Subtract)
                 .additional_params(non_thinking_params())
+                .default_max_turns(2)
                 .build();
 
             let history: &[Message] = &[];

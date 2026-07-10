@@ -28,6 +28,7 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                 .additional_params(serde_json::json!({
                     "reasoning": { "effort": "high" }
                 }))
+                .default_max_turns(2)
                 .build();
             let mut chat_history = Vec::<Message>::new();
 
