@@ -164,16 +164,6 @@ pub struct Nothing;
 
 impl ApiKey for Nothing {}
 
-impl TryFrom<String> for Nothing {
-    type Error = &'static str;
-
-    fn try_from(_: String) -> Result<Self, Self::Error> {
-        Err(
-            "Tried to create a Nothing from a string - this should not happen, please file an issue",
-        )
-    }
-}
-
 #[derive(Clone)]
 /// Generic provider client shared by Rig provider integrations.
 ///

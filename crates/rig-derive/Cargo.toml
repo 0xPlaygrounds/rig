@@ -11,7 +11,6 @@ workspace = true
 
 [dependencies]
 convert_case = { workspace = true }
-deluxe = { workspace = true, features = ["full"] }
 indoc = { workspace = true }
 proc-macro2 = { workspace = true, features = ["proc-macro"] }
 proc-macro-crate = "3.4.0"

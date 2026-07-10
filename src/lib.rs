@@ -13,7 +13,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+//! rig = { version = "*", features = ["lancedb", "fastembed"] }
 //! ```
 //!
 //! This enables modules such as `rig::lancedb` and `rig::fastembed`. Other
