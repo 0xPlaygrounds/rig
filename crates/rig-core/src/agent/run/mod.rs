@@ -310,11 +310,11 @@ pub struct AgentRun {
 }
 
 impl AgentRun {
-    /// Create a run for one prompt with no input history, no multi-turn depth
-    /// and no invalid tool-call retries.
+    /// Create a run for one prompt with no input history, a one-model-call
+    /// budget, and no invalid tool-call retries.
     pub fn new(prompt: impl Into<Message>) -> Self {
         Self {
-            max_turns: 0,
+            max_turns: 1,
             max_invalid_tool_call_retries: 0,
             tool_choice: None,
             output_tool_name: None,
@@ -340,8 +340,10 @@ impl AgentRun {
         self
     }
 
-    /// Set the maximum multi-turn depth. Exceeding it makes
-    /// [`AgentRun::next_step`] return [`PromptError::MaxTurnsError`].
+    /// Set the total model-call budget, including the initial call and every
+    /// retry or continuation. A budget of zero emits no model calls. Exceeding
+    /// the budget makes [`AgentRun::next_step`] return
+    /// [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
         self
@@ -393,11 +395,11 @@ impl AgentRun {
             .is_some_and(|value| self.missing_required_output_fields(&value).is_empty())
     }
 
-    /// Whether the run may re-prompt for valid Tool-mode output: budget remains
-    /// AND a retry turn would not immediately exceed [`AgentRun::max_turns`]
-    /// (otherwise we finalize best-effort rather than surface a max-turns error).
+    /// Whether the run may re-prompt for valid Tool-mode output: both the
+    /// output-retry budget and the total model-call budget must remain.
+    /// Otherwise, finalize best-effort rather than surface a max-turns error.
     fn can_reprompt_for_output(&self) -> bool {
-        self.output_retries < self.max_output_retries && self.current_turn <= self.max_turns + 1
+        self.output_retries < self.max_output_retries && self.current_turn < self.max_turns
     }
 
     /// Roll the run back to re-prompt for valid output (#1928). The caller must
@@ -411,7 +413,8 @@ impl AgentRun {
     }
 
     /// Set the retry budget for [`InvalidToolCallHookAction::Retry`]
-    /// resolutions. Invalid tool-call retries also consume multi-turn depth.
+    /// resolutions. Invalid tool-call retries also consume the total model-call
+    /// budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
         self.max_invalid_tool_call_retries = retries;
         self
@@ -536,7 +539,7 @@ impl AgentRun {
     /// Advance the machine and return the next action for the driver.
     ///
     /// # Errors
-    /// - [`PromptError::MaxTurnsError`] when the multi-turn depth is exhausted.
+    /// - [`PromptError::MaxTurnsError`] when the total model-call budget is exhausted.
     /// - [`PromptError::PromptCancelled`] when the machine is driven out of
     ///   protocol (for example, calling this while a model response is
     ///   pending).
@@ -551,7 +554,7 @@ impl AgentRun {
                 };
                 let prompt = prompt_ref.clone();
 
-                if self.current_turn > self.max_turns + 1 {
+                if self.current_turn >= self.max_turns {
                     return Err(PromptError::MaxTurnsError {
                         max_turns: self.max_turns,
                         chat_history: self.full_history().into(),
@@ -835,7 +838,8 @@ impl AgentRun {
     /// - [`InvalidToolCallHookAction::Fail`] fails the run with
     ///   [`PromptError::UnknownToolCall`].
     /// - [`InvalidToolCallHookAction::Retry`] rolls the turn back with
-    ///   corrective feedback while budget remains, consuming multi-turn depth.
+    ///   corrective feedback while budget remains, consuming the total
+    ///   model-call budget.
     /// - [`InvalidToolCallHookAction::Repair`] renames the tool call; the
     ///   repaired name is revalidated against the allowed tools.
     /// - [`InvalidToolCallHookAction::Skip`] records a synthetic tool result
@@ -1575,25 +1579,67 @@ mod tests {
     }
 
     #[test]
-    fn max_turns_exhaustion_returns_max_turns_error() {
-        let mut run = AgentRun::new("loop forever");
+    fn max_turns_zero_rejects_initial_model_call() {
+        let mut run = AgentRun::new("do not call").max_turns(0);
 
-        for turn_id in ["call_1", "call_2"] {
-            expect_call_model(&mut run);
-            expect_continue(
-                run.model_response(tool_call_turn(turn_id, "add"))
-                    .expect("model_response should succeed"),
-            );
-            expect_call_tools(&mut run);
-            run.tool_results(vec![tool_result(turn_id, "0")])
-                .expect("tool_results should succeed");
-        }
-
-        let err = run.next_step().expect_err("depth should be exhausted");
+        let err = run
+            .next_step()
+            .expect_err("zero budget should emit no call");
         assert!(matches!(
             err,
             PromptError::MaxTurnsError { max_turns: 0, .. }
         ));
+        assert_eq!(run.turn(), 0);
+    }
+
+    #[test]
+    fn new_implicitly_allows_one_model_call_and_rejects_tool_continuation() {
+        let mut run = AgentRun::new("add things");
+
+        let (_, _, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 1);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool_results should succeed");
+
+        let err = run
+            .next_step()
+            .expect_err("second model call should exceed budget");
+        assert!(matches!(
+            err,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(run.turn(), 1);
+    }
+
+    #[test]
+    fn max_turns_n_allows_exactly_n_model_calls() {
+        let mut run = AgentRun::new("loop").max_turns(3);
+
+        for (expected_turn, call_id) in [(1, "call_1"), (2, "call_2"), (3, "call_3")] {
+            let (_, _, turn) = expect_call_model(&mut run);
+            assert_eq!(turn, expected_turn);
+            expect_continue(
+                run.model_response(tool_call_turn(call_id, "add"))
+                    .expect("model_response should succeed"),
+            );
+            expect_call_tools(&mut run);
+            run.tool_results(vec![tool_result(call_id, "0")])
+                .expect("tool_results should succeed");
+        }
+
+        let err = run
+            .next_step()
+            .expect_err("fourth model call should exceed budget");
+        assert!(matches!(
+            err,
+            PromptError::MaxTurnsError { max_turns: 3, .. }
+        ));
+        assert_eq!(run.turn(), 3);
     }
 
     #[test]
@@ -2125,7 +2171,7 @@ mod tests {
         // #1928: in Tool mode the model finalized with plain text instead of
         // calling the output tool, so the run re-prompts (within budget).
         let mut run = AgentRun::new("summarize")
-            .max_turns(3)
+            .max_turns(2)
             .with_output_tool_name("final_result")
             .with_output_validation(Some(required_field_schema("summary")), 1);
 
@@ -2152,7 +2198,7 @@ mod tests {
         // #1928: the output tool was called but its arguments omit a required
         // field, so the run re-prompts rather than finalizing invalid output.
         let mut run = AgentRun::new("summarize")
-            .max_turns(3)
+            .max_turns(2)
             .with_output_tool_name("final_result")
             // `output_tool_turn` calls with args {"x":1}; require a different key.
             .with_output_validation(Some(required_field_schema("summary")), 1);
@@ -2186,6 +2232,24 @@ mod tests {
         let response = expect_done(&mut run);
         assert_eq!(response.output, r#"{"summary":"all good"}"#);
         assert!(run.is_done());
+    }
+
+    #[test]
+    fn tool_mode_finalizes_best_effort_when_model_call_budget_exhausted() {
+        let mut run = AgentRun::new("summarize")
+            .max_turns(1)
+            .with_output_tool_name("final_result")
+            .with_output_validation(Some(required_field_schema("summary")), 1);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("invalid output"))
+                .expect("model_response should succeed"),
+        );
+
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, "invalid output");
+        assert_eq!(run.turn(), 1);
     }
 
     #[test]

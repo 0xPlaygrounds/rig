@@ -117,7 +117,7 @@ where
     temperature: Option<f64>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
-    /// Default maximum depth for multi-turn agent calls
+    /// Default total model-call budget, including the initial call and retries.
     default_max_turns: Option<usize>,
     /// Tool configuration state (typestate pattern)
     tool_state: ToolState,
@@ -195,7 +195,8 @@ where
         self
     }
 
-    /// Set the default maximum depth that an agent will use for multi-turn.
+    /// Set the default total model-call budget, including the initial call and
+    /// every retry or continuation. Zero permits no model calls.
     pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
         self.default_max_turns = Some(default_max_turns);
         self
