@@ -3,7 +3,10 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, CompletionResponse, Usage};
-use rig_core::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
+use rig_core::message::{
+    AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
+    ToolFunction,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -58,6 +61,47 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                 } else {
                     assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));
                 }
+            } else if let Some(inline_data) = part.inline_data() {
+                if signature.is_some() {
+                    return Err(CompletionError::ResponseError(
+                        "Vertex inline images with thought_signature cannot be replayed through assistant history"
+                            .to_string(),
+                    ));
+                }
+
+                // Assistant history cannot represent the `thought` flag on image parts, so
+                // avoid replaying an internal thought image as visible assistant content.
+                if part.thought {
+                    continue;
+                }
+
+                let media_type = MediaType::from_mime_type(&inline_data.mime_type);
+                match media_type {
+                    Some(MediaType::Image(
+                        media_type @ (ImageMediaType::JPEG
+                        | ImageMediaType::PNG
+                        | ImageMediaType::WEBP
+                        | ImageMediaType::HEIC
+                        | ImageMediaType::HEIF),
+                    )) => {
+                        assistant_contents.push(AssistantContent::image_base64(
+                            BASE64.encode(&inline_data.data),
+                            Some(media_type),
+                            Some(ImageDetail::default()),
+                        ));
+                    }
+                    Some(MediaType::Image(media_type)) => {
+                        return Err(CompletionError::ResponseError(format!(
+                            "Unsupported Vertex inline image media type {media_type:?}; it cannot be replayed through assistant history"
+                        )));
+                    }
+                    _ => {
+                        return Err(CompletionError::ResponseError(format!(
+                            "Unsupported Vertex inline media type {:?}",
+                            inline_data.mime_type
+                        )));
+                    }
+                }
             } else if signature.is_some() {
                 // A signature-bearing part that is neither a function call nor text (e.g. a
                 // standalone "thinking" part). rig-core has no carrier for it, so it is dropped —
@@ -107,7 +151,9 @@ mod tests {
     use super::*;
     use google_cloud_aiplatform_v1 as vertexai;
     use rig_core::OneOrMany;
-    use rig_core::message::{AssistantContent, Text, ToolCall};
+    use rig_core::message::{
+        AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
+    };
 
     fn create_text_response(text: &str) -> VertexGenerateContentOutput {
         let part = vertexai::model::Part::new().set_text(text.to_string());
@@ -119,6 +165,25 @@ mod tests {
             .set_finish_reason(vertexai::model::candidate::FinishReason::Stop);
         let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
         VertexGenerateContentOutput(response)
+    }
+
+    fn create_parts_response(
+        parts: impl IntoIterator<Item = vertexai::model::Part>,
+    ) -> VertexGenerateContentOutput {
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts(parts);
+        let candidate = vertexai::model::Candidate::new().set_content(content);
+        let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
+        VertexGenerateContentOutput(response)
+    }
+
+    fn inline_data_part(mime_type: &str, data: Vec<u8>) -> vertexai::model::Part {
+        vertexai::model::Part::new().set_inline_data(
+            vertexai::model::Blob::new()
+                .set_mime_type(mime_type)
+                .set_data(data),
+        )
     }
 
     fn create_tool_call_response(
@@ -251,6 +316,131 @@ mod tests {
             }
             _ => panic!("Expected ToolCall"),
         }
+    }
+
+    #[test]
+    fn inline_image_response_converts_raw_bytes_to_base64_with_mime_type() {
+        let raw = vec![0, 1, 2, 255];
+        let response: CompletionResponse<VertexGenerateContentOutput> =
+            create_parts_response([inline_data_part("image/png", raw.clone())])
+                .try_into()
+                .expect("image response should convert");
+
+        match response.choice.first() {
+            AssistantContent::Image(image) => {
+                assert_eq!(image.data, DocumentSourceKind::Base64(BASE64.encode(raw)));
+                assert_eq!(image.media_type, Some(ImageMediaType::PNG));
+                assert_eq!(image.detail, Some(ImageDetail::default()));
+            }
+            _ => panic!("Expected Image"),
+        }
+    }
+
+    #[test]
+    fn mixed_text_and_image_response_preserves_part_order() {
+        let raw = vec![1, 2, 3];
+        let response: CompletionResponse<VertexGenerateContentOutput> = create_parts_response([
+            vertexai::model::Part::new().set_text("before"),
+            inline_data_part("image/jpeg", raw.clone()),
+            vertexai::model::Part::new().set_text("after"),
+        ])
+        .try_into()
+        .expect("mixed response should convert");
+
+        let contents: Vec<_> = response.choice.iter().collect();
+        assert!(matches!(contents[0], AssistantContent::Text(text) if text.text == "before"));
+        match contents[1] {
+            AssistantContent::Image(image) => {
+                assert_eq!(image.data, DocumentSourceKind::Base64(BASE64.encode(raw)));
+                assert_eq!(image.media_type, Some(ImageMediaType::JPEG));
+            }
+            _ => panic!("Expected Image"),
+        }
+        assert!(matches!(contents[2], AssistantContent::Text(text) if text.text == "after"));
+    }
+
+    #[test]
+    fn mixed_text_and_thought_image_response_keeps_only_visible_text_in_order() {
+        let response: CompletionResponse<VertexGenerateContentOutput> = create_parts_response([
+            vertexai::model::Part::new().set_text("before"),
+            inline_data_part("image/png", vec![1, 2, 3]).set_thought(true),
+            vertexai::model::Part::new().set_text("after"),
+        ])
+        .try_into()
+        .expect("thought image should be skipped");
+
+        let contents: Vec<_> = response.choice.iter().collect();
+        assert_eq!(contents.len(), 2);
+        assert!(matches!(contents[0], AssistantContent::Text(text) if text.text == "before"));
+        assert!(matches!(contents[1], AssistantContent::Text(text) if text.text == "after"));
+    }
+
+    #[test]
+    fn thought_image_only_response_fails_without_visible_assistant_content() {
+        let result =
+            CompletionResponse::<VertexGenerateContentOutput>::try_from(create_parts_response([
+                inline_data_part("image/png", vec![1, 2, 3]).set_thought(true),
+            ]));
+
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("thought-image-only response must fail"),
+        };
+        assert!(matches!(error, CompletionError::ProviderError(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("No text or tool call content found in response")
+        );
+    }
+
+    #[test]
+    fn inline_audio_and_non_image_media_are_rejected() {
+        for mime_type in ["audio/wav", "application/pdf", "application/octet-stream"] {
+            let result = CompletionResponse::<VertexGenerateContentOutput>::try_from(
+                create_parts_response([inline_data_part(mime_type, vec![0])]),
+            );
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("unsupported inline media must fail"),
+            };
+            assert!(matches!(error, CompletionError::ResponseError(_)));
+            assert!(error.to_string().contains(mime_type));
+        }
+    }
+
+    #[test]
+    fn inline_gif_and_svg_images_are_rejected() {
+        for mime_type in ["image/gif", "image/svg+xml"] {
+            let result = CompletionResponse::<VertexGenerateContentOutput>::try_from(
+                create_parts_response([inline_data_part(mime_type, vec![0])]),
+            );
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("non-replayable inline image must fail"),
+            };
+            assert!(matches!(error, CompletionError::ResponseError(_)));
+            assert!(
+                error
+                    .to_string()
+                    .contains("Unsupported Vertex inline image media type")
+            );
+        }
+    }
+
+    #[test]
+    fn signed_inline_image_is_rejected() {
+        let part = inline_data_part("image/png", vec![0]).set_thought_signature(vec![1, 2, 3]);
+        let result =
+            CompletionResponse::<VertexGenerateContentOutput>::try_from(create_parts_response([
+                part,
+            ]));
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("signed inline image must fail"),
+        };
+        assert!(matches!(error, CompletionError::ResponseError(_)));
+        assert!(error.to_string().contains("thought_signature"));
     }
 
     #[test]
