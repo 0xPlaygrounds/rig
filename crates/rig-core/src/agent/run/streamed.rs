@@ -969,6 +969,46 @@ mod tests {
     }
 
     #[test]
+    fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
+        let mut run = AgentRun::new("use the tool")
+            .max_turns(1)
+            .max_invalid_tool_call_retries(1);
+        run.next_step().expect("initial model call");
+
+        let mut asm = assembler();
+        let invalid = expect_invalid(
+            asm.ingest(&tool_call_item("tc_1", "default_api"))
+                .expect("ingest should succeed"),
+        );
+        let partial = asm.partial_turn(Some("msg_1".to_string()));
+        let resolution = run
+            .resolve_streamed_invalid_tool_call(
+                &partial,
+                &invalid,
+                InvalidToolCallHookAction::retry("use add instead"),
+            )
+            .expect("retry resolution should be accepted");
+        assert!(matches!(
+            resolution,
+            StreamedResolution::TurnAbandoned {
+                skipped_tool_result: None
+            }
+        ));
+        run.record_streamed_completion_call(Usage::new())
+            .expect("completion call should be recorded");
+        assert_eq!(run.completion_calls().len(), 1);
+
+        let err = run
+            .next_step()
+            .expect_err("retry must not emit a second model call");
+        assert!(matches!(
+            err,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(run.turn(), 1);
+    }
+
+    #[test]
     fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
         let mut run = AgentRun::new("use the tool").max_turns(2);
         run.next_step().expect("next_step");

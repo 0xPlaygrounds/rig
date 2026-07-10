@@ -1704,6 +1704,33 @@ mod tests {
     }
 
     #[test]
+    fn invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
+        let mut run = AgentRun::new("call something")
+            .max_turns(1)
+            .max_invalid_tool_call_retries(1);
+
+        expect_call_model(&mut run);
+        expect_needs_resolution(
+            run.model_response(tool_call_turn("call_1", "unknown"))
+                .expect("model_response should succeed"),
+        );
+        let outcome = run
+            .resolve_invalid_tool_call(InvalidToolCallHookAction::retry("use add instead"))
+            .expect("retry resolution should be accepted");
+        assert!(matches!(outcome, ModelTurnOutcome::TurnRetried));
+        assert_eq!(run.completion_calls().len(), 1);
+
+        let err = run
+            .next_step()
+            .expect_err("retry must not emit a second model call");
+        assert!(matches!(
+            err,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(run.turn(), 1);
+    }
+
+    #[test]
     fn invalid_tool_call_repair_renames_and_suppresses_response_hook() {
         let mut run = AgentRun::new("call something").max_turns(2);
 
@@ -1959,6 +1986,32 @@ mod tests {
             .tool_results(vec![tool_result("call_1", "2")])
             .expect("tool_results should succeed");
         expect_call_model(&mut restored);
+    }
+
+    #[test]
+    fn serde_round_trip_at_exhausted_budget_preserves_boundary() {
+        let mut run = AgentRun::new("add things").max_turns(1);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool_results should succeed");
+
+        let serialized = serde_json::to_string(&run).expect("exhausted run should serialize");
+        let mut restored: AgentRun =
+            serde_json::from_str(&serialized).expect("exhausted run should deserialize");
+        assert_eq!(restored.completion_calls().len(), 1);
+        let err = restored
+            .next_step()
+            .expect_err("restored run must not emit a second model call");
+        assert!(matches!(
+            err,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(restored.turn(), 1);
     }
 
     #[test]

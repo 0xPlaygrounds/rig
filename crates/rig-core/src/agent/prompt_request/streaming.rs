@@ -593,9 +593,8 @@ where
                     }
                 }
                 AgentRunStep::Done(response) => {
-                    // Run-completion marker, unifying the blocking driver's
-                    // "Depth reached" and the streaming driver's "multi-turn
-                    // stream finished" logs into one shared event.
+                    // Run-completion marker, unifying the blocking and streaming
+                    // drivers' run-finished logs into one shared event.
                     tracing::info!(
                         turn = run.turn(),
                         max_turns = runner.max_turns,

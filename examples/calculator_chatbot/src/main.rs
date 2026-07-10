@@ -270,7 +270,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a CLI chatbot from the agent
-    let chatbot = ChatBotBuilder::new().agent(calculator_rag).build();
+    let chatbot = ChatBotBuilder::new()
+        .agent(calculator_rag)
+        .max_turns(2)
+        .build();
 
     chatbot.run().await?;
 
