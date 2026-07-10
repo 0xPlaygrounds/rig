@@ -1,6 +1,10 @@
 use crate::types::message::RigMessage;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionError;
+use rig_core::providers::gemini::completion::gemini_api_types::{
+    AdditionalParameters, ThinkingConfig as GeminiThinkingConfig,
+    ThinkingLevel as GeminiThinkingLevel,
+};
 
 pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
@@ -98,20 +102,91 @@ impl VertexCompletionRequest {
         )
     }
 
-    pub fn generation_config(&self) -> Option<vertexai::model::GenerationConfig> {
-        let mut config = vertexai::model::GenerationConfig::new();
+    /// Builds the Vertex `GenerationConfig`, applying `additional_params.generation_config`
+    /// (same shape and field names, camelCase, as `rig_core`'s Gemini provider
+    /// `AdditionalParameters` — see `rig_core::providers::gemini::completion::gemini_api_types`)
+    /// before the typed request fields, so `temperature`/`max_tokens` always win over any
+    /// duplicate set through `additional_params` (the typed surface is authoritative).
+    ///
+    /// # Errors
+    ///
+    /// Returns `CompletionError::JsonError` if `additional_params` is present but does not
+    /// deserialize into the expected shape.
+    pub fn generation_config(
+        &self,
+    ) -> Result<Option<vertexai::model::GenerationConfig>, CompletionError> {
+        let additional = match self.0.additional_params.clone() {
+            Some(value) => serde_json::from_value::<AdditionalParameters>(value)?,
+            None => AdditionalParameters::default(),
+        };
 
+        let mut config = vertexai::model::GenerationConfig::new();
+        let mut candidate_count_set = false;
+
+        if let Some(gemini_config) = additional.generation_config {
+            if let Some(candidate_count) = gemini_config.candidate_count {
+                config = config.set_candidate_count(candidate_count);
+                candidate_count_set = true;
+            }
+            if let Some(temperature) = gemini_config.temperature {
+                config = config.set_temperature(temperature as f32);
+            }
+            if let Some(max_output_tokens) = gemini_config.max_output_tokens {
+                config = config.set_max_output_tokens(max_output_tokens as i32);
+            }
+            if let Some(thinking_config) = gemini_config.thinking_config {
+                config = config.set_thinking_config(map_thinking_config(thinking_config));
+            }
+        }
+
+        // Typed request fields win over additional_params duplicates.
         if let Some(temperature) = self.0.temperature {
             config = config.set_temperature(temperature as f32);
         }
-
         if let Some(max_tokens) = self.0.max_tokens {
             config = config.set_max_output_tokens(max_tokens as i32);
         }
+        if !candidate_count_set {
+            config = config.set_candidate_count(1);
+        }
 
-        config = config.set_candidate_count(1);
+        Ok(Some(config))
+    }
+}
 
-        Some(config)
+/// Maps the Gemini provider's `additional_params` thinking config onto Vertex's own
+/// `generation_config::ThinkingConfig` — same fields (`thinking_budget`/`thinking_level`/
+/// `include_thoughts`), no local validation of the `thinking_budget`/`thinking_level` mutual
+/// exclusion the Gemini provider documents (that request-validity concern belongs to the API,
+/// not this conversion, matching how the Gemini provider itself does not enforce it locally).
+fn map_thinking_config(
+    thinking_config: GeminiThinkingConfig,
+) -> vertexai::model::generation_config::ThinkingConfig {
+    let mut config = vertexai::model::generation_config::ThinkingConfig::new();
+
+    if let Some(thinking_budget) = thinking_config.thinking_budget {
+        config = config.set_thinking_budget(thinking_budget as i32);
+    }
+    if let Some(thinking_level) = thinking_config.thinking_level {
+        config = config.set_thinking_level(map_thinking_level(thinking_level));
+    }
+    if let Some(include_thoughts) = thinking_config.include_thoughts {
+        config = config.set_include_thoughts(include_thoughts);
+    }
+
+    config
+}
+
+fn map_thinking_level(
+    thinking_level: GeminiThinkingLevel,
+) -> vertexai::model::generation_config::thinking_config::ThinkingLevel {
+    use vertexai::model::generation_config::thinking_config::ThinkingLevel as VertexThinkingLevel;
+
+    match thinking_level {
+        GeminiThinkingLevel::Minimal => VertexThinkingLevel::Minimal,
+        GeminiThinkingLevel::Low => VertexThinkingLevel::Low,
+        GeminiThinkingLevel::Medium => VertexThinkingLevel::Medium,
+        GeminiThinkingLevel::High => VertexThinkingLevel::High,
     }
 }
 
@@ -472,12 +547,173 @@ mod tests {
         };
 
         let vertex_request = VertexCompletionRequest(request);
-        let generation_config = vertex_request.generation_config();
+        let generation_config = vertex_request
+            .generation_config()
+            .expect("no additional_params, so conversion cannot fail");
 
         assert!(generation_config.is_some());
         let config = generation_config.unwrap();
         assert_eq!(config.temperature, Some(0.7));
         assert_eq!(config.max_output_tokens, Some(100));
         assert_eq!(config.candidate_count, Some(1));
+    }
+
+    fn additional_params_generation_config(json: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({ "generationConfig": json })
+    }
+
+    #[test]
+    fn test_generation_config_thinking_budget_from_additional_params() {
+        let request = CompletionRequest {
+            model: None,
+            additional_params: Some(additional_params_generation_config(serde_json::json!({
+                "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
+            }))),
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let config = vertex_request
+            .generation_config()
+            .expect("valid additional_params")
+            .expect("generation_config is always Some");
+
+        let thinking = config
+            .thinking_config
+            .expect("thinking_config should be set");
+        assert_eq!(thinking.thinking_budget, Some(1024));
+        assert_eq!(thinking.include_thoughts, Some(true));
+        assert_eq!(thinking.thinking_level, None);
+    }
+
+    #[test]
+    fn test_generation_config_thinking_level_from_additional_params() {
+        let request = CompletionRequest {
+            model: None,
+            additional_params: Some(additional_params_generation_config(serde_json::json!({
+                "thinkingConfig": { "thinkingLevel": "high" }
+            }))),
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let config = vertex_request
+            .generation_config()
+            .expect("valid additional_params")
+            .expect("generation_config is always Some");
+
+        let thinking = config
+            .thinking_config
+            .expect("thinking_config should be set");
+        assert_eq!(
+            thinking.thinking_level,
+            Some(vertexai::model::generation_config::thinking_config::ThinkingLevel::High)
+        );
+        assert_eq!(thinking.thinking_budget, None);
+    }
+
+    #[test]
+    fn test_generation_config_thinking_budget_and_level_both_present_are_both_mapped() {
+        // Mirrors the Gemini provider's own `ThinkingConfig`: the mutual-exclusion documented on
+        // `thinking_budget`/`thinking_level` (Gemini 2.5 vs Gemini 3) is a REQUEST-VALIDITY concern
+        // the provider API enforces, not something this conversion layer validates locally — same
+        // as the Gemini provider itself, which maps both through unconditionally. Setting both
+        // here proves the conversion does not silently drop either field.
+        let request = CompletionRequest {
+            model: None,
+            additional_params: Some(additional_params_generation_config(serde_json::json!({
+                "thinkingConfig": { "thinkingBudget": 512, "thinkingLevel": "low" }
+            }))),
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let config = vertex_request
+            .generation_config()
+            .expect("valid additional_params")
+            .expect("generation_config is always Some");
+
+        let thinking = config
+            .thinking_config
+            .expect("thinking_config should be set");
+        assert_eq!(thinking.thinking_budget, Some(512));
+        assert_eq!(
+            thinking.thinking_level,
+            Some(vertexai::model::generation_config::thinking_config::ThinkingLevel::Low)
+        );
+    }
+
+    #[test]
+    fn test_typed_temperature_and_max_tokens_win_over_additional_params_duplicates() {
+        let request = CompletionRequest {
+            model: None,
+            temperature: Some(0.2),
+            max_tokens: Some(50),
+            additional_params: Some(additional_params_generation_config(serde_json::json!({
+                "temperature": 0.9,
+                "maxOutputTokens": 999
+            }))),
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let config = vertex_request
+            .generation_config()
+            .expect("valid additional_params")
+            .expect("generation_config is always Some");
+
+        assert_eq!(
+            config.temperature,
+            Some(0.2),
+            "the typed request field must win over the additional_params duplicate"
+        );
+        assert_eq!(
+            config.max_output_tokens,
+            Some(50),
+            "the typed request field must win over the additional_params duplicate"
+        );
+    }
+
+    #[test]
+    fn test_generation_config_candidate_count_from_additional_params_is_honored() {
+        let request = CompletionRequest {
+            model: None,
+            additional_params: Some(additional_params_generation_config(serde_json::json!({
+                "candidateCount": 2
+            }))),
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let config = vertex_request
+            .generation_config()
+            .expect("valid additional_params")
+            .expect("generation_config is always Some");
+
+        assert_eq!(
+            config.candidate_count,
+            Some(2),
+            "an explicit candidateCount in additional_params must be honored, not overridden by \
+             the default of 1"
+        );
+    }
+
+    #[test]
+    fn test_generation_config_invalid_additional_params_is_an_error() {
+        let request = CompletionRequest {
+            model: None,
+            additional_params: Some(serde_json::json!({
+                "generationConfig": { "thinkingConfig": { "thinkingLevel": "not-a-real-level" } }
+            })),
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+        let result = vertex_request.generation_config();
+        assert!(
+            result.is_err(),
+            "an unrecognized thinkingLevel value must fail to deserialize, never be silently \
+             dropped"
+        );
     }
 }
