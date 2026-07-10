@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- *(core)* [**breaking**] remove unused `Extractor::{get_inner, into_inner}` and the always-failing `TryFrom<String> for Nothing`; no direct replacements are provided.
 - *(core)* [**breaking**] remove the unused public `streaming::stream_completion_to_stdout` helper; use the high-level `agent::stream_to_stdout` helper instead.
 - *(core)* [**breaking**] remove the unused public `AudioGeneration<M>`, `ImageGeneration<M>`, and `Transcription<M>` wrapper traits; use the corresponding `AudioGenerationModel`, `ImageGenerationModel`, and `TranscriptionModel` APIs and request builders directly.
 - *(anthropic)* [**breaking**] remove the unused public `providers::anthropic::decoders` module; Anthropic streaming uses the shared SSE machinery.

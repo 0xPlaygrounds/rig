@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(rig-derive)* [**breaking**] generated `#[rig_tool]` implementations now target the flattened `Tool` API by emitting `description()` and `parameters()` instead of `definition(prompt)`.
 
+### Removed
+
+- *(rig-derive)* [**breaking**] remove the unused public `ProviderClient` derive macro and its `deluxe` dependency; `Embed` and `rig_tool` are unchanged.
+
 ## [0.38.2](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.38.1...rig-derive-v0.38.2) - 2026-06-09
 
 ### Other

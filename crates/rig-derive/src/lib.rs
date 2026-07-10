@@ -13,7 +13,6 @@ use syn::{
 };
 
 mod basic;
-mod client;
 mod custom;
 mod embed;
 
@@ -35,11 +34,6 @@ pub(crate) fn rig_core_path() -> proc_macro2::TokenStream {
             Err(_) => quote!(::rig_core),
         },
     }
-}
-
-#[proc_macro_derive(ProviderClient, attributes(client))]
-pub fn derive_provider_client(input: TokenStream) -> TokenStream {
-    client::provider_client(input)
 }
 
 //References:

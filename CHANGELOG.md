@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- *(derive)* [**breaking**] remove the unused public `rig_derive::ProviderClient` derive macro and its `deluxe` dependency; `Embed` and `rig_tool` are unchanged, and no replacement is provided.
+- *(core)* [**breaking**] remove unused `Extractor::{get_inner, into_inner}` and the always-failing `TryFrom<String> for Nothing`; no direct replacements are provided.
 - *(core)* [**breaking**] remove the unused public `streaming::stream_completion_to_stdout` helper; use the high-level `agent::stream_to_stdout` helper instead.
 - *(core)* [**breaking**] remove the unused public `AudioGeneration<M>`, `ImageGeneration<M>`, and `Transcription<M>` wrapper traits; use the corresponding `AudioGenerationModel`, `ImageGenerationModel`, and `TranscriptionModel` APIs and request builders directly.
 - *(core)* [**breaking**] remove the unused `evals` module (`Eval` trait, judge metrics, and builders) along with the `experimental` feature flag that gated it

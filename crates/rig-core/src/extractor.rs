@@ -296,14 +296,6 @@ where
         let data = serde_json::from_value(raw_data)?;
         Ok((data, usage))
     }
-
-    pub async fn get_inner(&self) -> &Agent<M> {
-        &self.agent
-    }
-
-    pub async fn into_inner(self) -> Agent<M> {
-        self.agent
-    }
 }
 
 /// Builder for the Extractor
