@@ -2,7 +2,10 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionError;
-use rig_core::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
+use rig_core::message::{
+    AssistantContent, DocumentSourceKind, Image, ImageMediaType, Message, MimeType, Text,
+    ToolResultContent, UserContent,
+};
 
 pub struct RigMessage(pub Message);
 
@@ -74,6 +77,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                         AssistantContent::Text(Text { text, .. }) => {
                             Ok(vertexai::model::Part::new().set_text(text))
                         }
+                        AssistantContent::Image(image) => vertex_assistant_image_part(image),
                         AssistantContent::ToolCall(tool_call) => {
                             let struct_val = match tool_call.function.arguments {
                                 serde_json::Value::Object(map) => map,
@@ -127,10 +131,6 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
 
                             Ok(part)
                         }
-                        _ => Err(CompletionError::ProviderError(format!(
-                            "Unsupported assistant content type: {:?}",
-                            assistant_content
-                        ))),
                     })
                     .collect();
 
@@ -143,11 +143,50 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
     }
 }
 
+fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, CompletionError> {
+    let media_type = image.media_type.ok_or_else(|| {
+        CompletionError::RequestError(
+            "Media type for assistant image is required for Vertex AI".into(),
+        )
+    })?;
+
+    match media_type {
+        ImageMediaType::JPEG
+        | ImageMediaType::PNG
+        | ImageMediaType::WEBP
+        | ImageMediaType::HEIC
+        | ImageMediaType::HEIF => {}
+        unsupported => {
+            return Err(CompletionError::RequestError(
+                format!("Unsupported Vertex AI assistant image media type {unsupported:?}").into(),
+            ));
+        }
+    }
+
+    let DocumentSourceKind::Base64(data) = image.data else {
+        return Err(CompletionError::RequestError(
+            "Vertex AI assistant images must use base64 data".into(),
+        ));
+    };
+
+    let data = BASE64.decode(data.as_bytes()).map_err(|err| {
+        CompletionError::RequestError(format!("Invalid base64 assistant image data: {err}").into())
+    })?;
+
+    Ok(vertexai::model::Part::new().set_inline_data(
+        vertexai::model::Blob::new()
+            .set_mime_type(media_type.to_mime_type())
+            .set_data(data),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::completion_response::VertexGenerateContentOutput;
     use google_cloud_aiplatform_v1 as vertexai;
     use rig_core::OneOrMany;
+    use rig_core::completion::CompletionResponse;
     use rig_core::message::{Message, Text, ToolResult, ToolResultContent};
 
     #[test]
@@ -183,6 +222,79 @@ mod tests {
         assert_eq!(content.role.as_str(), "model");
         assert_eq!(content.parts.len(), 1);
         assert_eq!(content.parts[0].text(), Some(&"Hi there".to_string()));
+    }
+
+    #[test]
+    fn test_assistant_image_response_round_trips_through_history_in_order() {
+        let raw_image = vec![0, 1, 2, 255];
+        let response = vertexai::model::GenerateContentResponse::new().set_candidates([
+            vertexai::model::Candidate::new().set_content(
+                vertexai::model::Content::new()
+                    .set_role("model")
+                    .set_parts([
+                        vertexai::model::Part::new().set_text("before"),
+                        vertexai::model::Part::new().set_inline_data(
+                            vertexai::model::Blob::new()
+                                .set_mime_type("image/png")
+                                .set_data(raw_image.clone()),
+                        ),
+                        vertexai::model::Part::new().set_text("after"),
+                    ]),
+            ),
+        ]);
+        let response: CompletionResponse<VertexGenerateContentOutput> =
+            VertexGenerateContentOutput(response)
+                .try_into()
+                .expect("image response should convert");
+
+        let content: vertexai::model::Content = RigMessage(Message::Assistant {
+            id: None,
+            content: response.choice,
+        })
+        .try_into()
+        .expect("assistant history image should convert");
+
+        assert_eq!(content.parts.len(), 3);
+        assert_eq!(content.parts[0].text().map(String::as_str), Some("before"));
+        let image = content.parts[1]
+            .inline_data()
+            .expect("middle part should be an inline image");
+        assert_eq!(image.mime_type, "image/png");
+        assert_eq!(image.data.as_ref(), raw_image.as_slice());
+        assert_eq!(content.parts[2].text().map(String::as_str), Some("after"));
+    }
+
+    #[test]
+    fn test_assistant_image_history_rejects_invalid_or_unsupported_input() {
+        let cases = [
+            (
+                AssistantContent::image_base64(BASE64.encode([1]), None, None),
+                "Media type",
+            ),
+            (
+                AssistantContent::image_base64(BASE64.encode([1]), Some(ImageMediaType::GIF), None),
+                "Unsupported",
+            ),
+            (
+                AssistantContent::image_base64("not valid base64", Some(ImageMediaType::PNG), None),
+                "Invalid base64",
+            ),
+        ];
+
+        for (image, expected_message) in cases {
+            let result: Result<vertexai::model::Content, CompletionError> =
+                RigMessage(Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(image),
+                })
+                .try_into();
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("invalid assistant image must fail"),
+            };
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(expected_message));
+        }
     }
 
     #[test]

@@ -117,13 +117,25 @@ impl VertexCompletionRequest {
         } = serde_json::from_value(additional_params)?;
 
         let mut config = generation_config
-            .map(vertex_generation_config)
+            .map(|mut config| {
+                // Typed max_tokens is authoritative, so an overridden provider value must not be
+                // converted or range-validated before the typed value is applied below.
+                if self.0.max_tokens.is_some() {
+                    config.max_output_tokens = None;
+                }
+                // Typed temperature is likewise authoritative, so it must bypass provider
+                // conversion and range validation before being applied below.
+                if self.0.temperature.is_some() {
+                    config.temperature = None;
+                }
+                vertex_generation_config(config)
+            })
             .transpose()?
             .unwrap_or_else(vertexai::model::GenerationConfig::new);
 
         // The typed request surface is authoritative over provider-specific extras.
         if let Some(temperature) = self.0.temperature {
-            config = config.set_temperature(temperature as f32);
+            config = config.set_temperature(vertex_f32(temperature, "temperature")?);
         }
 
         if let Some(max_tokens) = self.0.max_tokens {
@@ -144,9 +156,33 @@ fn vertex_max_output_tokens(max_output_tokens: u64) -> Result<i32, CompletionErr
     })
 }
 
+fn vertex_f32(value: f64, field: &str) -> Result<f32, CompletionError> {
+    if !value.is_finite() || value < f64::from(f32::MIN) || value > f64::from(f32::MAX) {
+        return Err(CompletionError::RequestError(
+            format!("{field} must be finite and within Vertex AI's f32 range").into(),
+        ));
+    }
+
+    Ok(value as f32)
+}
+
 fn vertex_generation_config(
     config: GeminiGenerationConfig,
 ) -> Result<vertexai::model::GenerationConfig, CompletionError> {
+    if config.response_schema.is_some()
+        && (config.response_json_schema.is_some() || config._response_json_schema.is_some())
+    {
+        return Err(CompletionError::RequestError(
+            "responseSchema cannot be combined with responseJsonSchema or _responseJsonSchema"
+                .into(),
+        ));
+    }
+    if config.response_json_schema.is_some() && config._response_json_schema.is_some() {
+        return Err(CompletionError::RequestError(
+            "responseJsonSchema cannot be combined with _responseJsonSchema".into(),
+        ));
+    }
+
     let mut vertex_config = vertexai::model::GenerationConfig::new();
 
     if let Some(stop_sequences) = config.stop_sequences {
@@ -169,19 +205,21 @@ fn vertex_generation_config(
             vertex_config.set_max_output_tokens(vertex_max_output_tokens(max_output_tokens)?);
     }
     if let Some(temperature) = config.temperature {
-        vertex_config = vertex_config.set_temperature(temperature as f32);
+        vertex_config = vertex_config.set_temperature(vertex_f32(temperature, "temperature")?);
     }
     if let Some(top_p) = config.top_p {
-        vertex_config = vertex_config.set_top_p(top_p as f32);
+        vertex_config = vertex_config.set_top_p(vertex_f32(top_p, "top_p")?);
     }
     if let Some(top_k) = config.top_k {
-        vertex_config = vertex_config.set_top_k(top_k as f32);
+        vertex_config = vertex_config.set_top_k(vertex_f32(f64::from(top_k), "top_k")?);
     }
     if let Some(presence_penalty) = config.presence_penalty {
-        vertex_config = vertex_config.set_presence_penalty(presence_penalty as f32);
+        vertex_config =
+            vertex_config.set_presence_penalty(vertex_f32(presence_penalty, "presence_penalty")?);
     }
     if let Some(frequency_penalty) = config.frequency_penalty {
-        vertex_config = vertex_config.set_frequency_penalty(frequency_penalty as f32);
+        vertex_config = vertex_config
+            .set_frequency_penalty(vertex_f32(frequency_penalty, "frequency_penalty")?);
     }
     if let Some(response_logprobs) = config.response_logprobs {
         vertex_config = vertex_config.set_response_logprobs(response_logprobs);
@@ -193,12 +231,11 @@ fn vertex_generation_config(
         vertex_config = vertex_config.set_thinking_config(vertex_thinking_config(thinking_config)?);
     }
     if let Some(response_modalities) = config.response_modalities {
-        vertex_config = vertex_config.set_response_modalities(
-            response_modalities
-                .into_iter()
-                .map(vertex_response_modality)
-                .collect::<Vec<_>>(),
-        );
+        let response_modalities = response_modalities
+            .into_iter()
+            .map(vertex_response_modality)
+            .collect::<Result<Vec<_>, _>>()?;
+        vertex_config = vertex_config.set_response_modalities(response_modalities);
     }
     if let Some(image_config) = config.image_config {
         vertex_config = vertex_config.set_image_config(vertex_image_config(image_config));
@@ -248,11 +285,14 @@ fn vertex_thinking_config(
 
 fn vertex_response_modality(
     modality: ResponseModality,
-) -> vertexai::model::generation_config::Modality {
+) -> Result<vertexai::model::generation_config::Modality, CompletionError> {
     match modality {
-        ResponseModality::Text => vertexai::model::generation_config::Modality::Text,
-        ResponseModality::Image => vertexai::model::generation_config::Modality::Image,
-        ResponseModality::Audio => vertexai::model::generation_config::Modality::Audio,
+        ResponseModality::Text => Ok(vertexai::model::generation_config::Modality::Text),
+        ResponseModality::Image => Ok(vertexai::model::generation_config::Modality::Image),
+        ResponseModality::Audio => Err(CompletionError::RequestError(
+            "responseModalities AUDIO is unsupported because Rig cannot represent assistant audio responses"
+                .into(),
+        )),
     }
 }
 
@@ -760,6 +800,57 @@ mod tests {
     }
 
     #[test]
+    fn generation_config_rejects_audio_response_modality() {
+        let request = CompletionRequest {
+            additional_params: Some(serde_json::json!({
+                "generationConfig": { "responseModalities": ["AUDIO"] }
+            })),
+            ..minimal_request()
+        };
+
+        let error = VertexCompletionRequest(request)
+            .generation_config()
+            .expect_err("audio output must fail before the API call");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("responseModalities AUDIO"));
+    }
+
+    #[test]
+    fn generation_config_rejects_out_of_f32_range_typed_and_provider_values() {
+        let typed_request = CompletionRequest {
+            temperature: Some(f64::MAX),
+            ..minimal_request()
+        };
+        let typed_error = VertexCompletionRequest(typed_request)
+            .generation_config()
+            .expect_err("typed temperature beyond f32 must fail");
+        assert!(matches!(typed_error, CompletionError::RequestError(_)));
+        assert!(typed_error.to_string().contains("temperature"));
+
+        let provider_error = vertex_generation_config(GeminiGenerationConfig {
+            top_p: Some(f64::MAX),
+            ..Default::default()
+        })
+        .expect_err("provider top_p beyond f32 must fail");
+        assert!(matches!(provider_error, CompletionError::RequestError(_)));
+        assert!(provider_error.to_string().contains("top_p"));
+    }
+
+    #[test]
+    fn generation_config_rejects_non_finite_typed_values() {
+        let request = CompletionRequest {
+            temperature: Some(f64::NAN),
+            ..minimal_request()
+        };
+
+        let error = VertexCompletionRequest(request)
+            .generation_config()
+            .expect_err("non-finite typed temperature must fail");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("temperature"));
+    }
+
+    #[test]
     fn generation_config_maps_response_schema() {
         let request = CompletionRequest {
             additional_params: Some(serde_json::json!({
@@ -794,7 +885,41 @@ mod tests {
     }
 
     #[test]
-    fn generation_config_rejects_out_of_range_max_output_tokens() {
+    fn generation_config_typed_max_overrides_out_of_range_provider_max() {
+        let request = CompletionRequest {
+            max_tokens: Some(100),
+            additional_params: Some(serde_json::json!({
+                "generationConfig": { "maxOutputTokens": 2_147_483_648_u64 }
+            })),
+            ..minimal_request()
+        };
+
+        let config = VertexCompletionRequest(request)
+            .generation_config()
+            .expect("typed max should override an unrepresentable provider max")
+            .expect("generation config should exist");
+        assert_eq!(config.max_output_tokens, Some(100));
+    }
+
+    #[test]
+    fn generation_config_typed_temperature_overrides_out_of_range_provider_temperature() {
+        let request = CompletionRequest {
+            temperature: Some(0.7),
+            additional_params: Some(serde_json::json!({
+                "generationConfig": { "temperature": f64::MAX }
+            })),
+            ..minimal_request()
+        };
+
+        let config = VertexCompletionRequest(request)
+            .generation_config()
+            .expect("typed temperature should override an unrepresentable provider temperature")
+            .expect("generation config should exist");
+        assert_eq!(config.temperature, Some(0.7));
+    }
+
+    #[test]
+    fn generation_config_rejects_out_of_range_max_output_tokens_without_typed_override() {
         let provider_request = CompletionRequest {
             additional_params: Some(serde_json::json!({
                 "generationConfig": { "maxOutputTokens": 2_147_483_648_u64 }
@@ -821,6 +946,54 @@ mod tests {
             typed_error
                 .to_string()
                 .contains("max_output_tokens exceeds Vertex AI's i32 range")
+        );
+    }
+
+    #[test]
+    fn generation_config_rejects_conflicting_response_schema_forms() {
+        for json_schema_key in ["responseJsonSchema", "_responseJsonSchema"] {
+            let request = CompletionRequest {
+                additional_params: Some(serde_json::json!({
+                    "generationConfig": {
+                        "responseSchema": { "type": "OBJECT" },
+                        (json_schema_key): { "type": "object" }
+                    }
+                })),
+                ..minimal_request()
+            };
+
+            let error = VertexCompletionRequest(request)
+                .generation_config()
+                .expect_err("response schema forms cannot be combined");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(
+                error
+                    .to_string()
+                    .contains("responseSchema cannot be combined")
+            );
+        }
+    }
+
+    #[test]
+    fn generation_config_rejects_both_response_json_schema_aliases() {
+        let request = CompletionRequest {
+            additional_params: Some(serde_json::json!({
+                "generationConfig": {
+                    "responseJsonSchema": { "type": "object" },
+                    "_responseJsonSchema": { "type": "object" }
+                }
+            })),
+            ..minimal_request()
+        };
+
+        let error = VertexCompletionRequest(request)
+            .generation_config()
+            .expect_err("JSON schema aliases cannot be combined");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("responseJsonSchema cannot be combined with _responseJsonSchema")
         );
     }
 
