@@ -1,6 +1,12 @@
 use crate::types::message::RigMessage;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionError;
+use rig_core::providers::gemini::completion::gemini_api_types::{
+    AdditionalParameters, GenerationConfig as GeminiGenerationConfig,
+    ImageConfig as GeminiImageConfig, ResponseModality, ThinkingConfig as GeminiThinkingConfig,
+    ThinkingLevel,
+};
+use serde_json::{Map, Value};
 
 pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
@@ -98,21 +104,167 @@ impl VertexCompletionRequest {
         )
     }
 
-    pub fn generation_config(&self) -> Option<vertexai::model::GenerationConfig> {
-        let mut config = vertexai::model::GenerationConfig::new();
+    pub fn generation_config(
+        &self,
+    ) -> Result<Option<vertexai::model::GenerationConfig>, CompletionError> {
+        let additional_params = self
+            .0
+            .additional_params
+            .clone()
+            .unwrap_or_else(|| Value::Object(Map::new()));
+        let AdditionalParameters {
+            generation_config, ..
+        } = serde_json::from_value(additional_params)?;
 
+        let mut config = generation_config
+            .map(vertex_generation_config)
+            .transpose()?
+            .unwrap_or_else(vertexai::model::GenerationConfig::new);
+
+        // The typed request surface is authoritative over provider-specific extras.
         if let Some(temperature) = self.0.temperature {
             config = config.set_temperature(temperature as f32);
         }
 
         if let Some(max_tokens) = self.0.max_tokens {
-            config = config.set_max_output_tokens(max_tokens as i32);
+            config = config.set_max_output_tokens(vertex_max_output_tokens(max_tokens)?);
         }
 
+        // Rig's normalized response retains one candidate, so the request must not
+        // ask Vertex to generate candidates that would be silently discarded.
         config = config.set_candidate_count(1);
 
-        Some(config)
+        Ok(Some(config))
     }
+}
+
+fn vertex_max_output_tokens(max_output_tokens: u64) -> Result<i32, CompletionError> {
+    i32::try_from(max_output_tokens).map_err(|_| {
+        CompletionError::RequestError("max_output_tokens exceeds Vertex AI's i32 range".into())
+    })
+}
+
+fn vertex_generation_config(
+    config: GeminiGenerationConfig,
+) -> Result<vertexai::model::GenerationConfig, CompletionError> {
+    let mut vertex_config = vertexai::model::GenerationConfig::new();
+
+    if let Some(stop_sequences) = config.stop_sequences {
+        vertex_config = vertex_config.set_stop_sequences(stop_sequences);
+    }
+    if let Some(response_mime_type) = config.response_mime_type {
+        vertex_config = vertex_config.set_response_mime_type(response_mime_type);
+    }
+    if let Some(response_schema) = config.response_schema {
+        vertex_config.response_schema = Some(serde_json::from_value(serde_json::to_value(
+            response_schema,
+        )?)?);
+    }
+    if let Some(response_json_schema) = config.response_json_schema.or(config._response_json_schema)
+    {
+        vertex_config.response_json_schema = Some(serde_json::from_value(response_json_schema)?);
+    }
+    if let Some(max_output_tokens) = config.max_output_tokens {
+        vertex_config =
+            vertex_config.set_max_output_tokens(vertex_max_output_tokens(max_output_tokens)?);
+    }
+    if let Some(temperature) = config.temperature {
+        vertex_config = vertex_config.set_temperature(temperature as f32);
+    }
+    if let Some(top_p) = config.top_p {
+        vertex_config = vertex_config.set_top_p(top_p as f32);
+    }
+    if let Some(top_k) = config.top_k {
+        vertex_config = vertex_config.set_top_k(top_k as f32);
+    }
+    if let Some(presence_penalty) = config.presence_penalty {
+        vertex_config = vertex_config.set_presence_penalty(presence_penalty as f32);
+    }
+    if let Some(frequency_penalty) = config.frequency_penalty {
+        vertex_config = vertex_config.set_frequency_penalty(frequency_penalty as f32);
+    }
+    if let Some(response_logprobs) = config.response_logprobs {
+        vertex_config = vertex_config.set_response_logprobs(response_logprobs);
+    }
+    if let Some(logprobs) = config.logprobs {
+        vertex_config = vertex_config.set_logprobs(logprobs);
+    }
+    if let Some(thinking_config) = config.thinking_config {
+        vertex_config = vertex_config.set_thinking_config(vertex_thinking_config(thinking_config)?);
+    }
+    if let Some(response_modalities) = config.response_modalities {
+        vertex_config = vertex_config.set_response_modalities(
+            response_modalities
+                .into_iter()
+                .map(vertex_response_modality)
+                .collect::<Vec<_>>(),
+        );
+    }
+    if let Some(image_config) = config.image_config {
+        vertex_config = vertex_config.set_image_config(vertex_image_config(image_config));
+    }
+
+    Ok(vertex_config)
+}
+
+fn vertex_thinking_config(
+    config: GeminiThinkingConfig,
+) -> Result<vertexai::model::generation_config::ThinkingConfig, CompletionError> {
+    if config.thinking_budget.is_some() && config.thinking_level.is_some() {
+        return Err(CompletionError::RequestError(
+            "thinking_budget and thinking_level cannot both be set".into(),
+        ));
+    }
+
+    let mut vertex_config = vertexai::model::generation_config::ThinkingConfig::new();
+    if let Some(include_thoughts) = config.include_thoughts {
+        vertex_config = vertex_config.set_include_thoughts(include_thoughts);
+    }
+    if let Some(thinking_budget) = config.thinking_budget {
+        let thinking_budget = i32::try_from(thinking_budget).map_err(|_| {
+            CompletionError::RequestError("thinking_budget exceeds Vertex AI's i32 range".into())
+        })?;
+        vertex_config = vertex_config.set_thinking_budget(thinking_budget);
+    }
+    if let Some(thinking_level) = config.thinking_level {
+        vertex_config = vertex_config.set_thinking_level(match thinking_level {
+            ThinkingLevel::Minimal => {
+                vertexai::model::generation_config::thinking_config::ThinkingLevel::Minimal
+            }
+            ThinkingLevel::Low => {
+                vertexai::model::generation_config::thinking_config::ThinkingLevel::Low
+            }
+            ThinkingLevel::Medium => {
+                vertexai::model::generation_config::thinking_config::ThinkingLevel::Medium
+            }
+            ThinkingLevel::High => {
+                vertexai::model::generation_config::thinking_config::ThinkingLevel::High
+            }
+        });
+    }
+
+    Ok(vertex_config)
+}
+
+fn vertex_response_modality(
+    modality: ResponseModality,
+) -> vertexai::model::generation_config::Modality {
+    match modality {
+        ResponseModality::Text => vertexai::model::generation_config::Modality::Text,
+        ResponseModality::Image => vertexai::model::generation_config::Modality::Image,
+        ResponseModality::Audio => vertexai::model::generation_config::Modality::Audio,
+    }
+}
+
+fn vertex_image_config(image_config: GeminiImageConfig) -> vertexai::model::ImageConfig {
+    let mut vertex_config = vertexai::model::ImageConfig::new();
+    if let Some(aspect_ratio) = image_config.aspect_ratio {
+        vertex_config = vertex_config.set_aspect_ratio(aspect_ratio);
+    }
+    if let Some(image_size) = image_config.image_size {
+        vertex_config = vertex_config.set_image_size(image_size);
+    }
+    vertex_config
 }
 
 #[cfg(test)]
@@ -472,12 +624,238 @@ mod tests {
         };
 
         let vertex_request = VertexCompletionRequest(request);
-        let generation_config = vertex_request.generation_config();
+        let generation_config = vertex_request
+            .generation_config()
+            .expect("generation config should parse");
 
         assert!(generation_config.is_some());
         let config = generation_config.unwrap();
         assert_eq!(config.temperature, Some(0.7));
         assert_eq!(config.max_output_tokens, Some(100));
         assert_eq!(config.candidate_count, Some(1));
+    }
+
+    #[test]
+    fn generation_config_maps_thinking_budget_and_include_thoughts() {
+        let request = CompletionRequest {
+            additional_params: Some(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": {
+                        "thinkingBudget": 1024,
+                        "includeThoughts": true
+                    }
+                }
+            })),
+            ..minimal_request()
+        };
+
+        let config = VertexCompletionRequest(request)
+            .generation_config()
+            .expect("generation config should parse")
+            .expect("generation config should exist");
+        let thinking = config
+            .thinking_config
+            .expect("thinking config should be mapped");
+
+        assert_eq!(thinking.thinking_budget, Some(1024));
+        assert_eq!(thinking.include_thoughts, Some(true));
+        assert_eq!(thinking.thinking_level, None);
+    }
+
+    #[test]
+    fn generation_config_maps_thinking_levels() {
+        use vertexai::model::generation_config::thinking_config::ThinkingLevel as VertexThinkingLevel;
+
+        for (level, expected) in [
+            ("minimal", VertexThinkingLevel::Minimal),
+            ("low", VertexThinkingLevel::Low),
+            ("medium", VertexThinkingLevel::Medium),
+            ("high", VertexThinkingLevel::High),
+        ] {
+            let request = CompletionRequest {
+                additional_params: Some(serde_json::json!({
+                    "generationConfig": {
+                        "thinkingConfig": { "thinkingLevel": level }
+                    }
+                })),
+                ..minimal_request()
+            };
+
+            let config = VertexCompletionRequest(request)
+                .generation_config()
+                .expect("generation config should parse")
+                .expect("generation config should exist");
+            let thinking = config
+                .thinking_config
+                .expect("thinking config should be mapped");
+
+            assert_eq!(thinking.thinking_level, Some(expected));
+        }
+    }
+
+    #[test]
+    fn generation_config_maps_supported_fields_and_typed_fields_take_precedence() {
+        let request = CompletionRequest {
+            temperature: Some(0.7),
+            max_tokens: Some(100),
+            additional_params: Some(serde_json::json!({
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 20,
+                    "candidateCount": 2,
+                    "stopSequences": ["END"],
+                    "responseMimeType": "application/json",
+                    "responseJsonSchema": { "type": "object" },
+                    "topP": 0.8,
+                    "topK": 40,
+                    "presencePenalty": 0.1,
+                    "frequencyPenalty": 0.2,
+                    "responseLogprobs": true,
+                    "logprobs": 3,
+                    "responseModalities": ["TEXT", "IMAGE"],
+                    "imageConfig": {
+                        "aspectRatio": "16:9",
+                        "imageSize": "1K"
+                    }
+                }
+            })),
+            ..minimal_request()
+        };
+
+        let config = VertexCompletionRequest(request)
+            .generation_config()
+            .expect("generation config should parse")
+            .expect("generation config should exist");
+
+        assert_eq!(config.temperature, Some(0.7));
+        assert_eq!(config.max_output_tokens, Some(100));
+        assert_eq!(config.candidate_count, Some(1));
+        assert_eq!(config.stop_sequences, ["END"]);
+        assert_eq!(config.response_mime_type, "application/json");
+        assert_eq!(
+            serde_json::to_value(
+                config
+                    .response_json_schema
+                    .expect("JSON schema should be mapped")
+            )
+            .expect("Vertex JSON schema should serialize"),
+            serde_json::json!({ "type": "object" })
+        );
+        assert_eq!(config.top_p, Some(0.8));
+        assert_eq!(config.top_k, Some(40.0));
+        assert_eq!(config.presence_penalty, Some(0.1));
+        assert_eq!(config.frequency_penalty, Some(0.2));
+        assert_eq!(config.response_logprobs, Some(true));
+        assert_eq!(config.logprobs, Some(3));
+        assert_eq!(
+            config.response_modalities,
+            [
+                vertexai::model::generation_config::Modality::Text,
+                vertexai::model::generation_config::Modality::Image,
+            ]
+        );
+        let image = config.image_config.expect("image config should be mapped");
+        assert_eq!(image.aspect_ratio.as_deref(), Some("16:9"));
+        assert_eq!(image.image_size.as_deref(), Some("1K"));
+    }
+
+    #[test]
+    fn generation_config_maps_response_schema() {
+        let request = CompletionRequest {
+            additional_params: Some(serde_json::json!({
+                "generationConfig": {
+                    "responseSchema": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "name": { "type": "STRING" }
+                        }
+                    }
+                }
+            })),
+            ..minimal_request()
+        };
+
+        let config = VertexCompletionRequest(request)
+            .generation_config()
+            .expect("generation config should parse")
+            .expect("generation config should exist");
+
+        let schema = config
+            .response_schema
+            .expect("response schema should be mapped");
+        assert_eq!(schema.r#type, vertexai::model::Type::Object);
+        assert_eq!(
+            schema
+                .properties
+                .get("name")
+                .map(|property| &property.r#type),
+            Some(&vertexai::model::Type::String)
+        );
+    }
+
+    #[test]
+    fn generation_config_rejects_out_of_range_max_output_tokens() {
+        let provider_request = CompletionRequest {
+            additional_params: Some(serde_json::json!({
+                "generationConfig": { "maxOutputTokens": 2_147_483_648_u64 }
+            })),
+            ..minimal_request()
+        };
+        let provider_error = VertexCompletionRequest(provider_request)
+            .generation_config()
+            .expect_err("provider max output tokens beyond i32 must fail");
+        assert!(
+            provider_error
+                .to_string()
+                .contains("max_output_tokens exceeds Vertex AI's i32 range")
+        );
+
+        let typed_request = CompletionRequest {
+            max_tokens: Some(2_147_483_648),
+            ..minimal_request()
+        };
+        let typed_error = VertexCompletionRequest(typed_request)
+            .generation_config()
+            .expect_err("typed max output tokens beyond i32 must fail");
+        assert!(
+            typed_error
+                .to_string()
+                .contains("max_output_tokens exceeds Vertex AI's i32 range")
+        );
+    }
+
+    #[test]
+    fn generation_config_rejects_invalid_thinking_config() {
+        let malformed_request = CompletionRequest {
+            additional_params: Some(serde_json::json!({
+                "generationConfig": { "thinkingConfig": { "thinkingBudget": "invalid" } }
+            })),
+            ..minimal_request()
+        };
+        assert!(
+            VertexCompletionRequest(malformed_request)
+                .generation_config()
+                .is_err()
+        );
+
+        let conflicting_request = CompletionRequest {
+            additional_params: Some(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": {
+                        "thinkingBudget": 1024,
+                        "thinkingLevel": "high"
+                    }
+                }
+            })),
+            ..minimal_request()
+        };
+        let error = VertexCompletionRequest(conflicting_request)
+            .generation_config()
+            .expect_err("mutually exclusive thinking values must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("thinking_budget and thinking_level cannot both be set")
+        );
     }
 }
