@@ -207,25 +207,68 @@ pub(crate) struct DirectRecorder {
     policy: CassettePolicy,
 }
 
+pub(crate) struct DirectHttpRequest<'a, Headers> {
+    pub(crate) method: &'a str,
+    pub(crate) uri: &'a str,
+    pub(crate) headers: Headers,
+    pub(crate) body: &'a [u8],
+}
+
+pub(crate) struct DirectHttpResponse<'a, Headers> {
+    pub(crate) status: u16,
+    pub(crate) headers: Headers,
+    pub(crate) body: &'a [u8],
+}
+
 impl DirectRecorder {
-    pub(crate) async fn record_http_interaction(
+    pub(crate) async fn record_http_interaction<RequestHeaders, ResponseHeaders>(
         &self,
-        method: &str,
-        uri: &str,
-        request_headers: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
-        request_body: &[u8],
-        status: u16,
-        response_headers: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
-        response_body: &[u8],
-    ) {
+        request: DirectHttpRequest<'_, RequestHeaders>,
+        response: DirectHttpResponse<'_, ResponseHeaders>,
+    ) where
+        RequestHeaders: IntoIterator,
+        RequestHeaders::Item: DirectHeader,
+        ResponseHeaders: IntoIterator,
+        ResponseHeaders::Item: DirectHeader,
+    {
         let mut scrubber = CassetteScrubber::new(self.policy);
         let mut interaction = CassetteInteraction {
-            when: recorded_request(self.policy, method, uri, request_headers, request_body),
-            then: recorded_response(status, response_headers, response_body),
+            when: recorded_request(
+                self.policy,
+                request.method,
+                request.uri,
+                request.headers.into_iter().map(DirectHeader::into_pair),
+                request.body,
+            ),
+            then: recorded_response(
+                response.status,
+                response.headers.into_iter().map(DirectHeader::into_pair),
+                response.body,
+            ),
         };
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         self.interactions.lock().await.push(interaction);
+    }
+}
+
+pub(crate) trait DirectHeader {
+    type Name: AsRef<str>;
+    type Value: AsRef<str>;
+
+    fn into_pair(self) -> (Self::Name, Self::Value);
+}
+
+impl<Name, Value> DirectHeader for (Name, Value)
+where
+    Name: AsRef<str>,
+    Value: AsRef<str>,
+{
+    type Name = Name;
+    type Value = Value;
+
+    fn into_pair(self) -> (Self::Name, Self::Value) {
+        self
     }
 }
 
@@ -611,7 +654,7 @@ enum BodyEncoding {
 }
 
 impl BodyEncoding {
-    fn is_utf8(self: &Self) -> bool {
+    fn is_utf8(&self) -> bool {
         matches!(self, Self::Utf8)
     }
 }
@@ -1719,6 +1762,7 @@ const GENERATED_ID_KEYS: &[&str] = &[
     "responseid",
     "tool_call_id",
     "tool_use_id",
+    "tooluseid",
 ];
 
 const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
@@ -1727,6 +1771,7 @@ const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
     TokenPrefix::new("msg_", "msg_", 8),
     TokenPrefix::new("call_", "call_", 8),
     TokenPrefix::new("toolu_", "toolu_", 8),
+    TokenPrefix::new("tooluse_", "tooluse_", 8),
     TokenPrefix::new("file_", "file_", 6),
     TokenPrefix::new("req_", "req_", 8),
     TokenPrefix::new("rs_", "rs_", 8),
@@ -2108,6 +2153,7 @@ fn placeholder_kind_for_value(policy: CassettePolicy, value: &str, fallback: &st
         "signature" | "thoughtsignature" => "signature_",
         "system_fingerprint" => "fp_",
         "tool_use_id" => "toolu_",
+        "tooluseid" => "tooluse_",
         "url" => "url_",
         _ => "id_",
     })
@@ -2669,21 +2715,25 @@ mod tests {
 
         recorder
             .record_http_interaction(
-                "POST",
-                "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
-                [
-                    ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
-                    ("x-amz-date", "20260709T000000Z"),
-                    ("x-amz-security-token", "session-token"),
-                    ("content-type", "application/json"),
-                ],
-                br#"{"ok":true}"#,
-                200,
-                [
-                    ("content-type", "application/json"),
-                    ("x-amzn-requestid", "request-id"),
-                ],
-                br#"{"ok":true}"#,
+                DirectHttpRequest {
+                    method: "POST",
+                    uri: "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
+                    headers: [
+                        ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
+                        ("x-amz-date", "20260709T000000Z"),
+                        ("x-amz-security-token", "session-token"),
+                        ("content-type", "application/json"),
+                    ],
+                    body: br#"{"ok":true}"#,
+                },
+                DirectHttpResponse {
+                    status: 200,
+                    headers: [
+                        ("content-type", "application/json"),
+                        ("x-amzn-requestid", "request-id"),
+                    ],
+                    body: br#"{"ok":true}"#,
+                },
             )
             .await;
 
@@ -3078,6 +3128,31 @@ then:
         assert_eq!(scrubbed.matches("file_REDACTED_1").count(), 5);
         assert!(scrubbed.contains("msg_REDACTED_1"));
         assert!(scrubbed.contains("rig-file-id-page-two-verifier-8c27"));
+        assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+    }
+
+    #[test]
+    fn scrubber_preserves_repeated_bedrock_tool_use_ids_across_json_bodies() {
+        let cassette = r#"when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+then:
+  status: 200
+  body: '{"output":{"message":{"content":[{"toolUse":{"toolUseId":"tooluse_A3wBRw65LYralyPMOxFhuj","name":"subtract","input":{"x":2,"y":5}}}]}}}'
+---
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  body: '{"messages":[{"content":[{"toolResult":{"toolUseId":"tooluse_A3wBRw65LYralyPMOxFhuj","content":[{"text":"-3"}]}}]}]}'
+then:
+  status: 200
+  body: '{"output":{"message":{"content":[{"text":"Done"}]}}}'
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(!scrubbed.contains("tooluse_A3wBRw65LYralyPMOxFhuj"));
+        assert_eq!(scrubbed.matches("tooluse_REDACTED_1").count(), 2);
         assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
     }
 

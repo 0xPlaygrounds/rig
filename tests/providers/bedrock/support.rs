@@ -14,7 +14,10 @@ use aws_smithy_types::body::SdkBody;
 use futures::FutureExt;
 use rig::bedrock::client::Client;
 
-use crate::cassettes::{CassetteMode, CassetteSpec, DirectRecorder, ProviderCassette};
+use crate::cassettes::{
+    CassetteMode, CassetteSpec, DirectHttpRequest, DirectHttpResponse, DirectRecorder,
+    ProviderCassette,
+};
 
 const BEDROCK_REAL_BASE_URL: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
 const BEDROCK_REGION: &str = "us-east-1";
@@ -159,13 +162,17 @@ impl HttpConnector for RecordingBedrockConnector {
 
             recorder
                 .record_http_interaction(
-                    &method,
-                    &uri,
-                    request_headers.iter().map(|(name, value)| (name, value)),
-                    &request_body,
-                    status,
-                    response_headers.iter().map(|(name, value)| (name, value)),
-                    &response_body,
+                    DirectHttpRequest {
+                        method: &method,
+                        uri: &uri,
+                        headers: request_headers.iter().map(|(name, value)| (name, value)),
+                        body: &request_body,
+                    },
+                    DirectHttpResponse {
+                        status,
+                        headers: response_headers.iter().map(|(name, value)| (name, value)),
+                        body: &response_body,
+                    },
                 )
                 .await;
 
