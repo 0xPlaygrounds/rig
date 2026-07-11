@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Contributors
 
 * @gold-silver-copper
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.39.0...rig-gemini-grpc-v0.40.0) - 2026-07-10
+
+### Added
+
+- *(rig-core)* [**breaking**] broaden provider error-response inspection workspace-wide ([#1944](https://github.com/0xPlaygrounds/rig/pull/1944)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
 
 ## [0.38.2](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.38.1...rig-gemini-grpc-v0.38.2) - 2026-06-09
 
