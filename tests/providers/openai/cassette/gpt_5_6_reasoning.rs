@@ -99,6 +99,16 @@ async fn context_current_turn() {
                 response.raw_response.reasoning_context.as_deref(),
                 Some("current_turn")
             );
+            assert_eq!(
+                response.raw_response.reasoning_metadata.as_ref(),
+                json!({
+                    "context": "current_turn",
+                    "effort": "low",
+                    "mode": "standard",
+                    "summary": null
+                })
+                .as_object()
+            );
         },
     )
     .await;

@@ -38,6 +38,9 @@ pub enum StreamingCompletionChunk {
 pub struct StreamingCompletionResponse {
     /// Token usage
     pub usage: ResponsesUsage,
+    /// The complete object-shaped reasoning metadata from the terminal response event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     /// The effective reasoning context from the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_context: Option<String>,
@@ -215,6 +218,7 @@ pub(crate) fn parse_sse_completion_body(
 
 struct RawChoiceAccumulator {
     final_usage: ResponsesUsage,
+    reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
@@ -224,6 +228,7 @@ impl RawChoiceAccumulator {
     fn new(initial_usage: ResponsesUsage) -> Self {
         Self {
             final_usage: initial_usage,
+            reasoning_metadata: None,
             reasoning_context: None,
             tool_calls: Vec::new(),
             tool_call_internal_ids: std::collections::HashMap::new(),
@@ -315,6 +320,9 @@ impl RawChoiceAccumulator {
                 if let Some(usage) = response.usage {
                     self.final_usage = usage;
                 }
+                if response.reasoning_metadata.is_some() {
+                    self.reasoning_metadata = response.reasoning_metadata;
+                }
                 if response.reasoning_context.is_some() {
                     self.reasoning_context = response.reasoning_context;
                 }
@@ -385,6 +393,7 @@ impl RawChoiceAccumulator {
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,
+                reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
             },
         ));
@@ -930,6 +939,7 @@ mod tests {
             max_output_tokens: None,
             model: "gpt-5.4".to_string(),
             provider_reasoning: None,
+            reasoning_metadata: None,
             reasoning_context: None,
             usage: None,
             output: Vec::new(),
@@ -1566,17 +1576,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn response_completed_chunk_populates_reasoning_context() {
+    async fn response_completed_chunk_populates_reasoning_metadata_and_context() {
         let response = sample_response(ResponseStatus::Completed);
         let mut event = json!({
             "type": "response.completed",
             "sequence_number": 1,
             "response": response,
         });
-        event["response"]["reasoning"] = json!({ "context": "all_turns" });
+        let metadata = json!({
+            "context": "all_turns",
+            "effort": "ultra",
+            "summary": null,
+            "future_control": true
+        });
+        event["response"]["reasoning"] = metadata.clone();
 
         let response = final_response_from_event(event).await;
         assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
+        assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
     }
 
     #[tokio::test]
