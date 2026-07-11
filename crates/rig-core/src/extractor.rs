@@ -208,52 +208,30 @@ where
         };
         let usage = response.usage;
 
-        if !response.choice.iter().any(|x| {
-            let AssistantContent::ToolCall(ToolCall {
-                function: ToolFunction { name, .. },
-                ..
-            }) = x
-            else {
-                return false;
-            };
+        let mut submit_arguments =
+            response
+                .choice
+                .into_iter()
+                .filter_map(|content| match content {
+                    AssistantContent::ToolCall(ToolCall {
+                        function: ToolFunction { arguments, name },
+                        ..
+                    }) if name == SUBMIT_TOOL_NAME => Some(arguments),
+                    _ => None,
+                });
 
-            name == SUBMIT_TOOL_NAME
-        }) {
+        let Some(raw_data) = submit_arguments.next() else {
             tracing::warn!(
                 "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
             );
-        }
+            return (Err(ExtractionError::NoData), usage);
+        };
 
-        let arguments = response
-            .choice
-            .into_iter()
-            // We filter tool calls to look for submit tool calls
-            .filter_map(|content| {
-                if let AssistantContent::ToolCall(ToolCall {
-                    function: ToolFunction { arguments, name },
-                    ..
-                }) = content
-                {
-                    if name == SUBMIT_TOOL_NAME {
-                        Some(arguments)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        if arguments.len() > 1 {
+        if submit_arguments.next().is_some() {
             tracing::warn!(
                 "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
             );
         }
-
-        let Some(raw_data) = arguments.into_iter().next() else {
-            return (Err(ExtractionError::NoData), usage);
-        };
 
         (
             serde_json::from_value(raw_data).map_err(ExtractionError::from),
