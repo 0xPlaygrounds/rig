@@ -1706,12 +1706,15 @@ pub enum ReasoningEffort {
 }
 
 /// The reasoning mode used by a given model. Independent from
-/// [`ReasoningEffort`]; the standard mode is represented by omitting the field
-/// (`None` on [`Reasoning::mode`]), so this enum only carries the documented
-/// non-default modes.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// [`ReasoningEffort`]. In requests the standard mode can also be represented
+/// by omitting the field (`None` on [`Reasoning::mode`]); responses echo the
+/// effective mode explicitly, including `"standard"`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningMode {
+    /// The standard reasoning mode.
+    #[default]
+    Standard,
     /// Pro mode. Supported by the GPT-5.6 model family.
     Pro,
 }
@@ -3536,6 +3539,20 @@ mod tests {
                 "context": "current_turn",
                 "summary": "detailed"
             })
+        );
+    }
+
+    #[test]
+    fn reasoning_mode_standard_round_trips() {
+        // The API echoes the effective mode explicitly, including "standard",
+        // and also accepts it in requests.
+        let reasoning: Reasoning =
+            serde_json::from_value(json!({ "effort": "low", "mode": "standard" }))
+                .expect("standard mode should deserialize");
+        assert_eq!(reasoning.mode, Some(ReasoningMode::Standard));
+        assert_eq!(
+            serde_json::to_value(&reasoning).expect("reasoning should serialize"),
+            json!({ "effort": "low", "mode": "standard" })
         );
     }
 

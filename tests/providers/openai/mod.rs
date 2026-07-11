@@ -7,6 +7,7 @@ mod cassette {
     mod document_ordering;
     mod extractor;
     mod extractor_usage;
+    mod gpt_5_6_reasoning;
     mod models;
     mod multi_extract;
     mod openai_compatible_reasoning_content;
