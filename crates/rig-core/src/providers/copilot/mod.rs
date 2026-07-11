@@ -1068,6 +1068,7 @@ where
         let stream = tracing_futures::Instrument::instrument(
             stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
+                let mut reasoning_context = None;
                 let mut tool_calls: Vec<streaming::RawStreamingChoice<CopilotStreamingResponse>> = Vec::new();
                 let mut tool_call_internal_ids: HashMap<String, String> = HashMap::new();
                 let span = tracing::Span::current();
@@ -1179,6 +1180,9 @@ where
                                         if let Some(usage) = response.usage {
                                             final_usage = usage;
                                         }
+                                        if response.reasoning_context.is_some() {
+                                            reasoning_context = response.reasoning_context;
+                                        }
                                     }
                                     responses_api::streaming::ResponseChunkKind::ResponseFailed
                                     | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
@@ -1241,7 +1245,10 @@ where
 
                 yield Ok(RawStreamingChoice::FinalResponse(
                     CopilotStreamingResponse::Responses(
-                        responses_api::streaming::StreamingCompletionResponse { usage: final_usage }
+                        responses_api::streaming::StreamingCompletionResponse {
+                            usage: final_usage,
+                            reasoning_context,
+                        }
                     )
                 ));
             },

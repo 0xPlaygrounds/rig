@@ -615,18 +615,6 @@ fn openai_reasoning_from_core(
     }))
 }
 
-fn optional_reasoning_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ok(
-        match Option::<serde_json::Value>::deserialize(deserializer)? {
-            Some(serde_json::Value::String(reasoning)) => Some(reasoning),
-            _ => None,
-        },
-    )
-}
-
 /// The definition of a tool response, repurposed for OpenAI's Responses API.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ResponsesToolDefinition {
@@ -1362,7 +1350,7 @@ where
 }
 
 /// The standard response format from OpenAI's Responses API.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct CompletionResponse {
     /// The ID of a completion response.
     pub id: String,
@@ -1384,24 +1372,144 @@ pub struct CompletionResponse {
     pub model: String,
     /// Provider-specific top-level reasoning content returned by some
     /// OpenAI-compatible Responses implementations.
-    #[serde(
-        default,
-        rename = "reasoning",
-        deserialize_with = "optional_reasoning_string",
-        skip_serializing_if = "Option::is_none"
-    )]
     pub provider_reasoning: Option<String>,
+    /// The effective reasoning context returned by OpenAI.
+    ///
+    /// This is populated from an object-shaped top-level `reasoning` response.
+    /// String-shaped reasoning returned by compatible providers remains available
+    /// through [`Self::provider_reasoning`].
+    pub reasoning_context: Option<String>,
     /// Token usage
     pub usage: Option<ResponsesUsage>,
     /// The model output (messages, etc will go here)
-    #[serde(default)]
     pub output: Vec<Output>,
     /// Tools
-    #[serde(default)]
     pub tools: Vec<ResponsesToolDefinition>,
     /// Additional parameters
-    #[serde(flatten)]
     pub additional_parameters: AdditionalParameters,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum CompletionResponseReasoningRef<'a> {
+    Text(&'a str),
+    Context { context: &'a str },
+}
+
+#[derive(Serialize)]
+struct CompletionResponseWireRef<'a> {
+    id: &'a str,
+    object: &'a ResponseObject,
+    created_at: u64,
+    status: &'a ResponseStatus,
+    error: &'a Option<ResponseError>,
+    incomplete_details: &'a Option<IncompleteDetailsReason>,
+    instructions: &'a Option<String>,
+    max_output_tokens: &'a Option<u64>,
+    model: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<CompletionResponseReasoningRef<'a>>,
+    usage: &'a Option<ResponsesUsage>,
+    output: &'a Vec<Output>,
+    tools: &'a Vec<ResponsesToolDefinition>,
+    #[serde(flatten)]
+    additional_parameters: &'a AdditionalParameters,
+}
+
+#[derive(Deserialize)]
+struct CompletionResponseWire {
+    id: String,
+    object: ResponseObject,
+    created_at: u64,
+    status: ResponseStatus,
+    error: Option<ResponseError>,
+    incomplete_details: Option<IncompleteDetailsReason>,
+    instructions: Option<String>,
+    max_output_tokens: Option<u64>,
+    model: String,
+    #[serde(default)]
+    reasoning: Option<Value>,
+    usage: Option<ResponsesUsage>,
+    #[serde(default)]
+    output: Vec<Output>,
+    #[serde(default)]
+    tools: Vec<ResponsesToolDefinition>,
+    #[serde(flatten)]
+    additional_parameters: AdditionalParameters,
+}
+
+impl Serialize for CompletionResponse {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let reasoning = self
+            .provider_reasoning
+            .as_deref()
+            .map(CompletionResponseReasoningRef::Text)
+            .or_else(|| {
+                self.reasoning_context
+                    .as_deref()
+                    .map(|context| CompletionResponseReasoningRef::Context { context })
+            });
+
+        CompletionResponseWireRef {
+            id: &self.id,
+            object: &self.object,
+            created_at: self.created_at,
+            status: &self.status,
+            error: &self.error,
+            incomplete_details: &self.incomplete_details,
+            instructions: &self.instructions,
+            max_output_tokens: &self.max_output_tokens,
+            model: &self.model,
+            reasoning,
+            usage: &self.usage,
+            output: &self.output,
+            tools: &self.tools,
+            additional_parameters: &self.additional_parameters,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CompletionResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let response = CompletionResponseWire::deserialize(deserializer)?;
+        let provider_reasoning = response
+            .reasoning
+            .as_ref()
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let reasoning_context = response
+            .reasoning
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|reasoning| reasoning.get("context"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+
+        Ok(Self {
+            id: response.id,
+            object: response.object,
+            created_at: response.created_at,
+            status: response.status,
+            error: response.error,
+            incomplete_details: response.incomplete_details,
+            instructions: response.instructions,
+            max_output_tokens: response.max_output_tokens,
+            model: response.model,
+            provider_reasoning,
+            reasoning_context,
+            usage: response.usage,
+            output: response.output,
+            tools: response.tools,
+            additional_parameters: response.additional_parameters,
+        })
+    }
 }
 
 /// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
@@ -1531,22 +1639,41 @@ pub struct StructuredOutputsInput {
 }
 
 /// Add reasoning to a [`CompletionRequest`].
+///
+/// # Example
+/// ```
+/// use rig_core::providers::openai::responses_api::{
+///     Reasoning, ReasoningContext, ReasoningEffort, ReasoningMode,
+/// };
+///
+/// // GPT-5.6 reasoning controls: effort, pro mode, and persisted-reasoning context.
+/// let reasoning = Reasoning::new()
+///     .with_effort(ReasoningEffort::Max)
+///     .with_mode(ReasoningMode::Pro)
+///     .with_context(ReasoningContext::AllTurns);
+/// ```
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Reasoning {
     /// How much effort you want the model to put into thinking/reasoning.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<ReasoningEffort>,
     /// How much effort you want the model to put into writing the reasoning summary.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<ReasoningSummaryLevel>,
+    /// The reasoning mode. Independent from `effort`; the standard mode is
+    /// represented by omitting the field. Supported by the GPT-5.6 model family.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<ReasoningMode>,
+    /// How persisted reasoning is carried across turns. Supported by the
+    /// GPT-5.6 model family.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<ReasoningContext>,
 }
 
 impl Reasoning {
     /// Creates a new Reasoning instantiation (with empty values).
     pub fn new() -> Self {
-        Self {
-            effort: None,
-            summary: None,
-        }
+        Self::default()
     }
 
     /// Adds reasoning effort.
@@ -1559,6 +1686,20 @@ impl Reasoning {
     /// Adds summary level (how detailed the reasoning summary will be).
     pub fn with_summary_level(mut self, reasoning_summary_level: ReasoningSummaryLevel) -> Self {
         self.summary = Some(reasoning_summary_level);
+
+        self
+    }
+
+    /// Sets the reasoning mode (e.g. pro mode on GPT-5.6 models).
+    pub fn with_mode(mut self, reasoning_mode: ReasoningMode) -> Self {
+        self.mode = Some(reasoning_mode);
+
+        self
+    }
+
+    /// Sets how persisted reasoning is carried across turns (GPT-5.6 models).
+    pub fn with_context(mut self, reasoning_context: ReasoningContext) -> Self {
+        self.context = Some(reasoning_context);
 
         self
     }
@@ -1626,6 +1767,33 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
+    /// The highest reasoning effort. Supported by the GPT-5.6 model family.
+    Max,
+}
+
+/// The reasoning mode used by a given model. Independent from
+/// [`ReasoningEffort`]; the standard mode is represented by omitting the field
+/// (`None` on [`Reasoning::mode`]), so this enum only carries the documented
+/// non-default modes.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningMode {
+    /// Pro mode. Supported by the GPT-5.6 model family.
+    Pro,
+}
+
+/// How persisted reasoning is carried across turns. Supported by the GPT-5.6
+/// model family.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningContext {
+    /// Let the model decide how much persisted reasoning to reuse.
+    #[default]
+    Auto,
+    /// Reuse persisted reasoning from all previous turns.
+    AllTurns,
+    /// Only use reasoning from the current turn.
+    CurrentTurn,
 }
 
 /// The amount of effort that will go into a reasoning summary by a given model.
@@ -3236,6 +3404,11 @@ mod tests {
             response.provider_reasoning.as_deref(),
             Some("thinking through the answer")
         );
+        assert_eq!(response.reasoning_context, None);
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            json!("thinking through the answer")
+        );
 
         let completion: completion::CompletionResponse<CompletionResponse> =
             response.try_into().expect("response should convert");
@@ -3328,7 +3501,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_response_ignores_top_level_reasoning_object_as_text() {
+    fn completion_response_preserves_context_without_treating_config_as_text() {
         let response: CompletionResponse = serde_json::from_value(json!({
             "id": "resp_123",
             "object": "response",
@@ -3336,7 +3509,8 @@ mod tests {
             "status": "completed",
             "model": "Qwen/Qwen3-4B",
             "reasoning": {
-                "effort": "high"
+                "effort": "high",
+                "context": "all_turns"
             },
             "output": [{
                 "type": "message",
@@ -3354,12 +3528,88 @@ mod tests {
         .expect("object-shaped reasoning should be tolerated");
 
         assert!(response.provider_reasoning.is_none());
+        assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            json!({ "context": "all_turns" })
+        );
 
         let completion: completion::CompletionResponse<CompletionResponse> =
             response.try_into().expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0], completion::AssistantContent::Text(_)));
+    }
+
+    fn request_with_reasoning_params(reasoning: Value) -> CompletionRequest {
+        let mut request = request_with_preamble("You are concise.");
+        request.additional_params = Some(json!({ "reasoning": reasoning }));
+
+        CompletionRequest::try_from(("gpt-5.6".to_string(), request))
+            .expect("request with reasoning params should convert")
+    }
+
+    #[test]
+    fn reasoning_effort_max_survives_request_conversion() {
+        let request = request_with_reasoning_params(json!({ "effort": "max" }));
+        let serialized = serde_json::to_value(&request).expect("request should serialize");
+
+        assert_eq!(serialized["reasoning"], json!({ "effort": "max" }));
+    }
+
+    #[test]
+    fn reasoning_mode_pro_composes_with_independent_effort() {
+        let request = request_with_reasoning_params(json!({ "effort": "high", "mode": "pro" }));
+        let serialized = serde_json::to_value(&request).expect("request should serialize");
+
+        assert_eq!(
+            serialized["reasoning"],
+            json!({ "effort": "high", "mode": "pro" })
+        );
+    }
+
+    #[test]
+    fn reasoning_context_values_survive_request_conversion() {
+        for (context, wire_value) in [
+            (ReasoningContext::Auto, "auto"),
+            (ReasoningContext::AllTurns, "all_turns"),
+            (ReasoningContext::CurrentTurn, "current_turn"),
+        ] {
+            let typed = serde_json::to_value(Reasoning::new().with_context(context))
+                .expect("typed reasoning should serialize");
+            assert_eq!(typed, json!({ "context": wire_value }));
+
+            let request = request_with_reasoning_params(json!({ "context": wire_value }));
+            let serialized = serde_json::to_value(&request).expect("request should serialize");
+            assert_eq!(serialized["reasoning"], json!({ "context": wire_value }));
+        }
+    }
+
+    #[test]
+    fn reasoning_omits_unset_optional_fields() {
+        let reasoning = serde_json::to_value(Reasoning::new().with_mode(ReasoningMode::Pro))
+            .expect("reasoning should serialize");
+
+        assert_eq!(reasoning, json!({ "mode": "pro" }));
+
+        let reasoning = serde_json::to_value(
+            Reasoning::new()
+                .with_effort(ReasoningEffort::Max)
+                .with_mode(ReasoningMode::Pro)
+                .with_context(ReasoningContext::CurrentTurn)
+                .with_summary_level(ReasoningSummaryLevel::Detailed),
+        )
+        .expect("reasoning should serialize");
+
+        assert_eq!(
+            reasoning,
+            json!({
+                "effort": "max",
+                "mode": "pro",
+                "context": "current_turn",
+                "summary": "detailed"
+            })
+        );
     }
 
     #[test]
