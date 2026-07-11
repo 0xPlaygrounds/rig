@@ -619,14 +619,20 @@ fn openai_reasoning_from_core(
 ///
 /// OpenAI echoes back the effective reasoning configuration (effort, mode,
 /// context, ...) as an object, while some OpenAI-compatible implementations
-/// (e.g. mistral.rs) return raw reasoning text in the same field.
+/// (e.g. mistral.rs) return raw reasoning text in the same field. Payloads
+/// that fit neither typed shape are preserved verbatim in [`Self::Other`],
+/// same as [`Output::Unknown`] does for unmodeled output items.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum ProviderReasoning {
     /// Raw reasoning text returned by some OpenAI-compatible providers.
     Text(String),
     /// The effective reasoning configuration echoed back by the provider.
     Config(Reasoning),
+    /// A reasoning payload that doesn't fit the typed model (e.g. a config
+    /// carrying values newer than this version), preserved verbatim.
+    Other(Value),
 }
 
 impl ProviderReasoning {
@@ -634,15 +640,15 @@ impl ProviderReasoning {
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text(text) => Some(text),
-            Self::Config(_) => None,
+            _ => None,
         }
     }
 
     /// Returns the effective reasoning configuration, if the provider returned one.
     pub fn as_config(&self) -> Option<&Reasoning> {
         match self {
-            Self::Text(_) => None,
             Self::Config(config) => Some(config),
+            _ => None,
         }
     }
 }
@@ -653,15 +659,18 @@ fn optional_provider_reasoning<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    // Stay lenient: unrecognized shapes (or configs with unknown values, e.g.
-    // an effort this version doesn't model) are dropped rather than failing
-    // deserialization of the whole response.
+    // Stay lenient without losing data: a config carrying values this version
+    // doesn't model (e.g. a newer effort) falls back to the verbatim payload
+    // instead of failing deserialization of the whole response or being
+    // silently dropped.
     Ok(
         match Option::<serde_json::Value>::deserialize(deserializer)? {
             Some(serde_json::Value::String(reasoning)) => Some(ProviderReasoning::Text(reasoning)),
-            Some(config @ serde_json::Value::Object(_)) => serde_json::from_value(config)
-                .ok()
-                .map(ProviderReasoning::Config),
+            Some(config @ serde_json::Value::Object(_)) => Some(
+                Reasoning::deserialize(&config)
+                    .map(ProviderReasoning::Config)
+                    .unwrap_or_else(|_| ProviderReasoning::Other(config)),
+            ),
             _ => None,
         },
     )
@@ -1586,7 +1595,12 @@ pub struct StructuredOutputsInput {
 ///     .with_mode(ReasoningMode::Pro)
 ///     .with_context(ReasoningContext::AllTurns);
 /// ```
+///
+/// Non-exhaustive: construct it with [`Reasoning::new`] and the `with_*`
+/// builders, so future OpenAI reasoning controls can be added without a
+/// breaking change.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Reasoning {
     /// How much effort you want the model to put into thinking/reasoning.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1594,8 +1608,9 @@ pub struct Reasoning {
     /// How much effort you want the model to put into writing the reasoning summary.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<ReasoningSummaryLevel>,
-    /// The reasoning mode. Independent from `effort`; standard mode is
-    /// represented by omitting the field. Supported by the GPT-5.6 model family.
+    /// The reasoning mode. Independent from `effort`; the standard mode can be
+    /// selected explicitly with [`ReasoningMode::Standard`] or by omitting the
+    /// field. Supported by the GPT-5.6 model family.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<ReasoningMode>,
     /// How persisted reasoning is carried across turns. Supported by the
@@ -1691,8 +1706,12 @@ impl<'de> Deserialize<'de> for OpenAIServiceTier {
 }
 
 /// The amount of reasoning effort that will be used by a given model.
+///
+/// Non-exhaustive: OpenAI extends this vocabulary over time (`xhigh`, then
+/// `max`), so new variants are not considered breaking changes.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ReasoningEffort {
     None,
     Minimal,
@@ -1711,6 +1730,7 @@ pub enum ReasoningEffort {
 /// effective mode explicitly, including `"standard"`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ReasoningMode {
     /// The standard reasoning mode.
     #[default]
@@ -1723,6 +1743,7 @@ pub enum ReasoningMode {
 /// model family.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ReasoningContext {
     /// Let the model decide how much persisted reasoning to reuse.
     #[default]
@@ -3594,6 +3615,54 @@ mod tests {
         assert_eq!(config.mode, Some(ReasoningMode::Pro));
         assert_eq!(config.context, Some(ReasoningContext::AllTurns));
         assert_eq!(config.summary, None);
+    }
+
+    #[test]
+    fn completion_response_preserves_unmodeled_reasoning_echo_verbatim() {
+        // A config carrying values newer than this version must not be
+        // silently dropped (which would also lose the fields we do model);
+        // it falls back to the verbatim payload and round-trips unchanged.
+        let echo = json!({
+            "effort": "ultra",
+            "mode": "pro",
+            "context": "all_turns"
+        });
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-x",
+            "reasoning": echo,
+            "output": [{
+                "type": "message",
+                "id": "msg_123",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("unmodeled reasoning echo should deserialize");
+
+        assert_eq!(
+            response.provider_reasoning,
+            Some(ProviderReasoning::Other(echo.clone()))
+        );
+        let serialized = serde_json::to_value(&response).expect("response should serialize back");
+        assert_eq!(serialized["reasoning"], echo);
+
+        // The verbatim payload is not reasoning text; conversion must not
+        // inject it into the content.
+        let completion: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("response should convert");
+        let items = completion.choice.iter().collect::<Vec<_>>();
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], completion::AssistantContent::Text(_)));
     }
 
     #[test]
