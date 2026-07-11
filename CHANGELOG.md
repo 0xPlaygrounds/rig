@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(xai)* add SuperGrok subscription OAuth from an existing xAI `auth.json` token cache. `Client::from_env()` uses it when `XAI_API_KEY` is not set, and callers can select a cache with `Client::builder().oauth().token_dir(...)` or `XAI_OAUTH_AUTH_FILE` / `XAI_OAUTH_TOKEN_DIR`.
+- *(xai)* add SuperGrok subscription OAuth from an existing xAI `auth.json` token cache with `Client::builder().oauth()` or `OAuthClient::from_env()`. The default cache matches LiteLLM, refreshes are cross-process safe, and OAuth bearer tokens are restricted to `https://api.x.ai`.
 
 ### Changed
 

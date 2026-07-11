@@ -3,7 +3,7 @@ use crate::audio_generation::{
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
-use crate::providers::xai::Client;
+use crate::providers::xai::client::{XAiExt, XAiRequestAuth};
 use bytes::Bytes;
 use serde_json::json;
 
@@ -13,13 +13,13 @@ use serde_json::json;
 pub const TTS_1: &str = "tts-1";
 
 #[derive(Clone)]
-pub struct AudioGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
+pub struct AudioGenerationModel<T = reqwest::Client, E = XAiExt> {
+    client: crate::client::Client<E, T>,
     pub model: String,
 }
 
-impl<T> AudioGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
+impl<T, E> AudioGenerationModel<T, E> {
+    pub(crate) fn new(client: crate::client::Client<E, T>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -27,13 +27,19 @@ impl<T> AudioGenerationModel<T> {
     }
 }
 
-impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
+impl<T, E> audio_generation::AudioGenerationModel for AudioGenerationModel<T, E>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    E: XAiRequestAuth
+        + crate::client::DebugExt
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + Clone
+        + 'static,
 {
     type Response = Bytes;
 
-    type Client = Client<T>;
+    type Client = crate::client::Client<E, T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)

@@ -2,18 +2,23 @@
 //!
 //! This intentionally consumes an existing xAI OAuth `auth.json` cache instead
 //! of starting a browser/loopback sign-in flow inside Rig. The cache format is
-//! interoperates with LiteLLM's `xai_oauth` cache and stores an access token,
+//! interoperable with LiteLLM's `xai_oauth` cache and stores an access token,
 //! refresh token, expiry, and token endpoint.
 
 use super::AuthError;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const XAI_DISCOVERY_URL: &str = "https://auth.x.ai/.well-known/openid-configuration";
 const XAI_FALLBACK_TOKEN_URL: &str = "https://auth.x.ai/oauth2/token";
 const XAI_OAUTH_CLIENT_ID: &str = "b1a00492-073a-47ea-816f-4c329264a828";
 const TOKEN_EXPIRY_SKEW_SECONDS: i64 = 120;
+const AUTH_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const AUTH_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const CACHE_LOCK_TIMEOUT: Duration = Duration::from_secs(25);
 
 #[derive(Debug, Clone)]
 pub(super) struct PlatformAuthenticator {
@@ -46,14 +51,33 @@ struct OAuthTokenResponse {
     expires_in: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct OAuthErrorResponse {
+    error: Option<String>,
+}
+
 impl PlatformAuthenticator {
     pub(super) fn new(auth_file: Option<PathBuf>) -> Self {
         Self { auth_file }
     }
 
     pub(super) async fn access_token_oauth(&self) -> Result<String, AuthError> {
-        let record = self.read_auth_record()?;
+        let mut record = self.read_auth_record()?;
 
+        if let Some(access_token) = record.access_token.clone()
+            && !token_expired(record.expires_at)
+        {
+            return Ok(access_token);
+        }
+
+        // Refresh tokens may rotate. Serialize the read-refresh-write
+        // transaction across all processes that share this cache, then re-read
+        // under the lock in case another process already refreshed it.
+        let _cache_lock = match &self.auth_file {
+            Some(path) => Some(acquire_cache_lock(path).await?),
+            None => None,
+        };
+        record = self.read_auth_record()?;
         if let Some(access_token) = record.access_token.clone()
             && !token_expired(record.expires_at)
         {
@@ -100,7 +124,7 @@ impl PlatformAuthenticator {
 }
 
 async fn discover_token_endpoint() -> Result<String, AuthError> {
-    let discovery = reqwest::Client::new()
+    let discovery = auth_http_client()?
         .get(XAI_DISCOVERY_URL)
         .header(reqwest::header::ACCEPT, "application/json")
         .send()
@@ -126,7 +150,7 @@ async fn refresh_tokens(
         .extend_pairs(form)
         .finish();
 
-    let response = reqwest::Client::new()
+    let response = auth_http_client()?
         .post(token_endpoint)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(
@@ -138,19 +162,46 @@ async fn refresh_tokens(
         .await?;
 
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(AuthError::Message(format!(
-            "xAI OAuth token refresh failed: {status} {body}"
-        )));
+        let code = response
+            .json::<OAuthErrorResponse>()
+            .await
+            .ok()
+            .and_then(|body| body.error)
+            .and_then(|code| sanitized_error_code(&code));
+        return Err(AuthError::Message(match code {
+            Some(code) => format!("xAI OAuth token refresh failed: {status} {code}"),
+            None => format!("xAI OAuth token refresh failed: {status}"),
+        }));
     }
 
-    let tokens: OAuthTokenResponse = serde_json::from_str(&body)?;
+    let tokens: OAuthTokenResponse = response.json().await?;
     Ok(build_auth_record(
         tokens,
         token_endpoint,
         Some(refresh_token.to_owned()),
     ))
+}
+
+fn auth_http_client() -> Result<reqwest::Client, AuthError> {
+    Ok(reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(AUTH_CONNECT_TIMEOUT)
+        .timeout(AUTH_REQUEST_TIMEOUT)
+        .build()?)
+}
+
+fn sanitized_error_code(code: &str) -> Option<String> {
+    let code = code.trim();
+    if code.is_empty()
+        || code.len() > 64
+        || !code
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+    {
+        return None;
+    }
+    Some(code.to_string())
 }
 
 fn build_auth_record(
@@ -206,6 +257,40 @@ fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
+}
+
+async fn acquire_cache_lock(auth_file: &Path) -> Result<std::fs::File, AuthError> {
+    ensure_parent_dir(auth_file)?;
+    let lock_path = auth_file.with_file_name(format!(
+        ".{}.lock",
+        auth_file
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("auth.json")
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(lock_path)?;
+    let started = std::time::Instant::now();
+    loop {
+        match FileExt::try_lock_exclusive(&file) {
+            Ok(()) => return Ok(file),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if started.elapsed() >= CACHE_LOCK_TIMEOUT {
+                    return Err(AuthError::Message(
+                        "timed out waiting for the shared xAI OAuth cache lock".into(),
+                    ));
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
 }
 
 fn write_private_file_atomically(path: &Path, contents: &[u8]) -> Result<(), std::io::Error> {
@@ -269,9 +354,9 @@ fn replace_file(source: &Path, destination: &Path) -> Result<(), std::io::Error>
 
 #[cfg(windows)]
 fn replace_file(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
-    // std::fs::rename cannot replace an existing file on Windows. Keep the
-    // fully-written temporary file until the old cache has been removed, then
-    // move it into place; a failure still leaves one complete file available.
+    // std::fs::rename cannot replace an existing file on Windows. Move the
+    // prior cache aside first, but restore it if installing the fully-written
+    // replacement fails.
     match std::fs::rename(source, destination) {
         Ok(()) => Ok(()),
         Err(error)
@@ -281,8 +366,32 @@ fn replace_file(source: &Path, destination: &Path) -> Result<(), std::io::Error>
                     std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::PermissionDenied
                 ) =>
         {
-            std::fs::remove_file(destination)?;
-            std::fs::rename(source, destination)
+            let backup = destination.with_file_name(format!(
+                ".{}.{}.bak",
+                destination
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("auth.json"),
+                fastrand::u64(..)
+            ));
+            std::fs::rename(destination, &backup)?;
+            match std::fs::rename(source, destination) {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(backup);
+                    Ok(())
+                }
+                Err(install_error) => match std::fs::rename(&backup, destination) {
+                    Ok(()) => Err(install_error),
+                    Err(restore_error) => Err(std::io::Error::new(
+                        restore_error.kind(),
+                        format!(
+                            "failed to install refreshed xAI cache ({install_error}); \
+                             prior cache remains at {} because restoration failed: {restore_error}",
+                            backup.display()
+                        ),
+                    )),
+                },
+            }
         }
         Err(error) => Err(error),
     }
@@ -333,6 +442,99 @@ mod tests {
         assert!(validate_xai_endpoint("http://auth.x.ai/oauth2/token").is_err());
         assert!(validate_xai_endpoint("https://example.com/oauth2/token").is_err());
         assert!(validate_xai_endpoint("https://auth.x.ai.evil.test/token").is_err());
+    }
+
+    #[test]
+    fn oauth_error_codes_are_bounded_and_non_secret() {
+        assert_eq!(
+            sanitized_error_code("invalid_grant"),
+            Some("invalid_grant".to_string())
+        );
+        assert_eq!(sanitized_error_code("token=secret&refresh=secret"), None);
+        assert_eq!(sanitized_error_code(&"x".repeat(65)), None);
+    }
+
+    #[tokio::test]
+    async fn auth_http_client_does_not_follow_redirects() {
+        use std::io::{Read, Write as _};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(
+                    b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:9/leak\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+
+        let response = auth_http_client()
+            .unwrap()
+            .get(format!("http://{addr}/token"))
+            .send()
+            .await
+            .unwrap();
+        server.join().unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+    }
+
+    #[test]
+    fn cache_lock_file_is_exclusive_across_handles() {
+        let temp = TempDir::new().unwrap();
+        let lock_path = temp.path().join(".auth.json.lock");
+        let first = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .unwrap();
+        let second = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .unwrap();
+        FileExt::lock_exclusive(&first).unwrap();
+        assert_eq!(
+            FileExt::try_lock_exclusive(&second).unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        FileExt::unlock(&first).unwrap();
+    }
+
+    #[test]
+    fn refreshed_records_rotate_or_preserve_refresh_tokens() {
+        let rotated = build_auth_record(
+            OAuthTokenResponse {
+                access_token: "new-access".into(),
+                refresh_token: Some("new-refresh".into()),
+                id_token: None,
+                token_type: Some("Bearer".into()),
+                expires_in: Some(60),
+            },
+            XAI_FALLBACK_TOKEN_URL,
+            Some("old-refresh".into()),
+        );
+        assert_eq!(rotated.refresh_token.as_deref(), Some("new-refresh"));
+
+        let preserved = build_auth_record(
+            OAuthTokenResponse {
+                access_token: "new-access".into(),
+                refresh_token: None,
+                id_token: None,
+                token_type: Some("Bearer".into()),
+                expires_in: Some(60),
+            },
+            XAI_FALLBACK_TOKEN_URL,
+            Some("old-refresh".into()),
+        );
+        assert_eq!(preserved.refresh_token.as_deref(), Some("old-refresh"));
     }
 
     #[test]

@@ -13,8 +13,8 @@
 //! ```
 //!
 //! SuperGrok subscription OAuth is also supported for callers that already
-//! have an xAI `auth.json` token cache. `Client::from_env()` falls back to this
-//! cache when `XAI_API_KEY` is not set, or configure it explicitly:
+//! have an xAI `auth.json` token cache. The default path matches LiteLLM:
+//! `~/.config/litellm/xai_oauth/auth.json`. Configure it explicitly with:
 //!
 //! ```no_run
 //! use rig_core::{client::CompletionClient, providers::xai};
@@ -29,6 +29,11 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! `XAI_API_BASE` applies only to API-key clients. OAuth bearer tokens are
+//! restricted to `https://api.x.ai`. The generic `VerifyClient::verify()`
+//! checks xAI's API-key endpoint and is not supported for OAuth clients; make a
+//! model request to validate a subscription token.
 
 mod api;
 #[cfg(feature = "audio")]
@@ -42,7 +47,7 @@ mod streaming;
 
 #[cfg(feature = "audio")]
 pub use audio_generation::{AudioGenerationModel, TTS_1};
-pub use client::Client;
+pub use client::{Client, OAuthClient};
 pub use completion::{
     CompletionModel, CompletionResponse, GROK_2_1212, GROK_2_IMAGE_1212, GROK_2_VISION_1212,
     GROK_3, GROK_3_FAST, GROK_3_MINI, GROK_3_MINI_FAST, GROK_4,

@@ -63,6 +63,7 @@ reqwest-middleware = { workspace = true, optional = true, features = [
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio-tungstenite = { workspace = true, optional = true }
+fs2 = { workspace = true }
 
 # futures-timer's default backend uses a background timer thread, which cannot
 # drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever

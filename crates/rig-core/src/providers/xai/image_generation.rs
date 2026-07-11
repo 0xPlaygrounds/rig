@@ -1,5 +1,5 @@
 use super::api::ApiResponse;
-use super::client::Client;
+use super::client::{XAiExt, XAiRequestAuth};
 use crate::http_client::HttpClientExt;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
@@ -48,14 +48,14 @@ impl TryFrom<ImageGenerationResponse>
 }
 
 #[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
+pub struct ImageGenerationModel<T = reqwest::Client, E = XAiExt> {
+    client: crate::client::Client<E, T>,
     /// Name of the model (e.g.: grok-imagine-image)
     pub model: String,
 }
 
-impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
+impl<T, E> ImageGenerationModel<T, E> {
+    pub(crate) fn new(client: crate::client::Client<E, T>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -63,13 +63,19 @@ impl<T> ImageGenerationModel<T> {
     }
 }
 
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+impl<T, E> image_generation::ImageGenerationModel for ImageGenerationModel<T, E>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    E: XAiRequestAuth
+        + crate::client::DebugExt
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + Clone
+        + 'static,
 {
     type Response = ImageGenerationResponse;
 
-    type Client = Client<T>;
+    type Client = crate::client::Client<E, T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)

@@ -8,7 +8,7 @@ use serde_json::Value;
 use tracing::{Instrument, Level, enabled, info_span};
 
 use super::api::{ApiResponse, Message, ToolDefinition};
-use super::client::Client;
+use super::client::{XAiExt, XAiRequestAuth};
 use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
@@ -169,13 +169,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 // ================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
+pub struct CompletionModel<T = reqwest::Client, E = XAiExt> {
+    pub(crate) client: crate::client::Client<E, T>,
     pub model: String,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+impl<T, E> CompletionModel<T, E> {
+    pub fn new(client: crate::client::Client<E, T>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -183,14 +183,20 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T, E> completion::CompletionModel for CompletionModel<T, E>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    E: XAiRequestAuth
+        + crate::client::DebugExt
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + Clone
+        + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    type Client = Client<T>;
+    type Client = crate::client::Client<E, T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
