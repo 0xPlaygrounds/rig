@@ -56,6 +56,17 @@ where
     M: CompletionModel,
     M::StreamingResponse: WasmCompatSend,
 {
+    run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
+}
+
+pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
+    agent: ReasoningRoundtripAgent<M>,
+    mut inspect_final: F,
+) where
+    M: CompletionModel,
+    M::StreamingResponse: WasmCompatSend,
+    F: FnMut(&M::StreamingResponse),
+{
     let turn1_prompt = Message::User {
         content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
@@ -92,6 +103,7 @@ where
             Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
                 reasoning_delta_text.push_str(&reasoning);
             }
+            Ok(StreamedAssistantContent::Final(response)) => inspect_final(&response),
             Ok(_) => {}
             Err(error) => panic!("Turn 1 stream error: {error}"),
         }

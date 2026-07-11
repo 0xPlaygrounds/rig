@@ -1,7 +1,8 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses API client.
 
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Prompt};
+use rig::completion::{Chat, CompletionModel, Prompt};
+use rig::message::AssistantContent;
 
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
 
@@ -35,21 +36,40 @@ async fn responses_api_reasoning_plus_answer_completes() {
     with_mistralrs_cassette(
         "responses_api/responses_api_reasoning_plus_answer_completes",
         |client| async move {
-            let agent = client
+            let model = client
                 .with_system_instructions_as_messages()
-                .agent(model_name())
-                .preamble(SYSTEM_PROMPT)
-                .max_tokens(512)
-                .build();
-
-            let response = agent
-                .prompt(
+                .completion_model(model_name());
+            let request = model
+                .completion_request(
                     "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
                 )
+                .preamble(SYSTEM_PROMPT.to_owned())
+                .max_tokens(512)
+                .build();
+            let response = model
+                .completion(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
+            let text = response
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect::<String>();
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&text);
+            assert!(
+                response
+                    .raw_response
+                    .provider_reasoning
+                    .as_deref()
+                    .is_some_and(|reasoning| !reasoning.trim().is_empty()),
+                "string-shaped provider reasoning should remain available"
+            );
+            assert_eq!(response.raw_response.reasoning_metadata, None);
+            assert_eq!(response.raw_response.reasoning_context, None);
         },
     )
     .await;

@@ -1373,11 +1373,20 @@ pub struct CompletionResponse {
     /// Provider-specific top-level reasoning content returned by some
     /// OpenAI-compatible Responses implementations.
     pub provider_reasoning: Option<String>,
+    /// The complete object-shaped top-level reasoning metadata returned by the provider.
+    ///
+    /// Unknown fields, unknown values, and null-valued members inside the object
+    /// are preserved value-equivalently. A top-level null, missing field, or
+    /// unsupported non-object shape is normalized to no reasoning metadata.
+    /// When serializing manually constructed responses, [`Self::provider_reasoning`]
+    /// takes precedence over this field, and this field takes precedence over
+    /// [`Self::reasoning_context`].
+    pub reasoning_metadata: Option<Map<String, Value>>,
     /// The effective reasoning context returned by OpenAI.
     ///
-    /// This is populated from an object-shaped top-level `reasoning` response.
-    /// String-shaped reasoning returned by compatible providers remains available
-    /// through [`Self::provider_reasoning`].
+    /// This is populated as a convenience projection of
+    /// [`Self::reasoning_metadata`]. String-shaped reasoning returned by compatible
+    /// providers remains available through [`Self::provider_reasoning`].
     pub reasoning_context: Option<String>,
     /// Token usage
     pub usage: Option<ResponsesUsage>,
@@ -1393,6 +1402,7 @@ pub struct CompletionResponse {
 #[serde(untagged)]
 enum CompletionResponseReasoningRef<'a> {
     Text(&'a str),
+    Metadata(&'a Map<String, Value>),
     Context { context: &'a str },
 }
 
@@ -1443,10 +1453,22 @@ impl Serialize for CompletionResponse {
     where
         S: Serializer,
     {
+        // `AdditionalParameters::reasoning` models request configuration. A
+        // response's top-level `reasoning` field is represented by the three
+        // response surfaces above, so omit the request field here to avoid
+        // serializing duplicate `reasoning` keys.
+        let mut additional_parameters = self.additional_parameters.clone();
+        additional_parameters.reasoning = None;
+
         let reasoning = self
             .provider_reasoning
             .as_deref()
             .map(CompletionResponseReasoningRef::Text)
+            .or_else(|| {
+                self.reasoning_metadata
+                    .as_ref()
+                    .map(CompletionResponseReasoningRef::Metadata)
+            })
             .or_else(|| {
                 self.reasoning_context
                     .as_deref()
@@ -1467,7 +1489,7 @@ impl Serialize for CompletionResponse {
             usage: &self.usage,
             output: &self.output,
             tools: &self.tools,
-            additional_parameters: &self.additional_parameters,
+            additional_parameters: &additional_parameters,
         }
         .serialize(serializer)
     }
@@ -1479,15 +1501,16 @@ impl<'de> Deserialize<'de> for CompletionResponse {
         D: Deserializer<'de>,
     {
         let response = CompletionResponseWire::deserialize(deserializer)?;
-        let provider_reasoning = response
-            .reasoning
+        let (provider_reasoning, reasoning_metadata) = match response.reasoning {
+            Some(Value::String(reasoning)) => (Some(reasoning), None),
+            Some(Value::Object(metadata)) => (None, Some(metadata)),
+            // Null, arrays, numbers, and booleans are not documented top-level
+            // reasoning response shapes. Ignore them to preserve the lenient
+            // behavior that predates object-shaped metadata support.
+            _ => (None, None),
+        };
+        let reasoning_context = reasoning_metadata
             .as_ref()
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned);
-        let reasoning_context = response
-            .reasoning
-            .as_ref()
-            .and_then(Value::as_object)
             .and_then(|reasoning| reasoning.get("context"))
             .and_then(Value::as_str)
             .map(ToOwned::to_owned);
@@ -1503,6 +1526,7 @@ impl<'de> Deserialize<'de> for CompletionResponse {
             max_output_tokens: response.max_output_tokens,
             model: response.model,
             provider_reasoning,
+            reasoning_metadata,
             reasoning_context,
             usage: response.usage,
             output: response.output,
@@ -3404,6 +3428,7 @@ mod tests {
             response.provider_reasoning.as_deref(),
             Some("thinking through the answer")
         );
+        assert_eq!(response.reasoning_metadata, None);
         assert_eq!(response.reasoning_context, None);
         assert_eq!(
             serde_json::to_value(&response).expect("response should serialize")["reasoning"],
@@ -3509,8 +3534,10 @@ mod tests {
             "status": "completed",
             "model": "Qwen/Qwen3-4B",
             "reasoning": {
+                "context": "all_turns",
                 "effort": "high",
-                "context": "all_turns"
+                "mode": "standard",
+                "summary": null
             },
             "output": [{
                 "type": "message",
@@ -3530,8 +3557,23 @@ mod tests {
         assert!(response.provider_reasoning.is_none());
         assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
         assert_eq!(
+            response.reasoning_metadata.as_ref(),
+            json!({
+                "context": "all_turns",
+                "effort": "high",
+                "mode": "standard",
+                "summary": null
+            })
+            .as_object()
+        );
+        assert_eq!(
             serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-            json!({ "context": "all_turns" })
+            json!({
+                "context": "all_turns",
+                "effort": "high",
+                "mode": "standard",
+                "summary": null
+            })
         );
 
         let completion: completion::CompletionResponse<CompletionResponse> =
@@ -3539,6 +3581,103 @@ mod tests {
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0], completion::AssistantContent::Text(_)));
+    }
+
+    #[test]
+    fn completion_response_preserves_unknown_reasoning_metadata_and_nulls() {
+        let metadata = json!({
+            "context": "future_context",
+            "effort": "ultra",
+            "summary": null,
+            "future_control": { "depth": 3 }
+        });
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-future",
+            "reasoning": metadata.clone(),
+            "output": [],
+            "tools": []
+        }))
+        .expect("unknown reasoning metadata should deserialize");
+
+        assert_eq!(
+            response.reasoning_context.as_deref(),
+            Some("future_context")
+        );
+        assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            metadata
+        );
+    }
+
+    #[test]
+    fn completion_response_ignores_unsupported_reasoning_shapes() {
+        for reasoning in [Value::Null, json!(["unexpected"]), json!(42), json!(true)] {
+            let response: CompletionResponse = serde_json::from_value(json!({
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 0,
+                "status": "completed",
+                "model": "openai-compatible-model",
+                "reasoning": reasoning,
+                "output": [],
+                "tools": []
+            }))
+            .expect("unsupported reasoning shapes should remain non-fatal");
+
+            assert_eq!(response.provider_reasoning, None);
+            assert_eq!(response.reasoning_metadata, None);
+            assert_eq!(response.reasoning_context, None);
+            let serialized = serde_json::to_value(&response).expect("response should serialize");
+            assert!(
+                !serialized
+                    .as_object()
+                    .expect("response should serialize as an object")
+                    .contains_key("reasoning")
+            );
+        }
+    }
+
+    #[test]
+    fn completion_response_reasoning_serialization_precedence_is_stable() {
+        let mut response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.6",
+            "reasoning": { "context": "all_turns", "effort": "max" },
+            "output": [],
+            "tools": []
+        }))
+        .expect("reasoning metadata should deserialize");
+
+        response.reasoning_context = Some("current_turn".to_owned());
+        response.additional_parameters.reasoning =
+            Some(Reasoning::new().with_effort(ReasoningEffort::Low));
+        let serialized = serde_json::to_string(&response).expect("response should serialize");
+        assert_eq!(serialized.matches("\"reasoning\":").count(), 1);
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            json!({ "context": "all_turns", "effort": "max" })
+        );
+
+        let metadata = response.reasoning_metadata.take();
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            json!({ "context": "current_turn" })
+        );
+
+        response.reasoning_metadata = metadata;
+        response.provider_reasoning = Some("compatible-provider text".to_owned());
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            json!("compatible-provider text")
+        );
     }
 
     fn request_with_reasoning_params(reasoning: Value) -> CompletionRequest {

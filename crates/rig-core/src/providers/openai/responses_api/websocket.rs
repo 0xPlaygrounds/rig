@@ -898,6 +898,7 @@ mod tests {
             tools: Vec::new(),
             additional_parameters: Default::default(),
             provider_reasoning: None,
+            reasoning_metadata: None,
             reasoning_context: None,
         }
     }
@@ -2020,7 +2021,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_event_is_skipped_during_session() {
+    async fn unknown_event_is_skipped_and_reasoning_metadata_is_preserved() {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("listener should bind");
@@ -2050,12 +2051,23 @@ mod tests {
                 .await
                 .expect("unknown event should send");
 
-            // Then send the real completed response
-            let response = serde_json::to_value(CompletionResponse {
-                id: "resp_after_unknown".to_string(),
-                ..sample_response(ResponseStatus::Completed)
-            })
-            .expect("response should serialize");
+            // Then send the real completed response, including reasoning
+            // metadata to verify that the WebSocket path preserves it.
+            let mut response = sample_response(ResponseStatus::Completed);
+            response.id = "resp_after_unknown".to_string();
+            response.reasoning_metadata = Some(
+                json!({
+                    "context": "all_turns",
+                    "effort": "ultra",
+                    "summary": null,
+                    "future_control": true
+                })
+                .as_object()
+                .expect("reasoning metadata should be an object")
+                .clone(),
+            );
+            response.reasoning_context = Some("all_turns".to_string());
+            let response = serde_json::to_value(response).expect("response should serialize");
 
             socket
                 .send(Message::text(
@@ -2091,6 +2103,17 @@ mod tests {
             .await
             .expect("response should complete despite unknown event");
         assert_eq!(response.id, "resp_after_unknown");
+        assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
+        assert_eq!(
+            response.reasoning_metadata.as_ref(),
+            json!({
+                "context": "all_turns",
+                "effort": "ultra",
+                "summary": null,
+                "future_control": true
+            })
+            .as_object()
+        );
 
         server.await.expect("server task should finish");
     }

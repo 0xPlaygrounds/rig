@@ -1068,6 +1068,7 @@ where
         let stream = tracing_futures::Instrument::instrument(
             stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
+                let mut reasoning_metadata = None;
                 let mut reasoning_context = None;
                 let mut tool_calls: Vec<streaming::RawStreamingChoice<CopilotStreamingResponse>> = Vec::new();
                 let mut tool_call_internal_ids: HashMap<String, String> = HashMap::new();
@@ -1180,6 +1181,9 @@ where
                                         if let Some(usage) = response.usage {
                                             final_usage = usage;
                                         }
+                                        if response.reasoning_metadata.is_some() {
+                                            reasoning_metadata = response.reasoning_metadata;
+                                        }
                                         if response.reasoning_context.is_some() {
                                             reasoning_context = response.reasoning_context;
                                         }
@@ -1247,6 +1251,7 @@ where
                     CopilotStreamingResponse::Responses(
                         responses_api::streaming::StreamingCompletionResponse {
                             usage: final_usage,
+                            reasoning_metadata,
                             reasoning_context,
                         }
                     )
@@ -2185,6 +2190,59 @@ mod tests {
             stream.next().await.is_none(),
             "responses stream should terminate immediately after a terminal error"
         );
+    }
+
+    #[tokio::test]
+    async fn responses_stream_preserves_reasoning_metadata_on_final_response() {
+        let metadata = serde_json::json!({
+            "context": "all_turns",
+            "effort": "ultra",
+            "summary": null,
+            "future_control": true
+        });
+        let completed = serde_json::json!({
+            "type": "response.completed",
+            "sequence_number": 1,
+            "response": {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 1700000000,
+                "status": "completed",
+                "error": null,
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "model": "gpt-5.3-codex",
+                "reasoning": metadata.clone(),
+                "usage": null,
+                "output": [],
+                "tools": []
+            }
+        });
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[completed]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-5.3-codex");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(super::CopilotStreamingResponse::Responses(
+                response,
+            )) = item.expect("completed stream should not error")
+            {
+                assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
+                assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
+                return;
+            }
+        }
+
+        panic!("responses stream should yield a final response");
     }
 
     #[tokio::test]
