@@ -619,9 +619,13 @@ fn openai_reasoning_from_core(
 ///
 /// OpenAI echoes back the effective reasoning configuration (effort, mode,
 /// context, ...) as an object, while some OpenAI-compatible implementations
-/// (e.g. mistral.rs) return raw reasoning text in the same field. Payloads
-/// that fit neither typed shape are preserved verbatim in [`Self::Other`],
-/// same as [`Output::Unknown`] does for unmodeled output items.
+/// (e.g. mistral.rs) return raw reasoning text in the same field. Nothing is
+/// silently dropped: a config with fields this version does not model still
+/// decodes to [`Self::Config`] (the unmodeled fields land in
+/// [`Reasoning::extra`]), and payloads that fit neither typed shape — a
+/// config with an unrecognized *value* for a modeled field, or a non-object,
+/// non-string payload — are preserved verbatim in [`Self::Other`], same as
+/// [`Output::Unknown`] does for unmodeled output items.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
@@ -662,16 +666,18 @@ where
     // Stay lenient without losing data: a config carrying values this version
     // doesn't model (e.g. a newer effort) falls back to the verbatim payload
     // instead of failing deserialization of the whole response or being
-    // silently dropped.
+    // silently dropped. The same goes for payloads that aren't a string or an
+    // object at all.
     Ok(
         match Option::<serde_json::Value>::deserialize(deserializer)? {
+            None | Some(serde_json::Value::Null) => None,
             Some(serde_json::Value::String(reasoning)) => Some(ProviderReasoning::Text(reasoning)),
             Some(config @ serde_json::Value::Object(_)) => Some(
                 Reasoning::deserialize(&config)
                     .map(ProviderReasoning::Config)
                     .unwrap_or_else(|_| ProviderReasoning::Other(config)),
             ),
-            _ => None,
+            Some(other) => Some(ProviderReasoning::Other(other)),
         },
     )
 }
@@ -1617,6 +1623,11 @@ pub struct Reasoning {
     /// GPT-5.6 model family.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<ReasoningContext>,
+    /// Reasoning fields this version does not model. In requests they are
+    /// forwarded to the provider verbatim; in the echoed response
+    /// configuration they are preserved instead of being silently dropped.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl Reasoning {
@@ -3663,6 +3674,88 @@ mod tests {
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0], completion::AssistantContent::Text(_)));
+    }
+
+    fn response_with_reasoning(reasoning: Value) -> CompletionResponse {
+        serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.6",
+            "reasoning": reasoning,
+            "output": [{
+                "type": "message",
+                "id": "msg_123",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("response with reasoning payload should deserialize")
+    }
+
+    #[test]
+    fn reasoning_request_forwards_unmodeled_fields() {
+        let request = request_with_reasoning_params(json!({ "effort": "max", "depth": "deep" }));
+        let serialized = serde_json::to_value(&request).expect("request should serialize");
+
+        assert_eq!(
+            serialized["reasoning"],
+            json!({ "effort": "max", "depth": "deep" })
+        );
+    }
+
+    #[test]
+    fn completion_response_preserves_unmodeled_reasoning_fields_in_config() {
+        // Unknown *fields* next to modeled ones keep the typed view: the echo
+        // decodes to a config and the unmodeled fields are captured in
+        // `Reasoning::extra`, so re-serialization is lossless.
+        let echo = json!({ "effort": "max", "depth": "deep" });
+        let response = response_with_reasoning(echo.clone());
+
+        let config = response
+            .provider_reasoning
+            .as_ref()
+            .and_then(ProviderReasoning::as_config)
+            .expect("echo with unmodeled fields should still decode as a config");
+        assert_eq!(config.effort, Some(ReasoningEffort::Max));
+        assert_eq!(config.extra.get("depth"), Some(&json!("deep")));
+
+        let serialized = serde_json::to_value(&response).expect("response should serialize back");
+        assert_eq!(serialized["reasoning"], echo);
+    }
+
+    #[test]
+    fn completion_response_preserves_non_object_reasoning_payload_verbatim() {
+        let payload = json!(["thinking step one", "thinking step two"]);
+        let response = response_with_reasoning(payload.clone());
+
+        assert_eq!(
+            response.provider_reasoning,
+            Some(ProviderReasoning::Other(payload.clone()))
+        );
+        let serialized = serde_json::to_value(&response).expect("response should serialize back");
+        assert_eq!(serialized["reasoning"], payload);
+
+        // The verbatim payload is not reasoning text; conversion must not
+        // inject it into the content.
+        let completion: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("response should convert");
+        let items = completion.choice.iter().collect::<Vec<_>>();
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], completion::AssistantContent::Text(_)));
+    }
+
+    #[test]
+    fn completion_response_treats_null_reasoning_as_absent() {
+        let response = response_with_reasoning(Value::Null);
+        assert_eq!(response.provider_reasoning, None);
     }
 
     #[test]
