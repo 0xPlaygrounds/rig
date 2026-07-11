@@ -120,9 +120,11 @@ where
     ///
     /// The number of retries is determined by the `retries` field on the Extractor struct.
     ///
-    /// Usage accumulates across all retry attempts, providing the complete cost picture
-    /// including failed attempts. Attempts that fail before the provider returns a
-    /// response (e.g. network errors) contribute no usage.
+    /// Usage accumulates across all retry attempts, including attempts that received
+    /// a billed response but failed extraction (e.g. the model never called `submit`).
+    /// Attempts whose completion call itself returned an error (e.g. network failures
+    /// or unparseable provider responses) contribute no usage, and when every attempt
+    /// fails the returned error carries no usage information at all.
     pub async fn extract_with_usage(
         &self,
         text: impl Into<Message> + WasmCompatSend,
@@ -140,9 +142,11 @@ where
     ///
     /// The number of retries is determined by the `retries` field on the Extractor struct.
     ///
-    /// Usage accumulates across all retry attempts, providing the complete cost picture
-    /// including failed attempts. Attempts that fail before the provider returns a
-    /// response (e.g. network errors) contribute no usage.
+    /// Usage accumulates across all retry attempts, including attempts that received
+    /// a billed response but failed extraction (e.g. the model never called `submit`).
+    /// Attempts whose completion call itself returned an error (e.g. network failures
+    /// or unparseable provider responses) contribute no usage, and when every attempt
+    /// fails the returned error carries no usage information at all.
     pub async fn extract_with_chat_history_with_usage(
         &self,
         text: impl Into<Message> + WasmCompatSend,
@@ -154,7 +158,9 @@ where
 
     /// Runs the extraction with the retry semantics shared by all public
     /// `extract*` methods, returning the extracted data and the token usage
-    /// accumulated across all attempts, including failed ones.
+    /// accumulated across all attempts, including failed ones. The accumulated
+    /// usage is only observable on success: when every attempt fails, the
+    /// returned error cannot carry it.
     async fn retry_extract(
         &self,
         text: impl Into<Message> + WasmCompatSend,
@@ -193,7 +199,9 @@ where
     /// Performs a single extraction attempt, returning its outcome alongside
     /// the token usage it consumed. Usage is reported even when the attempt
     /// fails after a billed completion (e.g. the model never called `submit`);
-    /// it is zero only when the completion request itself failed.
+    /// it is zero whenever the completion call itself returns an error, since
+    /// `CompletionError` carries no usage — even if the provider billed the
+    /// request (e.g. an unparseable response body).
     async fn extract_json_with_usage(
         &self,
         text: &Message,
