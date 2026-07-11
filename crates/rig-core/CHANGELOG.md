@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+<<<<<<< Updated upstream
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.39.0...rig-core-v0.40.0) - 2026-07-10
+=======
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.39.0...rig-core-v0.40.0) - 2026-07-11
+>>>>>>> Stashed changes
 
 ### Added
 
@@ -31,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+<<<<<<< Updated upstream
+=======
+- *(agent)* [**breaking**] enforce exact max turns budget ([#2093](https://github.com/0xPlaygrounds/rig/pull/2093)) (by @gold-silver-copper)
+>>>>>>> Stashed changes
 - *(telemetry)* keep GenAI message span fields empty ([#2066](https://github.com/0xPlaygrounds/rig/pull/2066)) (by @gold-silver-copper)
 - *(chatgpt)* preserve non-success response errors ([#2053](https://github.com/0xPlaygrounds/rig/pull/2053)) (by @gold-silver-copper)
 - *(chatgpt)* fallback on empty SSE output ([#2001](https://github.com/0xPlaygrounds/rig/pull/2001)) (by @gold-silver-copper)
