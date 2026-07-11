@@ -1068,7 +1068,6 @@ where
         let stream = tracing_futures::Instrument::instrument(
             stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
-                let mut provider_reasoning: Option<responses_api::ProviderReasoning> = None;
                 let mut tool_calls: Vec<streaming::RawStreamingChoice<CopilotStreamingResponse>> = Vec::new();
                 let mut tool_call_internal_ids: HashMap<String, String> = HashMap::new();
                 let span = tracing::Span::current();
@@ -1180,9 +1179,6 @@ where
                                         if let Some(usage) = response.usage {
                                             final_usage = usage;
                                         }
-                                        if response.provider_reasoning.is_some() {
-                                            provider_reasoning = response.provider_reasoning;
-                                        }
                                     }
                                     responses_api::streaming::ResponseChunkKind::ResponseFailed
                                     | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
@@ -1245,10 +1241,7 @@ where
 
                 yield Ok(RawStreamingChoice::FinalResponse(
                     CopilotStreamingResponse::Responses(
-                        responses_api::streaming::StreamingCompletionResponse {
-                            usage: final_usage,
-                            provider_reasoning,
-                        }
+                        responses_api::streaming::StreamingCompletionResponse { usage: final_usage }
                     )
                 ));
             },
@@ -2184,64 +2177,6 @@ mod tests {
         assert!(
             stream.next().await.is_none(),
             "responses stream should terminate immediately after a terminal error"
-        );
-    }
-
-    #[tokio::test]
-    async fn responses_stream_preserves_reasoning_echo_on_final_response() {
-        let completed = serde_json::json!({
-            "type": "response.completed",
-            "sequence_number": 1,
-            "response": {
-                "id": "resp_123",
-                "object": "response",
-                "created_at": 1700000000,
-                "status": "completed",
-                "error": null,
-                "incomplete_details": null,
-                "instructions": null,
-                "max_output_tokens": null,
-                "model": "gpt-5.3-codex",
-                "reasoning": { "effort": "high", "mode": "standard" },
-                "usage": null,
-                "output": [],
-                "tools": []
-            }
-        });
-        let http_client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[completed]),
-        };
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
-        let mut stream = model.stream(request).await.expect("stream should start");
-
-        let mut provider_reasoning = None;
-        while let Some(item) = stream.next().await {
-            if let StreamedAssistantContent::Final(super::CopilotStreamingResponse::Responses(
-                response,
-            )) = item.expect("completed stream should not error")
-            {
-                provider_reasoning = response.provider_reasoning;
-            }
-        }
-
-        let reasoning =
-            provider_reasoning.expect("the reasoning echo should reach the final response");
-        let config = reasoning
-            .as_config()
-            .expect("the reasoning echo should decode as a config");
-        assert_eq!(
-            config.effort,
-            Some(crate::providers::openai::responses_api::ReasoningEffort::High)
-        );
-        assert_eq!(
-            config.mode,
-            Some(crate::providers::openai::responses_api::ReasoningMode::Standard)
         );
     }
 

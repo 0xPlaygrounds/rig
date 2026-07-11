@@ -1,9 +1,9 @@
 //! GPT-5.6 reasoning-control regression tests.
 //!
-//! Locks down the GPT-5.6 model constants and the reasoning controls added for
-//! the family: `reasoning.effort = "max"`, `reasoning.mode = "pro"`, and
-//! `reasoning.context`, plus preservation of the effective reasoning
-//! configuration echoed back by the Responses API.
+//! Locks down the GPT-5.6 model constants and verifies that the Responses API
+//! accepts `reasoning.effort = "max"`, `reasoning.mode = "pro"`, and
+//! `reasoning.context`. Unit tests in the provider module cover every typed
+//! context value and optional-field serialization.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
@@ -12,9 +12,6 @@ use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, CompletionResponse};
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::{
-    ProviderReasoning, Reasoning, ReasoningContext, ReasoningEffort, ReasoningMode,
-};
 use serde_json::json;
 
 use super::super::support::with_openai_cassette;
@@ -39,6 +36,14 @@ where
         .expect("completion with GPT-5.6 reasoning controls should succeed")
 }
 
+#[test]
+fn model_constants() {
+    assert_eq!(openai::GPT_5_6, "gpt-5.6");
+    assert_eq!(openai::GPT_5_6_SOL, "gpt-5.6-sol");
+    assert_eq!(openai::GPT_5_6_TERRA, "gpt-5.6-terra");
+    assert_eq!(openai::GPT_5_6_LUNA, "gpt-5.6-luna");
+}
+
 fn assert_has_text(response: &CompletionResponse<openai::responses_api::CompletionResponse>) {
     let text: String = response
         .choice
@@ -54,28 +59,12 @@ fn assert_has_text(response: &CompletionResponse<openai::responses_api::Completi
     );
 }
 
-fn effective_reasoning(
-    response: &CompletionResponse<openai::responses_api::CompletionResponse>,
-) -> &Reasoning {
-    response
-        .raw_response
-        .provider_reasoning
-        .as_ref()
-        .and_then(ProviderReasoning::as_config)
-        .expect("the effective reasoning configuration should be preserved")
-}
-
 #[tokio::test]
 async fn effort_max() {
     with_openai_cassette("gpt_5_6_reasoning/effort_max", |client| async move {
         let model = client.completion_model(openai::GPT_5_6);
         let response = prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
-
         assert_has_text(&response);
-        let config = effective_reasoning(&response);
-        assert_eq!(config.effort, Some(ReasoningEffort::Max));
-        // Pro mode was not requested, so the effective mode echo is standard.
-        assert_eq!(config.mode, Some(ReasoningMode::Standard));
     })
     .await;
 }
@@ -88,43 +77,9 @@ async fn mode_pro_with_independent_effort() {
             let model = client.completion_model(openai::GPT_5_6_SOL);
             let response =
                 prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
-
             assert_has_text(&response);
-            let config = effective_reasoning(&response);
-            assert_eq!(config.effort, Some(ReasoningEffort::High));
-            assert_eq!(config.mode, Some(ReasoningMode::Pro));
         },
     )
-    .await;
-}
-
-#[tokio::test]
-async fn context_auto() {
-    with_openai_cassette("gpt_5_6_reasoning/context_auto", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6_TERRA);
-        let response =
-            prompt_with_reasoning(&model, json!({ "effort": "low", "context": "auto" })).await;
-
-        assert_has_text(&response);
-        let config = effective_reasoning(&response);
-        // "auto" lets the provider pick; the response echoes the *effective*
-        // context it resolved to (all_turns on current GPT-5.6 models).
-        assert_eq!(config.context, Some(ReasoningContext::AllTurns));
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn context_all_turns() {
-    with_openai_cassette("gpt_5_6_reasoning/context_all_turns", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6_LUNA);
-        let response =
-            prompt_with_reasoning(&model, json!({ "effort": "low", "context": "all_turns" })).await;
-
-        assert_has_text(&response);
-        let config = effective_reasoning(&response);
-        assert_eq!(config.context, Some(ReasoningContext::AllTurns));
-    })
     .await;
 }
 
@@ -139,10 +94,7 @@ async fn context_current_turn() {
                 json!({ "effort": "low", "context": "current_turn" }),
             )
             .await;
-
             assert_has_text(&response);
-            let config = effective_reasoning(&response);
-            assert_eq!(config.context, Some(ReasoningContext::CurrentTurn));
         },
     )
     .await;

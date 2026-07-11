@@ -4,9 +4,7 @@ use crate::completion::{self, CompletionError, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
-use crate::providers::openai::responses_api::{
-    ProviderReasoning, ReasoningSummary, ResponsesUsage,
-};
+use crate::providers::openai::responses_api::{ReasoningSummary, ResponsesUsage};
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use crate::wasm_compat::WasmCompatSend;
@@ -40,11 +38,6 @@ pub enum StreamingCompletionChunk {
 pub struct StreamingCompletionResponse {
     /// Token usage
     pub usage: ResponsesUsage,
-    /// The top-level `reasoning` payload from the `response.completed` event:
-    /// the effective reasoning configuration echoed back by OpenAI, or raw
-    /// reasoning text returned by some OpenAI-compatible implementations.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_reasoning: Option<ProviderReasoning>,
 }
 
 pub(crate) fn reasoning_choices_from_done_item(
@@ -219,7 +212,6 @@ pub(crate) fn parse_sse_completion_body(
 
 struct RawChoiceAccumulator {
     final_usage: ResponsesUsage,
-    provider_reasoning: Option<ProviderReasoning>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
 }
@@ -228,7 +220,6 @@ impl RawChoiceAccumulator {
     fn new(initial_usage: ResponsesUsage) -> Self {
         Self {
             final_usage: initial_usage,
-            provider_reasoning: None,
             tool_calls: Vec::new(),
             tool_call_internal_ids: std::collections::HashMap::new(),
         }
@@ -319,9 +310,6 @@ impl RawChoiceAccumulator {
                 if let Some(usage) = response.usage {
                     self.final_usage = usage;
                 }
-                if response.provider_reasoning.is_some() {
-                    self.provider_reasoning = response.provider_reasoning;
-                }
                 Ok(())
             }
             ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => Err(
@@ -389,7 +377,6 @@ impl RawChoiceAccumulator {
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,
-                provider_reasoning: self.provider_reasoning,
             },
         ));
         choices
@@ -910,8 +897,7 @@ mod tests {
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::{
         AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
-        ReasoningContext, ReasoningEffort, ReasoningMode, ReasoningSummary, ResponseError,
-        ResponseObject, ResponseStatus, ResponsesUsage,
+        ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
     };
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
     use crate::test_utils::MockStreamingClient;
@@ -963,9 +949,7 @@ mod tests {
             .expect_err("stream should surface a provider error")
     }
 
-    async fn final_response_from_event(
-        event: serde_json::Value,
-    ) -> super::StreamingCompletionResponse {
+    async fn final_usage_from_event(event: serde_json::Value) -> ResponsesUsage {
         let client = openai::Client::builder()
             .http_client(MockStreamingClient {
                 sse_bytes: sse_bytes_from_json_events(&[event]),
@@ -979,7 +963,7 @@ mod tests {
 
         while let Some(item) = stream.next().await {
             match item.expect("completed stream should not error") {
-                StreamedAssistantContent::Final(res) => return res,
+                StreamedAssistantContent::Final(res) => return res.usage,
                 _ => continue,
             }
         }
@@ -1563,36 +1547,10 @@ mod tests {
             "response": response,
         });
 
-        let usage = final_response_from_event(event).await.usage;
+        let usage = final_usage_from_event(event).await;
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
         assert_eq!(usage.total_tokens, 15);
-    }
-
-    #[tokio::test]
-    async fn response_completed_chunk_populates_final_reasoning_config() {
-        let response = sample_response(ResponseStatus::Completed);
-        let mut event = json!({
-            "type": "response.completed",
-            "sequence_number": 1,
-            "response": response,
-        });
-        event["response"]["reasoning"] = json!({
-            "effort": "max",
-            "mode": "pro",
-            "context": "all_turns"
-        });
-
-        let reasoning = final_response_from_event(event)
-            .await
-            .provider_reasoning
-            .expect("the reasoning echo should reach the final streaming response");
-        let config = reasoning
-            .as_config()
-            .expect("the reasoning echo should decode as a config");
-        assert_eq!(config.effort, Some(ReasoningEffort::Max));
-        assert_eq!(config.mode, Some(ReasoningMode::Pro));
-        assert_eq!(config.context, Some(ReasoningContext::AllTurns));
     }
 
     #[tokio::test]
