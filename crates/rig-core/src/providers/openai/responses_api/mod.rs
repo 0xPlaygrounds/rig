@@ -626,6 +626,10 @@ fn openai_reasoning_from_core(
 /// config with an unrecognized *value* for a modeled field, or a non-object,
 /// non-string payload — are preserved verbatim in [`Self::Other`], same as
 /// [`Output::Unknown`] does for unmodeled output items.
+///
+/// Preservation is semantic rather than byte-identical: OpenAI spells unset
+/// config fields as explicit nulls (e.g. `"summary": null`), which decode to
+/// `None` and are omitted when the config is serialized again.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
@@ -1624,8 +1628,9 @@ pub struct Reasoning {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<ReasoningContext>,
     /// Reasoning fields this version does not model. In requests they are
-    /// forwarded to the provider verbatim; in the echoed response
-    /// configuration they are preserved instead of being silently dropped.
+    /// forwarded to the provider verbatim (set them with
+    /// [`Reasoning::with_extra_field`]); in the echoed response configuration
+    /// they are preserved instead of being silently dropped.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -1660,6 +1665,14 @@ impl Reasoning {
     /// Sets how persisted reasoning is carried across turns (GPT-5.6 models).
     pub fn with_context(mut self, reasoning_context: ReasoningContext) -> Self {
         self.context = Some(reasoning_context);
+
+        self
+    }
+
+    /// Sets a reasoning field this version does not model; it is forwarded to
+    /// the provider verbatim (e.g. a control newer than this version).
+    pub fn with_extra_field(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
+        self.extra.insert(key.into(), value.into());
 
         self
     }
@@ -3756,6 +3769,39 @@ mod tests {
     fn completion_response_treats_null_reasoning_as_absent() {
         let response = response_with_reasoning(Value::Null);
         assert_eq!(response.provider_reasoning, None);
+    }
+
+    #[test]
+    fn completion_response_normalizes_explicit_null_reasoning_fields() {
+        // OpenAI spells unset config fields as explicit nulls in the echo.
+        // They decode to `None` on the modeled optional fields (not into
+        // `extra`) and are omitted on re-serialization: preservation is
+        // semantic, not byte-identical.
+        let response = response_with_reasoning(json!({ "effort": "max", "summary": null }));
+
+        let config = response
+            .provider_reasoning
+            .as_ref()
+            .and_then(ProviderReasoning::as_config)
+            .expect("echo with explicit nulls should decode as a config");
+        assert_eq!(config.effort, Some(ReasoningEffort::Max));
+        assert_eq!(config.summary, None);
+        assert!(config.extra.is_empty());
+
+        let serialized = serde_json::to_value(&response).expect("response should serialize back");
+        assert_eq!(serialized["reasoning"], json!({ "effort": "max" }));
+    }
+
+    #[test]
+    fn reasoning_builder_sets_extra_fields() {
+        let reasoning = Reasoning::new()
+            .with_effort(ReasoningEffort::Max)
+            .with_extra_field("depth", "deep");
+
+        assert_eq!(
+            serde_json::to_value(&reasoning).expect("reasoning should serialize"),
+            json!({ "effort": "max", "depth": "deep" })
+        );
     }
 
     #[test]

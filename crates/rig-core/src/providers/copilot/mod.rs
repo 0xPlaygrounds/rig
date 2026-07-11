@@ -2188,6 +2188,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn responses_stream_preserves_reasoning_echo_on_final_response() {
+        let completed = serde_json::json!({
+            "type": "response.completed",
+            "sequence_number": 1,
+            "response": {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 1700000000,
+                "status": "completed",
+                "error": null,
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "model": "gpt-5.3-codex",
+                "reasoning": { "effort": "high", "mode": "standard" },
+                "usage": null,
+                "output": [],
+                "tools": []
+            }
+        });
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[completed]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-5.3-codex");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut provider_reasoning = None;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(super::CopilotStreamingResponse::Responses(
+                response,
+            )) = item.expect("completed stream should not error")
+            {
+                provider_reasoning = response.provider_reasoning;
+            }
+        }
+
+        let reasoning =
+            provider_reasoning.expect("the reasoning echo should reach the final response");
+        let config = reasoning
+            .as_config()
+            .expect("the reasoning echo should decode as a config");
+        assert_eq!(
+            config.effort,
+            Some(crate::providers::openai::responses_api::ReasoningEffort::High)
+        );
+        assert_eq!(
+            config.mode,
+            Some(crate::providers::openai::responses_api::ReasoningMode::Standard)
+        );
+    }
+
+    #[tokio::test]
     async fn chat_stream_terminates_after_transport_error() {
         let chunks = vec![
             Ok(sse_bytes_from_data_lines([
