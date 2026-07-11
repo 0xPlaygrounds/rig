@@ -322,7 +322,9 @@ impl McpTool {
                         thing => {
                             return Err(McpToolError::new(
                                 ToolFailureKind::Other,
-                                format!("MCP tool returned unsupported resource contents: {thing:?}"),
+                                format!(
+                                    "MCP tool returned unsupported resource contents: {thing:?}"
+                                ),
                             ));
                         }
                     },
