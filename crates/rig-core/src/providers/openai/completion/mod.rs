@@ -38,6 +38,18 @@ where
     content.serialize(serializer)
 }
 
+/// `gpt-5.6` completion model (alias that routes to GPT-5.6 Sol)
+pub const GPT_5_6: &str = "gpt-5.6";
+
+/// `gpt-5.6-sol` completion model
+pub const GPT_5_6_SOL: &str = "gpt-5.6-sol";
+
+/// `gpt-5.6-terra` completion model
+pub const GPT_5_6_TERRA: &str = "gpt-5.6-terra";
+
+/// `gpt-5.6-luna` completion model
+pub const GPT_5_6_LUNA: &str = "gpt-5.6-luna";
+
 /// `gpt-5.5` completion model
 pub const GPT_5_5: &str = "gpt-5.5";
 

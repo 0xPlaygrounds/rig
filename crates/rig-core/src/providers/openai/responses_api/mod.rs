@@ -615,13 +615,53 @@ fn openai_reasoning_from_core(
     }))
 }
 
-fn optional_reasoning_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+/// The top-level `reasoning` payload of a Responses API response.
+///
+/// OpenAI echoes back the effective reasoning configuration (effort, mode,
+/// context, ...) as an object, while some OpenAI-compatible implementations
+/// (e.g. mistral.rs) return raw reasoning text in the same field.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ProviderReasoning {
+    /// Raw reasoning text returned by some OpenAI-compatible providers.
+    Text(String),
+    /// The effective reasoning configuration echoed back by the provider.
+    Config(Reasoning),
+}
+
+impl ProviderReasoning {
+    /// Returns the raw reasoning text, if the provider returned one.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            Self::Config(_) => None,
+        }
+    }
+
+    /// Returns the effective reasoning configuration, if the provider returned one.
+    pub fn as_config(&self) -> Option<&Reasoning> {
+        match self {
+            Self::Text(_) => None,
+            Self::Config(config) => Some(config),
+        }
+    }
+}
+
+fn optional_provider_reasoning<'de, D>(
+    deserializer: D,
+) -> Result<Option<ProviderReasoning>, D::Error>
 where
     D: Deserializer<'de>,
 {
+    // Stay lenient: unrecognized shapes (or configs with unknown values, e.g.
+    // an effort this version doesn't model) are dropped rather than failing
+    // deserialization of the whole response.
     Ok(
         match Option::<serde_json::Value>::deserialize(deserializer)? {
-            Some(serde_json::Value::String(reasoning)) => Some(reasoning),
+            Some(serde_json::Value::String(reasoning)) => Some(ProviderReasoning::Text(reasoning)),
+            Some(config @ serde_json::Value::Object(_)) => serde_json::from_value(config)
+                .ok()
+                .map(ProviderReasoning::Config),
             _ => None,
         },
     )
@@ -1382,15 +1422,17 @@ pub struct CompletionResponse {
     pub max_output_tokens: Option<u64>,
     /// The model name
     pub model: String,
-    /// Provider-specific top-level reasoning content returned by some
-    /// OpenAI-compatible Responses implementations.
+    /// The top-level `reasoning` payload: the effective reasoning
+    /// configuration echoed back by OpenAI (including the effective
+    /// `reasoning.context` on GPT-5.6 models), or raw reasoning text returned
+    /// by some OpenAI-compatible Responses implementations.
     #[serde(
         default,
         rename = "reasoning",
-        deserialize_with = "optional_reasoning_string",
+        deserialize_with = "optional_provider_reasoning",
         skip_serializing_if = "Option::is_none"
     )]
-    pub provider_reasoning: Option<String>,
+    pub provider_reasoning: Option<ProviderReasoning>,
     /// Token usage
     pub usage: Option<ResponsesUsage>,
     /// The model output (messages, etc will go here)
@@ -1531,22 +1573,41 @@ pub struct StructuredOutputsInput {
 }
 
 /// Add reasoning to a [`CompletionRequest`].
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+///
+/// # Example
+/// ```
+/// use rig_core::providers::openai::responses_api::{
+///     Reasoning, ReasoningContext, ReasoningEffort, ReasoningMode,
+/// };
+///
+/// // GPT-5.6 reasoning controls: effort, pro mode, and persisted-reasoning context.
+/// let reasoning = Reasoning::new()
+///     .with_effort(ReasoningEffort::Max)
+///     .with_mode(ReasoningMode::Pro)
+///     .with_context(ReasoningContext::AllTurns);
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Reasoning {
     /// How much effort you want the model to put into thinking/reasoning.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<ReasoningEffort>,
     /// How much effort you want the model to put into writing the reasoning summary.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<ReasoningSummaryLevel>,
+    /// The reasoning mode. Independent from `effort`; standard mode is
+    /// represented by omitting the field. Supported by the GPT-5.6 model family.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<ReasoningMode>,
+    /// How persisted reasoning is carried across turns. Supported by the
+    /// GPT-5.6 model family.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<ReasoningContext>,
 }
 
 impl Reasoning {
     /// Creates a new Reasoning instantiation (with empty values).
     pub fn new() -> Self {
-        Self {
-            effort: None,
-            summary: None,
-        }
+        Self::default()
     }
 
     /// Adds reasoning effort.
@@ -1559,6 +1620,20 @@ impl Reasoning {
     /// Adds summary level (how detailed the reasoning summary will be).
     pub fn with_summary_level(mut self, reasoning_summary_level: ReasoningSummaryLevel) -> Self {
         self.summary = Some(reasoning_summary_level);
+
+        self
+    }
+
+    /// Sets the reasoning mode (e.g. pro mode on GPT-5.6 models).
+    pub fn with_mode(mut self, reasoning_mode: ReasoningMode) -> Self {
+        self.mode = Some(reasoning_mode);
+
+        self
+    }
+
+    /// Sets how persisted reasoning is carried across turns (GPT-5.6 models).
+    pub fn with_context(mut self, reasoning_context: ReasoningContext) -> Self {
+        self.context = Some(reasoning_context);
 
         self
     }
@@ -1616,7 +1691,7 @@ impl<'de> Deserialize<'de> for OpenAIServiceTier {
 }
 
 /// The amount of reasoning effort that will be used by a given model.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningEffort {
     None,
@@ -1626,10 +1701,37 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
+    /// The highest reasoning effort. Supported by the GPT-5.6 model family.
+    Max,
+}
+
+/// The reasoning mode used by a given model. Independent from
+/// [`ReasoningEffort`]; the standard mode is represented by omitting the field
+/// (`None` on [`Reasoning::mode`]), so this enum only carries the documented
+/// non-default modes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningMode {
+    /// Pro mode. Supported by the GPT-5.6 model family.
+    Pro,
+}
+
+/// How persisted reasoning is carried across turns. Supported by the GPT-5.6
+/// model family.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningContext {
+    /// Let the model decide how much persisted reasoning to reuse.
+    #[default]
+    Auto,
+    /// Reuse persisted reasoning from all previous turns.
+    AllTurns,
+    /// Only use reasoning from the current turn.
+    CurrentTurn,
 }
 
 /// The amount of effort that will go into a reasoning summary by a given model.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningSummaryLevel {
     #[default]
@@ -2056,6 +2158,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let content = response
             .provider_reasoning
             .as_ref()
+            .and_then(ProviderReasoning::as_text)
             .filter(|reasoning| !has_structured_reasoning && !reasoning.is_empty())
             .map(|reasoning| {
                 let mut content = Vec::with_capacity(output_content.len() + 1);
@@ -3233,7 +3336,10 @@ mod tests {
         .expect("mistral.rs-style reasoning string should deserialize");
 
         assert_eq!(
-            response.provider_reasoning.as_deref(),
+            response
+                .provider_reasoning
+                .as_ref()
+                .and_then(ProviderReasoning::as_text),
             Some("thinking through the answer")
         );
 
@@ -3328,7 +3434,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_response_ignores_top_level_reasoning_object_as_text() {
+    fn completion_response_keeps_top_level_reasoning_object_out_of_content() {
         let response: CompletionResponse = serde_json::from_value(json!({
             "id": "resp_123",
             "object": "response",
@@ -3353,13 +3459,124 @@ mod tests {
         }))
         .expect("object-shaped reasoning should be tolerated");
 
-        assert!(response.provider_reasoning.is_none());
+        // The configuration echo is preserved on the typed response, but it is
+        // not reasoning text and must not be injected into the content.
+        let config = response
+            .provider_reasoning
+            .as_ref()
+            .and_then(ProviderReasoning::as_config)
+            .expect("object-shaped reasoning should be captured as a config");
+        assert_eq!(config.effort, Some(ReasoningEffort::High));
 
         let completion: completion::CompletionResponse<CompletionResponse> =
             response.try_into().expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0], completion::AssistantContent::Text(_)));
+    }
+
+    fn request_with_reasoning_params(reasoning: Value) -> CompletionRequest {
+        let mut request = request_with_preamble("You are concise.");
+        request.additional_params = Some(json!({ "reasoning": reasoning }));
+
+        CompletionRequest::try_from(("gpt-5.6".to_string(), request))
+            .expect("request with reasoning params should convert")
+    }
+
+    #[test]
+    fn reasoning_effort_max_survives_request_conversion() {
+        let request = request_with_reasoning_params(json!({ "effort": "max" }));
+        let serialized = serde_json::to_value(&request).expect("request should serialize");
+
+        assert_eq!(serialized["reasoning"], json!({ "effort": "max" }));
+    }
+
+    #[test]
+    fn reasoning_mode_pro_composes_with_independent_effort() {
+        let request = request_with_reasoning_params(json!({ "effort": "high", "mode": "pro" }));
+        let serialized = serde_json::to_value(&request).expect("request should serialize");
+
+        assert_eq!(
+            serialized["reasoning"],
+            json!({ "effort": "high", "mode": "pro" })
+        );
+    }
+
+    #[test]
+    fn reasoning_context_values_survive_request_conversion() {
+        for context in ["auto", "all_turns", "current_turn"] {
+            let request = request_with_reasoning_params(json!({ "context": context }));
+            let serialized = serde_json::to_value(&request).expect("request should serialize");
+
+            assert_eq!(serialized["reasoning"], json!({ "context": context }));
+        }
+    }
+
+    #[test]
+    fn reasoning_omits_unset_optional_fields() {
+        let reasoning = serde_json::to_value(Reasoning::new().with_mode(ReasoningMode::Pro))
+            .expect("reasoning should serialize");
+
+        assert_eq!(reasoning, json!({ "mode": "pro" }));
+
+        let reasoning = serde_json::to_value(
+            Reasoning::new()
+                .with_effort(ReasoningEffort::Max)
+                .with_mode(ReasoningMode::Pro)
+                .with_context(ReasoningContext::CurrentTurn)
+                .with_summary_level(ReasoningSummaryLevel::Detailed),
+        )
+        .expect("reasoning should serialize");
+
+        assert_eq!(
+            reasoning,
+            json!({
+                "effort": "max",
+                "mode": "pro",
+                "context": "current_turn",
+                "summary": "detailed"
+            })
+        );
+    }
+
+    #[test]
+    fn completion_response_preserves_effective_reasoning_context() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.6",
+            "reasoning": {
+                "effort": "max",
+                "mode": "pro",
+                "context": "all_turns",
+                "summary": null
+            },
+            "output": [{
+                "type": "message",
+                "id": "msg_123",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("reasoning config echo should deserialize");
+
+        let config = response
+            .provider_reasoning
+            .as_ref()
+            .and_then(ProviderReasoning::as_config)
+            .expect("effective reasoning config should be preserved");
+        assert_eq!(config.effort, Some(ReasoningEffort::Max));
+        assert_eq!(config.mode, Some(ReasoningMode::Pro));
+        assert_eq!(config.context, Some(ReasoningContext::AllTurns));
+        assert_eq!(config.summary, None);
     }
 
     #[test]
