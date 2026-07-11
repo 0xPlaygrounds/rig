@@ -6,6 +6,87 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/v0.39.0...v0.40.0) - 2026-07-11
+
+### Added
+
+- *(tool)* [**breaking**] structured tool-execution results ([#2015](https://github.com/0xPlaygrounds/rig/pull/2015)) (by @gold-silver-copper)
+- *(agent)* [**breaking**] hook system v2 — composable middleware ([#2012](https://github.com/0xPlaygrounds/rig/pull/2012)) (by @gold-silver-copper)
+- *(examples)* human-in-the-loop tool-call approval — examples + tests ([#1967](https://github.com/0xPlaygrounds/rig/pull/1967)) (by @gold-silver-copper)
+- *(rig-core)* steer the model request per turn from a hook via Flow::OverrideRequest ([#1966](https://github.com/0xPlaygrounds/rig/pull/1966)) (by @gold-silver-copper)
+- *(rig-core)* rewrite tool results from a hook via Flow::RewriteResult ([#1965](https://github.com/0xPlaygrounds/rig/pull/1965)) (by @gold-silver-copper)
+- *(rig-core)* rewrite tool-call arguments from a hook via Flow::RewriteArgs ([#1963](https://github.com/0xPlaygrounds/rig/pull/1963)) (by @gold-silver-copper)
+- *(openai)* preserve responses prompt cache parameters ([#1830](https://github.com/0xPlaygrounds/rig/pull/1830)) (by @Kade-Powell)
+- *(streaming)* [**breaking**] surface unmodeled provider output items through the stream ([#1951](https://github.com/0xPlaygrounds/rig/pull/1951)) (by @gold-silver-copper)
+- *(rig-core)* [**breaking**] integrate hooks into AgentRun via a composable AgentRunner ([#1945](https://github.com/0xPlaygrounds/rig/pull/1945)) (by @gold-silver-copper)
+- *(message)* add video helper constructors + OpenRouter audio/video conversion tests ([#1942](https://github.com/0xPlaygrounds/rig/pull/1942)) (by @gold-silver-copper)
+- *(agent)* add OutputMode to compose structured output with tools ([#1928](https://github.com/0xPlaygrounds/rig/pull/1928)) ([#1929](https://github.com/0xPlaygrounds/rig/pull/1929)) (by @gold-silver-copper)
+
+### Fixed
+
+- *(agent)* [**breaking**] enforce exact max turns budget ([#2093](https://github.com/0xPlaygrounds/rig/pull/2093)) (by @gold-silver-copper)
+- *(telemetry)* keep GenAI message span fields empty ([#2066](https://github.com/0xPlaygrounds/rig/pull/2066)) (by @gold-silver-copper)
+- *(chatgpt)* preserve non-success response errors ([#2053](https://github.com/0xPlaygrounds/rig/pull/2053)) (by @gold-silver-copper)
+- *(vertexai)* preserve signed thought text parts ([#2052](https://github.com/0xPlaygrounds/rig/pull/2052)) (by @gold-silver-copper)
+- *(chatgpt)* fallback on empty SSE output ([#2001](https://github.com/0xPlaygrounds/rig/pull/2001)) (by @gold-silver-copper)
+- *(openai)* preserve reasoning text content ([#1999](https://github.com/0xPlaygrounds/rig/pull/1999)) (by @gold-silver-copper)
+- preserve OpenAI Responses instructions ([#1995](https://github.com/0xPlaygrounds/rig/pull/1995)) (by @gold-silver-copper) - #1995
+- *(openai)* accept null Responses metadata ([#1993](https://github.com/0xPlaygrounds/rig/pull/1993)) (by @gold-silver-copper)
+- *(postgres)* update sqlx and pgvector ([#1992](https://github.com/0xPlaygrounds/rig/pull/1992)) (by @gold-silver-copper)
+- *(openai)* make Responses API strict tools opt-in ([#1991](https://github.com/0xPlaygrounds/rig/pull/1991)) (by @gold-silver-copper)
+- *(agent)* stream concurrent tool results as they complete ([#1981](https://github.com/0xPlaygrounds/rig/pull/1981)) (by @gold-silver-copper)
+- *(rig-core)* fix epub loader tests + prevent CWD-relative fixture-path regressions ([#1940](https://github.com/0xPlaygrounds/rig/pull/1940)) (by @gold-silver-copper)
+- *(ollama)* preserve assistant reasoning from non-streaming responses ([#1926](https://github.com/0xPlaygrounds/rig/pull/1926)) ([#1927](https://github.com/0xPlaygrounds/rig/pull/1927)) (by @gold-silver-copper)
+
+### Other
+
+- Remove unused derive and core APIs ([#2087](https://github.com/0xPlaygrounds/rig/pull/2087)) (by @gold-silver-copper) - #2087
+- add Bedrock cassette coverage ([#2084](https://github.com/0xPlaygrounds/rig/pull/2084)) (by @gold-silver-copper) - #2084
+- Remove unused stream completion stdout helper ([#2085](https://github.com/0xPlaygrounds/rig/pull/2085)) (by @gold-silver-copper) - #2085
+- Remove unused generation wrapper traits ([#2083](https://github.com/0xPlaygrounds/rig/pull/2083)) (by @gold-silver-copper) - #2083
+- Remove unused Anthropic decoders ([#2082](https://github.com/0xPlaygrounds/rig/pull/2082)) (by @gold-silver-copper) - #2082
+- *(agent)* [**breaking**] unify PromptResponse and FinalResponse into one type ([#2056](https://github.com/0xPlaygrounds/rig/pull/2056)) (by @gold-silver-copper)
+- *(core)* [**breaking**] API paper cuts — duplicate names, hand-copied setters, dead types ([#2055](https://github.com/0xPlaygrounds/rig/pull/2055)) (by @gold-silver-copper)
+- *(examples)* add force_tool_first_turn hook example ([#2014](https://github.com/0xPlaygrounds/rig/pull/2014)) (by @gold-silver-copper)
+- *(auth)* add non-interactive oauth cassette coverage ([#2050](https://github.com/0xPlaygrounds/rig/pull/2050)) (by @gold-silver-copper)
+- *(perplexity)* add cassette coverage ([#2049](https://github.com/0xPlaygrounds/rig/pull/2049)) (by @gold-silver-copper)
+- *(providers)* [**breaking**] remove galadriel provider ([#2041](https://github.com/0xPlaygrounds/rig/pull/2041)) (by @gold-silver-copper)
+- *(providers)* [**breaking**] collapse remaining providers onto GenericCompletionModel<Ext> (#2035 phases 2–4) ([#2040](https://github.com/0xPlaygrounds/rig/pull/2040)) (by @gold-silver-copper)
+- *(providers)* [**breaking**] migrate llamafile onto GenericCompletionModel<Ext> (#2035 phase 1) ([#2038](https://github.com/0xPlaygrounds/rig/pull/2038)) (by @gold-silver-copper)
+- *(core)* [**breaking**] delete unused evals module and experimental feature flag ([#2036](https://github.com/0xPlaygrounds/rig/pull/2036)) (by @gold-silver-copper)
+- Flatten Tool metadata API ([#2029](https://github.com/0xPlaygrounds/rig/pull/2029)) (by @gold-silver-copper) - #2029
+- *(gemini)* live cassette hook-system stress suite ([#2013](https://github.com/0xPlaygrounds/rig/pull/2013)) (by @gold-silver-copper)
+- Add Groq agent tool cassette regressions ([#2011](https://github.com/0xPlaygrounds/rig/pull/2011)) (by @gold-silver-copper) - #2011
+- Add Mistral agent tool cassette regressions ([#2010](https://github.com/0xPlaygrounds/rig/pull/2010)) (by @gold-silver-copper) - #2010
+- Add DeepSeek agent tool cassette regressions ([#2009](https://github.com/0xPlaygrounds/rig/pull/2009)) (by @gold-silver-copper) - #2009
+- Add xAI agent tool cassette regressions ([#2008](https://github.com/0xPlaygrounds/rig/pull/2008)) (by @gold-silver-copper) - #2008
+- Gate Gemini image cassette tests on image feature ([#2007](https://github.com/0xPlaygrounds/rig/pull/2007)) (by @gold-silver-copper) - #2007
+- Add OpenRouter agent tool cassette regressions ([#2006](https://github.com/0xPlaygrounds/rig/pull/2006)) (by @gold-silver-copper) - #2006
+- Add ChatGPT Codex cassette regression suite ([#2005](https://github.com/0xPlaygrounds/rig/pull/2005)) (by @gold-silver-copper) - #2005
+- *(gemini)* production-grade generateContent cassette suite ([#2004](https://github.com/0xPlaygrounds/rig/pull/2004)) (by @gold-silver-copper)
+- *(anthropic)* production-grade Messages API cassette suite ([#2003](https://github.com/0xPlaygrounds/rig/pull/2003)) (by @gold-silver-copper)
+- *(openai)* production-grade Responses API cassette suite + tool_choice and replay-ID fixes ([#2002](https://github.com/0xPlaygrounds/rig/pull/2002)) (by @gold-silver-copper)
+- *(providers)* add provider implementation checklist ([#1997](https://github.com/0xPlaygrounds/rig/pull/1997)) (by @gold-silver-copper)
+- *(deps)* bump assert_fs from 1.1.3 to 1.1.4 ([#1933](https://github.com/0xPlaygrounds/rig/pull/1933)) (by @dependabot[bot])
+- *(deps)* bump trybuild from 1.0.116 to 1.0.117 ([#1935](https://github.com/0xPlaygrounds/rig/pull/1935)) (by @dependabot[bot])
+- *(deps)* bump chrono from 0.4.44 to 0.4.45 ([#1934](https://github.com/0xPlaygrounds/rig/pull/1934)) (by @dependabot[bot])
+- *(deps)* bump uuid from 1.23.3 to 1.23.4 ([#1975](https://github.com/0xPlaygrounds/rig/pull/1975)) (by @dependabot[bot])
+- *(deps)* bump scylla from 1.6.0 to 1.7.0 ([#1932](https://github.com/0xPlaygrounds/rig/pull/1932)) (by @dependabot[bot])
+- *(anthropic)* add null citation streaming cassette ([#1978](https://github.com/0xPlaygrounds/rig/pull/1978)) (by @gold-silver-copper)
+- update agent and contribution guidance ([#1974](https://github.com/0xPlaygrounds/rig/pull/1974)) (by @gold-silver-copper) - #1974
+- *(openai-compat)* genuinely exercise the #1958 tool-call eviction string-leak (+ live cassette) ([#1962](https://github.com/0xPlaygrounds/rig/pull/1962)) (by @gold-silver-copper)
+- *(rig-core)* [**breaking**] remove the experimental pipeline module ([#1941](https://github.com/0xPlaygrounds/rig/pull/1941)) (by @gold-silver-copper)
+- run doctests and stop rig-sqlite opting out of them ([#1939](https://github.com/0xPlaygrounds/rig/pull/1939)) (by @gold-silver-copper) - #1939
+- *(rig-core)* replace nanoid with fastrand for internal IDs ([#1938](https://github.com/0xPlaygrounds/rig/pull/1938)) (by @gold-silver-copper)
+- *(examples)* migrate to a package-per-example layout ([#1937](https://github.com/0xPlaygrounds/rig/pull/1937)) (by @gold-silver-copper)
+- add Archestra to "Who is using Rig?" section ([#1925](https://github.com/0xPlaygrounds/rig/pull/1925)) (by @arsenyinfo) - #1925
+
+### Contributors
+
+* @gold-silver-copper
+* @dependabot[bot]
+* @Kade-Powell
+* @arsenyinfo
 
 ### Changed
 

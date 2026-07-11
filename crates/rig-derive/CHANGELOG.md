@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.39.0...rig-derive-v0.40.0) - 2026-07-11
+
+### Other
+
+- Remove unused derive and core APIs ([#2087](https://github.com/0xPlaygrounds/rig/pull/2087)) (by @gold-silver-copper) - #2087
+- Flatten Tool metadata API ([#2029](https://github.com/0xPlaygrounds/rig/pull/2029)) (by @gold-silver-copper) - #2029
+
+### Contributors
+
+* @gold-silver-copper
 
 ### Changed
 

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.39.0...rig-bedrock-v0.40.0) - 2026-07-11
+
+### Added
+
+- *(rig-core)* [**breaking**] broaden provider error-response inspection workspace-wide ([#1944](https://github.com/0xPlaygrounds/rig/pull/1944)) (by @gold-silver-copper)
+
+### Other
+
+- add Bedrock cassette coverage ([#2084](https://github.com/0xPlaygrounds/rig/pull/2084)) (by @gold-silver-copper) - #2084
+- Flatten Tool metadata API ([#2029](https://github.com/0xPlaygrounds/rig/pull/2029)) (by @gold-silver-copper) - #2029
+- *(rig-core)* replace nanoid with fastrand for internal IDs ([#1938](https://github.com/0xPlaygrounds/rig/pull/1938)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
 ## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.38.2...rig-bedrock-v0.39.0) - 2026-06-19
 
 ### Added
