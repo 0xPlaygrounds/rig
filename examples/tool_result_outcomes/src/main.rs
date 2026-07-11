@@ -1,66 +1,92 @@
-//! Steering an agent on *why* a tool failed, using structured tool outcomes.
+//! Classifying tool failures as structured facts and applying policy in hooks.
 //!
-//! Rig delivers each tool result to hooks as a structured
-//! [`ToolExecutionResult`](rig::tool::ToolExecutionResult): the model-visible
-//! text **plus** a machine-readable [`ToolOutcome`](rig::tool::ToolOutcome). A
-//! hook can therefore branch on *why* a tool failed — a timeout vs. a 404 — with
-//! no string parsing.
+//! `SystemProbe` simulates Erik Tews's two failure cases: disk I/O (`EIO`) and
+//! network unreachable (`ENETUNREACH`). The tool classifies each error and adds
+//! typed operation metadata; it does not decide whether the agent may continue.
 //!
-//! This example wires up:
+//! A narrow `CompletionCall` hook reliably invokes `system_probe` on turn 1,
+//! while the prompt requests the desired operation. It does nothing on later
+//! turns, leaving the recoverable run free to produce a final answer. Two `ToolResult`
+//! hooks then run in registration order:
 //!
-//! - `HttpFetch` — a tool whose [`Tool::classify_error`](rig::tool::Tool::classify_error)
-//!   maps its own error variants onto standard
-//!   [`ToolFailureKind`](rig::tool::ToolFailureKind)s (timeout, not-found, …). A
-//!   URL containing `slow` times out; one containing `missing` returns 404;
-//!   anything else succeeds.
-//! - `OutcomePolicy` — a hook that **counts timeouts in the run scratchpad and
-//!   terminates** after a threshold, while letting a **404 flow back to the model
-//!   as recoverable feedback** so it can try another path.
+//! 1. `FailureRecorder` copies the event's call ID, structured outcome, and typed
+//!    extension into a run-scoped scratchpad ledger.
+//! 2. `FatalFailurePolicy` looks up that same call ID, terminating on `Other`/`EIO`
+//!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
+//!    matters because results from concurrent tool calls can interleave.
 //!
-//! This is the motivating contrast: repeated HTTP timeouts should abort the
-//! agent; a 404 should not. `main` drives the **404-recovery** half (it prompts a
-//! `missing` URL and the run continues); the timeout-abort branch is implemented
-//! and ready but not exercised by this single prompt — reaching the threshold
-//! would require the model to repeatedly fetch a `slow` URL, which is left out to
-//! keep the example deterministic. Point the prompt at a `slow` URL to see it fire.
+//! `StepEvent::ToolResult` carries facts about one execution: `outcome` is the
+//! standard classification and `extensions` holds tool/application-specific typed
+//! metadata that is never sent to the model. The scratchpad is different: it is
+//! shared, run-scoped hook state. Here it lets one hook record facts for the next
+//! hook without coupling either hook to model-visible result text.
 //!
-//! Requires `OPENAI_API_KEY`.
+//! Live commands (require `OPENAI_API_KEY`):
+//!
+//! ```text
+//! cargo run -p tool_result_outcomes -- fatal
+//! cargo run -p tool_result_outcomes -- recoverable
+//! ```
+//!
+//! The fatal command terminates after the disk failure. The recoverable command
+//! lets the network failure return to the model. `--help` requires no credentials.
 
-use anyhow::Result;
-use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
+use anyhow::{Result, bail};
+use rig::agent::{AgentHook, Flow, HookContext, RequestPatch, StepEvent};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt};
+use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolFailure, ToolFailureKind, ToolOutcome};
+use rig::tool::{
+    Tool, ToolCallExtensions, ToolFailure, ToolFailureKind, ToolOutcome, ToolResultExtensions,
+    ToolReturn,
+};
 
-// ---------------------------------------------------------------------------
-// A tool that classifies its own failures into structured kinds.
-// ---------------------------------------------------------------------------
+#[derive(Clone, Copy, Debug, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum Operation {
+    ReadDisk,
+    ConnectNetwork,
+}
+
+impl Operation {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadDisk => "read_disk",
+            Self::ConnectNetwork => "connect_network",
+        }
+    }
+}
 
 #[derive(serde::Deserialize)]
-struct FetchArgs {
-    url: String,
+struct ProbeArgs {
+    operation: Operation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FailureSite {
+    operation: Operation,
+    resource: &'static str,
 }
 
 #[derive(Debug, thiserror::Error)]
-enum FetchError {
-    #[error("request to {url} timed out")]
-    Timeout { url: String },
-    #[error("404 Not Found: {url}")]
-    NotFound { url: String },
+enum ProbeError {
+    #[error("disk read failed for /data/archive.bin")]
+    DiskIo,
+    #[error("network is unreachable for backup.example.net")]
+    NetworkUnreachable,
 }
 
-struct HttpFetch;
+struct SystemProbe;
 
-impl Tool for HttpFetch {
-    const NAME: &'static str = "http_fetch";
-    type Error = FetchError;
-    type Args = FetchArgs;
+impl Tool for SystemProbe {
+    const NAME: &'static str = "system_probe";
+    type Error = ProbeError;
+    type Args = ProbeArgs;
     type Output = String;
 
     fn description(&self) -> String {
-        "Fetch a URL and return its body. URLs containing 'slow' time out; \
-                          URLs containing 'missing' return HTTP 404."
+        "Run a simulated system operation. Use read_disk for disk access or connect_network for remote access."
             .to_string()
     }
 
@@ -68,132 +94,391 @@ impl Tool for HttpFetch {
         serde_json::json!({
             "type": "object",
             "properties": {
-                "url": { "type": "string", "description": "The URL to fetch" }
+                "operation": {
+                    "type": "string",
+                    "enum": ["read_disk", "connect_network"]
+                }
             },
-            "required": ["url"],
+            "required": ["operation"]
         })
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        if args.url.contains("slow") {
-            Err(FetchError::Timeout { url: args.url })
-        } else if args.url.contains("missing") {
-            Err(FetchError::NotFound { url: args.url })
-        } else {
-            Ok(format!("200 OK: fetched {}", args.url))
+        match args.operation {
+            Operation::ReadDisk => Err(ProbeError::DiskIo),
+            Operation::ConnectNetwork => Err(ProbeError::NetworkUnreachable),
         }
     }
 
-    // Map the tool's own error variants onto standard failure kinds — no string
-    // parsing anywhere downstream. Hooks match on `ToolFailureKind`, not text.
     fn classify_error(&self, error: &Self::Error) -> ToolFailure {
         match error {
-            FetchError::Timeout { .. } => ToolFailure::timeout(error.to_string()),
-            FetchError::NotFound { .. } => {
-                ToolFailure::not_found(error.to_string()).with_http_status(404)
+            ProbeError::DiskIo => ToolFailure::other(error.to_string())
+                .with_code("EIO")
+                .with_retryable(false),
+            ProbeError::NetworkUnreachable => {
+                ToolFailure::network(error.to_string()).with_code("ENETUNREACH")
+            }
+        }
+    }
+
+    async fn call_structured(
+        &self,
+        args: Self::Args,
+        _extensions: &ToolCallExtensions,
+    ) -> Result<ToolReturn<Self::Output>, Self::Error> {
+        let site = match args.operation {
+            Operation::ReadDisk => FailureSite {
+                operation: args.operation,
+                resource: "/data/archive.bin",
+            },
+            Operation::ConnectNetwork => FailureSite {
+                operation: args.operation,
+                resource: "backup.example.net",
+            },
+        };
+
+        match self.call(args).await {
+            Ok(output) => Ok(ToolReturn::success(output)),
+            Err(error) => {
+                let failure = self.classify_error(&error);
+                Ok(ToolReturn::failed(error.to_string(), failure).with_extension(site))
             }
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// A hook that steers the run on the structured outcome.
-// ---------------------------------------------------------------------------
+struct ForceSystemProbeOnFirstTurn;
 
-/// Run-scoped timeout tally, kept in the shared [`HookContext::scratchpad`].
-#[derive(Clone, Default)]
-struct TimeoutCount(usize);
-
-/// Terminates the run after `max_timeouts` tool timeouts; lets a 404 continue.
-struct OutcomePolicy {
-    max_timeouts: usize,
+fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
+    (turn == 1).then(|| {
+        RequestPatch::new().tool_choice(ToolChoice::Specific {
+            function_names: vec![SystemProbe::NAME.to_string()],
+        })
+    })
 }
 
-impl<M: CompletionModel> AgentHook<M> for OutcomePolicy {
+impl<M> AgentHook<M> for ForceSystemProbeOnFirstTurn
+where
+    M: CompletionModel,
+{
+    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+        if matches!(event, StepEvent::CompletionCall { .. })
+            && let Some(patch) = system_probe_patch(ctx.turn())
+        {
+            return Flow::patch_request(patch);
+        }
+        Flow::cont()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FailureRecord {
+    internal_call_id: String,
+    tool_name: String,
+    kind: ToolFailureKind,
+    code: Option<String>,
+    operation: Operation,
+    resource: &'static str,
+}
+
+#[derive(Clone, Default)]
+struct FailureLedger(Vec<FailureRecord>);
+
+struct FailureRecorder;
+
+fn failure_record(
+    internal_call_id: &str,
+    tool_name: &str,
+    outcome: &ToolOutcome,
+    extensions: &ToolResultExtensions,
+) -> Option<FailureRecord> {
+    let (Some(failure), Some(site)) = (outcome.failure(), extensions.get::<FailureSite>()) else {
+        return None;
+    };
+
+    Some(FailureRecord {
+        internal_call_id: internal_call_id.to_string(),
+        tool_name: tool_name.to_string(),
+        kind: failure.kind,
+        code: failure.code.clone(),
+        operation: site.operation,
+        resource: site.resource,
+    })
+}
+
+impl<M> AgentHook<M> for FailureRecorder
+where
+    M: CompletionModel,
+{
     async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
         let StepEvent::ToolResult {
+            internal_call_id,
             tool_name,
-            result,
+            outcome,
+            extensions,
+            ..
+        } = event
+        else {
+            return Flow::cont();
+        };
+        let Some(record) = failure_record(internal_call_id, tool_name, outcome, extensions) else {
+            return Flow::cont();
+        };
+        println!(
+            "[recorder] {} {} failed: kind={}, code={}, resource={}",
+            record.tool_name,
+            record.operation.as_str(),
+            record.kind,
+            record.code.as_deref().unwrap_or("none"),
+            record.resource
+        );
+        ctx.scratchpad()
+            .update(|ledger: &mut FailureLedger| ledger.0.push(record));
+        Flow::cont()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PolicyDecision {
+    Fatal(String),
+    Recoverable,
+}
+
+fn decide(record: &FailureRecord) -> PolicyDecision {
+    if record.kind == ToolFailureKind::Other && record.code.as_deref() == Some("EIO") {
+        PolicyDecision::Fatal(format!(
+            "fatal disk I/O failure from {} ({})",
+            record.tool_name, record.resource
+        ))
+    } else {
+        PolicyDecision::Recoverable
+    }
+}
+
+fn policy_flow(ledger: Option<&FailureLedger>, internal_call_id: &str) -> Flow {
+    let decision = ledger
+        .and_then(|ledger| {
+            ledger
+                .0
+                .iter()
+                .rev()
+                .find(|record| record.internal_call_id == internal_call_id)
+        })
+        .map(decide);
+
+    match decision {
+        Some(PolicyDecision::Fatal(reason)) => Flow::terminate(reason),
+        Some(PolicyDecision::Recoverable) => {
+            println!("[policy] recoverable failure; returning feedback to the model");
+            Flow::cont()
+        }
+        None => Flow::cont(),
+    }
+}
+
+struct FatalFailurePolicy;
+
+impl<M> AgentHook<M> for FatalFailurePolicy
+where
+    M: CompletionModel,
+{
+    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+        let StepEvent::ToolResult {
+            internal_call_id,
             outcome,
             ..
         } = event
         else {
             return Flow::cont();
         };
-
-        // Repeated timeouts should abort the agent: count them in the scratchpad
-        // and terminate once the budget is exhausted.
-        if outcome.is_error_kind(ToolFailureKind::Timeout) {
-            let count = ctx.scratchpad().update(|c: &mut TimeoutCount| {
-                c.0 += 1;
-                c.0
-            });
-            println!(
-                "[policy] {tool_name} timed out ({count}/{})",
-                self.max_timeouts
-            );
-            if count >= self.max_timeouts {
-                return Flow::terminate(format!("aborting after {count} tool timeouts"));
-            }
+        if outcome.failure().is_none() {
             return Flow::cont();
         }
 
-        // A 404 is not fatal: the model sees the error text as `result` and can
-        // recover by trying another URL, so we just observe and continue.
-        if outcome.is_error_kind(ToolFailureKind::NotFound) {
-            let status = outcome
-                .failure()
-                .and_then(|failure| failure.http_status)
-                .unwrap_or(404);
-            println!("[policy] {tool_name} returned {status}; letting the model recover: {result}");
-            return Flow::cont();
-        }
-
-        match outcome {
-            ToolOutcome::Success => println!("[policy] {tool_name} succeeded: {result}"),
-            ToolOutcome::Error(failure) => {
-                println!(
-                    "[policy] {tool_name} failed ({}): {}",
-                    failure.kind, failure.message
-                )
-            }
-            ToolOutcome::Skipped => println!("[policy] {tool_name} was skipped"),
-            ToolOutcome::Denied => println!("[policy] {tool_name} was denied"),
-            // `ToolOutcome` is `#[non_exhaustive]`; tolerate future variants.
-            _ => println!(
-                "[policy] {tool_name} finished with outcome {}",
-                outcome.as_str()
-            ),
-        }
-        Flow::cont()
+        let ledger = ctx.scratchpad().get::<FailureLedger>();
+        policy_flow(ledger.as_ref(), internal_call_id)
     }
 }
 
-// ---------------------------------------------------------------------------
-// main
-// ---------------------------------------------------------------------------
+#[derive(Clone, Copy)]
+enum Mode {
+    Fatal,
+    Recoverable,
+}
+
+fn usage() {
+    println!(
+        "Usage: tool_result_outcomes <fatal|recoverable>\n\n\
+         fatal       simulate disk EIO; policy terminates the run\n\
+         recoverable simulate ENETUNREACH; model receives tool feedback"
+    );
+}
+
+fn parse_mode() -> Result<Option<Mode>> {
+    match std::env::args().nth(1).as_deref() {
+        Some("fatal") => Ok(Some(Mode::Fatal)),
+        Some("recoverable") => Ok(Some(Mode::Recoverable)),
+        Some("-h" | "--help") | None => Ok(None),
+        Some(other) => bail!("unknown mode `{other}`; use --help"),
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let Some(mode) = parse_mode()? else {
+        usage();
+        return Ok(());
+    };
+
+    let (operation, prompt) = match mode {
+        Mode::Fatal => (
+            "read_disk",
+            "Use system_probe with read_disk exactly once, then report the result.",
+        ),
+        Mode::Recoverable => (
+            "connect_network",
+            "Use system_probe with connect_network exactly once, then explain the failure without retrying.",
+        ),
+    };
+    println!("Running simulated {operation} path");
+
     let agent = openai::Client::from_env()?
         .agent(openai::GPT_4O)
-        .preamble(
-            "You are a web assistant. Use the `http_fetch` tool to retrieve any URL the user \
-             mentions. If a fetch fails, tell the user what went wrong.",
-        )
-        .tool(HttpFetch)
+        .preamble("Follow the user's requested system_probe operation exactly.")
+        .tool(SystemProbe)
         .build();
 
-    // The 404 path: the model fetches a missing URL, the tool reports a
-    // structured `NotFound` outcome, the policy lets it flow back as feedback,
-    // and the model recovers instead of the run aborting.
     let response = agent
-        .prompt("Fetch https://example.com/missing-page and tell me what happened.")
-        .max_turns(5)
-        .add_hook(OutcomePolicy { max_timeouts: 3 })
+        .prompt(prompt)
+        .max_turns(3)
+        // This steering hook only guarantees the initial probe; the next two
+        // hooks remain the example's recorder/policy pipeline.
+        .add_hook(ForceSystemProbeOnFirstTurn)
+        .add_hook(FailureRecorder)
+        .add_hook(FatalFailurePolicy)
         .await?;
-
     println!("\nFinal response:\n{response}");
-
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn structured_failure(operation: Operation) -> Result<ToolReturn<String>, ProbeError> {
+        SystemProbe
+            .call_structured(ProbeArgs { operation }, &ToolCallExtensions::new())
+            .await
+    }
+
+    #[test]
+    fn system_probe_is_forced_on_first_turn_only() {
+        assert!(system_probe_patch(0).is_none());
+        let first_turn = system_probe_patch(1);
+        assert_eq!(
+            first_turn.and_then(|patch| patch.tool_choice),
+            Some(ToolChoice::Specific {
+                function_names: vec![SystemProbe::NAME.to_string()],
+            })
+        );
+        assert!(system_probe_patch(2).is_none());
+        assert!(system_probe_patch(3).is_none());
+    }
+
+    #[tokio::test]
+    async fn connect_network_preserves_classification_and_typed_extension() {
+        let returned = structured_failure(Operation::ConnectNetwork).await;
+        assert!(returned.is_ok());
+        let Ok(returned) = returned else {
+            return;
+        };
+        assert!(returned.outcome.failure().is_some());
+        let Some(failure) = returned.outcome.failure() else {
+            return;
+        };
+        assert_eq!(failure.kind, ToolFailureKind::Network);
+        assert_eq!(failure.code.as_deref(), Some("ENETUNREACH"));
+        assert_eq!(
+            returned.extensions.get::<FailureSite>(),
+            Some(&FailureSite {
+                operation: Operation::ConnectNetwork,
+                resource: "backup.example.net",
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn recorder_data_drives_fatal_and_recoverable_flows_by_call_id() {
+        let fatal = structured_failure(Operation::ReadDisk).await;
+        let recoverable = structured_failure(Operation::ConnectNetwork).await;
+        assert!(fatal.is_ok());
+        assert!(recoverable.is_ok());
+        let (Ok(fatal), Ok(recoverable)) = (fatal, recoverable) else {
+            return;
+        };
+        let fatal_outcome: ToolOutcome = fatal.outcome.into();
+        let recoverable_outcome: ToolOutcome = recoverable.outcome.into();
+
+        let mut ledger = FailureLedger::default();
+        let fatal_record = failure_record(
+            "fatal-call",
+            SystemProbe::NAME,
+            &fatal_outcome,
+            &fatal.extensions,
+        );
+        let recoverable_record = failure_record(
+            "recoverable-call",
+            SystemProbe::NAME,
+            &recoverable_outcome,
+            &recoverable.extensions,
+        );
+        assert!(fatal_record.is_some());
+        assert!(recoverable_record.is_some());
+        let (Some(fatal_record), Some(recoverable_record)) = (fatal_record, recoverable_record)
+        else {
+            return;
+        };
+        ledger.0.push(fatal_record);
+        // Interleave a later recoverable record: policy must not use `last()`.
+        ledger.0.push(recoverable_record);
+
+        assert!(matches!(
+            policy_flow(Some(&ledger), "fatal-call"),
+            Flow::Terminate { .. }
+        ));
+        assert_eq!(
+            policy_flow(Some(&ledger), "recoverable-call"),
+            Flow::Continue
+        );
+        assert_eq!(policy_flow(Some(&ledger), "missing-call"), Flow::Continue);
+        assert_eq!(policy_flow(None, "fatal-call"), Flow::Continue);
+    }
+
+    #[test]
+    fn missing_extension_cannot_create_a_record_or_reuse_stale_state() {
+        let outcome = ToolOutcome::Error(
+            ToolFailure::other("disk failed")
+                .with_code("EIO")
+                .with_retryable(false),
+        );
+        assert!(
+            failure_record(
+                "current-call",
+                SystemProbe::NAME,
+                &outcome,
+                &ToolResultExtensions::new(),
+            )
+            .is_none()
+        );
+
+        let stale = FailureLedger(vec![FailureRecord {
+            internal_call_id: "stale-call".to_string(),
+            tool_name: SystemProbe::NAME.to_string(),
+            kind: ToolFailureKind::Other,
+            code: Some("EIO".to_string()),
+            operation: Operation::ReadDisk,
+            resource: "/stale",
+        }]);
+        assert_eq!(policy_flow(Some(&stale), "current-call"), Flow::Continue);
+    }
 }
