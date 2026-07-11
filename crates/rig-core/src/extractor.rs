@@ -93,7 +93,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text, vec![]).await?;
+        let (data, _usage) = self.retry_extract(text.into(), vec![]).await?;
         Ok(data)
     }
 
@@ -108,7 +108,7 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text, chat_history).await?;
+        let (data, _usage) = self.retry_extract(text.into(), chat_history).await?;
         Ok(data)
     }
 
@@ -120,13 +120,16 @@ where
     ///
     /// The number of retries is determined by the `retries` field on the Extractor struct.
     ///
-    /// Usage accumulates across all retry attempts, providing the complete cost picture
-    /// including failed attempts.
+    /// Usage accumulates across all retry attempts, including attempts that received
+    /// a billed response but failed extraction (e.g. the model never called `submit`).
+    /// Attempts whose completion call itself returned an error (e.g. network failures
+    /// or unparseable provider responses) contribute no usage, and when every attempt
+    /// fails the returned error carries no usage information at all.
     pub async fn extract_with_usage(
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text, vec![]).await?;
+        let (data, usage) = self.retry_extract(text.into(), vec![]).await?;
         Ok(ExtractionResponse { data, usage })
     }
 
@@ -139,26 +142,31 @@ where
     ///
     /// The number of retries is determined by the `retries` field on the Extractor struct.
     ///
-    /// Usage accumulates across all retry attempts, providing the complete cost picture
-    /// including failed attempts.
+    /// Usage accumulates across all retry attempts, including attempts that received
+    /// a billed response but failed extraction (e.g. the model never called `submit`).
+    /// Attempts whose completion call itself returned an error (e.g. network failures
+    /// or unparseable provider responses) contribute no usage, and when every attempt
+    /// fails the returned error carries no usage information at all.
     pub async fn extract_with_chat_history_with_usage(
         &self,
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text, chat_history).await?;
+        let (data, usage) = self.retry_extract(text.into(), chat_history).await?;
         Ok(ExtractionResponse { data, usage })
     }
 
     /// Runs the extraction with the retry semantics shared by all public
-    /// `extract*` methods, returning the extracted data and accumulated usage.
+    /// `extract*` methods, returning the extracted data and the token usage
+    /// accumulated across all attempts, including failed ones. The accumulated
+    /// usage is only observable on success: when every attempt fails, the
+    /// returned error cannot carry it.
     async fn retry_extract(
         &self,
-        text: impl Into<Message> + WasmCompatSend,
+        text: Message,
         chat_history: Vec<Message>,
     ) -> Result<(T, Usage), ExtractionError> {
         let mut last_error = None;
-        let text_message = text.into();
         let mut usage = Usage::new();
 
         for i in 0..=self.retries {
@@ -166,17 +174,13 @@ where
                 "Attempting to extract JSON. Retries left: {retries}",
                 retries = self.retries - i
             );
-            let attempt_text = text_message.clone();
-            match self
-                .extract_json_with_usage(attempt_text, chat_history.clone())
-                .await
-            {
-                Ok((data, u)) => {
-                    usage += u;
-                    return Ok((data, usage));
-                }
+            let (result, attempt_usage) = self.extract_json_with_usage(&text, &chat_history).await;
+            usage += attempt_usage;
+            match result {
+                Ok(data) => return Ok((data, usage)),
                 Err(e) => {
-                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
+                    let suffix = if i < self.retries { " Retrying..." } else { "" };
+                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}.{suffix}");
                     last_error = Some(e);
                 }
             }
@@ -186,12 +190,22 @@ where
         Err(last_error.unwrap_or(ExtractionError::NoData))
     }
 
+    /// Performs a single extraction attempt, returning its outcome alongside
+    /// the token usage it consumed. Usage is reported even when the attempt
+    /// fails after a billed completion (e.g. the model never called `submit`);
+    /// it is zero whenever the completion call itself returns an error, since
+    /// `CompletionError` carries no usage — even if the provider billed the
+    /// request (e.g. an unparseable response body).
     async fn extract_json_with_usage(
         &self,
-        text: impl Into<Message> + WasmCompatSend,
-        messages: Vec<Message>,
-    ) -> Result<(T, Usage), ExtractionError> {
-        let response = self.agent.completion(text, &messages).await?.send().await?;
+        text: &Message,
+        messages: &[Message],
+    ) -> (Result<T, ExtractionError>, Usage) {
+        let completion = async { self.agent.completion(text, messages).await?.send().await };
+        let response = match completion.await {
+            Ok(response) => response,
+            Err(e) => return (Err(e.into()), Usage::new()),
+        };
         let usage = response.usage;
 
         if !response.choice.iter().any(|x| {
@@ -233,18 +247,18 @@ where
 
         if arguments.len() > 1 {
             tracing::warn!(
-                "Multiple submit calls detected, using the last one. Providers / agents should only ensure one submit call."
+                "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
             );
         }
 
-        let raw_data = if let Some(arg) = arguments.into_iter().next() {
-            arg
-        } else {
-            return Err(ExtractionError::NoData);
+        let Some(raw_data) = arguments.into_iter().next() else {
+            return (Err(ExtractionError::NoData), usage);
         };
 
-        let data = serde_json::from_value(raw_data)?;
-        Ok((data, usage))
+        (
+            serde_json::from_value(raw_data).map_err(ExtractionError::from),
+            usage,
+        )
     }
 }
 
@@ -374,5 +388,113 @@ where
 
     async fn call(&self, data: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::test_utils::{MockCompletionModel, MockTurn};
+
+    #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
+    struct Person {
+        name: String,
+    }
+
+    fn usage(total_tokens: u64) -> Usage {
+        Usage {
+            total_tokens,
+            ..Usage::new()
+        }
+    }
+
+    fn extractor(
+        model: MockCompletionModel,
+        retries: u64,
+    ) -> Extractor<MockCompletionModel, Person> {
+        ExtractorBuilder::new(model).retries(retries).build()
+    }
+
+    fn submit_turn(name: &str) -> MockTurn {
+        MockTurn::tool_call("id1", SUBMIT_TOOL_NAME, json!({ "name": name }))
+    }
+
+    #[tokio::test]
+    async fn usage_accumulates_across_failed_attempts() {
+        let model = MockCompletionModel::new([
+            MockTurn::text("no submit call").with_usage(usage(10)),
+            submit_turn("John").with_usage(usage(5)),
+        ]);
+
+        let response = extractor(model, 1)
+            .extract_with_usage("John")
+            .await
+            .expect("second attempt should succeed");
+
+        assert_eq!(
+            response.data,
+            Person {
+                name: "John".to_string()
+            }
+        );
+        assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn transport_errors_contribute_no_usage() {
+        let model = MockCompletionModel::new([
+            MockTurn::error("boom"),
+            submit_turn("John").with_usage(usage(5)),
+        ]);
+
+        let response = extractor(model, 1)
+            .extract_with_usage("John")
+            .await
+            .expect("second attempt should succeed");
+
+        assert_eq!(response.usage.total_tokens, 5);
+    }
+
+    #[tokio::test]
+    async fn single_successful_attempt_reports_its_own_usage() {
+        let model = MockCompletionModel::new([submit_turn("John").with_usage(usage(7))]);
+
+        let response = extractor(model, 0)
+            .extract_with_usage("John")
+            .await
+            .expect("extraction should succeed");
+
+        assert_eq!(response.usage.total_tokens, 7);
+    }
+
+    #[tokio::test]
+    async fn exhausted_retries_return_last_error() {
+        let model =
+            MockCompletionModel::new([MockTurn::text("no submit call").with_usage(usage(10))]);
+
+        let err = extractor(model, 0)
+            .extract("John")
+            .await
+            .expect_err("extraction should fail");
+
+        assert!(matches!(err, ExtractionError::NoData));
+    }
+
+    #[tokio::test]
+    async fn exhausted_retries_return_error_from_final_attempt() {
+        let model = MockCompletionModel::new([MockTurn::error("first"), MockTurn::error("second")]);
+
+        let err = extractor(model, 1)
+            .extract("John")
+            .await
+            .expect_err("extraction should fail");
+
+        assert!(matches!(
+            err,
+            ExtractionError::CompletionError(CompletionError::ProviderError(message))
+                if message == "second"
+        ));
     }
 }
