@@ -35,7 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Contributors
 
 * @gold-silver-copper
+<<<<<<< Updated upstream
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.39.0...rig-gemini-grpc-v0.40.0) - 2026-07-10
+=======
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.39.0...rig-gemini-grpc-v0.40.0) - 2026-07-11
+>>>>>>> Stashed changes
 
 ### Added
 

@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+<<<<<<< Updated upstream
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/v0.39.0...v0.40.0) - 2026-07-10
+=======
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/v0.39.0...v0.40.0) - 2026-07-11
+>>>>>>> Stashed changes
 
 ### Added
 
@@ -24,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+<<<<<<< Updated upstream
+=======
+- *(agent)* [**breaking**] enforce exact max turns budget ([#2093](https://github.com/0xPlaygrounds/rig/pull/2093)) (by @gold-silver-copper)
+>>>>>>> Stashed changes
 - *(telemetry)* keep GenAI message span fields empty ([#2066](https://github.com/0xPlaygrounds/rig/pull/2066)) (by @gold-silver-copper)
 - *(chatgpt)* preserve non-success response errors ([#2053](https://github.com/0xPlaygrounds/rig/pull/2053)) (by @gold-silver-copper)
 - *(vertexai)* preserve signed thought text parts ([#2052](https://github.com/0xPlaygrounds/rig/pull/2052)) (by @gold-silver-copper)
@@ -39,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+<<<<<<< Updated upstream
+=======
+- *(deps)* bump tonic-prost from 0.14.5 to 0.14.6 ([#2016](https://github.com/0xPlaygrounds/rig/pull/2016)) (by @dependabot[bot])
+- *(examples)* demonstrate scratchpad failure policy ([#2092](https://github.com/0xPlaygrounds/rig/pull/2092)) (by @gold-silver-copper)
+>>>>>>> Stashed changes
 - Remove unused derive and core APIs ([#2087](https://github.com/0xPlaygrounds/rig/pull/2087)) (by @gold-silver-copper) - #2087
 - add Bedrock cassette coverage ([#2084](https://github.com/0xPlaygrounds/rig/pull/2084)) (by @gold-silver-copper) - #2084
 - Remove unused stream completion stdout helper ([#2085](https://github.com/0xPlaygrounds/rig/pull/2085)) (by @gold-silver-copper) - #2085
@@ -82,8 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Contributors
 
+<<<<<<< Updated upstream
 * @gold-silver-copper
 * @dependabot[bot]
+=======
+* @dependabot[bot]
+* @gold-silver-copper
+>>>>>>> Stashed changes
 * @Kade-Powell
 * @arsenyinfo
 
