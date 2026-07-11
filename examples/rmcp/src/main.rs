@@ -62,14 +62,14 @@ impl Counter {
     }
 
     fn _create_resource_text(&self, uri: &str, name: &str) -> Resource {
-        RawResource::new(uri, name.to_string()).no_annotation()
+        Resource::new(uri, name.to_string())
     }
 
     // #[tool(description = "Increment the counter by 1")]
     // async fn increment(&self) -> Result<CallToolResult, ErrorData> {
     //     let mut counter = self.counter.lock().await;
     //     *counter += 1;
-    //     Ok(CallToolResult::success(vec![Content::text(
+    //     Ok(CallToolResult::success(vec![ContentBlock::text(
     //         counter.to_string(),
     //     )]))
     // }
@@ -78,7 +78,7 @@ impl Counter {
     // async fn decrement(&self) -> Result<CallToolResult, ErrorData> {
     //     let mut counter = self.counter.lock().await;
     //     *counter -= 1;
-    //     Ok(CallToolResult::success(vec![Content::text(
+    //     Ok(CallToolResult::success(vec![ContentBlock::text(
     //         counter.to_string(),
     //     )]))
     // }
@@ -86,19 +86,19 @@ impl Counter {
     // #[tool(description = "Get the current counter value")]
     // async fn get_value(&self) -> Result<CallToolResult, ErrorData> {
     //     let counter = self.counter.lock().await;
-    //     Ok(CallToolResult::success(vec![Content::text(
+    //     Ok(CallToolResult::success(vec![ContentBlock::text(
     //         counter.to_string(),
     //     )]))
     // }
 
     // #[tool(description = "Say hello to the client")]
     // fn say_hello(&self) -> Result<CallToolResult, ErrorData> {
-    //     Ok(CallToolResult::success(vec![Content::text("hello")]))
+    //     Ok(CallToolResult::success(vec![ContentBlock::text("hello")]))
     // }
 
     // #[tool(description = "Repeat what you say")]
     // fn echo(&self, Parameters(object): Parameters<JsonObject>) -> Result<CallToolResult, ErrorData> {
-    //     Ok(CallToolResult::success(vec![Content::text(
+    //     Ok(CallToolResult::success(vec![ContentBlock::text(
     //         serde_json::Value::Object(object).to_string(),
     //     )]))
     // }
@@ -108,7 +108,7 @@ impl Counter {
         &self,
         Parameters(StructRequest { a, b }): Parameters<StructRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             (a + b).to_string(),
         )]))
     }

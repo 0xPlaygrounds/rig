@@ -52,7 +52,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rmcp::ServiceExt;
-use rmcp::model::RawContent;
+use rmcp::model::ContentBlock;
 use tokio::sync::RwLock;
 
 use crate::completion::ToolDefinition;
@@ -273,8 +273,7 @@ impl McpTool {
                 let error_msg = result
                     .content
                     .into_iter()
-                    .map(|x| x.raw.as_text().map(|y| y.to_owned()))
-                    .map(|x| x.map(|x| x.clone().text))
+                    .map(|x| x.as_text().map(|y| y.text.clone()))
                     .collect::<Option<Vec<String>>>();
 
                 // The MCP tool ran and reported its own error result — a handled
@@ -293,12 +292,12 @@ impl McpTool {
             let mut content = String::new();
 
             for item in result.content {
-                let chunk = match item.raw {
-                    rmcp::model::RawContent::Text(raw) => raw.text,
-                    rmcp::model::RawContent::Image(raw) => {
+                let chunk = match item {
+                    ContentBlock::Text(raw) => raw.text,
+                    ContentBlock::Image(raw) => {
                         format!("data:{};base64,{}", raw.mime_type, raw.data)
                     }
-                    rmcp::model::RawContent::Resource(raw) => match raw.resource {
+                    ContentBlock::Resource(raw) => match raw.resource {
                         rmcp::model::ResourceContents::TextResourceContents {
                             uri,
                             mime_type,
@@ -320,8 +319,14 @@ impl McpTool {
                             "{mime_type}{uri}:{blob}",
                             mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
                         ),
+                        thing => {
+                            return Err(McpToolError::new(
+                                ToolFailureKind::Other,
+                                format!("MCP tool returned unsupported resource contents: {thing:?}"),
+                            ));
+                        }
                     },
-                    RawContent::Audio(_) => {
+                    ContentBlock::Audio(_) => {
                         return Err(McpToolError::new(
                             ToolFailureKind::Other,
                             "MCP tool returned audio content, which Rig does not support yet"
@@ -622,7 +627,7 @@ mod tests {
             request: CallToolRequestParams,
             _context: RequestContext<RoleServer>,
         ) -> Result<CallToolResult, ErrorData> {
-            Ok(CallToolResult::success(vec![Content::text(format!(
+            Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "called {}",
                 request.name
             ))]))
@@ -1133,7 +1138,7 @@ mod tests {
             // rmcp's router moves the request's `_meta` into `RequestContext.meta`
             // (a `std::mem::swap`), so the forwarded metadata lands here.
             *self.seen_meta.write().await = Some(context.meta.clone());
-            Ok(CallToolResult::success(vec![Content::text("ok")]))
+            Ok(CallToolResult::success(vec![ContentBlock::text("ok")]))
         }
     }
 
