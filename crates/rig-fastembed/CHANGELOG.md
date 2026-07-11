@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.39.0...rig-fastembed-v0.40.0) - 2026-07-11
+
+### Other
+
+- release v0.40.0 ([#1923](https://github.com/0xPlaygrounds/rig/pull/1923)) (by @github-actions[bot]) - #1923
+
+### Contributors
+
+* @github-actions[bot]
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.4.2...rig-fastembed-v0.38.1) - 2026-06-02
 
 ### Other
