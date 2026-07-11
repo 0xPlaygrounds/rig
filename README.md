@@ -6,7 +6,7 @@
 </picture>
 <br>
 <br>
-<a href="https://docs.rig.rs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
+<a href="https://rig.rs/docs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
 <a href="https://docs.rs/rig/latest/rig/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
 <a href="https://crates.io/crates/rig"><img src="https://img.shields.io/crates/v/rig.svg?color=dca282" /></a>
 &nbsp;
@@ -28,13 +28,13 @@
 
 <div align="center">
 
-[📑 Docs](https://docs.rig.rs)
+[📑 Docs](https://rig.rs/docs)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
 [🌐 Website](https://rig.rs)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
 [🤝 Contribute](https://github.com/0xPlaygrounds/rig/issues/new)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-[✍🏽 Blogs](https://docs.rig.rs/guides)
+[✍🏽 Blogs](https://rig.rs/docs/guides)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
 <a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="32" align="absmiddle" alt="Ryzome" /></a>
 
@@ -58,7 +58,7 @@
 ## What is Rig?
 Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powered** applications.
 
-More information about this crate can be found in the [official](https://docs.rig.rs) and [crate](https://docs.rs/rig/latest/rig/) API reference documentation.
+More information about this crate can be found in the [official](https://rig.rs/docs) and [crate](https://docs.rs/rig/latest/rig/) API reference documentation.
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
@@ -129,7 +129,7 @@ async fn main() -> Result<(), anyhow::Error> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in each crate's `examples` directory (for example, [`examples`](./examples)). Provider-specific integration coverage lives under [`tests/providers`](./tests/providers), with cassette-backed tests that replay offline by default and live-only tests kept separate when real provider APIs are still required. See [`tests/README.md`](./tests/README.md) for test target, replay, record, and cassette safety commands. More detailed use case walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation at [docs.rig.rs](https://docs.rig.rs).
+You can find more examples in each crate's `examples` directory (for example, [`examples`](./examples)). Provider-specific integration coverage lives under [`tests/providers`](./tests/providers), with cassette-backed tests that replay offline by default and live-only tests kept separate when real provider APIs are still required. See [`tests/README.md`](./tests/README.md) for test target, replay, record, and cassette safety commands. More detailed use case walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation at [rig.rs/docs](https://rig.rs/docs).
 
 ## Supported Integrations
 
