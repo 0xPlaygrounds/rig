@@ -615,18 +615,6 @@ fn openai_reasoning_from_core(
     }))
 }
 
-fn optional_reasoning_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ok(
-        match Option::<serde_json::Value>::deserialize(deserializer)? {
-            Some(serde_json::Value::String(reasoning)) => Some(reasoning),
-            _ => None,
-        },
-    )
-}
-
 /// The definition of a tool response, repurposed for OpenAI's Responses API.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ResponsesToolDefinition {
@@ -1362,7 +1350,7 @@ where
 }
 
 /// The standard response format from OpenAI's Responses API.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct CompletionResponse {
     /// The ID of a completion response.
     pub id: String,
@@ -1384,13 +1372,15 @@ pub struct CompletionResponse {
     pub model: String,
     /// Provider-specific top-level reasoning content returned by some
     /// OpenAI-compatible Responses implementations.
-    #[serde(
-        default,
-        rename = "reasoning",
-        deserialize_with = "optional_reasoning_string",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "reasoning", skip_serializing_if = "Option::is_none")]
     pub provider_reasoning: Option<String>,
+    /// The effective reasoning context returned by OpenAI.
+    ///
+    /// This is populated from an object-shaped top-level `reasoning` response.
+    /// String-shaped reasoning returned by compatible providers remains available
+    /// through [`Self::provider_reasoning`].
+    #[serde(skip)]
+    pub reasoning_context: Option<String>,
     /// Token usage
     pub usage: Option<ResponsesUsage>,
     /// The model output (messages, etc will go here)
@@ -1402,6 +1392,67 @@ pub struct CompletionResponse {
     /// Additional parameters
     #[serde(flatten)]
     pub additional_parameters: AdditionalParameters,
+}
+
+#[derive(Deserialize)]
+struct CompletionResponseWire {
+    id: String,
+    object: ResponseObject,
+    created_at: u64,
+    status: ResponseStatus,
+    error: Option<ResponseError>,
+    incomplete_details: Option<IncompleteDetailsReason>,
+    instructions: Option<String>,
+    max_output_tokens: Option<u64>,
+    model: String,
+    #[serde(default)]
+    reasoning: Option<Value>,
+    usage: Option<ResponsesUsage>,
+    #[serde(default)]
+    output: Vec<Output>,
+    #[serde(default)]
+    tools: Vec<ResponsesToolDefinition>,
+    #[serde(flatten)]
+    additional_parameters: AdditionalParameters,
+}
+
+impl<'de> Deserialize<'de> for CompletionResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let response = CompletionResponseWire::deserialize(deserializer)?;
+        let provider_reasoning = response
+            .reasoning
+            .as_ref()
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let reasoning_context = response
+            .reasoning
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|reasoning| reasoning.get("context"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+
+        Ok(Self {
+            id: response.id,
+            object: response.object,
+            created_at: response.created_at,
+            status: response.status,
+            error: response.error,
+            incomplete_details: response.incomplete_details,
+            instructions: response.instructions,
+            max_output_tokens: response.max_output_tokens,
+            model: response.model,
+            provider_reasoning,
+            reasoning_context,
+            usage: response.usage,
+            output: response.output,
+            tools: response.tools,
+            additional_parameters: response.additional_parameters,
+        })
+    }
 }
 
 /// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
@@ -3296,6 +3347,7 @@ mod tests {
             response.provider_reasoning.as_deref(),
             Some("thinking through the answer")
         );
+        assert_eq!(response.reasoning_context, None);
 
         let completion: completion::CompletionResponse<CompletionResponse> =
             response.try_into().expect("response should convert");
@@ -3388,7 +3440,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_response_ignores_top_level_reasoning_object_as_text() {
+    fn completion_response_preserves_context_without_treating_config_as_text() {
         let response: CompletionResponse = serde_json::from_value(json!({
             "id": "resp_123",
             "object": "response",
@@ -3396,7 +3448,8 @@ mod tests {
             "status": "completed",
             "model": "Qwen/Qwen3-4B",
             "reasoning": {
-                "effort": "high"
+                "effort": "high",
+                "context": "all_turns"
             },
             "output": [{
                 "type": "message",
@@ -3414,6 +3467,7 @@ mod tests {
         .expect("object-shaped reasoning should be tolerated");
 
         assert!(response.provider_reasoning.is_none());
+        assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
 
         let completion: completion::CompletionResponse<CompletionResponse> =
             response.try_into().expect("response should convert");

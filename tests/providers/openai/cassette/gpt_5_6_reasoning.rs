@@ -95,6 +95,10 @@ async fn context_current_turn() {
             )
             .await;
             assert_has_text(&response);
+            assert_eq!(
+                response.raw_response.reasoning_context.as_deref(),
+                Some("current_turn")
+            );
         },
     )
     .await;

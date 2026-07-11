@@ -898,6 +898,7 @@ mod tests {
             tools: Vec::new(),
             additional_parameters: Default::default(),
             provider_reasoning: None,
+            reasoning_context: None,
         }
     }
 
