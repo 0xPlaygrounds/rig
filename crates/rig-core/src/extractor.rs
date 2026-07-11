@@ -93,26 +93,8 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<T, ExtractionError> {
-        let mut last_error = None;
-        let text_message = text.into();
-
-        for i in 0..=self.retries {
-            tracing::debug!(
-                "Attempting to extract JSON. Retries left: {retries}",
-                retries = self.retries - i
-            );
-            let attempt_text = text_message.clone();
-            match self.extract_json_with_usage(attempt_text, vec![]).await {
-                Ok((data, _usage)) => return Ok(data),
-                Err(e) => {
-                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
-                    last_error = Some(e);
-                }
-            }
-        }
-
-        // If the loop finishes without a successful extraction, return the last error encountered.
-        Err(last_error.unwrap_or(ExtractionError::NoData))
+        let (data, _usage) = self.retry_extract(text, vec![]).await?;
+        Ok(data)
     }
 
     /// Attempts to extract data from the given text with a number of retries.
@@ -126,29 +108,8 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
-        let mut last_error = None;
-        let text_message = text.into();
-
-        for i in 0..=self.retries {
-            tracing::debug!(
-                "Attempting to extract JSON. Retries left: {retries}",
-                retries = self.retries - i
-            );
-            let attempt_text = text_message.clone();
-            match self
-                .extract_json_with_usage(attempt_text, chat_history.clone())
-                .await
-            {
-                Ok((data, _usage)) => return Ok(data),
-                Err(e) => {
-                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
-                    last_error = Some(e);
-                }
-            }
-        }
-
-        // If the loop finishes without a successful extraction, return the last error encountered.
-        Err(last_error.unwrap_or(ExtractionError::NoData))
+        let (data, _usage) = self.retry_extract(text, chat_history).await?;
+        Ok(data)
     }
 
     /// Attempts to extract data from the given text with a number of retries,
@@ -165,30 +126,8 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let mut last_error = None;
-        let text_message = text.into();
-        let mut usage = Usage::new();
-
-        for i in 0..=self.retries {
-            tracing::debug!(
-                "Attempting to extract JSON. Retries left: {retries}",
-                retries = self.retries - i
-            );
-            let attempt_text = text_message.clone();
-            match self.extract_json_with_usage(attempt_text, vec![]).await {
-                Ok((data, u)) => {
-                    usage += u;
-                    return Ok(ExtractionResponse { data, usage });
-                }
-                Err(e) => {
-                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
-                    last_error = Some(e);
-                }
-            }
-        }
-
-        // If the loop finishes without a successful extraction, return the last error encountered.
-        Err(last_error.unwrap_or(ExtractionError::NoData))
+        let (data, usage) = self.retry_extract(text, vec![]).await?;
+        Ok(ExtractionResponse { data, usage })
     }
 
     /// Attempts to extract data from the given text with a number of retries,
@@ -207,6 +146,17 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
+        let (data, usage) = self.retry_extract(text, chat_history).await?;
+        Ok(ExtractionResponse { data, usage })
+    }
+
+    /// Runs the extraction with the retry semantics shared by all public
+    /// `extract*` methods, returning the extracted data and accumulated usage.
+    async fn retry_extract(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+        chat_history: Vec<Message>,
+    ) -> Result<(T, Usage), ExtractionError> {
         let mut last_error = None;
         let text_message = text.into();
         let mut usage = Usage::new();
@@ -223,7 +173,7 @@ where
             {
                 Ok((data, u)) => {
                     usage += u;
-                    return Ok(ExtractionResponse { data, usage });
+                    return Ok((data, usage));
                 }
                 Err(e) => {
                     tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
