@@ -350,7 +350,9 @@ async fn main() -> Result<()> {
 
     let response = agent
         .prompt(prompt)
-        .max_turns(3)
+        // The recoverable path needs exactly two model calls: one tool call,
+        // then one final answer. The fatal path terminates after the first.
+        .max_turns(2)
         // This steering hook only guarantees the initial probe; the next two
         // hooks remain the example's recorder/policy pipeline.
         .add_hook(ForceSystemProbeOnFirstTurn)
