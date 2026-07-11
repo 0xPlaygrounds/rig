@@ -1350,7 +1350,7 @@ where
 }
 
 /// The standard response format from OpenAI's Responses API.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub struct CompletionResponse {
     /// The ID of a completion response.
     pub id: String,
@@ -1372,26 +1372,48 @@ pub struct CompletionResponse {
     pub model: String,
     /// Provider-specific top-level reasoning content returned by some
     /// OpenAI-compatible Responses implementations.
-    #[serde(rename = "reasoning", skip_serializing_if = "Option::is_none")]
     pub provider_reasoning: Option<String>,
     /// The effective reasoning context returned by OpenAI.
     ///
     /// This is populated from an object-shaped top-level `reasoning` response.
     /// String-shaped reasoning returned by compatible providers remains available
     /// through [`Self::provider_reasoning`].
-    #[serde(skip)]
     pub reasoning_context: Option<String>,
     /// Token usage
     pub usage: Option<ResponsesUsage>,
     /// The model output (messages, etc will go here)
-    #[serde(default)]
     pub output: Vec<Output>,
     /// Tools
-    #[serde(default)]
     pub tools: Vec<ResponsesToolDefinition>,
     /// Additional parameters
-    #[serde(flatten)]
     pub additional_parameters: AdditionalParameters,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum CompletionResponseReasoningRef<'a> {
+    Text(&'a str),
+    Context { context: &'a str },
+}
+
+#[derive(Serialize)]
+struct CompletionResponseWireRef<'a> {
+    id: &'a str,
+    object: &'a ResponseObject,
+    created_at: u64,
+    status: &'a ResponseStatus,
+    error: &'a Option<ResponseError>,
+    incomplete_details: &'a Option<IncompleteDetailsReason>,
+    instructions: &'a Option<String>,
+    max_output_tokens: &'a Option<u64>,
+    model: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<CompletionResponseReasoningRef<'a>>,
+    usage: &'a Option<ResponsesUsage>,
+    output: &'a Vec<Output>,
+    tools: &'a Vec<ResponsesToolDefinition>,
+    #[serde(flatten)]
+    additional_parameters: &'a AdditionalParameters,
 }
 
 #[derive(Deserialize)]
@@ -1414,6 +1436,41 @@ struct CompletionResponseWire {
     tools: Vec<ResponsesToolDefinition>,
     #[serde(flatten)]
     additional_parameters: AdditionalParameters,
+}
+
+impl Serialize for CompletionResponse {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let reasoning = self
+            .provider_reasoning
+            .as_deref()
+            .map(CompletionResponseReasoningRef::Text)
+            .or_else(|| {
+                self.reasoning_context
+                    .as_deref()
+                    .map(|context| CompletionResponseReasoningRef::Context { context })
+            });
+
+        CompletionResponseWireRef {
+            id: &self.id,
+            object: &self.object,
+            created_at: self.created_at,
+            status: &self.status,
+            error: &self.error,
+            incomplete_details: &self.incomplete_details,
+            instructions: &self.instructions,
+            max_output_tokens: &self.max_output_tokens,
+            model: &self.model,
+            reasoning,
+            usage: &self.usage,
+            output: &self.output,
+            tools: &self.tools,
+            additional_parameters: &self.additional_parameters,
+        }
+        .serialize(serializer)
+    }
 }
 
 impl<'de> Deserialize<'de> for CompletionResponse {
@@ -3348,6 +3405,10 @@ mod tests {
             Some("thinking through the answer")
         );
         assert_eq!(response.reasoning_context, None);
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            json!("thinking through the answer")
+        );
 
         let completion: completion::CompletionResponse<CompletionResponse> =
             response.try_into().expect("response should convert");
@@ -3468,6 +3529,10 @@ mod tests {
 
         assert!(response.provider_reasoning.is_none());
         assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
+        assert_eq!(
+            serde_json::to_value(&response).expect("response should serialize")["reasoning"],
+            json!({ "context": "all_turns" })
+        );
 
         let completion: completion::CompletionResponse<CompletionResponse> =
             response.try_into().expect("response should convert");
