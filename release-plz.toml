@@ -35,11 +35,11 @@ body = """
 {%- if remote.contributors %}
 ### Contributors
 {% for contributor in remote.contributors %}
-    * @{{ contributor.username }}
+    * [{{ contributor.username }}](https://github.com/{{ contributor.username }})
 {%- endfor %}
 {% endif -%}
 {%- macro username(commit) -%}
-    {% if commit.remote.username %} (by @{{ commit.remote.username }}){% endif -%}
+    {% if commit.remote.username %} (by [{{ commit.remote.username }}](https://github.com/{{ commit.remote.username }})){% endif -%}
 {% endmacro -%}
 {%- macro pr(commit) -%}
     {% if commit.remote.pr_number %} - #{{ commit.remote.pr_number }}{% endif -%}
