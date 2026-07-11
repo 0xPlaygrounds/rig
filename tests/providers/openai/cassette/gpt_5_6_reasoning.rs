@@ -8,11 +8,13 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use futures::StreamExt;
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, CompletionResponse};
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use serde_json::json;
+use rig::streaming::StreamedAssistantContent;
+use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
 
@@ -44,6 +46,27 @@ fn model_constants() {
     assert_eq!(openai::GPT_5_6_LUNA, "gpt-5.6-luna");
 }
 
+fn assert_reasoning_metadata(
+    response: &CompletionResponse<openai::responses_api::CompletionResponse>,
+    expected: Value,
+) {
+    let expected = expected
+        .as_object()
+        .expect("expected reasoning metadata should be an object");
+    assert_eq!(
+        response.raw_response.reasoning_context.as_deref(),
+        expected.get("context").and_then(Value::as_str)
+    );
+    assert_eq!(
+        response.raw_response.reasoning_metadata.as_ref(),
+        Some(expected)
+    );
+    assert_eq!(
+        serde_json::to_value(&response.raw_response).expect("raw response should serialize")["reasoning"],
+        Value::Object(expected.clone())
+    );
+}
+
 fn assert_has_text(response: &CompletionResponse<openai::responses_api::CompletionResponse>) {
     let text: String = response
         .choice
@@ -65,6 +88,15 @@ async fn effort_max() {
         let model = client.completion_model(openai::GPT_5_6);
         let response = prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
         assert_has_text(&response);
+        assert_reasoning_metadata(
+            &response,
+            json!({
+                "context": "all_turns",
+                "effort": "max",
+                "mode": "standard",
+                "summary": null
+            }),
+        );
     })
     .await;
 }
@@ -78,6 +110,15 @@ async fn mode_pro_with_independent_effort() {
             let response =
                 prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
             assert_has_text(&response);
+            assert_reasoning_metadata(
+                &response,
+                json!({
+                    "context": "all_turns",
+                    "effort": "high",
+                    "mode": "pro",
+                    "summary": null
+                }),
+            );
         },
     )
     .await;
@@ -95,20 +136,63 @@ async fn context_current_turn() {
             )
             .await;
             assert_has_text(&response);
-            assert_eq!(
-                response.raw_response.reasoning_context.as_deref(),
-                Some("current_turn")
-            );
-            assert_eq!(
-                response.raw_response.reasoning_metadata.as_ref(),
+            assert_reasoning_metadata(
+                &response,
                 json!({
                     "context": "current_turn",
                     "effort": "low",
                     "mode": "standard",
                     "summary": null
-                })
-                .as_object()
+                }),
             );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn streaming_reasoning_metadata() {
+    with_openai_cassette(
+        "gpt_5_6_reasoning/streaming_metadata",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let request = model
+                .completion_request(PROMPT)
+                .additional_params(json!({
+                    "reasoning": {
+                        "effort": "low",
+                        "mode": "pro",
+                        "context": "current_turn"
+                    }
+                }))
+                .build();
+            let mut stream = model
+                .stream(request)
+                .await
+                .expect("GPT-5.6 reasoning stream should start");
+            let expected = json!({
+                "context": "current_turn",
+                "effort": "low",
+                "mode": "pro",
+                "summary": null
+            });
+
+            while let Some(item) = stream.next().await {
+                if let StreamedAssistantContent::Final(response) =
+                    item.expect("GPT-5.6 reasoning stream should succeed")
+                {
+                    assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
+                    assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());
+                    assert_eq!(
+                        serde_json::to_value(&response)
+                            .expect("streaming response should serialize")["reasoning_metadata"],
+                        expected
+                    );
+                    return;
+                }
+            }
+
+            panic!("GPT-5.6 reasoning stream should yield a final response");
         },
     )
     .await;
