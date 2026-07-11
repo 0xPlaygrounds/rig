@@ -93,7 +93,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text, vec![]).await?;
+        let (data, _usage) = self.retry_extract(text.into(), vec![]).await?;
         Ok(data)
     }
 
@@ -108,7 +108,7 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text, chat_history).await?;
+        let (data, _usage) = self.retry_extract(text.into(), chat_history).await?;
         Ok(data)
     }
 
@@ -129,7 +129,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text, vec![]).await?;
+        let (data, usage) = self.retry_extract(text.into(), vec![]).await?;
         Ok(ExtractionResponse { data, usage })
     }
 
@@ -152,7 +152,7 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text, chat_history).await?;
+        let (data, usage) = self.retry_extract(text.into(), chat_history).await?;
         Ok(ExtractionResponse { data, usage })
     }
 
@@ -163,11 +163,10 @@ where
     /// returned error cannot carry it.
     async fn retry_extract(
         &self,
-        text: impl Into<Message> + WasmCompatSend,
+        text: Message,
         chat_history: Vec<Message>,
     ) -> Result<(T, Usage), ExtractionError> {
         let mut last_error = None;
-        let text_message = text.into();
         let mut usage = Usage::new();
 
         for i in 0..=self.retries {
@@ -175,18 +174,13 @@ where
                 "Attempting to extract JSON. Retries left: {retries}",
                 retries = self.retries - i
             );
-            let (result, attempt_usage) = self
-                .extract_json_with_usage(&text_message, &chat_history)
-                .await;
+            let (result, attempt_usage) = self.extract_json_with_usage(&text, &chat_history).await;
             usage += attempt_usage;
             match result {
                 Ok(data) => return Ok((data, usage)),
                 Err(e) => {
-                    if i < self.retries {
-                        tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
-                    } else {
-                        tracing::warn!("Attempt {i} to extract JSON failed: {e:?}.");
-                    }
+                    let suffix = if i < self.retries { " Retrying..." } else { "" };
+                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}.{suffix}");
                     last_error = Some(e);
                 }
             }
@@ -207,11 +201,9 @@ where
         text: &Message,
         messages: &[Message],
     ) -> (Result<T, ExtractionError>, Usage) {
-        let response = match self.agent.completion(text, messages).await {
-            Ok(builder) => match builder.send().await {
-                Ok(response) => response,
-                Err(e) => return (Err(e.into()), Usage::new()),
-            },
+        let completion = async { self.agent.completion(text, messages).await?.send().await };
+        let response = match completion.await {
+            Ok(response) => response,
             Err(e) => return (Err(e.into()), Usage::new()),
         };
         let usage = response.usage;
@@ -255,7 +247,7 @@ where
 
         if arguments.len() > 1 {
             tracing::warn!(
-                "Multiple submit calls detected, using the last one. Providers / agents should only ensure one submit call."
+                "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
             );
         }
 
@@ -488,5 +480,21 @@ mod tests {
             .expect_err("extraction should fail");
 
         assert!(matches!(err, ExtractionError::NoData));
+    }
+
+    #[tokio::test]
+    async fn exhausted_retries_return_error_from_final_attempt() {
+        let model = MockCompletionModel::new([MockTurn::error("first"), MockTurn::error("second")]);
+
+        let err = extractor(model, 1)
+            .extract("John")
+            .await
+            .expect_err("extraction should fail");
+
+        assert!(matches!(
+            err,
+            ExtractionError::CompletionError(CompletionError::ProviderError(message))
+                if message == "second"
+        ));
     }
 }
