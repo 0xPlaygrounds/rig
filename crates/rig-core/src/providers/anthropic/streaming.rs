@@ -2,7 +2,7 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tracing::{Level, enabled, info_span};
+use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
 use super::completion::{
@@ -16,7 +16,7 @@ use crate::message::ReasoningContent;
 use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
 };
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
 
@@ -228,26 +228,13 @@ where
             .model
             .clone()
             .unwrap_or_else(|| self.model.clone());
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = Ext::PROVIDER_NAME,
-                gen_ai.request.model = &request_model,
-                gen_ai.system_instructions = &completion_request.preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = &request_model,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            Ext::PROVIDER_NAME,
+            &request_model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(completion_request.preamble.as_deref())
+        .build();
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
             tokens
         } else if let Some(tokens) = self.default_max_tokens {

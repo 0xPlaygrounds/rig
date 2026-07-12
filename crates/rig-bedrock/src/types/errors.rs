@@ -5,6 +5,7 @@ use aws_sdk_bedrockruntime::error::SdkError;
 use aws_sdk_bedrockruntime::operation::converse::ConverseError;
 use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamError;
 use aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError;
+use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
 use rig_core::completion::CompletionError;
 use rig_core::embeddings::EmbeddingError;
 use rig_core::image_generation::ImageGenerationError;
@@ -120,13 +121,45 @@ impl From<AwsSdkConverseError> for CompletionError {
     }
 }
 
+pub(crate) fn converse_stream_output_completion_error(
+    err: ConverseStreamOutputError,
+) -> CompletionError {
+    let (message, fallback) = match err {
+        ConverseStreamOutputError::InternalServerException(err) => {
+            (err.message, "Bedrock internal server error".into())
+        }
+        ConverseStreamOutputError::ModelStreamErrorException(err) => {
+            (err.message, "Bedrock streaming model error".into())
+        }
+        ConverseStreamOutputError::ValidationException(err) => {
+            (err.message, "Bedrock validation error".into())
+        }
+        ConverseStreamOutputError::ThrottlingException(err) => {
+            (err.message, "Bedrock request throttled".into())
+        }
+        ConverseStreamOutputError::ServiceUnavailableException(err) => {
+            (err.message, "Bedrock service unavailable".into())
+        }
+        _ => (None, "Bedrock event stream failed".into()),
+    };
+
+    match message {
+        Some(message) => CompletionError::from_provider_body(message),
+        None => CompletionError::ProviderError(fallback),
+    }
+}
+
+fn converse_stream_completion_error(err: ConverseStreamError) -> CompletionError {
+    match converse_stream_message(err) {
+        (Some(msg), _) => CompletionError::from_provider_body(msg),
+        (None, fallback) => CompletionError::ProviderError(fallback),
+    }
+}
+
 pub struct AwsSdkConverseStreamError(pub SdkError<ConverseStreamError, HttpResponse>);
 impl From<AwsSdkConverseStreamError> for CompletionError {
     fn from(value: AwsSdkConverseStreamError) -> Self {
-        match converse_stream_message(value.0.into_service_error()) {
-            (Some(msg), _) => CompletionError::from_provider_body(msg),
-            (None, fallback) => CompletionError::ProviderError(fallback),
-        }
+        converse_stream_completion_error(value.0.into_service_error())
     }
 }
 
@@ -295,6 +328,25 @@ mod tests {
             (Some(msg), _) => CompletionError::from_provider_body(msg),
             (None, fallback) => CompletionError::ProviderError(fallback),
         };
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn converse_stream_output_with_provider_message_yields_provider_response() {
+        let err = ConverseStreamOutputError::ValidationException(
+            ValidationException::builder().message("boom").build(),
+        );
+        let error = converse_stream_output_completion_error(err);
+        assert_eq!(error.provider_response_body(), Some("boom"));
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn converse_stream_output_without_provider_message_yields_provider_error() {
+        let err =
+            ConverseStreamOutputError::ValidationException(ValidationException::builder().build());
+        let error = converse_stream_output_completion_error(err);
         assert_eq!(error.provider_response_body(), None);
         assert_eq!(error.provider_response_status(), None);
     }

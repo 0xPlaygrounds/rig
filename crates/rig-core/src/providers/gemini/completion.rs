@@ -30,12 +30,11 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use self::gemini_api_types::tool_parameters_to_schema;
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
-
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
 use crate::providers::gemini::streaming::StreamingCompletionResponse;
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
@@ -46,7 +45,7 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing::{Level, enabled, info_span};
+use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
 use super::Client;
@@ -94,26 +93,13 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "generate_content",
-                gen_ai.operation.name = "generate_content",
-                gen_ai.provider.name = "gcp.gemini",
-                gen_ai.request.model = &request_model,
-                gen_ai.system_instructions = &completion_request.preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            "gcp.gemini",
+            &request_model,
+            CompletionOperation::GenerateContent,
+        )
+        .system_instructions(completion_request.preamble.as_deref())
+        .build();
 
         let request = create_request_body(completion_request)?;
 

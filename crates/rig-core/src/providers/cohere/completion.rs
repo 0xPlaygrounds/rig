@@ -4,7 +4,7 @@ use crate::{
     http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
-    telemetry::SpanCombinator,
+    telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator},
 };
 use std::collections::HashMap;
 
@@ -12,7 +12,7 @@ use super::client::Client;
 use crate::completion::CompletionRequest;
 use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, Level, enabled, info_span};
+use tracing::{Instrument, Level, enabled};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -538,7 +538,7 @@ pub struct CompletionModel<T = reqwest::Client> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct CohereCompletionRequest {
-    model: String,
+    pub(super) model: String,
     pub messages: Vec<Message>,
     documents: Vec<crate::completion::Document>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -630,24 +630,13 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let system_instructions = completion_request.preamble.clone();
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
-        let llm_span = if tracing::Span::current().is_disabled() {
-            info_span!(
-            target: "rig::completions",
-            "chat",
-            gen_ai.operation.name = "chat",
-            gen_ai.provider.name = "cohere",
-            gen_ai.request.model = self.model,
-            gen_ai.response.id = tracing::field::Empty,
-            gen_ai.response.model = self.model,
-            gen_ai.usage.output_tokens = tracing::field::Empty,
-            gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let llm_span =
+            CompletionSpanBuilder::new("cohere", &request.model, CompletionOperation::Chat)
+                .system_instructions(system_instructions.as_deref())
+                .build();
 
         if enabled!(Level::TRACE) {
             tracing::trace!(

@@ -46,6 +46,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::streaming::RawStreamingChoice;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -61,7 +62,6 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
-use tracing::info_span;
 use tracing_futures::Instrument;
 // ---------- Main Client ----------
 
@@ -627,26 +627,11 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "ollama",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
+        let system_instructions = completion_request.preamble.clone();
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        let span = CompletionSpanBuilder::new("ollama", &request.model, CompletionOperation::Chat)
+            .system_instructions(system_instructions.as_deref())
+            .build();
 
         if tracing::enabled!(tracing::Level::TRACE) {
             tracing::trace!(target: "rig::completions",
@@ -708,27 +693,15 @@ where
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "ollama",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = self.model,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &request.preamble);
-
+        let system_instructions = request.preamble.clone();
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
+        let span = CompletionSpanBuilder::new(
+            "ollama",
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(system_instructions.as_deref())
+        .build();
         request.stream = true;
 
         if tracing::enabled!(tracing::Level::TRACE) {
@@ -746,7 +719,11 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let response = self.client.send_streaming(req).await?;
+        let response = self
+            .client
+            .send_streaming(req)
+            .instrument(span.clone())
+            .await?;
         let status = response.status();
         let mut byte_stream = response.into_body();
 
@@ -778,6 +755,10 @@ where
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
 
                     let response: CompletionResponse = serde_json::from_slice(&line)?;
+
+                    if response.done {
+                        span.record("gen_ai.response.model", &response.model);
+                    }
 
                     if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {

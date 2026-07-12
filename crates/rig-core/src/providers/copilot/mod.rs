@@ -37,6 +37,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
 use crate::streaming::{self, RawStreamingChoice, StreamingCompletionResponse};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use async_stream::stream;
 use futures::StreamExt;
@@ -47,7 +48,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use tracing::info_span;
 use tracing_futures::Instrument as _;
 
 const GITHUB_COPILOT_API_BASE_URL: &str = "https://api.githubcopilot.com";
@@ -823,6 +823,7 @@ where
     ) -> Result<completion::CompletionResponse<CopilotCompletionResponse>, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
+        let system_instructions = completion_request.preamble.clone();
         let request = self.chat_request(completion_request)?;
         let body = serde_json::to_vec(&request)?;
         let auth = self.auth_context().await?;
@@ -835,22 +836,9 @@ where
         .body(body)
         .map_err(|err| CompletionError::HttpError(err.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "copilot",
-                gen_ai.request.model = self.model,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
+            .system_instructions(system_instructions.as_deref())
+            .build();
 
         async move {
             let response = self.client.send(req).await?;
@@ -910,6 +898,7 @@ where
     ) -> Result<completion::CompletionResponse<CopilotCompletionResponse>, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
+        let system_instructions = completion_request.preamble.clone();
         let request = self.responses_request(completion_request)?;
         let auth = self.auth_context().await?;
 
@@ -921,22 +910,9 @@ where
         .body(serde_json::to_vec(&request)?)
         .map_err(|err| CompletionError::HttpError(err.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "copilot",
-                gen_ai.request.model = self.model,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
+            .system_instructions(system_instructions.as_deref())
+            .build();
 
         async move {
             let response = self.client.send(req).await?;
@@ -983,6 +959,7 @@ where
     ) -> Result<StreamingCompletionResponse<CopilotStreamingResponse>, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
+        let system_instructions = completion_request.preamble.clone();
         let request = self.chat_request(completion_request)?;
         let auth = self.auth_context().await?;
         let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
@@ -1003,22 +980,13 @@ where
         .body(serde_json::to_vec(&request_json)?)
         .map_err(|err| CompletionError::HttpError(err.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "copilot",
-                gen_ai.request.model = self.model,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            "copilot",
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(system_instructions.as_deref())
+        .build();
 
         tracing::Instrument::instrument(
             send_copilot_chat_streaming_request(self.client.clone(), req),
@@ -1033,6 +1001,7 @@ where
     ) -> Result<StreamingCompletionResponse<CopilotStreamingResponse>, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
+        let system_instructions = completion_request.preamble.clone();
         let mut request = self.responses_request(completion_request)?;
         request.stream = Some(true);
         let auth = self.auth_context().await?;
@@ -1045,22 +1014,13 @@ where
         .body(serde_json::to_vec(&request)?)
         .map_err(|err| CompletionError::HttpError(err.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "copilot",
-                gen_ai.request.model = self.model,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            "copilot",
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(system_instructions.as_deref())
+        .build();
 
         let client = self.client.clone();
         let mut event_source = crate::http_client::sse::GenericEventSource::new(client, req);

@@ -972,7 +972,7 @@ where
         runner: &AgentRunner<M>,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
-        build_chat_span!(runner, effective_preamble, "chat_streaming")
+        build_chat_span!(runner, effective_preamble, "chat_streaming", "chat")
     }
 
     fn run_model_turn<'a>(
@@ -2024,6 +2024,7 @@ mod tests {
         name: String,
         parent_id: Option<u64>,
         fields: HashMap<String, u64>,
+        string_fields: HashMap<String, String>,
     }
 
     #[derive(Clone, Default)]
@@ -2044,6 +2045,7 @@ mod tests {
                     name: name.to_string(),
                     parent_id,
                     fields: HashMap::new(),
+                    string_fields: HashMap::new(),
                 });
             }
         }
@@ -2053,6 +2055,14 @@ mod tests {
                 && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
             {
                 span.fields.extend(fields);
+            }
+        }
+
+        fn record_strings(&self, id: &Id, fields: Vec<(String, String)>) {
+            if let Ok(mut spans) = self.0.lock()
+                && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
+            {
+                span.string_fields.extend(fields);
             }
         }
 
@@ -2076,6 +2086,11 @@ mod tests {
                 .map(Id::into_u64)
                 .or_else(|| ctx.current_span().id().map(Id::into_u64));
             self.spans.insert(id, attrs.metadata().name(), parent_id);
+            let mut string_fields = Vec::new();
+            attrs.record(&mut SpanStringCaptureVisitor {
+                fields: &mut string_fields,
+            });
+            self.spans.record_strings(id, string_fields);
         }
 
         fn on_record(&self, span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
@@ -2084,11 +2099,32 @@ mod tests {
                 fields: &mut fields,
             });
             self.spans.record(span, fields);
+            let mut string_fields = Vec::new();
+            values.record(&mut SpanStringCaptureVisitor {
+                fields: &mut string_fields,
+            });
+            self.spans.record_strings(span, string_fields);
         }
     }
 
     struct SpanFieldCaptureVisitor<'a> {
         fields: &'a mut Vec<(String, u64)>,
+    }
+
+    struct SpanStringCaptureVisitor<'a> {
+        fields: &'a mut Vec<(String, String)>,
+    }
+
+    impl Visit for SpanStringCaptureVisitor<'_> {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .push((field.name().to_string(), value.to_string()));
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.fields
+                .push((field.name().to_string(), format!("{value:?}")));
+        }
     }
 
     impl Visit for SpanFieldCaptureVisitor<'_> {
@@ -2190,6 +2226,13 @@ mod tests {
 
         for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
             assert_eq!(chat_span.parent_id, Some(outer_span_id));
+            assert_eq!(
+                chat_span
+                    .string_fields
+                    .get("gen_ai.operation.name")
+                    .map(String::as_str),
+                Some("chat")
+            );
             assert_eq!(
                 chat_span.fields.get("gen_ai.usage.input_tokens"),
                 Some(&expected_usage.input_tokens)
