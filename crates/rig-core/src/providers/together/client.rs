@@ -48,7 +48,6 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Together
 }
 
 impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for TogetherExt {
-    // The client base URL is the bare host, so the version segment is explicit.
     fn embeddings_path(&self) -> String {
         "/v1/embeddings".to_string()
     }

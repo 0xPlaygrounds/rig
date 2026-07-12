@@ -45,8 +45,6 @@ impl<H> Capabilities<H> for OpenRouterExt {
     type Rerank = Nothing;
 }
 
-// OpenRouter's base URL already includes `/api/v1`, so the default
-// `/embeddings` path is correct.
 impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for OpenRouterExt {}
 
 impl DebugExt for OpenRouterExt {}

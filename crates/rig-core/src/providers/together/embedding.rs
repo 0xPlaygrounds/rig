@@ -3,12 +3,6 @@
 //! From [Together AI Reference](https://docs.together.ai/docs/embeddings-overview)
 // ================================================================
 
-//! Together's embeddings endpoint is OpenAI-compatible, so [`EmbeddingModel`] is
-//! a thin alias over the shared [`GenericEmbeddingModel`]. The `/v1/embeddings`
-//! path is supplied by [`TogetherExt`](super::client::TogetherExt)'s
-//! [`OpenAIEmbeddingsCompatible`](crate::providers::openai::embedding::OpenAIEmbeddingsCompatible)
-//! implementation in `client.rs`.
-
 use super::client::TogetherExt;
 use crate::providers::openai::embedding::GenericEmbeddingModel;
 
@@ -25,9 +19,7 @@ pub const M2_BERT_80M_8K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-8k-retr
 pub const SENTENCE_BERT: &str = "sentence-transformers/msmarco-bert-base-dot-v5";
 pub const UAE_LARGE_V1: &str = "WhereIsAI/UAE-Large-V1";
 
-/// Together AI embedding model, backed by the shared OpenAI-compatible
-/// [`GenericEmbeddingModel`]. Unlike the previous hand-rolled implementation
-/// this honors `ndims` (sent as `dimensions`), `encoding_format`, and `user`.
+/// Together AI embedding model, driven by the shared OpenAI Embeddings path.
 pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<TogetherExt, H>;
 
 #[cfg(test)]
@@ -38,25 +30,25 @@ mod tests {
     use crate::providers::together;
     use crate::test_utils::RecordingHttpClient;
 
-    // Minimal OpenAI-compatible embeddings response. `usage` is intentionally
-    // omitted to exercise the optional-usage path the generic model now allows.
     const RESPONSE_BODY: &str = r#"{
         "object": "list",
         "model": "BAAI/bge-base-en-v1.5",
         "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3] }]
     }"#;
 
+    fn client(http_client: RecordingHttpClient) -> together::Client<RecordingHttpClient> {
+        together::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build")
+    }
+
     #[tokio::test]
     async fn together_embeddings_send_dimensions_to_v1_path() {
         let http_client = RecordingHttpClient::new(RESPONSE_BODY);
-        let client = together::Client::builder()
-            .api_key("dummy-key")
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
+        let client = client(http_client.clone());
 
-        // With `ndims` set, `dimensions` must be sent — the previous hand-rolled
-        // Together model silently dropped it (the bug this migration fixes).
         let model = client.embedding_model_with_ndims(BGE_BASE_EN_V1_5, 3);
         model
             .embed_texts(["hello".to_string()])
@@ -74,5 +66,21 @@ mod tests {
             serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
         assert_eq!(body["dimensions"], serde_json::json!(3));
         assert_eq!(body["model"], BGE_BASE_EN_V1_5);
+    }
+
+    #[tokio::test]
+    async fn together_embeddings_omit_dimensions_when_ndims_unset() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = client(http_client.clone());
+
+        let model = client.embedding_model(BGE_BASE_EN_V1_5);
+        model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect("embedding request should succeed");
+
+        let body: serde_json::Value = serde_json::from_slice(&http_client.requests()[0].body)
+            .expect("request body should be JSON");
+        assert!(body.get("dimensions").is_none());
     }
 }
