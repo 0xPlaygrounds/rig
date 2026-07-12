@@ -44,6 +44,7 @@ use crate::{
 };
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ToolError {
     #[cfg(not(target_family = "wasm"))]
     /// Error returned by the tool
@@ -532,6 +533,7 @@ impl ToolType {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ToolSetError {
     /// Error returned by the tool
     #[error("ToolCallError: {0}")]

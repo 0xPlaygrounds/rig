@@ -261,12 +261,9 @@ pub enum StreamingError {
     Tool(#[from] ToolSetError),
 }
 
-/// Surface [`crate::memory::ConversationMemory`] failures through the existing
-/// [`CompletionError::RequestError`] variant so adding memory support does not
-/// require a new top-level [`StreamingError`] arm.
 impl From<crate::memory::MemoryError> for StreamingError {
     fn from(err: crate::memory::MemoryError) -> Self {
-        Self::Completion(CompletionError::RequestError(Box::new(err)))
+        Self::Prompt(Box::new(PromptError::MemoryError(err)))
     }
 }
 
@@ -5860,14 +5857,13 @@ mod tests {
 
         let first = stream.next().await.expect("at least one item");
         match first {
-            Err(err) => {
-                let msg = format!("{err:?}");
-                assert!(
-                    msg.contains("Memory") || msg.contains("memory") || msg.contains("load boom"),
-                    "expected memory error, got: {msg}"
-                );
-            }
-            Ok(other) => panic!("expected memory error, got {other:?}"),
+            Err(StreamingError::Prompt(err)) => match *err {
+                PromptError::MemoryError(err) => {
+                    assert!(err.to_string().contains("load boom"));
+                }
+                other => panic!("expected PromptError::MemoryError, got {other:?}"),
+            },
+            other => panic!("expected StreamingError::Prompt, got {other:?}"),
         }
     }
 

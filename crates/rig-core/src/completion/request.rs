@@ -145,10 +145,15 @@ impl CompletionError {
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`] forward
 /// to the inner completion error's helpers.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PromptError {
     /// Something went wrong with the completion
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
+
+    /// Conversation memory failed to load history.
+    #[error("MemoryError: {0}")]
+    MemoryError(#[from] crate::memory::MemoryError),
 
     /// There was an error while using a tool
     #[error("ToolCallError: {0}")]
@@ -186,15 +191,6 @@ pub enum PromptError {
         allowed_tools: Vec<String>,
         chat_history: Box<Vec<Message>>,
     },
-}
-
-/// Surface [`crate::memory::ConversationMemory`] failures through the existing
-/// [`CompletionError::RequestError`] variant so adding memory support does not
-/// require a new top-level [`PromptError`] arm in downstream exhaustive matchers.
-impl From<crate::memory::MemoryError> for PromptError {
-    fn from(err: crate::memory::MemoryError) -> Self {
-        Self::CompletionError(CompletionError::RequestError(Box::new(err)))
-    }
 }
 
 impl PromptError {
@@ -246,6 +242,7 @@ impl PromptError {
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`] forward
 /// through the chain.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum StructuredOutputError {
     /// An error occurred during the prompt execution.
     #[error("PromptError: {0}")]

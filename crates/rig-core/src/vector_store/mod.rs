@@ -30,6 +30,7 @@ pub mod request;
 
 /// Errors from vector store operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum VectorStoreError {
     /// Embedding generation failed while preparing a vector query or insert.
     #[error("Embedding error: {0}")]
