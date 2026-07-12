@@ -2603,6 +2603,8 @@ mod tests {
             )),
             documents: vec![],
             tools: vec![completion::ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "weather".to_string(),
                 description: "Get the weather".to_string(),
                 parameters: serde_json::json!({
@@ -2673,6 +2675,8 @@ mod tests {
             .expect("history should be non-empty"),
             documents: vec![],
             tools: vec![completion::ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "weather".to_string(),
                 description: "Get the weather".to_string(),
                 parameters: serde_json::json!({

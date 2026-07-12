@@ -30,21 +30,23 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use futures::StreamExt;
+use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
+    control::{RunContext, RunControlHandle},
     hook::{
         AgentHook, Flow, HookContext, HookStack, InvalidToolCallHookAction, RequestPatch, StepEvent,
     },
+    inject::{MessageInjector, injector_channel},
     prompt_request::{
         PromptResponse,
         streaming::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
             drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
         },
-        tool_result_message, tool_result_output,
+        tool_result_execution, tool_result_message,
     },
     run::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
@@ -291,6 +293,9 @@ where
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack<M>,
+    /// Receiver for messages injected into this run at safe model-call boundaries.
+    pub(crate) injection_rx: Option<UnboundedReceiver<Message>>,
+    pub(crate) run_control: RunControlHandle,
 }
 
 impl<M> AgentRunner<M>
@@ -300,6 +305,8 @@ where
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
     pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+        let (injector, injection_rx) = injector_channel();
+        let run_control = RunControlHandle::new(injector);
         Self {
             prompt: prompt.into(),
             chat_history: None,
@@ -322,7 +329,24 @@ where
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
+            injection_rx: Some(injection_rx),
+            run_control,
         }
+    }
+
+    /// Arm this runner for message injection and return its run-bound handle.
+    ///
+    /// Messages are delivered in producer order immediately before the next
+    /// model call. An active tool batch settles before delivery. Clone the
+    /// returned handle for multiple producers rather than calling this method
+    /// again, which replaces the mailbox.
+    pub fn message_injector(&mut self) -> MessageInjector {
+        self.run_control.message_injector()
+    }
+
+    /// Return a cloneable host-control handle bound to this run.
+    pub fn run_control(&self) -> RunControlHandle {
+        self.run_control.clone()
     }
 
     /// Append a hook to the stack (on top of any the agent already carries).
@@ -349,6 +373,13 @@ where
     /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
+        self
+    }
+
+    /// Set a cooperative deadline relative to when this builder is configured.
+    pub fn deadline_after(self, duration: std::time::Duration) -> Self {
+        self.run_control
+            .set_deadline(std::time::SystemTime::now() + duration);
         self
     }
 
@@ -427,6 +458,11 @@ where
     /// `history_override` replaces the configured chat history (e.g. with
     /// memory-loaded history). Delegates to [`build_agent_run`] — the single
     /// construction site shared with the streaming driver.
+    pub(crate) fn prepare_run_context(&mut self) {
+        let context = RunContext::new(self.run_control.clone(), self.conversation_id.clone());
+        self.tool_extensions.insert(context);
+    }
+
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
         build_agent_run(
             self.prompt.clone(),
@@ -774,14 +810,10 @@ where
                 tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
-                    exec.model_output,
+                    exec.model_output.clone(),
                 )
             } else {
-                tool_result_output(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    exec.model_output,
-                )
+                tool_result_execution(tool_call.id.clone(), tool_call.call_id.clone(), &exec)
             };
             Ok(ToolCallOutcome { content, execution })
         }
@@ -6197,5 +6229,36 @@ mod tests {
             tool_result_text_in_history(&messages, "denied by policy: `subtract` not allowed"),
             "the policy denial reason must reach the model as the subtract tool result"
         );
+    }
+
+    #[tokio::test]
+    async fn run_control_tracks_completion_and_steering() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let runner = AgentBuilder::new(model.clone())
+            .build()
+            .runner("primary")
+            .max_turns(2);
+        let control = runner.run_control();
+        assert_eq!(control.status(), crate::agent::RunStatus::Pending);
+        control.steer("additional context").expect("steer accepted");
+
+        let response = runner.run().await.expect("run succeeds");
+        assert_eq!(response.output, "done");
+        assert_eq!(control.status(), crate::agent::RunStatus::Completed);
+        let request = serde_json::to_string(&model.requests()[0]).expect("request json");
+        assert!(request.contains("additional context"));
+    }
+
+    #[tokio::test]
+    async fn run_control_cancel_before_start_is_terminal() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("unused")]);
+        let runner = AgentBuilder::new(model.clone()).build().runner("task");
+        let control = runner.run_control();
+        control.cancel();
+
+        let error = runner.run().await.expect_err("cancelled run must fail");
+        assert!(matches!(error, PromptError::PromptCancelled { .. }));
+        assert_eq!(control.status(), crate::agent::RunStatus::Cancelled);
+        assert_eq!(model.request_count(), 0);
     }
 }

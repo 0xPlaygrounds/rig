@@ -173,6 +173,35 @@ impl ToolServerHandle {
         Ok(())
     }
 
+    /// Replace a static tool atomically for future lookups.
+    ///
+    /// A call that already cloned the previous implementation continues with
+    /// that snapshot; subsequent calls observe the replacement.
+    pub async fn replace_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
+        self.add_tool(tool).await
+    }
+
+    /// Enumerate the current host-facing catalog in registration order.
+    ///
+    /// This snapshots definitions under one read lock. Host-only metadata is
+    /// retained on the returned definitions and never serialized to providers.
+    pub async fn catalog(&self) -> Vec<ToolDefinition> {
+        let state = self.0.read().await;
+        state
+            .toolset
+            .ordered_names()
+            .filter_map(|name| {
+                state.toolset.get(name).map(|tool| {
+                    let mut definition = tool.definition_with_name(name.clone());
+                    if !state.static_tool_names.contains(name) {
+                        definition.metadata.kind = crate::completion::ToolKind::Dynamic;
+                    }
+                    definition
+                })
+            })
+            .collect()
+    }
+
     /// Remove a tool by name from both the toolset and the static list.
     pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;

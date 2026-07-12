@@ -21,6 +21,7 @@
 //! richer outcomes/metadata via [`Tool::call_structured`] and [`ToolReturn`].
 
 pub mod builtin;
+pub mod code_mode;
 mod extensions;
 mod result;
 pub mod server;
@@ -153,6 +154,16 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
 
     /// JSON Schema for the tool arguments.
     fn parameters(&self) -> serde_json::Value;
+
+    /// Optional JSON Schema for the model-visible result.
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Host-only operational metadata.
+    fn metadata(&self) -> crate::completion::ToolMetadata {
+        crate::completion::ToolMetadata::default()
+    }
 
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
@@ -289,6 +300,16 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     /// JSON Schema for the tool arguments.
     fn parameters(&self) -> serde_json::Value;
 
+    /// Optional JSON Schema for the model-visible result.
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Host-only operational metadata.
+    fn metadata(&self) -> crate::completion::ToolMetadata {
+        crate::completion::ToolMetadata::default()
+    }
+
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
 
@@ -393,6 +414,8 @@ pub(crate) fn tool_definition_with_name(
         name: name.into(),
         description: tool.description(),
         parameters: tool.parameters(),
+        output_schema: tool.output_schema(),
+        metadata: tool.metadata(),
     }
 }
 
@@ -407,6 +430,14 @@ impl<T: Tool> ToolDyn for T {
 
     fn parameters(&self) -> serde_json::Value {
         <Self as Tool>::parameters(self)
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        <Self as Tool>::output_schema(self)
+    }
+
+    fn metadata(&self) -> crate::completion::ToolMetadata {
+        <Self as Tool>::metadata(self)
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {

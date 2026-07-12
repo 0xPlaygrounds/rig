@@ -1,5 +1,5 @@
 use crate::{
-    agent::Agent,
+    agent::{Agent, RunContext},
     completion::{CompletionModel, Prompt, PromptError},
     tool::{Tool, ToolCallExtensions},
 };
@@ -12,6 +12,13 @@ pub struct AgentToolArgs {
     /// The prompt for the agent to call.
     prompt: String,
 }
+
+/// Parent/child delegation depth propagated through tool extensions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubagentDepth(pub usize);
+
+/// Default maximum nested agent-as-tool depth.
+pub const DEFAULT_SUBAGENT_DEPTH_LIMIT: usize = 8;
 
 impl<M: CompletionModel + 'static> Tool for Agent<M> {
     const NAME: &'static str = "agent_tool";
@@ -52,9 +59,40 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
         args: Self::Args,
         extensions: &ToolCallExtensions,
     ) -> Result<Self::Output, Self::Error> {
-        self.prompt(args.prompt)
-            .tool_extensions(extensions.clone())
-            .await
+        let depth = extensions
+            .get::<SubagentDepth>()
+            .copied()
+            .unwrap_or(SubagentDepth(0));
+        if depth.0 >= DEFAULT_SUBAGENT_DEPTH_LIMIT {
+            return Err(PromptError::prompt_cancelled(
+                Vec::new(),
+                format!("subagent depth limit ({DEFAULT_SUBAGENT_DEPTH_LIMIT}) reached"),
+            ));
+        }
+
+        let mut child_extensions = extensions.clone();
+        child_extensions.insert(SubagentDepth(depth.0 + 1));
+        let runner = self.runner(args.prompt).tool_extensions(child_extensions);
+        let child_control = runner.run_control();
+
+        if let Some(parent) = extensions.get::<RunContext>().cloned() {
+            let run = runner.run();
+            futures::pin_mut!(run);
+            let parent_control = parent.control();
+            let cancelled = parent_control.cancelled();
+            futures::pin_mut!(cancelled);
+            match futures::future::select(run, cancelled).await {
+                futures::future::Either::Left((result, _)) => {
+                    result.map(|response| response.output)
+                }
+                futures::future::Either::Right(((), run)) => {
+                    child_control.cancel();
+                    run.await.map(|response| response.output)
+                }
+            }
+        } else {
+            runner.run().await.map(|response| response.output)
+        }
     }
 
     fn name(&self) -> String {

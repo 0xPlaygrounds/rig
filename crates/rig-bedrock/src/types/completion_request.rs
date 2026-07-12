@@ -273,6 +273,8 @@ mod tests {
             model: None,
             tool_choice: Some(ToolChoice::Auto),
             tools: vec![ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "test_tool".to_string(),
                 description: "A test tool".to_string(),
                 parameters: serde_json::json!({
@@ -306,6 +308,8 @@ mod tests {
             model: None,
             tool_choice: Some(ToolChoice::Required),
             tools: vec![ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "test_tool".to_string(),
                 description: "A test tool".to_string(),
                 parameters: serde_json::json!({
@@ -339,6 +343,8 @@ mod tests {
             model: None,
             tool_choice: Some(ToolChoice::None),
             tools: vec![ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "test_tool".to_string(),
                 description: "A test tool".to_string(),
                 parameters: serde_json::json!({
@@ -366,6 +372,8 @@ mod tests {
                 function_names: vec!["specific_tool".to_string()],
             }),
             tools: vec![ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "specific_tool".to_string(),
                 description: "A specific tool".to_string(),
                 parameters: serde_json::json!({
@@ -399,6 +407,8 @@ mod tests {
             model: None,
             tool_choice: None, // Not set
             tools: vec![ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "test_tool".to_string(),
                 description: "A test tool".to_string(),
                 parameters: serde_json::json!({
@@ -426,6 +436,8 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             tools: vec![ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "document_list".to_string(),
                 description: "Lists all documents".to_string(),
                 parameters: serde_json::json!({
@@ -461,6 +473,8 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             tools: vec![ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "get_weather".to_string(),
                 description: "Get weather for a location".to_string(),
                 parameters: serde_json::json!({

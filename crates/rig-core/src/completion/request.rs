@@ -321,6 +321,47 @@ impl std::fmt::Display for Document {
     }
 }
 
+/// Operational family of a registered tool. This metadata is host-only.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ToolKind {
+    /// In-process Rust tool.
+    #[default]
+    Native,
+    /// Model Context Protocol tool.
+    Mcp,
+    /// Dynamically discovered tool.
+    Dynamic,
+    /// Provider-hosted tool.
+    ProviderHosted,
+    /// Composite/wrapper tool.
+    Composite,
+}
+
+/// Per-tool execution scheduling policy. This metadata is host-only.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ToolExecutionPolicy {
+    /// The tool may execute alongside parallel-safe siblings.
+    #[default]
+    ParallelSafe,
+    /// The host should serialize this tool's execution.
+    Sequential,
+}
+
+/// Host-only catalog metadata attached to a tool definition.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct ToolMetadata {
+    /// Tool operational family.
+    pub kind: ToolKind,
+    /// Scheduling policy.
+    pub execution: ToolExecutionPolicy,
+    /// Registration source or server identifier.
+    pub source: Option<String>,
+    /// Arbitrary host selector metadata.
+    pub attributes: serde_json::Map<String, serde_json::Value>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
     /// Tool name exposed to the model. It must match the registered tool name.
@@ -329,6 +370,41 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
+    /// Optional JSON Schema describing the model-visible result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<serde_json::Value>,
+    /// Host-only operational metadata. It is never sent to a model provider.
+    #[serde(default, skip)]
+    pub metadata: ToolMetadata,
+}
+
+impl ToolDefinition {
+    /// Construct a tool definition with conservative metadata and no output schema.
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            parameters,
+            output_schema: None,
+            metadata: ToolMetadata::default(),
+        }
+    }
+
+    /// Attach a model-facing output schema.
+    pub fn with_output_schema(mut self, schema: serde_json::Value) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Attach host-only operational metadata.
+    pub fn with_metadata(mut self, metadata: ToolMetadata) -> Self {
+        self.metadata = metadata;
+        self
+    }
 }
 
 /// Provider-native tool definition.
@@ -479,6 +555,36 @@ pub trait Completion<M: CompletionModel> {
         T: Into<Message>;
 }
 
+/// Provider-independent reason a model completion ended.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CompletionFinishReason {
+    /// Natural model stop.
+    Stop,
+    /// Token/output limit truncation.
+    Length,
+    /// Provider content filtering.
+    ContentFilter,
+    /// Model handed control to tool execution.
+    ToolCalls,
+    /// Request cancellation.
+    Cancelled,
+    /// Provider-side failure.
+    Failed,
+    /// Unrecognized provider reason.
+    Other(String),
+}
+
+/// Normalized and raw provider terminal metadata.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompletionTerminalMetadata {
+    /// Normalized reason.
+    pub reason: CompletionFinishReason,
+    /// Provider-native reason/status when available.
+    pub raw_reason: Option<String>,
+}
+
 /// General completion response struct that contains the high-level completion choice
 /// and the raw response. The completion choice contains one or more assistant content.
 #[derive(Debug)]
@@ -495,6 +601,56 @@ pub struct CompletionResponse<T> {
     pub message_id: Option<String>,
 }
 
+impl<T> CompletionResponse<T>
+where
+    T: Serialize,
+{
+    /// Normalize common provider finish/status fields without requiring callers
+    /// to couple retry policy to a provider response type.
+    pub fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        fn find_reason(value: &serde_json::Value) -> Option<&str> {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for key in [
+                        "finish_reason",
+                        "finishReason",
+                        "stop_reason",
+                        "stopReason",
+                        "status",
+                    ] {
+                        if let Some(reason) = map.get(key).and_then(serde_json::Value::as_str) {
+                            return Some(reason);
+                        }
+                    }
+                    map.values().find_map(find_reason)
+                }
+                serde_json::Value::Array(values) => values.iter().find_map(find_reason),
+                _ => None,
+            }
+        }
+
+        let raw = serde_json::to_value(&self.raw_response).ok()?;
+        let raw_reason = find_reason(&raw)?.to_owned();
+        let normalized = match raw_reason.to_ascii_lowercase().as_str() {
+            "stop" | "end_turn" | "completed" | "complete" => CompletionFinishReason::Stop,
+            "length" | "max_tokens" | "max_output_tokens" | "incomplete" => {
+                CompletionFinishReason::Length
+            }
+            "content_filter" | "safety" | "blocked" | "recitation" => {
+                CompletionFinishReason::ContentFilter
+            }
+            "tool_calls" | "tool_call" | "function_call" => CompletionFinishReason::ToolCalls,
+            "cancelled" | "canceled" => CompletionFinishReason::Cancelled,
+            "failed" | "error" => CompletionFinishReason::Failed,
+            _ => CompletionFinishReason::Other(raw_reason.clone()),
+        };
+        Some(CompletionTerminalMetadata {
+            reason: normalized,
+            raw_reason: Some(raw_reason),
+        })
+    }
+}
+
 /// A trait for grabbing the token usage of a completion response.
 ///
 /// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
@@ -503,6 +659,11 @@ pub trait GetTokenUsage {
     /// [`Usage`]'s documented sentinel for missing provider usage metrics;
     /// response types that carry no usage return [`Usage::new`].
     fn token_usage(&self) -> crate::completion::Usage;
+
+    /// Terminal metadata for a completed stream, when the provider exposes it.
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        None
+    }
 }
 
 impl GetTokenUsage for () {
@@ -760,7 +921,7 @@ impl CompletionRequest {
     }
 }
 
-fn merge_provider_tools_into_additional_params(
+pub(crate) fn merge_provider_tools_into_additional_params(
     additional_params: Option<serde_json::Value>,
     provider_tools: Vec<ProviderToolDefinition>,
 ) -> Option<serde_json::Value> {

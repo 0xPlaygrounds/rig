@@ -106,7 +106,9 @@
 //! ```
 mod builder;
 mod completion;
+pub mod control;
 pub mod hook;
+pub mod inject;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
@@ -119,10 +121,12 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
+pub use control::{RunContext, RunControlHandle, RunStatus};
 pub use hook::{
-    AgentHook, Flow, HookContext, HookStack, InvalidToolCallContext, InvalidToolCallHookAction,
-    RequestPatch, RunId, Scratchpad, StepEvent, StepEventKind,
+    AgentHook, CallScratchpad, Flow, HookContext, HookStack, InvalidToolCallContext,
+    InvalidToolCallHookAction, RequestPatch, RunId, Scratchpad, StepEvent, StepEventKind,
 };
+pub use inject::{MessageInjectError, MessageInjector};
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };
@@ -131,3 +135,4 @@ pub use prompt_request::{
 };
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;
+pub use tool::{DEFAULT_SUBAGENT_DEPTH_LIMIT, SubagentDepth};

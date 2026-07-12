@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(agent runtime)* run-bound control handles with steering, follow-up/next-turn queues, cooperative cancellation, status, tool-visible run context, and bounded subagent propagation.
+- *(tools)* output schemas and host metadata, direct rich result content, dynamic catalog enumeration/replacement, call-scoped hook state, and a runtime-agnostic code-mode adapter.
+- *(sessions/skills)* backend-neutral append-only session records and progressive-disclosure skill catalogs.
+
 ### Changed
 
 - *(core)* [**breaking**] Mark `PromptError`, `StructuredOutputError`, `ToolError`, `ToolSetError`, and `VectorStoreError` as non-exhaustive, requiring downstream match expressions to include a wildcard arm. Conversation memory load failures now surface as the typed `PromptError::MemoryError` variant instead of `CompletionError::RequestError`.

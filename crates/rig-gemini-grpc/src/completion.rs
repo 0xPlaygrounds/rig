@@ -953,6 +953,8 @@ mod tests {
         use rig_core::completion::ToolDefinition;
 
         let tool = ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "get_weather".to_string(),
             description: "Look up the current weather for a city.".to_string(),
             parameters: serde_json::json!({

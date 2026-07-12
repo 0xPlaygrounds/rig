@@ -143,6 +143,8 @@ async fn tool_result_roundtrip() {
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
             let tool = rig::completion::ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "add".to_string(),
                 description: "Add two numbers together".to_string(),
                 parameters: serde_json::json!({

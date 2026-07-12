@@ -30,6 +30,8 @@ pub(crate) struct MathError;
 
 fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
+        output_schema: None,
+        metadata: Default::default(),
         name: name.to_string(),
         description: description.to_string(),
         parameters: json!({

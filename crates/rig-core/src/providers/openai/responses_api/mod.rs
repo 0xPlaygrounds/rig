@@ -733,6 +733,7 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
             name,
             parameters,
             description,
+            ..
         } = value;
 
         Self::function(name, description, parameters)
@@ -2686,6 +2687,8 @@ mod tests {
 
     fn weather_tool_definition() -> completion::ToolDefinition {
         completion::ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "get_weather".to_string(),
             description: "Get the weather".to_string(),
             parameters: json!({
@@ -3077,6 +3080,8 @@ mod tests {
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_strict_tools()
             .with_tool(completion::ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "lookup".to_string(),
                 description: "Look something up".to_string(),
                 parameters: json!({

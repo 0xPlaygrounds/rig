@@ -17,7 +17,7 @@
 //! resulting [`ToolExecutionResult`] all the way through to the
 //! [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event.
 
-use crate::tool::ToolResultExtensions;
+use crate::{OneOrMany, message::ToolResultContent, tool::ToolResultExtensions};
 use serde::Serialize;
 
 /// How a tool execution failed, as a closed set of standard kinds.
@@ -420,6 +420,7 @@ impl From<ToolReturnOutcome> for ToolOutcome {
 #[non_exhaustive]
 pub struct ToolExecutionResult {
     pub(crate) model_output: String,
+    pub(crate) model_content: Option<OneOrMany<ToolResultContent>>,
     pub(crate) outcome: ToolOutcome,
     pub(crate) extensions: ToolResultExtensions,
 }
@@ -435,6 +436,7 @@ impl ToolExecutionResult {
     pub(crate) fn new(model_output: impl Into<String>, outcome: ToolOutcome) -> Self {
         Self {
             model_output: model_output.into(),
+            model_content: None,
             outcome,
             extensions: ToolResultExtensions::new(),
         }
@@ -443,6 +445,17 @@ impl ToolExecutionResult {
     /// A successful result whose model output is `model_output` verbatim.
     pub fn success(model_output: impl Into<String>) -> Self {
         Self::new(model_output, ToolOutcome::Success)
+    }
+
+    /// A successful rich result that bypasses legacy string-envelope parsing.
+    pub fn success_content(content: OneOrMany<ToolResultContent>) -> Self {
+        let model_output = serde_json::to_string(&content).unwrap_or_default();
+        Self {
+            model_output,
+            model_content: Some(content),
+            outcome: ToolOutcome::Success,
+            extensions: ToolResultExtensions::new(),
+        }
     }
 
     /// A failed result: `model_output` is the model-visible feedback, `failure`
@@ -493,6 +506,11 @@ impl ToolExecutionResult {
     /// failure, so the model gets useful feedback (a handled error message).
     pub fn model_output(&self) -> &str {
         &self.model_output
+    }
+
+    /// Structured model-visible content, when returned directly by the tool.
+    pub fn model_content(&self) -> Option<&OneOrMany<ToolResultContent>> {
+        self.model_content.as_ref()
     }
 
     /// The structured [`ToolOutcome`] of the call.
@@ -641,6 +659,7 @@ impl<T: Serialize> ToolReturn<T> {
         match super::serialize_tool_output(&output) {
             Ok(model_output) => ToolExecutionResult {
                 model_output,
+                model_content: None,
                 outcome: outcome.into(),
                 extensions,
             },
@@ -655,6 +674,7 @@ impl<T: Serialize> ToolReturn<T> {
                 };
                 ToolExecutionResult {
                     model_output: format!("failed to serialize tool output: {err}"),
+                    model_content: None,
                     outcome,
                     extensions,
                 }

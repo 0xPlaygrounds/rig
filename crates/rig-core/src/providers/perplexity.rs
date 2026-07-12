@@ -214,6 +214,8 @@ mod tests {
             output_schema: None,
         };
         request.tools = vec![crate::completion::ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "lookup".to_string(),
             description: String::new(),
             parameters: serde_json::json!({}),
@@ -274,6 +276,8 @@ mod tests {
             "What's new today?",
         )
         .tool(crate::completion::ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "lookup".to_string(),
             description: "Lookup".to_string(),
             parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),

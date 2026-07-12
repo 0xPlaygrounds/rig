@@ -247,6 +247,8 @@ async fn unicode_arguments_streaming() {
                 )
                 .temperature(0.0)
                 .tool(ToolDefinition {
+                    output_schema: None,
+                    metadata: Default::default(),
                     name: "echo".to_string(),
                     description: "Echo a message back to the user.".to_string(),
                     parameters: json!({
@@ -312,6 +314,8 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                 )
                 .temperature(0.0)
                 .tool(ToolDefinition {
+                    output_schema: None,
+                    metadata: Default::default(),
                     name: "log_event".to_string(),
                     description: "Record an event with an optional free-form note.".to_string(),
                     parameters: json!({

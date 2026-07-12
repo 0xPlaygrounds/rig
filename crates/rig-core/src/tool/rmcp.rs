@@ -133,21 +133,23 @@ impl McpTool {
 
 impl From<&rmcp::model::Tool> for ToolDefinition {
     fn from(val: &rmcp::model::Tool) -> Self {
-        Self {
-            name: val.name.to_string(),
-            description: val.description.clone().unwrap_or(Cow::from("")).to_string(),
-            parameters: val.schema_as_json_value(),
-        }
+        let mut definition = Self::new(
+            val.name.to_string(),
+            val.description.clone().unwrap_or(Cow::from("")).to_string(),
+            val.schema_as_json_value(),
+        );
+        definition.output_schema = val
+            .output_schema
+            .as_ref()
+            .map(|schema| serde_json::Value::Object((**schema).clone()));
+        definition.metadata.kind = crate::completion::ToolKind::Mcp;
+        definition
     }
 }
 
 impl From<rmcp::model::Tool> for ToolDefinition {
     fn from(val: rmcp::model::Tool) -> Self {
-        Self {
-            name: val.name.to_string(),
-            description: val.description.clone().unwrap_or(Cow::from("")).to_string(),
-            parameters: val.schema_as_json_value(),
-        }
+        Self::from(&val)
     }
 }
 
@@ -366,6 +368,22 @@ impl ToolDyn for McpTool {
 
     fn parameters(&self) -> serde_json::Value {
         self.definition.schema_as_json_value()
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        self.definition
+            .output_schema
+            .as_ref()
+            .map(|schema| serde_json::Value::Object((**schema).clone()))
+    }
+
+    fn metadata(&self) -> crate::completion::ToolMetadata {
+        crate::completion::ToolMetadata {
+            kind: crate::completion::ToolKind::Mcp,
+            execution: crate::completion::ToolExecutionPolicy::ParallelSafe,
+            source: None,
+            attributes: Default::default(),
+        }
     }
 
     fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {

@@ -365,6 +365,8 @@ mod tests {
     fn xai_request_uses_responses_tool_choice_for_specific_tool() {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
             .tool(ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "alpha".to_string(),
                 description: "Alpha tool".to_string(),
                 parameters: serde_json::json!({
@@ -374,6 +376,8 @@ mod tests {
                 }),
             })
             .tool(ToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "beta".to_string(),
                 description: "Beta tool".to_string(),
                 parameters: serde_json::json!({

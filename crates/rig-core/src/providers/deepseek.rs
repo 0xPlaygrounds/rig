@@ -583,6 +583,8 @@ mod tests {
     fn deepseek_request_serializes_specific_tool_choice_as_chat_completions_object() {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
             .tool(RigToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "alpha".to_string(),
                 description: "Alpha tool".to_string(),
                 parameters: serde_json::json!({
@@ -592,6 +594,8 @@ mod tests {
                 }),
             })
             .tool(RigToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "beta".to_string(),
                 description: "Beta tool".to_string(),
                 parameters: serde_json::json!({
@@ -618,6 +622,8 @@ mod tests {
     fn deepseek_request_suppresses_required_tool_choice_when_thinking_is_not_disabled() {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
             .tool(RigToolDefinition {
+                output_schema: None,
+                metadata: Default::default(),
                 name: "alpha".to_string(),
                 description: "Alpha tool".to_string(),
                 parameters: serde_json::json!({

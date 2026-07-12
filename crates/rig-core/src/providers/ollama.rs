@@ -885,6 +885,8 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
                 name: tool.name,
                 description: tool.description,
                 parameters: tool.parameters,
+                output_schema: tool.output_schema,
+                metadata: tool.metadata,
             },
         }
     }
@@ -1320,6 +1322,8 @@ mod tests {
     fn test_tool_definition_conversion() {
         // Internal tool definition from the completion module.
         let internal_tool = crate::completion::ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "get_current_weather".to_owned(),
             description: "Get the current weather for a location".to_owned(),
             parameters: json!({

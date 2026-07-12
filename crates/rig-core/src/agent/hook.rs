@@ -225,6 +225,7 @@ pub struct Scratchpad {
     // `tool_concurrency > 1` several tools' `ToolCall`/`ToolResult` hooks may
     // touch this concurrently, so the lock is load-bearing, not decorative.
     inner: Arc<std::sync::Mutex<ToolCallExtensions>>,
+    calls: Arc<std::sync::Mutex<std::collections::HashMap<String, ToolCallExtensions>>>,
 }
 
 impl Scratchpad {
@@ -281,6 +282,76 @@ impl Scratchpad {
         guard.insert(val);
         out
     }
+
+    /// Return isolated state for one internal tool-call identifier.
+    ///
+    /// Different concurrent calls cannot overwrite or consume each other's
+    /// values even when they store the same Rust type.
+    pub fn for_call(&self, internal_call_id: impl Into<String>) -> CallScratchpad {
+        CallScratchpad {
+            id: internal_call_id.into(),
+            calls: self.calls.clone(),
+        }
+    }
+}
+
+/// Type-keyed hook state isolated to one tool call.
+#[derive(Clone, Debug)]
+pub struct CallScratchpad {
+    id: String,
+    calls: Arc<std::sync::Mutex<std::collections::HashMap<String, ToolCallExtensions>>>,
+}
+
+impl CallScratchpad {
+    fn lock(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, ToolCallExtensions>> {
+        self.calls.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Insert a value for this call, returning the previous value of its type.
+    pub fn insert<T>(&self, value: T) -> Option<T>
+    where
+        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.lock()
+            .entry(self.id.clone())
+            .or_default()
+            .insert(value)
+    }
+
+    /// Clone a value stored for this call.
+    pub fn get<T>(&self) -> Option<T>
+    where
+        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.lock()
+            .get(&self.id)
+            .and_then(|state| state.get::<T>().cloned())
+    }
+
+    /// Atomically update a value for this call, starting from `Default`.
+    pub fn update<T, R>(&self, f: impl FnOnce(&mut T) -> R) -> R
+    where
+        T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        let mut calls = self.lock();
+        let state = calls.entry(self.id.clone()).or_default();
+        let mut value = state.remove::<T>().unwrap_or_default();
+        let output = f(&mut value);
+        state.insert(value);
+        output
+    }
+
+    /// Remove a value stored for this call.
+    pub fn remove<T>(&self) -> Option<T>
+    where
+        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.lock()
+            .get_mut(&self.id)
+            .and_then(|state| state.remove::<T>())
+    }
 }
 
 impl std::fmt::Debug for Scratchpad {
@@ -321,9 +392,18 @@ impl HookContext {
     /// Build a fresh run-scoped context. `is_streaming` records which surface is
     /// driving ([`run`](crate::agent::AgentRunner::run) vs.
     /// [`stream`](crate::agent::AgentRunner::stream)).
+    #[cfg(test)]
     pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
+        Self::with_run_id(RunId::generate(), is_streaming, agent_name)
+    }
+
+    pub(crate) fn with_run_id(
+        run_id: RunId,
+        is_streaming: bool,
+        agent_name: Option<String>,
+    ) -> Self {
         Self {
-            run_id: RunId::generate(),
+            run_id,
             turn: AtomicUsize::new(0),
             is_streaming,
             agent_name,

@@ -443,6 +443,8 @@ mod tests {
             "hello",
         )
         .tool(crate::completion::ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "lookup".to_string(),
             description: "Lookup".to_string(),
             parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),

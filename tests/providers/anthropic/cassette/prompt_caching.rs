@@ -253,6 +253,8 @@ fn cache_probe_preamble_for(label: &str) -> String {
 fn cache_probe_tools() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "lookup_cache_policy".to_string(),
             description: format!(
                 "Return internal prompt cache policy notes. {}",
@@ -270,6 +272,8 @@ fn cache_probe_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "lookup_cache_fixture".to_string(),
             description: format!(
                 "Return prompt cache fixture notes. {}",
@@ -292,6 +296,8 @@ fn cache_probe_tools() -> Vec<ToolDefinition> {
 fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "lookup_cache_policy".to_string(),
             description: format!(
                 "Return {label} internal prompt cache policy notes. {}",
@@ -309,6 +315,8 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: "lookup_cache_fixture".to_string(),
             description: format!(
                 "Return prompt cache fixture notes. {}",

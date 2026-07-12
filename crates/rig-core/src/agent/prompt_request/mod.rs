@@ -169,6 +169,19 @@ where
         self
     }
 
+    /// Arm this request for run-scoped message injection.
+    ///
+    /// Obtain the handle before awaiting the request, then inject from another
+    /// task. Messages are delivered before the next model call.
+    pub fn message_injector(&mut self) -> crate::agent::MessageInjector {
+        self.runner.message_injector()
+    }
+
+    /// Obtain the host-control handle before awaiting this request.
+    pub fn run_control(&self) -> crate::agent::RunControlHandle {
+        self.runner.run_control()
+    }
+
     forward_prompt_setters!(runner);
     forward_tool_concurrency!(runner);
 }
@@ -490,6 +503,19 @@ pub(crate) fn tool_result_output(
     output: String,
 ) -> UserContent {
     tool_result_with(id, call_id, ToolResultContent::from_tool_output(output))
+}
+
+/// Shape a real structured execution result, preferring direct rich content and
+/// falling back to the legacy string compatibility parser.
+pub(crate) fn tool_result_execution(
+    id: String,
+    call_id: Option<String>,
+    result: &crate::tool::ToolExecutionResult,
+) -> UserContent {
+    match result.model_content() {
+        Some(content) => tool_result_with(id, call_id, content.clone()),
+        None => tool_result_output(id, call_id, result.model_output().to_owned()),
+    }
 }
 
 /// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a

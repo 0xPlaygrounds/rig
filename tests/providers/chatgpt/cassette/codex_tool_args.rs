@@ -306,6 +306,8 @@ async fn unicode_arguments_streaming() {
                         .to_string(),
                 )
                 .tool(ToolDefinition {
+                    output_schema: None,
+                    metadata: Default::default(),
                     name: "echo".to_string(),
                     description: "Echo a message back to the user.".to_string(),
                     parameters: json!({

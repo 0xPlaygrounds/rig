@@ -41,6 +41,8 @@ struct NotifyError;
 
 fn notify_tool_definition() -> ToolDefinition {
     ToolDefinition {
+        output_schema: None,
+        metadata: Default::default(),
         name: Notify::NAME.to_string(),
         description: "Send a short notification for a user status update.".to_string(),
         parameters: json!({

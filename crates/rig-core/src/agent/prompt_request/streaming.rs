@@ -20,14 +20,14 @@ use crate::{
     tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
-use futures::{Stream, StreamExt, stream};
+use futures::{FutureExt, Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse, forward_prompt_setters};
 use crate::{
-    agent::Agent,
+    agent::{Agent, RunStatus, inject::drain_injections},
     completion::{CompletionError, CompletionModel, PromptError},
     message::{Message, Text},
     tool::ToolSetError,
@@ -342,6 +342,16 @@ where
         self
     }
 
+    /// Arm this request for run-scoped message injection.
+    pub fn message_injector(&mut self) -> crate::agent::MessageInjector {
+        self.runner.message_injector()
+    }
+
+    /// Obtain the host-control handle before starting this stream.
+    pub fn run_control(&self) -> crate::agent::RunControlHandle {
+        self.runner.run_control()
+    }
+
     forward_prompt_setters!(runner);
 
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
@@ -462,7 +472,7 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
 /// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
 /// the blocking surface folds them to `Done`.
 pub(crate) fn drive_agent<M, S>(
-    runner: AgentRunner<M>,
+    mut runner: AgentRunner<M>,
     mut source: S,
     mut run: AgentRun,
     agent_span: tracing::Span,
@@ -475,15 +485,37 @@ where
     S: TurnSource<M>,
 {
     async_stream::stream! {
-        // Run-scoped hook context: minted once, shared by every hook event on
-        // both surfaces. `is_streaming` records which surface is driving; the
-        // per-turn index is advanced on each `CallModel` step below.
-        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+        runner.prepare_run_context();
+        runner.run_control.set_status(RunStatus::Running);
+        let _status_guard = runner.run_control.status_guard();
+        // Hooks and the host handle share exactly one run identity.
+        let hook_ctx = HookContext::with_run_id(
+            runner.run_control.run_id().clone(),
+            is_streaming,
+            runner.agent_name.clone(),
+        );
 
         'outer: loop {
+            // Delivery and cancellation are run-scoped and observed at every
+            // state-machine boundary.
+            drain_injections(&mut runner.injection_rx, &mut run);
+            if runner.run_control.is_cancelled() {
+                runner.run_control.set_status(RunStatus::Cancelled);
+                yield Err(StreamingError::Prompt(Box::new(
+                    run.cancel_error("cancelled by host")
+                )));
+                break 'outer;
+            }
+
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
+                    let status = if matches!(err, PromptError::MaxTurnsError { .. }) {
+                        RunStatus::Exhausted
+                    } else {
+                        RunStatus::Failed
+                    };
+                    runner.run_control.set_status(status);
                     yield Err(Box::new(err).into());
                     break 'outer;
                 }
@@ -499,6 +531,7 @@ where
                     let request_patch =
                         match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
+                                runner.run_control.set_status(RunStatus::Cancelled);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
@@ -540,6 +573,7 @@ where
                     {
                         Ok(prepared) => prepared,
                         Err(err) => {
+                            runner.run_control.set_status(RunStatus::Failed);
                             yield Err(err.into());
                             break 'outer;
                         }
@@ -556,17 +590,36 @@ where
                         prompt,
                     );
                     let mut errored = false;
-                    while let Some(item) = turn_stream.next().await {
-                        match item {
-                            Ok(item) => yield Ok(DriveItem::Item(item)),
-                            Err(err) => {
+                    let mut cancelled_by_host = false;
+                    loop {
+                        let next_item = turn_stream.next().fuse();
+                        let cancelled = runner.run_control.cancelled().fuse();
+                        futures::pin_mut!(next_item, cancelled);
+                        futures::select_biased! {
+                            _ = cancelled => {
+                                runner.run_control.set_status(RunStatus::Cancelled);
                                 errored = true;
-                                yield Err(err);
+                                cancelled_by_host = true;
                                 break;
+                            }
+                            item = next_item => match item {
+                                Some(Ok(item)) => yield Ok(DriveItem::Item(item)),
+                                Some(Err(err)) => {
+                                    runner.run_control.set_status(RunStatus::Failed);
+                                    errored = true;
+                                    yield Err(err);
+                                    break;
+                                }
+                                None => break,
                             }
                         }
                     }
                     drop(turn_stream);
+                    if cancelled_by_host {
+                        yield Err(StreamingError::Prompt(Box::new(
+                            run.cancel_error("cancelled by host")
+                        )));
+                    }
                     if errored {
                         break 'outer;
                     }
@@ -574,22 +627,52 @@ where
                 AgentRunStep::CallTools { calls } => {
                     let mut tool_stream = source.run_tool_calls(&runner, &hook_ctx, &mut run, calls);
                     let mut errored = false;
-                    while let Some(item) = tool_stream.next().await {
-                        match item {
-                            Ok(item) => yield Ok(DriveItem::Item(item)),
-                            Err(err) => {
+                    let mut cancelled_by_host = false;
+                    loop {
+                        let next_item = tool_stream.next().fuse();
+                        let cancelled = runner.run_control.cancelled().fuse();
+                        futures::pin_mut!(next_item, cancelled);
+                        futures::select_biased! {
+                            _ = cancelled => {
+                                runner.run_control.set_status(RunStatus::Cancelled);
                                 errored = true;
-                                yield Err(err);
+                                cancelled_by_host = true;
                                 break;
+                            }
+                            item = next_item => match item {
+                                Some(Ok(item)) => yield Ok(DriveItem::Item(item)),
+                                Some(Err(err)) => {
+                                    runner.run_control.set_status(RunStatus::Failed);
+                                    errored = true;
+                                    yield Err(err);
+                                    break;
+                                }
+                                None => break,
                             }
                         }
                     }
                     drop(tool_stream);
+                    if cancelled_by_host {
+                        yield Err(StreamingError::Prompt(Box::new(
+                            run.cancel_error("cancelled by host")
+                        )));
+                    }
                     if errored {
                         break 'outer;
                     }
                 }
                 AgentRunStep::Done(response) => {
+                    // Close the mailbox before persistence/telemetry so late
+                    // producers fail rather than queueing undeliverable input.
+                    drain_injections(&mut runner.injection_rx, &mut run);
+                    if run.has_pending_injections() {
+                        tracing::warn!(
+                            "message injected as the run was finishing was not delivered"
+                        );
+                    }
+                    let _ = runner.injection_rx.take();
+                    runner.run_control.set_status(RunStatus::Completed);
+
                     // Run-completion marker, unifying the blocking and streaming
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(
@@ -1929,6 +2012,8 @@ mod tests {
 
     fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
         ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: name.to_string(),
             description: description.to_string(),
             parameters: serde_json::json!({

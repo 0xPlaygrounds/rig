@@ -3026,6 +3026,8 @@ mod tests {
 
     fn generic_tool(name: &str) -> completion::ToolDefinition {
         completion::ToolDefinition {
+            output_schema: None,
+            metadata: Default::default(),
             name: name.to_string(),
             description: format!("{name} description"),
             parameters: json!({
