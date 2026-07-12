@@ -486,6 +486,34 @@ impl AgentRun {
         matches!(self.state, RunState::Done(_))
     }
 
+    /// Whether the next machine step is a model request, and therefore a safe
+    /// boundary for appending queued steering input.
+    pub(crate) fn accepts_steering(&self) -> bool {
+        matches!(self.state, RunState::PreparingRequest)
+    }
+
+    /// Append run-scoped steering messages at a safe boundary.
+    ///
+    /// A completed assistant turn may be resumed when steering raced with
+    /// finalization; otherwise input is accepted only while preparing the next
+    /// model request. The driver is the sole caller and supplies user messages
+    /// drained from its private steering inbox.
+    pub(crate) fn apply_steering(&mut self, messages: Vec<Message>) -> Result<(), PromptError> {
+        if messages.is_empty() {
+            return Ok(());
+        }
+
+        if !matches!(self.state, RunState::PreparingRequest | RunState::Done(_)) {
+            return Err(
+                self.protocol_violation("steering input applied outside a model-call boundary")
+            );
+        }
+
+        self.new_messages.extend(messages);
+        self.state = RunState::PreparingRequest;
+        Ok(())
+    }
+
     /// The final response once the run is done, without cloning it.
     /// [`AgentRun::next_step`] in the done state returns an owned clone
     /// (including the full accumulated message history); prefer this when
@@ -1470,6 +1498,65 @@ mod tests {
         let messages = response.messages.expect("messages should be recorded");
         assert_eq!(messages.len(), 2);
         assert!(run.is_done());
+    }
+
+    #[test]
+    fn steering_resumes_a_provisionally_completed_turn() {
+        let mut run = AgentRun::new("hello").max_turns(2);
+
+        expect_call_model(&mut run);
+        expect_continue(run.model_response(text_turn("first answer")).unwrap());
+        let first_response = expect_done(&mut run);
+        assert_eq!(first_response.output, "first answer");
+
+        run.apply_steering(vec![
+            Message::user("first update"),
+            Message::user("second update"),
+        ])
+        .unwrap();
+
+        let (prompt, history, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 2);
+        assert_eq!(prompt, Message::user("second update"));
+        assert_eq!(
+            history,
+            vec![
+                Message::user("hello"),
+                Message::assistant("first answer"),
+                Message::user("first update"),
+            ]
+        );
+
+        expect_continue(run.model_response(text_turn("revised answer")).unwrap());
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, "revised answer");
+    }
+
+    #[test]
+    fn steering_does_not_expand_the_model_call_budget() {
+        let mut run = AgentRun::new("hello").max_turns(1);
+
+        expect_call_model(&mut run);
+        expect_continue(run.model_response(text_turn("answer")).unwrap());
+        expect_done(&mut run);
+        run.apply_steering(vec![Message::user("one more thing")])
+            .unwrap();
+
+        assert!(matches!(
+            run.next_step(),
+            Err(PromptError::MaxTurnsError { max_turns: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn steering_rejects_an_in_flight_model_turn() {
+        let mut run = AgentRun::new("hello");
+        expect_call_model(&mut run);
+
+        assert!(matches!(
+            run.apply_steering(vec![Message::user("too early")]),
+            Err(PromptError::PromptCancelled { .. })
+        ));
     }
 
     #[test]

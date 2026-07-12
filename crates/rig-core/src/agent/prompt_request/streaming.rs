@@ -481,6 +481,18 @@ where
         let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
 
         'outer: loop {
+            // Steering is consumed only where the state machine is about to
+            // issue a model request. In particular, a message queued during a
+            // tool batch waits until every sibling has settled and the batch has
+            // committed, preserving the batch's atomic semantics.
+            if run.accepts_steering() {
+                let messages = runner.steering.drain();
+                if let Err(err) = run.apply_steering(messages) {
+                    yield Err(Box::new(err).into());
+                    break 'outer;
+                }
+            }
+
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
@@ -590,6 +602,18 @@ where
                     }
                 }
                 AgentRunStep::Done(response) => {
+                    // Close and settle atomically with respect to senders. If a
+                    // steering message raced with the finishing assistant turn,
+                    // resume from that completed turn instead of dropping the
+                    // message or leaking it into another run.
+                    if let Some(messages) = runner.steering.drain_or_close() {
+                        if let Err(err) = run.apply_steering(messages) {
+                            yield Err(Box::new(err).into());
+                            break 'outer;
+                        }
+                        continue 'outer;
+                    }
+
                     // Run-completion marker, unifying the blocking and streaming
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(

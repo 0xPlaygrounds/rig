@@ -49,6 +49,7 @@ use super::{
     run::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
     },
+    steering::{SteeringHandle, SteeringInbox},
 };
 use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError},
@@ -291,6 +292,7 @@ where
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack<M>,
+    pub(crate) steering: SteeringInbox,
 }
 
 impl<M> AgentRunner<M>
@@ -322,6 +324,7 @@ where
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
+            steering: SteeringInbox::new(),
         }
     }
 
@@ -337,6 +340,15 @@ where
     {
         self.hooks.push(hook);
         self
+    }
+
+    /// Return a cloneable handle for steering this run from another task.
+    ///
+    /// Obtain the handle before moving the runner into [`run`](Self::run) or
+    /// [`stream`](Self::stream). Each runner owns an independent queue, so
+    /// steering cannot leak between concurrent runs or conversations.
+    pub fn steering_handle(&self) -> SteeringHandle {
+        self.steering.handle()
     }
 }
 
@@ -1083,26 +1095,390 @@ where
 mod tests {
     use std::sync::{
         Arc, Mutex,
-        atomic::{AtomicU32, Ordering::SeqCst},
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     };
 
     use futures::StreamExt;
     use serde_json::json;
 
-    use crate::agent::AgentBuilder;
     use crate::agent::hook::{
         AgentHook, Flow, HookContext, RequestPatch, StepEvent, StepEventKind,
     };
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
+    use crate::agent::{AgentBuilder, SteeringHandle};
     use crate::completion::{CompletionModel, Message, Prompt, PromptError};
     use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
-        MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-        MockSubtractTool, MockToolError, MockTurn,
+        MockAddTool, MockBarrierTool, MockCompletionModel, MockControlledTool, MockOperationArgs,
+        MockStreamEvent, MockSubtractTool, MockToolError, MockTurn,
     };
     use crate::tool::Tool;
+
+    fn is_user_text(message: &Message, expected: &str) -> bool {
+        matches!(
+            message,
+            Message::User { content }
+                if content.iter().any(|item| matches!(
+                    item,
+                    UserContent::Text(text) if text.text == expected
+                ))
+        )
+    }
+
+    fn is_tool_result(message: &Message) -> bool {
+        matches!(
+            message,
+            Message::User { content }
+                if content.iter().any(|item| matches!(item, UserContent::ToolResult(_)))
+        )
+    }
+
+    #[derive(Clone)]
+    struct SteerAfterFirstModelTurn {
+        steering: SteeringHandle,
+        sent: Arc<AtomicBool>,
+        message: &'static str,
+    }
+
+    impl SteerAfterFirstModelTurn {
+        fn new(steering: SteeringHandle, message: &'static str) -> Self {
+            Self {
+                steering,
+                sent: Arc::new(AtomicBool::new(false)),
+                message,
+            }
+        }
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for SteerAfterFirstModelTurn {
+        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if matches!(event, StepEvent::ModelTurnFinished { .. })
+                && !self.sent.swap(true, std::sync::atomic::Ordering::SeqCst)
+            {
+                self.steering.steer(self.message).unwrap();
+            }
+            Flow::Continue
+        }
+    }
+
+    #[tokio::test]
+    async fn blocking_steering_racing_with_finalization_resumes_the_run() {
+        let model = MockCompletionModel::new([
+            MockTurn::text("would have finished"),
+            MockTurn::text("finished after steering"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).build();
+        let request = agent.prompt("start").max_turns(2).extended_details();
+        let steering = request.steering_handle();
+        let request = request.add_hook(SteerAfterFirstModelTurn::new(
+            steering.clone(),
+            "terminal update",
+        ));
+
+        let response = request.await.unwrap();
+
+        assert_eq!(response.output, "finished after steering");
+        assert_eq!(recorded.request_count(), 2);
+        assert!(
+            recorded.requests()[1]
+                .chat_history
+                .iter()
+                .any(|message| is_user_text(message, "terminal update"))
+        );
+        assert!(steering.is_closed());
+    }
+
+    #[tokio::test]
+    async fn streaming_steering_racing_with_finalization_resumes_the_run() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("would have finished"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+            vec![
+                MockStreamEvent::text("stream finished after steering"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).build();
+        let request = agent.stream_prompt("start").max_turns(2);
+        let steering = request.steering_handle();
+        let request = request.add_hook(SteerAfterFirstModelTurn::new(
+            steering.clone(),
+            "terminal stream update",
+        ));
+
+        let mut stream = request.await;
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(response) = item.unwrap() {
+                final_response = Some(response);
+            }
+        }
+
+        assert_eq!(
+            final_response.unwrap().output,
+            "stream finished after steering"
+        );
+        assert_eq!(recorded.request_count(), 2);
+        assert!(
+            recorded.requests()[1]
+                .chat_history
+                .iter()
+                .any(|message| is_user_text(message, "terminal stream update"))
+        );
+        assert!(steering.is_closed());
+    }
+
+    #[tokio::test]
+    async fn blocking_steering_waits_for_the_active_tool_batch() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let allow_finish = Arc::new(tokio::sync::Notify::new());
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call-1", "controlled", json!({})),
+            MockTurn::text("finished after steering"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockControlledTool::new(
+                started.clone(),
+                allow_finish.clone(),
+            ))
+            .build();
+        let request = agent.prompt("start").max_turns(2).extended_details();
+        let steering = request.steering_handle();
+
+        let task = tokio::spawn(async move { request.await });
+        started.notified().await;
+        steering.steer("first update").unwrap();
+        steering.steer("second update").unwrap();
+
+        assert_eq!(
+            recorded.request_count(),
+            1,
+            "steering must not start another model call while a tool is in flight"
+        );
+        allow_finish.notify_one();
+
+        let response = task.await.unwrap().unwrap();
+        assert_eq!(response.output, "finished after steering");
+        assert!(steering.is_closed());
+        assert_eq!(
+            steering.steer("late update"),
+            Err(crate::agent::SteeringError::RunClosed)
+        );
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let second = requests[1].chat_history.iter().collect::<Vec<_>>();
+        let tool_result_index = second
+            .iter()
+            .position(|message| is_tool_result(message))
+            .unwrap();
+        let first_update_index = second
+            .iter()
+            .position(|message| is_user_text(message, "first update"))
+            .unwrap();
+        let second_update_index = second
+            .iter()
+            .position(|message| is_user_text(message, "second update"))
+            .unwrap();
+        assert!(tool_result_index < first_update_index);
+        assert!(first_update_index < second_update_index);
+
+        let history = response.messages.unwrap();
+        assert_eq!(
+            history
+                .iter()
+                .filter(|message| is_user_text(message, "first update"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            history
+                .iter()
+                .filter(|message| is_user_text(message, "second update"))
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_steering_uses_the_same_tool_batch_boundary() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let allow_finish = Arc::new(tokio::sync::Notify::new());
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("call-1", "controlled", json!({})),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+            vec![
+                MockStreamEvent::text("stream finished after steering"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockControlledTool::new(
+                started.clone(),
+                allow_finish.clone(),
+            ))
+            .build();
+        let request = agent.stream_prompt("start").max_turns(2);
+        let steering = request.steering_handle();
+
+        let task = tokio::spawn(async move {
+            let mut stream = request.await;
+            let mut final_response = None;
+            while let Some(item) = stream.next().await {
+                if let MultiTurnStreamItem::FinalResponse(response) = item.unwrap() {
+                    final_response = Some(response);
+                }
+            }
+            final_response.unwrap()
+        });
+
+        started.notified().await;
+        steering.steer("stream update").unwrap();
+        assert_eq!(recorded.request_count(), 1);
+        allow_finish.notify_one();
+
+        let response = task.await.unwrap();
+        assert_eq!(response.output, "stream finished after steering");
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let second = requests[1].chat_history.iter().collect::<Vec<_>>();
+        let tool_result_index = second
+            .iter()
+            .position(|message| is_tool_result(message))
+            .unwrap();
+        let update_index = second
+            .iter()
+            .position(|message| is_user_text(message, "stream update"))
+            .unwrap();
+        assert!(tool_result_index < update_index);
+        assert!(steering.is_closed());
+    }
+
+    #[test]
+    fn dropping_an_unstarted_runner_closes_its_steering_handle() {
+        let agent = AgentBuilder::new(MockCompletionModel::default()).build();
+        let runner = agent.runner("start");
+        let steering = runner.steering_handle();
+
+        drop(runner);
+
+        assert_eq!(
+            steering.steer("too late"),
+            Err(crate::agent::SteeringError::RunClosed)
+        );
+    }
+
+    #[tokio::test]
+    async fn dropping_an_unpolled_stream_closes_its_steering_handle() {
+        let agent = AgentBuilder::new(MockCompletionModel::default()).build();
+        let request = agent.stream_prompt("start");
+        let steering = request.steering_handle();
+
+        let stream = request.await;
+        assert!(!steering.is_closed());
+        drop(stream);
+
+        assert_eq!(
+            steering.steer("too late"),
+            Err(crate::agent::SteeringError::RunClosed)
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_run_closes_its_steering_handle() {
+        let agent = AgentBuilder::new(MockCompletionModel::new([MockTurn::error("boom")])).build();
+        let runner = agent.runner("start");
+        let steering = runner.steering_handle();
+
+        assert!(runner.run().await.is_err());
+        assert_eq!(
+            steering.steer("too late"),
+            Err(crate::agent::SteeringError::RunClosed)
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_same_conversation_runs_have_isolated_steering() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let allow_finish = Arc::new(tokio::sync::Notify::new());
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call-1", "controlled", json!({})),
+            MockTurn::text("second run finished"),
+            MockTurn::text("first run finished"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockControlledTool::new(
+                started.clone(),
+                allow_finish.clone(),
+            ))
+            .build();
+
+        let first = agent
+            .runner("first prompt")
+            .conversation("shared")
+            .max_turns(2);
+        let first_steering = first.steering_handle();
+        let second = agent.runner("second prompt").conversation("shared");
+        let second_steering = second.steering_handle();
+
+        let first_task = tokio::spawn(first.run());
+        started.notified().await;
+        first_steering.steer("only first").unwrap();
+
+        let second_response = second.run().await.unwrap();
+        assert_eq!(second_response.output, "second run finished");
+        assert_eq!(recorded.request_count(), 2);
+        allow_finish.notify_one();
+
+        let first_response = first_task.await.unwrap().unwrap();
+        assert_eq!(first_response.output, "first run finished");
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 3);
+        let second_request = requests
+            .iter()
+            .find(|request| {
+                request
+                    .chat_history
+                    .iter()
+                    .any(|message| is_user_text(message, "second prompt"))
+            })
+            .unwrap();
+        let steered_first_request = requests
+            .iter()
+            .find(|request| {
+                request
+                    .chat_history
+                    .iter()
+                    .any(|message| is_user_text(message, "only first"))
+            })
+            .unwrap();
+        assert!(
+            steered_first_request
+                .chat_history
+                .iter()
+                .any(|message| is_user_text(message, "first prompt"))
+        );
+        assert!(
+            !second_request
+                .chat_history
+                .iter()
+                .any(|message| is_user_text(message, "only first"))
+        );
+        assert!(first_steering.is_closed());
+        assert!(second_steering.is_closed());
+    }
 
     /// Records the kind of every hook event (and every tool-result payload) so a
     /// run() and a stream() of the same scenario can be compared.

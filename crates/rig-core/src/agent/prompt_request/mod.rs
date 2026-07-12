@@ -21,6 +21,15 @@ use std::{future::IntoFuture, marker::PhantomData};
 /// `$recv` is the field name to delegate through (`runner` or `inner`).
 macro_rules! forward_prompt_setters {
     ($recv:ident) => {
+        /// Return a cloneable handle for steering this request from another task.
+        ///
+        /// Obtain the handle before moving or awaiting the request. Queued user
+        /// messages are delivered after the current tool batch and before the
+        /// next model call.
+        pub fn steering_handle(&self) -> crate::agent::SteeringHandle {
+            self.$recv.steering_handle()
+        }
+
         /// Attach a per-call [`ToolCallExtensions`] for this request.
         ///
         /// Every tool the agent executes during this request can read the

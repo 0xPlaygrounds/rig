@@ -110,6 +110,7 @@ pub mod hook;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
+mod steering;
 mod tool;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
@@ -131,3 +132,4 @@ pub use prompt_request::{
 };
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;
+pub use steering::{SteeringError, SteeringHandle};
