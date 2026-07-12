@@ -371,7 +371,7 @@ pub struct ToolDefinition {
     /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
     /// Optional JSON Schema describing the model-visible result.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip)]
     pub output_schema: Option<serde_json::Value>,
     /// Host-only operational metadata. It is never sent to a model provider.
     #[serde(default, skip)]
