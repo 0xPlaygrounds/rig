@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MockResponse {
     usage: Usage,
+    finish_reason: Option<crate::runtime::TerminalReason>,
+    raw_finish_reason: Option<String>,
 }
 
 impl MockResponse {
@@ -19,12 +21,29 @@ impl MockResponse {
     pub fn new() -> Self {
         Self {
             usage: Usage::new(),
+            finish_reason: None,
+            raw_finish_reason: None,
         }
     }
 
     /// Create a mock raw response carrying token usage.
     pub fn with_usage(usage: Usage) -> Self {
-        Self { usage }
+        Self {
+            usage,
+            finish_reason: None,
+            raw_finish_reason: None,
+        }
+    }
+
+    /// Attach normalized and raw finish metadata.
+    pub fn with_finish_reason(
+        mut self,
+        finish_reason: crate::runtime::TerminalReason,
+        raw_finish_reason: impl Into<String>,
+    ) -> Self {
+        self.finish_reason = Some(finish_reason);
+        self.raw_finish_reason = Some(raw_finish_reason.into());
+        self
     }
 
     /// Create a mock raw response whose usage has only `total_tokens` set.
@@ -38,6 +57,14 @@ impl MockResponse {
 impl GetTokenUsage for MockResponse {
     fn token_usage(&self) -> Usage {
         self.usage
+    }
+
+    fn finish_reason(&self) -> Option<crate::runtime::TerminalReason> {
+        self.finish_reason.clone()
+    }
+
+    fn raw_finish_reason(&self) -> Option<String> {
+        self.raw_finish_reason.clone()
     }
 }
 

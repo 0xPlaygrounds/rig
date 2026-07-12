@@ -17,7 +17,7 @@
 //! resulting [`ToolExecutionResult`] all the way through to the
 //! [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event.
 
-use crate::tool::ToolResultExtensions;
+use crate::{OneOrMany, message::ToolResultContent, tool::ToolResultExtensions};
 use serde::Serialize;
 
 /// How a tool execution failed, as a closed set of standard kinds.
@@ -420,6 +420,7 @@ impl From<ToolReturnOutcome> for ToolOutcome {
 #[non_exhaustive]
 pub struct ToolExecutionResult {
     pub(crate) model_output: String,
+    pub(crate) content: Option<OneOrMany<ToolResultContent>>,
     pub(crate) outcome: ToolOutcome,
     pub(crate) extensions: ToolResultExtensions,
 }
@@ -435,6 +436,7 @@ impl ToolExecutionResult {
     pub(crate) fn new(model_output: impl Into<String>, outcome: ToolOutcome) -> Self {
         Self {
             model_output: model_output.into(),
+            content: None,
             outcome,
             extensions: ToolResultExtensions::new(),
         }
@@ -467,6 +469,17 @@ impl ToolExecutionResult {
     /// [`ToolOutcome` note](ToolOutcome#skipped-vs-denied).
     pub fn denied(model_output: impl Into<String>) -> Self {
         Self::new(model_output, ToolOutcome::Denied)
+    }
+
+    /// Attach explicit rich model content without a magic JSON envelope.
+    pub fn with_content(mut self, content: OneOrMany<ToolResultContent>) -> Self {
+        self.content = Some(content);
+        self
+    }
+
+    /// Rich model content, when explicitly supplied by the tool.
+    pub fn content(&self) -> Option<&OneOrMany<ToolResultContent>> {
+        self.content.as_ref()
     }
 
     /// Attach result extensions, replacing any already set.
@@ -555,6 +568,8 @@ pub struct ToolReturn<T> {
     pub outcome: ToolReturnOutcome,
     /// Metadata surfaced to hooks/tracing but never sent to the model.
     pub extensions: ToolResultExtensions,
+    /// Explicit rich model content, bypassing legacy string-envelope parsing.
+    pub content: Option<OneOrMany<ToolResultContent>>,
 }
 
 impl<T> ToolReturn<T> {
@@ -566,6 +581,7 @@ impl<T> ToolReturn<T> {
             output,
             outcome: ToolReturnOutcome::Success,
             extensions: ToolResultExtensions::new(),
+            content: None,
         }
     }
 
@@ -575,6 +591,7 @@ impl<T> ToolReturn<T> {
             output,
             outcome,
             extensions: ToolResultExtensions::new(),
+            content: None,
         }
     }
 
@@ -596,6 +613,12 @@ impl<T> ToolReturn<T> {
     /// Replace the outcome.
     pub fn with_outcome(mut self, outcome: ToolReturnOutcome) -> Self {
         self.outcome = outcome;
+        self
+    }
+
+    /// Attach explicit rich model content.
+    pub fn with_content(mut self, content: OneOrMany<ToolResultContent>) -> Self {
+        self.content = Some(content);
         self
     }
 
@@ -637,10 +660,12 @@ impl<T: Serialize> ToolReturn<T> {
             output,
             outcome,
             extensions,
+            content,
         } = self;
         match super::serialize_tool_output(&output) {
             Ok(model_output) => ToolExecutionResult {
                 model_output,
+                content,
                 outcome: outcome.into(),
                 extensions,
             },
@@ -655,6 +680,7 @@ impl<T: Serialize> ToolReturn<T> {
                 };
                 ToolExecutionResult {
                     model_output: format!("failed to serialize tool output: {err}"),
+                    content,
                     outcome,
                     extensions,
                 }
@@ -678,6 +704,20 @@ const _: fn() = || {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_rich_content_bypasses_string_envelope_parsing() {
+        let rich = OneOrMany::many([
+            ToolResultContent::text("first"),
+            ToolResultContent::text("second"),
+        ])
+        .unwrap();
+        let result = ToolReturn::success("legacy fallback".to_string())
+            .with_content(rich.clone())
+            .into_execution_result();
+        assert_eq!(result.model_output(), "legacy fallback");
+        assert_eq!(result.content(), Some(&rich));
+    }
 
     #[test]
     fn per_kind_constructors_prefill_retryable() {

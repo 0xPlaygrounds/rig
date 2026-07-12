@@ -155,6 +155,10 @@ pub enum PromptError {
     #[error("MemoryError: {0}")]
     MemoryError(#[from] crate::memory::MemoryError),
 
+    /// Durable session loading or persistence failed.
+    #[error("SessionError: {0}")]
+    SessionError(#[from] crate::session::SessionError),
+
     /// There was an error while using a tool
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
@@ -329,6 +333,31 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
+    /// Optional JSON Schema describing the model-visible tool result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<serde_json::Value>,
+}
+
+impl ToolDefinition {
+    /// Construct a tool definition without an output schema.
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            parameters,
+            output_schema: None,
+        }
+    }
+
+    /// Attach a model-visible output schema.
+    pub fn with_output_schema(mut self, output_schema: serde_json::Value) -> Self {
+        self.output_schema = Some(output_schema);
+        self
+    }
 }
 
 /// Provider-native tool definition.
@@ -493,6 +522,10 @@ pub struct CompletionResponse<T> {
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Used to pair reasoning input items with their output items in multi-turn.
     pub message_id: Option<String>,
+    /// Provider-neutral reason this completion stopped, when reported.
+    pub finish_reason: Option<crate::runtime::TerminalReason>,
+    /// Original provider finish/status value, preserved for forward compatibility.
+    pub raw_finish_reason: Option<String>,
 }
 
 /// A trait for grabbing the token usage of a completion response.
@@ -503,6 +536,16 @@ pub trait GetTokenUsage {
     /// [`Usage`]'s documented sentinel for missing provider usage metrics;
     /// response types that carry no usage return [`Usage::new`].
     fn token_usage(&self) -> crate::completion::Usage;
+
+    /// Returns a provider-neutral terminal reason when the response exposes one.
+    fn finish_reason(&self) -> Option<crate::runtime::TerminalReason> {
+        None
+    }
+
+    /// Returns the unmodified provider finish/status value when available.
+    fn raw_finish_reason(&self) -> Option<String> {
+        None
+    }
 }
 
 impl GetTokenUsage for () {
@@ -521,6 +564,14 @@ where
         } else {
             crate::completion::Usage::new()
         }
+    }
+
+    fn finish_reason(&self) -> Option<crate::runtime::TerminalReason> {
+        self.as_ref().and_then(GetTokenUsage::finish_reason)
+    }
+
+    fn raw_finish_reason(&self) -> Option<String> {
+        self.as_ref().and_then(GetTokenUsage::raw_finish_reason)
     }
 }
 

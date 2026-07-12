@@ -729,6 +729,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
+            finish_reason: None,
+            raw_finish_reason: None,
             choice,
             usage,
             raw_response: response,
@@ -1377,13 +1379,15 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
-        let tools: Vec<crate::providers::openai::completion::ToolDefinition> = req
+        let tools: Vec<crate::providers::openai::completion::ChatToolDefinition> = req
             .tools
             .clone()
             .into_iter()
             .map(|tool| {
                 let def = crate::providers::openai::completion::ToolDefinition::from(tool);
-                if strict_tools { def.with_strict() } else { def }
+                crate::providers::openai::completion::ChatToolDefinition::Function(
+                    if strict_tools { def.with_strict() } else { def },
+                )
             })
             .collect();
 
@@ -2855,6 +2859,8 @@ mod tests {
         let tool_call = message::ToolCall {
             id: "call_wire".to_string(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             function: message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
@@ -2890,6 +2896,8 @@ mod tests {
         let tool_call = message::ToolCall {
             id: "call_wire".to_string(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             function: message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),

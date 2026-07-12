@@ -405,6 +405,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         })?;
 
         Ok(completion::CompletionResponse {
+            finish_reason: None,
+            raw_finish_reason: None,
             choice,
             usage,
             raw_response: response,

@@ -18,6 +18,15 @@
 
 This companion crate implements a Rig vector store based on SQLite.
 
+## Durable agent memory and sessions
+
+`SqliteConversationMemory::open("agent.db")` supplies ordered, versioned,
+transactional conversation memory for `AgentBuilder::memory`.
+`SqliteSessionStore::open("agent.db")` supplies the separate append-only,
+branchable event store accepted by `AgentBuilder::session`, including typed
+messages/model/tool events, bookmarks, checkpoints, interruption recovery,
+compaction records, and JSON import/export.
+
 ## Usage
 
 Add the companion crate to your `Cargo.toml`, along with the rig-core crate:

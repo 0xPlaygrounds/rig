@@ -687,6 +687,8 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
+            finish_reason: None,
+            raw_finish_reason: None,
             choice,
             usage,
             raw_response: response,
@@ -869,6 +871,8 @@ where
                         }
 
                         Ok(completion::CompletionResponse {
+                            finish_reason: None,
+                            raw_finish_reason: None,
                             choice: core.choice,
                             usage: core.usage,
                             raw_response: CopilotCompletionResponse::Chat(Box::new(response)),
@@ -939,6 +943,8 @@ where
                 }
 
                 Ok(completion::CompletionResponse {
+                    finish_reason: None,
+                    raw_finish_reason: None,
                     choice: core.choice,
                     usage: core.usage,
                     raw_response: CopilotCompletionResponse::Responses(Box::new(response)),
@@ -1213,6 +1219,8 @@ where
                             usage: final_usage,
                             reasoning_metadata,
                             reasoning_context,
+                            finish_reason: None,
+                            raw_finish_reason: None,
                         }
                     )
                 ));

@@ -383,6 +383,35 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     }
 }
 
+pub(crate) fn normalized_finish_reason(
+    reason: &FinishReason,
+) -> (crate::runtime::TerminalReason, String) {
+    use crate::runtime::TerminalReason;
+    let (normalized, raw) = match reason {
+        FinishReason::Stop => (TerminalReason::Completed, "STOP"),
+        FinishReason::MaxTokens => (TerminalReason::MaxTokens, "MAX_TOKENS"),
+        FinishReason::Safety => (TerminalReason::ContentFiltered, "SAFETY"),
+        FinishReason::Recitation => (TerminalReason::ContentFiltered, "RECITATION"),
+        FinishReason::Language => (TerminalReason::ContentFiltered, "LANGUAGE"),
+        FinishReason::Blocklist => (TerminalReason::ContentFiltered, "BLOCKLIST"),
+        FinishReason::ProhibitedContent => (TerminalReason::ContentFiltered, "PROHIBITED_CONTENT"),
+        FinishReason::Spii => (TerminalReason::ContentFiltered, "SPII"),
+        FinishReason::MalformedFunctionCall => (TerminalReason::Failed, "MALFORMED_FUNCTION_CALL"),
+        FinishReason::UnexpectedToolCall => (TerminalReason::Failed, "UNEXPECTED_TOOL_CALL"),
+        FinishReason::MissingThoughtSignature => {
+            (TerminalReason::Failed, "MISSING_THOUGHT_SIGNATURE")
+        }
+        FinishReason::TooManyToolCalls => (TerminalReason::Failed, "TOO_MANY_TOOL_CALLS"),
+        FinishReason::MalformedResponse => (TerminalReason::Failed, "MALFORMED_RESPONSE"),
+        FinishReason::FinishReasonUnspecified => (
+            TerminalReason::Other("unspecified".into()),
+            "FINISH_REASON_UNSPECIFIED",
+        ),
+        FinishReason::Other => (TerminalReason::Other("other".into()), "OTHER"),
+    };
+    (normalized, raw.to_string())
+}
+
 pub(crate) fn function_call_finish_reason_error(
     reason: &FinishReason,
     finish_message: Option<&str>,
@@ -508,7 +537,15 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
+        let (finish_reason, raw_finish_reason) = candidate
+            .finish_reason
+            .as_ref()
+            .map(normalized_finish_reason)
+            .map_or((None, None), |(reason, raw)| (Some(reason), Some(raw)));
+
         Ok(completion::CompletionResponse {
+            finish_reason,
+            raw_finish_reason,
             choice,
             usage,
             raw_response: response,
@@ -2545,6 +2582,24 @@ mod tests {
     }
 
     #[test]
+    fn normalized_finish_reason_preserves_provider_value() {
+        assert_eq!(
+            super::normalized_finish_reason(&FinishReason::Stop),
+            (
+                crate::runtime::TerminalReason::Completed,
+                "STOP".to_string()
+            )
+        );
+        assert_eq!(
+            super::normalized_finish_reason(&FinishReason::Safety),
+            (
+                crate::runtime::TerminalReason::ContentFiltered,
+                "SAFETY".to_string()
+            )
+        );
+    }
+
+    #[test]
     fn test_tool_protocol_finish_reason_returns_response_error() {
         for (reason, finish_message) in [
             (
@@ -2690,6 +2745,8 @@ mod tests {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             function: message::ToolFunction {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
@@ -2961,6 +3018,8 @@ mod tests {
         let tool_result = ToolResult {
             id: "test_tool".to_string(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             content: OneOrMany::many(vec![
                 ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
                 ToolResultContent::Image(Image {
@@ -3088,6 +3147,8 @@ mod tests {
         let tool_result = ToolResult {
             id: "screenshot_tool".to_string(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             content: OneOrMany::one(ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
                 media_type: Some(ImageMediaType::PNG),

@@ -556,7 +556,7 @@ mod tests {
     use async_stream::stream;
     use futures::StreamExt;
 
-    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    #[cfg(not(target_arch = "wasm32"))]
     fn to_stream_result(
         stream: impl futures::Stream<
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
@@ -566,7 +566,7 @@ mod tests {
         Box::pin(stream)
     }
 
-    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    #[cfg(target_arch = "wasm32")]
     fn to_stream_result(
         stream: impl futures::Stream<
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
@@ -587,6 +587,7 @@ mod tests {
 
         let mut tools = build_tool_definitions(
             vec![crate::completion::ToolDefinition {
+                output_schema: None,
                 name: "rig_tool".to_string(),
                 description: "Rig tool".to_string(),
                 parameters: json!({"type": "object", "properties": {}}),
@@ -737,6 +738,7 @@ mod tests {
             chat_history: OneOrMany::one(RigMessage::user("Add 2 and 3")),
             documents: vec![],
             tools: vec![crate::completion::ToolDefinition {
+                output_schema: None,
                 name: "add".to_string(),
                 description: "Add x and y".to_string(),
                 parameters: json!({
@@ -813,6 +815,7 @@ mod tests {
             resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
         let mut tools = build_tool_definitions(
             vec![crate::completion::ToolDefinition {
+                output_schema: None,
                 name: "rig_tool".to_string(),
                 description: "Rig tool".to_string(),
                 parameters: json!({"type": "object", "properties": {}}),

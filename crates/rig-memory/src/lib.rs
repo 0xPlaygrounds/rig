@@ -1584,6 +1584,8 @@ mod tests {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: "call_1".into(),
                 call_id: None,
+                internal_call_id: None,
+                parent_internal_call_id: None,
                 content: OneOrMany::one(ToolResultContent::text("ok")),
             })),
         }

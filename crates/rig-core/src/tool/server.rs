@@ -1,13 +1,18 @@
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use tokio::sync::RwLock;
 
 use crate::{
-    completion::{CompletionError, ToolDefinition},
+    completion::{CompletionError, ProviderToolDefinition, ToolDefinition},
+    runtime::RunContext,
     tool::{
         Tool, ToolCallExtensions, ToolDyn, ToolExecutionResult, ToolFailure, ToolSet, ToolSetError,
     },
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 /// Append `name` to the advertised static-tool list unless already present.
@@ -21,6 +26,222 @@ fn push_unique_name(names: &mut Vec<String>, name: String) {
     }
 }
 
+/// Runtime kind of an entry in the host tool catalog.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ToolCatalogKind {
+    /// A native Rig tool.
+    Native,
+    /// A tool backed by MCP.
+    Mcp,
+    /// A tool selected dynamically from an index.
+    Dynamic,
+    /// A provider-executed hosted tool.
+    ProviderHosted,
+}
+
+/// Scheduling hint enforced by hosts when composing tool batches.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ToolScheduling {
+    /// No catalog override; preserve the runner's explicit concurrency setting.
+    #[default]
+    Unspecified,
+    /// Force serialized execution even when the runner allows concurrency.
+    Serial,
+    /// The host declares this tool safe for parallel execution.
+    ParallelSafe,
+}
+
+/// Host-side provenance and metadata for one catalog entry.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ToolCatalogMetadata {
+    /// Human-readable source or package identifier.
+    pub source: Option<String>,
+    /// Provenance identifier such as an MCP server URI.
+    pub provenance: Option<String>,
+    /// Arbitrary host-only metadata. This is never included in provider schemas.
+    pub host: serde_json::Map<String, serde_json::Value>,
+    /// Host scheduling declaration.
+    pub scheduling: ToolScheduling,
+    /// Bounded retries for failures explicitly classified retryable.
+    pub max_retries: usize,
+    /// Whether this tool semantically produces the final run result.
+    pub final_result: bool,
+}
+
+/// Ordered, introspectable catalog entry.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolCatalogEntry {
+    /// Catalog name or provider-hosted kind.
+    pub name: String,
+    /// Runtime kind.
+    pub kind: ToolCatalogKind,
+    /// Model-facing function schema for executable tools.
+    pub definition: Option<ToolDefinition>,
+    /// Provider-hosted declaration for provider-executed tools.
+    pub provider_definition: Option<ProviderToolDefinition>,
+    /// Metadata retained exclusively by the host.
+    pub metadata: ToolCatalogMetadata,
+}
+
+/// Restrictions for tool calls made from inside another tool.
+#[derive(Clone, Debug)]
+pub struct NestedToolPolicy {
+    /// Maximum ancestry depth after entering the child.
+    pub max_depth: usize,
+    /// Optional nested target allowlist.
+    pub allowlist: Option<HashSet<String>>,
+    /// Whether a target already present in ancestry may be entered again.
+    pub allow_recursion: bool,
+}
+
+impl Default for NestedToolPolicy {
+    fn default() -> Self {
+        Self {
+            max_depth: 8,
+            allowlist: None,
+            allow_recursion: false,
+        }
+    }
+}
+
+/// Structured result and correlation assigned to a nested dispatch.
+#[derive(Debug, Clone)]
+pub struct NestedToolResult {
+    /// Framework-generated child call ID.
+    pub internal_call_id: String,
+    /// Parent call ID inherited from the invoking tool.
+    pub parent_internal_call_id: Option<String>,
+    /// Structured tool result.
+    pub result: ToolExecutionResult,
+}
+
+pub(crate) trait ScopedToolDispatch: WasmCompatSend + WasmCompatSync {
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch<'a>(
+        &'a self,
+        server: &'a ToolServerHandle,
+        extensions: ToolCallExtensions,
+        context: RunContext,
+        name: &'a str,
+        args: &'a str,
+        internal_call_id: &'a str,
+        parent_internal_call_id: Option<&'a str>,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult>;
+}
+
+/// Cloneable executor automatically supplied to tools for scoped nested calls.
+#[derive(Clone)]
+pub struct ScopedToolExecutor {
+    server: ToolServerHandle,
+    extensions: ToolCallExtensions,
+    context: RunContext,
+    policy: NestedToolPolicy,
+    dispatch: Option<Arc<dyn ScopedToolDispatch>>,
+}
+
+impl ScopedToolExecutor {
+    pub(crate) fn new(
+        server: ToolServerHandle,
+        extensions: ToolCallExtensions,
+        context: RunContext,
+        policy: NestedToolPolicy,
+        dispatch: Option<Arc<dyn ScopedToolDispatch>>,
+    ) -> Self {
+        Self {
+            server,
+            extensions,
+            context,
+            policy,
+            dispatch,
+        }
+    }
+
+    /// Dispatch a nested tool with inherited extensions and cancellation.
+    pub async fn call(&self, name: &str, args: &str) -> NestedToolResult {
+        let child_id = crate::id::generate();
+        let parent_id = self.context.current_call_id().map(str::to_owned);
+        let rejected = if self.context.should_stop() {
+            Some(ToolFailure::cancelled("parent run cancelled"))
+        } else if self.context.ancestry().len() + 1 > self.policy.max_depth {
+            Some(ToolFailure::permission_denied(
+                "nested depth limit exceeded",
+            ))
+        } else if self
+            .policy
+            .allowlist
+            .as_ref()
+            .is_some_and(|set| !set.contains(name))
+        {
+            Some(ToolFailure::permission_denied(format!(
+                "nested tool `{name}` is not allowed"
+            )))
+        } else if !self.policy.allow_recursion
+            && self
+                .context
+                .ancestry()
+                .iter()
+                .any(|ancestor| ancestor == name)
+        {
+            Some(ToolFailure::permission_denied(format!(
+                "recursive nested tool `{name}` rejected"
+            )))
+        } else {
+            None
+        };
+        if let Some(failure) = rejected {
+            return NestedToolResult {
+                internal_call_id: child_id,
+                parent_internal_call_id: parent_id,
+                result: ToolExecutionResult::failed(failure.message.clone(), failure),
+            };
+        }
+        let child = self.context.child(name.to_owned(), child_id.clone());
+        let mut extensions = self.extensions.clone();
+        extensions.insert(child.clone());
+        extensions.insert(Self::new(
+            self.server.clone(),
+            extensions.clone(),
+            child.clone(),
+            self.policy.clone(),
+            self.dispatch.clone(),
+        ));
+        let call = async {
+            if let Some(dispatch) = &self.dispatch {
+                dispatch
+                    .dispatch(
+                        &self.server,
+                        extensions,
+                        child.clone(),
+                        name,
+                        args,
+                        &child_id,
+                        parent_id.as_deref(),
+                    )
+                    .await
+            } else {
+                self.server
+                    .call_tool_structured(name, args, &extensions)
+                    .await
+            }
+        };
+        let stopped = child.stopped();
+        futures::pin_mut!(call, stopped);
+        let result = match futures::future::select(call, stopped).await {
+            futures::future::Either::Left((result, _)) => result,
+            futures::future::Either::Right((reason, _)) => ToolExecutionResult::failed(
+                format!("nested tool stopped: {reason:?}"),
+                ToolFailure::cancelled(format!("nested tool stopped: {reason:?}")),
+            ),
+        };
+        NestedToolResult {
+            internal_call_id: child_id.clone(),
+            parent_internal_call_id: parent_id.clone(),
+            result,
+        }
+    }
+}
+
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
     /// Static tool names that persist until explicitly removed.
@@ -29,6 +250,8 @@ struct ToolServerState {
     dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The toolset where tools are registered and executed.
     toolset: ToolSet,
+    metadata: HashMap<String, (ToolCatalogKind, ToolCatalogMetadata)>,
+    provider_tools: Vec<(ProviderToolDefinition, ToolCatalogMetadata)>,
 }
 
 /// Builder for constructing a [`ToolServerHandle`].
@@ -39,6 +262,8 @@ pub struct ToolServer {
     static_tool_names: Vec<String>,
     dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     toolset: ToolSet,
+    metadata: HashMap<String, (ToolCatalogKind, ToolCatalogMetadata)>,
+    provider_tools: Vec<(ProviderToolDefinition, ToolCatalogMetadata)>,
 }
 
 impl Default for ToolServer {
@@ -53,6 +278,8 @@ impl ToolServer {
             static_tool_names: Vec::new(),
             dynamic_tools: Vec::new(),
             toolset: ToolSet::default(),
+            metadata: HashMap::new(),
+            provider_tools: Vec::new(),
         }
     }
 
@@ -72,6 +299,22 @@ impl ToolServer {
         self
     }
 
+    pub(crate) fn catalog_kinds(mut self, kinds: HashMap<String, ToolCatalogKind>) -> Self {
+        for (name, kind) in kinds {
+            self.metadata
+                .insert(name, (kind, ToolCatalogMetadata::default()));
+        }
+        self
+    }
+
+    pub(crate) fn provider_tools(mut self, tools: Vec<ProviderToolDefinition>) -> Self {
+        self.provider_tools = tools
+            .into_iter()
+            .map(|tool| (tool, ToolCatalogMetadata::default()))
+            .collect();
+        self
+    }
+
     pub(crate) fn add_dynamic_tools(
         mut self,
         dyn_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
@@ -84,7 +327,10 @@ impl ToolServer {
     /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = self.toolset.add_tool(tool);
-        push_unique_name(&mut self.static_tool_names, toolname);
+        push_unique_name(&mut self.static_tool_names, toolname.clone());
+        self.metadata
+            .entry(toolname)
+            .or_insert_with(|| (ToolCatalogKind::Native, ToolCatalogMetadata::default()));
         self
     }
 
@@ -114,7 +360,11 @@ impl ToolServer {
         let toolname = self
             .toolset
             .add_tool(McpTool::from_mcp_server(tool, client).with_timeout(timeout));
-        push_unique_name(&mut self.static_tool_names, toolname);
+        push_unique_name(&mut self.static_tool_names, toolname.clone());
+        self.metadata.insert(
+            toolname,
+            (ToolCatalogKind::Mcp, ToolCatalogMetadata::default()),
+        );
         self
     }
 
@@ -127,16 +377,29 @@ impl ToolServer {
         toolset: ToolSet,
     ) -> Self {
         self.dynamic_tools.push((sample, Arc::new(dynamic_tools)));
+        for name in toolset.ordered_names() {
+            self.metadata
+                .entry(name.clone())
+                .or_insert_with(|| (ToolCatalogKind::Dynamic, ToolCatalogMetadata::default()));
+        }
         self.toolset.add_tools(toolset);
         self
     }
 
     /// Consume the builder and return a shared [`ToolServerHandle`].
     pub fn run(self) -> ToolServerHandle {
+        let mut metadata = self.metadata;
+        for name in &self.static_tool_names {
+            metadata
+                .entry(name.clone())
+                .or_insert_with(|| (ToolCatalogKind::Native, ToolCatalogMetadata::default()));
+        }
         ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
             static_tool_names: self.static_tool_names,
             dynamic_tools: self.dynamic_tools,
             toolset: self.toolset,
+            metadata,
+            provider_tools: self.provider_tools,
         })))
     }
 }
@@ -154,9 +417,83 @@ impl ToolServerHandle {
     /// the implementation (last wins) and keeps its position.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
+        let kind = tool.catalog_kind();
         let toolname = state.toolset.add_tool_boxed(Box::new(tool));
-        push_unique_name(&mut state.static_tool_names, toolname);
+        push_unique_name(&mut state.static_tool_names, toolname.clone());
+        state
+            .metadata
+            .insert(toolname, (kind, ToolCatalogMetadata::default()));
         Ok(())
+    }
+
+    /// Register or replace a native tool with host-only catalog metadata.
+    pub async fn add_tool_with_metadata(
+        &self,
+        tool: impl ToolDyn + 'static,
+        metadata: ToolCatalogMetadata,
+    ) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        let kind = tool.catalog_kind();
+        let name = state.toolset.add_tool_boxed(Box::new(tool));
+        push_unique_name(&mut state.static_tool_names, name.clone());
+        state.metadata.insert(name, (kind, metadata));
+        Ok(())
+    }
+
+    /// Register a provider-hosted tool for introspection. It is never available
+    /// to [`call_tool_structured`](Self::call_tool_structured).
+    pub async fn add_provider_tool(
+        &self,
+        tool: ProviderToolDefinition,
+        metadata: ToolCatalogMetadata,
+    ) {
+        let mut state = self.0.write().await;
+        if let Some(existing) = state
+            .provider_tools
+            .iter_mut()
+            .find(|(registered, _)| registered.kind == tool.kind)
+        {
+            *existing = (tool, metadata);
+        } else {
+            state.provider_tools.push((tool, metadata));
+        }
+    }
+
+    /// Return an ordered snapshot of executable and provider-hosted entries.
+    pub async fn catalog(&self) -> Vec<ToolCatalogEntry> {
+        let state = self.0.read().await;
+        let mut entries = state
+            .toolset
+            .ordered_names()
+            .filter_map(|name| {
+                let tool = state.toolset.get(name)?;
+                let (kind, metadata) = state
+                    .metadata
+                    .get(name)
+                    .cloned()
+                    .unwrap_or((ToolCatalogKind::Dynamic, ToolCatalogMetadata::default()));
+                Some(ToolCatalogEntry {
+                    name: name.clone(),
+                    kind,
+                    definition: Some(tool.definition_with_name(name.clone())),
+                    provider_definition: None,
+                    metadata,
+                })
+            })
+            .collect::<Vec<_>>();
+        entries.extend(
+            state
+                .provider_tools
+                .iter()
+                .map(|(tool, metadata)| ToolCatalogEntry {
+                    name: tool.kind.clone(),
+                    kind: ToolCatalogKind::ProviderHosted,
+                    definition: None,
+                    provider_definition: Some(tool.clone()),
+                    metadata: metadata.clone(),
+                }),
+        );
+        entries
     }
 
     /// Merge an entire toolset into the server. Tool names from `toolset`
@@ -168,6 +505,13 @@ impl ToolServerHandle {
         let mut state = self.0.write().await;
         for name in toolset.ordered_names() {
             push_unique_name(&mut state.static_tool_names, name.clone());
+            let kind = toolset
+                .get(name)
+                .map_or(ToolCatalogKind::Native, |tool| tool.catalog_kind());
+            state
+                .metadata
+                .entry(name.clone())
+                .or_insert_with(|| (kind, ToolCatalogMetadata::default()));
         }
         state.toolset.add_tools(toolset);
         Ok(())
@@ -178,6 +522,10 @@ impl ToolServerHandle {
         let mut state = self.0.write().await;
         state.static_tool_names.retain(|x| *x != tool_name);
         state.toolset.delete_tool(tool_name);
+        state.metadata.remove(tool_name);
+        state
+            .provider_tools
+            .retain(|(tool, _)| tool.kind != tool_name);
         Ok(())
     }
 
@@ -239,9 +587,15 @@ impl ToolServerHandle {
         args: &str,
         extensions: &ToolCallExtensions,
     ) -> ToolExecutionResult {
-        let tool = {
+        let (tool, max_retries) = {
             let state = self.0.read().await;
-            state.toolset.get(tool_name).cloned()
+            (
+                state.toolset.get(tool_name).cloned(),
+                state
+                    .metadata
+                    .get(tool_name)
+                    .map_or(0, |(_, metadata)| metadata.max_retries),
+            )
         };
 
         match tool {
@@ -250,13 +604,45 @@ impl ToolServerHandle {
                     "Calling tool {tool_name} with args:\n{}",
                     serde_json::to_string_pretty(&args).unwrap_or_default()
                 );
-                tool.call_structured(args.to_string(), extensions).await
+                let mut attempt = 0;
+                loop {
+                    let result = tool.call_structured(args.to_string(), extensions).await;
+                    let retryable = result
+                        .outcome()
+                        .failure()
+                        .and_then(|failure| failure.retryable)
+                        == Some(true);
+                    if !retryable || attempt >= max_retries {
+                        break result;
+                    }
+                    attempt += 1;
+                }
             }
             None => ToolExecutionResult::failed(
                 format!("tool `{tool_name}` not found"),
                 ToolFailure::not_found(format!("no tool named `{tool_name}` is registered")),
             ),
         }
+    }
+
+    pub(crate) async fn scheduling(&self, name: &str) -> ToolScheduling {
+        self.0
+            .read()
+            .await
+            .metadata
+            .get(name)
+            .map_or(ToolScheduling::Unspecified, |(_, metadata)| {
+                metadata.scheduling.clone()
+            })
+    }
+
+    pub(crate) async fn is_final_result(&self, name: &str) -> bool {
+        self.0
+            .read()
+            .await
+            .metadata
+            .get(name)
+            .is_some_and(|(_, metadata)| metadata.final_result)
     }
 
     /// Retrieve tool definitions, optionally using a prompt to select

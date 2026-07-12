@@ -16,11 +16,12 @@ use crate::{
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
+    runtime::TerminalReason,
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::ToolCallExtensions,
+    tool::{ToolCallExtensions, server::ToolScheduling},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
-use futures::{Stream, StreamExt, stream};
+use futures::{Stream, StreamExt, future::Either, stream};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing_futures::Instrument;
@@ -33,11 +34,11 @@ use crate::{
     tool::ToolSetError,
 };
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>>>;
 
@@ -176,21 +177,32 @@ impl<R> MultiTurnStreamItem<R> {
 /// reported usage for the recovered completion call is not lost.
 async fn drain_stream_usage<R>(
     stream: &mut crate::streaming::StreamingCompletionResponse<R>,
-) -> Result<crate::completion::Usage, StreamingError>
+) -> Result<
+    (
+        crate::completion::Usage,
+        Option<crate::runtime::TerminalReason>,
+        Option<String>,
+    ),
+    StreamingError,
+>
 where
     R: Clone + Unpin + GetTokenUsage,
 {
     while let Some(content) = stream.next().await {
         match content {
             Ok(StreamedAssistantContent::Final(final_resp)) => {
-                return Ok(final_resp.token_usage());
+                return Ok((
+                    final_resp.token_usage(),
+                    final_resp.finish_reason(),
+                    final_resp.raw_finish_reason(),
+                ));
             }
             Ok(_) => {}
             Err(err) => return Err(err.into()),
         }
     }
 
-    Ok(crate::completion::Usage::new())
+    Ok((crate::completion::Usage::new(), None, None))
 }
 
 pub(crate) fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
@@ -303,6 +315,11 @@ where
         }
     }
 
+    /// Returns the run-scoped control handle before this stream is consumed.
+    pub fn control_handle(&self) -> crate::runtime::RunControlHandle {
+        self.runner.control_handle()
+    }
+
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call.
@@ -352,11 +369,11 @@ where
 /// A boxed, medium-specific item stream for one engine step (model turn or tool
 /// batch). Boxed so a generic [`drive_agent`] can forward it without the
 /// per-step future leaking into the engine's own (`Send`) inference.
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) type DriveStream<'a, R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send + 'a>>;
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 pub(crate) type DriveStream<'a, R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + 'a>>;
 
@@ -461,8 +478,164 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
 /// medium-specific model call, tool execution, span shaping and finalization to
 /// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
 /// the blocking surface folds them to `Done`.
+async fn append_session_event<M>(
+    runner: &AgentRunner<M>,
+    kind: crate::session::SessionEventKind,
+) -> Result<(), crate::session::SessionError>
+where
+    M: CompletionModel,
+{
+    let (Some(store), Some(session_id)) = (&runner.session_store, &runner.session_id) else {
+        return Ok(());
+    };
+    let parent = store
+        .load(session_id, &runner.session_branch)
+        .await?
+        .last()
+        .map(|event| event.sequence);
+    store
+        .append(
+            session_id,
+            &runner.session_branch,
+            parent,
+            Some(runner.session_correlation_id.clone()),
+            kind,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn persist_new_messages<M>(
+    runner: &mut AgentRunner<M>,
+    run: &AgentRun,
+) -> Result<(), crate::session::SessionError>
+where
+    M: CompletionModel,
+{
+    for message in run.messages().iter().skip(runner.session_loaded_messages) {
+        append_session_event(
+            runner,
+            crate::session::SessionEventKind::Message(message.clone()),
+        )
+        .await?;
+    }
+    runner.session_loaded_messages = run.messages().len();
+    Ok(())
+}
+
+async fn persist_new_model_events<M>(
+    runner: &mut AgentRunner<M>,
+    run: &AgentRun,
+) -> Result<(), crate::session::SessionError>
+where
+    M: CompletionModel,
+{
+    for call in run
+        .completion_calls()
+        .iter()
+        .skip(runner.session_loaded_completion_calls)
+    {
+        append_session_event(
+            runner,
+            crate::session::SessionEventKind::ModelResponse {
+                usage: call.usage,
+                finish_reason: call.finish_reason.clone(),
+                raw_finish_reason: call.raw_finish_reason.clone(),
+            },
+        )
+        .await?;
+    }
+    runner.session_loaded_completion_calls = run.completion_calls().len();
+    persist_new_messages(runner, run).await
+}
+
+async fn persist_completed_session<M>(
+    runner: &AgentRunner<M>,
+    response: &crate::agent::prompt_request::PromptResponse,
+) -> Result<(), crate::session::SessionError>
+where
+    M: CompletionModel,
+{
+    append_session_event(
+        runner,
+        crate::session::SessionEventKind::Lifecycle {
+            status: "completed".into(),
+            detail: Some(serde_json::json!({"terminal_reason": response.terminal_reason})),
+        },
+    )
+    .await
+}
+
+async fn persist_interrupted_session<M>(
+    runner: &AgentRunner<M>,
+    run: &AgentRun,
+) -> Result<(), crate::session::SessionError>
+where
+    M: CompletionModel,
+{
+    let (Some(store), Some(session_id)) = (&runner.session_store, &runner.session_id) else {
+        return Ok(());
+    };
+    let checkpoint =
+        if run.is_safe_checkpoint() {
+            Some(serde_json::to_string(run).map_err(|error| {
+                crate::session::SessionError::InvalidCheckpoint(error.to_string())
+            })?)
+        } else {
+            None
+        };
+    let parent = store
+        .load(session_id, &runner.session_branch)
+        .await?
+        .last()
+        .map(|event| event.sequence);
+    store
+        .append(
+            session_id,
+            &runner.session_branch,
+            parent,
+            Some(runner.session_correlation_id.clone()),
+            crate::session::SessionEventKind::Interrupted {
+                run_id: runner.session_correlation_id.clone(),
+                checkpoint,
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+#[derive(Default)]
+struct InterruptionPersistence {
+    attempted: bool,
+    persisted: bool,
+}
+
+async fn persist_terminal_error<M>(
+    runner: &AgentRunner<M>,
+    run: &AgentRun,
+    interruption: &mut InterruptionPersistence,
+    error: StreamingError,
+) -> StreamingError
+where
+    M: CompletionModel,
+{
+    if interruption.attempted {
+        return error;
+    }
+    // Mark the attempt before awaiting: a failed append must not be retried by
+    // the post-loop fallback after its terminal session error is yielded.
+    interruption.attempted = true;
+    match persist_interrupted_session(runner, run).await {
+        Ok(()) => {
+            interruption.persisted = true;
+            error
+        }
+        Err(error) => StreamingError::Prompt(Box::new(PromptError::SessionError(error))),
+    }
+}
+
 pub(crate) fn drive_agent<M, S>(
-    runner: AgentRunner<M>,
+    mut runner: AgentRunner<M>,
     mut source: S,
     mut run: AgentRun,
     agent_span: tracing::Span,
@@ -475,16 +648,134 @@ where
     S: TurnSource<M>,
 {
     async_stream::stream! {
-        // Run-scoped hook context: minted once, shared by every hook event on
-        // both surfaces. `is_streaming` records which surface is driving; the
-        // per-turn index is advanced on each `CallModel` step below.
-        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+        // Dropping a polled unary future or streaming response settles the
+        // externally visible handle instead of leaving it permanently Running.
+        let _run_lease = runner.control.lease();
+        let mut interruption = InterruptionPersistence::default();
+        let mut completed_successfully = false;
+        // One identity and cancellation/deadline context is shared by hooks,
+        // model calls, tools, and nested agent tools on both surfaces.
+        let hook_ctx = HookContext::with_run_id(
+            runner.run_context.run_id().clone(),
+            is_streaming,
+            runner.agent_name.clone(),
+        );
+        runner.tool_extensions.insert(runner.run_context.clone());
+        runner.tool_extensions.insert(runner.control.clone());
+        for provider_tool in &runner.provider_tools {
+            runner
+                .tool_server_handle
+                .add_provider_tool(
+                    provider_tool.clone(),
+                    crate::tool::server::ToolCatalogMetadata::default(),
+                )
+                .await;
+        }
 
         'outer: loop {
+            if runner.run_context.should_stop() {
+                let reason = if runner.run_context.cancellation().is_cancelled() {
+                    TerminalReason::Cancelled
+                } else {
+                    TerminalReason::DeadlineExceeded
+                };
+                runner.control.finish(reason.clone());
+                let error = StreamingError::Prompt(Box::new(run.cancel_error(format!("{reason:?}"))));
+                yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                break 'outer;
+            }
+
+            if runner.control.checkpoint_requested() {
+                if !run.is_safe_checkpoint() {
+                    runner.control.finish(TerminalReason::Failed);
+                    let error = StreamingError::Prompt(Box::new(PromptError::SessionError(
+                        crate::session::SessionError::UnsafeRecovery,
+                    )));
+                    yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                    break 'outer;
+                }
+                match serde_json::to_string(&run) {
+                    Ok(serialized) => {
+                        if let (Some(store), Some(session_id)) = (&runner.session_store, &runner.session_id) {
+                            let parent = match store.load(session_id, &runner.session_branch).await {
+                                Ok(events) => events.last().map(|event| event.sequence),
+                                Err(error) => {
+                                    runner.control.finish(TerminalReason::Failed);
+                                    let error = StreamingError::Prompt(Box::new(PromptError::SessionError(error)));
+                                    yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                                    break 'outer;
+                                }
+                            };
+                            if let Err(error) = store.append(
+                                session_id, &runner.session_branch, parent,
+                                Some(runner.session_correlation_id.clone()),
+                                crate::session::SessionEventKind::Checkpoint { snapshot: serialized.clone() },
+                            ).await {
+                                runner.control.finish(TerminalReason::Failed);
+                                let error = StreamingError::Prompt(Box::new(PromptError::SessionError(error)));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                                break 'outer;
+                            }
+                        }
+                        runner.control.reach_checkpoint(serialized);
+                    }
+                    Err(err) => {
+                        runner.control.finish(TerminalReason::Failed);
+                        let error = StreamingError::Prompt(Box::new(PromptError::CompletionError(
+                            CompletionError::ResponseError(format!(
+                                "failed to serialize agent checkpoint: {err}"
+                            )),
+                        )));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                        break 'outer;
+                    }
+                }
+            }
+            while runner.control.checkpoint_blocked() {
+                let stopped = runner.run_context.stopped();
+                let delay = futures_timer::Delay::new(std::time::Duration::from_millis(5));
+                futures::pin_mut!(stopped, delay);
+                if matches!(futures::future::select(stopped, delay).await, Either::Left(_)) {
+                    let reason = if runner.run_context.cancellation().is_cancelled() {
+                        TerminalReason::Cancelled
+                    } else {
+                        TerminalReason::DeadlineExceeded
+                    };
+                    runner.control.finish(reason.clone());
+                    let error = StreamingError::Prompt(Box::new(run.cancel_error(format!("{reason:?}"))));
+                    yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                    break 'outer;
+                }
+            }
+
+            let steering = runner.control.drain_steering();
+            if !steering.is_empty() {
+                if run.accepts_steering() {
+                    if let Err(err) = run.steer(steering) {
+                        runner.control.finish(TerminalReason::Failed);
+                        let error = StreamingError::Prompt(Box::new(err));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                        break 'outer;
+                    }
+                } else {
+                    // A steer accepted while the final provider call was in
+                    // flight has no later model boundary. Preserve it as a
+                    // post-settlement follow-up instead of corrupting Done.
+                    runner.control.defer_as_follow_ups(steering);
+                }
+            }
+
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
-                    yield Err(Box::new(err).into());
+                    let reason = if matches!(err, PromptError::MaxTurnsError { .. }) {
+                        TerminalReason::MaxTurns
+                    } else {
+                        TerminalReason::Failed
+                    };
+                    runner.control.finish(reason);
+                    let error = Box::new(err).into();
+                    yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
                     break 'outer;
                 }
             };
@@ -496,14 +787,24 @@ where
                     }
                     hook_ctx.set_turn(turn);
 
-                    let request_patch =
+                    let mut request_patch =
                         match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
-                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                                runner.control.finish(TerminalReason::PolicyTerminated);
+                                let error = StreamingError::Prompt(Box::new(run.cancel_error(reason)));
+                                yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
                                 break 'outer;
                             }
                             CompletionCallOutcome::Proceed(request_patch) => request_patch,
                         };
+                    if let Some(allowed) = &runner.skill_allowed_tools {
+                        let skill_patch = crate::agent::hook::RequestPatch::new()
+                            .active_tools(allowed.clone());
+                        request_patch = Some(match request_patch {
+                            Some(existing) => existing.merge(skill_patch),
+                            None => skill_patch,
+                        });
+                    }
 
                     // Record this turn's base system prompt — the patched-or-baseline
                     // preamble, before any output-mode augmentation the request builder
@@ -528,6 +829,7 @@ where
                         runner.temperature,
                         runner.max_tokens,
                         runner.additional_params.as_ref(),
+                        &runner.provider_tools,
                         runner.tool_choice.as_ref(),
                         &runner.tool_server_handle,
                         &runner.dynamic_context,
@@ -540,11 +842,49 @@ where
                     {
                         Ok(prepared) => prepared,
                         Err(err) => {
-                            yield Err(err.into());
+                            runner.control.finish(TerminalReason::Failed);
+                            let error = err.into();
+                            yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
                             break 'outer;
                         }
                     };
                     run.set_output_tool_name(prepared.output_tool_name.clone());
+                    if let Err(error) = persist_new_messages(&mut runner, &run).await {
+                        runner.control.finish(TerminalReason::Failed);
+                        let error = StreamingError::Prompt(Box::new(PromptError::SessionError(error)));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                        break 'outer;
+                    }
+                    if let (Some(store), Some(session_id)) = (&runner.session_store, &runner.session_id) {
+                        let parent = match store.load(session_id, &runner.session_branch).await {
+                            Ok(events) => events.last().map(|event| event.sequence),
+                            Err(error) => {
+                                runner.control.finish(TerminalReason::Failed);
+                                let error = StreamingError::Prompt(Box::new(PromptError::SessionError(error)));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                                break 'outer;
+                            }
+                        };
+                        if let Err(error) = store.append(
+                            session_id, &runner.session_branch, parent,
+                            Some(runner.session_correlation_id.clone()),
+                            crate::session::SessionEventKind::ModelCall {
+                                model: None,
+                                config: serde_json::json!({
+                                    "turn": turn,
+                                    "temperature": runner.temperature,
+                                    "max_tokens": runner.max_tokens,
+                                    "tools": &prepared.executable_tool_names,
+                                }),
+                                usage: crate::completion::Usage::new(),
+                            },
+                        ).await {
+                            runner.control.finish(TerminalReason::Failed);
+                            let error = StreamingError::Prompt(Box::new(PromptError::SessionError(error)));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                            break 'outer;
+                        }
+                    }
 
                     let mut turn_stream = source.run_model_turn(
                         &runner,
@@ -556,40 +896,104 @@ where
                         prompt,
                     );
                     let mut errored = false;
-                    while let Some(item) = turn_stream.next().await {
-                        match item {
-                            Ok(item) => yield Ok(DriveItem::Item(item)),
-                            Err(err) => {
+                    let mut stopped_reason = None;
+                    let mut drive_error = None;
+                    loop {
+                        let stopped = runner.run_context.stopped();
+                        let next = turn_stream.next();
+                        futures::pin_mut!(stopped, next);
+                        match futures::future::select(stopped, next).await {
+                            Either::Left((reason, _)) => {
                                 errored = true;
-                                yield Err(err);
+                                stopped_reason = Some(reason);
                                 break;
                             }
+                            Either::Right((Some(Ok(item)), _)) => yield Ok(DriveItem::Item(item)),
+                            Either::Right((Some(Err(err)), _)) => {
+                                errored = true;
+                                drive_error = Some(err);
+                                runner.control.finish(TerminalReason::Failed);
+                                break;
+                            }
+                            Either::Right((None, _)) => break,
                         }
                     }
                     drop(turn_stream);
+                    if let Some(error) = drive_error {
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                    }
+                    if let Some(reason) = stopped_reason {
+                        runner.control.finish(reason.clone());
+                        let error = StreamingError::Prompt(Box::new(run.cancel_error(format!("{reason:?}"))));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                    }
                     if errored {
+                        break 'outer;
+                    }
+                    if let Err(error) = persist_new_model_events(&mut runner, &run).await {
+                        runner.control.finish(TerminalReason::Failed);
+                        let error = StreamingError::Prompt(Box::new(PromptError::SessionError(error)));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
                         break 'outer;
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
                     let mut tool_stream = source.run_tool_calls(&runner, &hook_ctx, &mut run, calls);
                     let mut errored = false;
-                    while let Some(item) = tool_stream.next().await {
-                        match item {
-                            Ok(item) => yield Ok(DriveItem::Item(item)),
-                            Err(err) => {
+                    let mut stopped_reason = None;
+                    let mut drive_error = None;
+                    loop {
+                        let stopped = runner.run_context.stopped();
+                        let next = tool_stream.next();
+                        futures::pin_mut!(stopped, next);
+                        match futures::future::select(stopped, next).await {
+                            Either::Left((reason, _)) => {
                                 errored = true;
-                                yield Err(err);
+                                stopped_reason = Some(reason);
                                 break;
                             }
+                            Either::Right((Some(Ok(item)), _)) => yield Ok(DriveItem::Item(item)),
+                            Either::Right((Some(Err(err)), _)) => {
+                                errored = true;
+                                drive_error = Some(err);
+                                runner.control.finish(TerminalReason::Failed);
+                                break;
+                            }
+                            Either::Right((None, _)) => break,
                         }
                     }
                     drop(tool_stream);
+                    if let Some(error) = drive_error {
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                    }
+                    if let Some(reason) = stopped_reason {
+                        runner.control.finish(reason.clone());
+                        let error = StreamingError::Prompt(Box::new(run.cancel_error(format!("{reason:?}"))));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                    }
                     if errored {
                         break 'outer;
                     }
+                    runner.session_loaded_messages = run.messages().len();
                 }
-                AgentRunStep::Done(response) => {
+                AgentRunStep::Done(mut response) => {
+                    if runner.run_context.should_stop() {
+                        let reason = if runner.run_context.cancellation().is_cancelled() {
+                            TerminalReason::Cancelled
+                        } else {
+                            TerminalReason::DeadlineExceeded
+                        };
+                        runner.control.finish(reason.clone());
+                        let error = StreamingError::Prompt(Box::new(run.cancel_error(format!("{reason:?}"))));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                        break 'outer;
+                    }
+                    let provider_terminal = response
+                        .completion_calls
+                        .last()
+                        .and_then(|call| call.finish_reason.clone())
+                        .filter(|reason| !matches!(reason, TerminalReason::ToolCalls));
+                    response.terminal_reason = provider_terminal.unwrap_or(TerminalReason::Completed);
                     // Run-completion marker, unifying the blocking and streaming
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(
@@ -598,21 +1002,41 @@ where
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
-                    append_run_messages(
+                    if let Err(error) = append_run_messages(
                         memory_handle.as_ref(),
                         response.messages.as_deref().unwrap_or_default(),
                     )
-                    .await;
+                    .await
+                    {
+                        runner.control.finish(TerminalReason::Failed);
+                        let error = StreamingError::Prompt(Box::new(PromptError::MemoryError(error)));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                        break 'outer;
+                    }
+                    if let Err(error) = persist_completed_session(&runner, &response).await {
+                        runner.control.finish(TerminalReason::Failed);
+                        let error = StreamingError::Prompt(Box::new(PromptError::SessionError(error)));
+                        yield Err(persist_terminal_error(&runner, &run, &mut interruption, error).await);
+                        break 'outer;
+                    }
+                    runner.control.finish(response.terminal_reason.clone());
                     // Build the final item only when the surface forwards it
                     // (streaming). The blocking fold discards it, so its source
                     // returns `None` and the extra full-response clone is skipped.
                     if let Some(final_item) = source.final_item(&response) {
                         yield Ok(DriveItem::Item(final_item));
                     }
+                    completed_successfully = true;
                     yield Ok(DriveItem::Done(Box::new(response)));
                     break 'outer;
                 }
             }
+        }
+        if !completed_successfully
+            && !interruption.attempted
+            && let Err(error) = persist_interrupted_session(&runner, &run).await
+        {
+            yield Err(StreamingError::Prompt(Box::new(PromptError::SessionError(error))));
         }
     }
 }
@@ -649,7 +1073,7 @@ pub(crate) fn drive_tool_calls<'a, M, R, F>(
     forward_items: bool,
 ) -> DriveStream<'a, R>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     R: WasmCompatSend + 'a,
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
@@ -681,6 +1105,8 @@ where
         content: UserContent,
         internal_call_id: String,
         surface: ToolSurface,
+        final_output: Option<String>,
+        outcome: String,
     }
 
     Box::pin(async_stream::stream! {
@@ -710,6 +1136,21 @@ where
                     (chain_tool_span(new_execute_tool_span()), None)
                 }
             };
+            if preresolved_result.is_none()
+                && let Err(error) = append_session_event(
+                    runner,
+                    crate::session::SessionEventKind::ToolCall {
+                        name: pending.tool_call.function.name.clone(),
+                        arguments: pending.tool_call.function.arguments.clone(),
+                        internal_call_id: internal_call_id.clone(),
+                        parent_internal_call_id: runner.run_context.current_call_id().map(str::to_owned),
+                    },
+                )
+                .await
+            {
+                yield Err(StreamingError::Prompt(Box::new(PromptError::SessionError(error))));
+                return;
+            }
             prepared.push(PreparedToolCall {
                 tool_call: pending.tool_call,
                 preresolved_result,
@@ -726,8 +1167,22 @@ where
         let mut collected: Vec<Option<CollectedToolResult>> =
             (0..call_count).map(|_| None).collect();
         let mut first_error: Option<(usize, PromptError)> = None;
+        let scheduling = futures::future::join_all(
+            prepared
+                .iter()
+                .filter(|call| call.preresolved_result.is_none())
+                .map(|call| {
+                    runner
+                        .tool_server_handle
+                        .scheduling(&call.tool_call.function.name)
+                }),
+        )
+        .await;
+        let parallel_safe = scheduling
+            .iter()
+            .all(|scheduling| *scheduling != ToolScheduling::Serial);
 
-        if runner.concurrency <= 1 {
+        if runner.concurrency <= 1 || !parallel_safe {
             // Sequential: run in call order, fail-fast on the first terminating
             // error so the remaining tools never start.
             for (index, call) in prepared.into_iter().enumerate() {
@@ -738,6 +1193,8 @@ where
                             content: result,
                             internal_call_id,
                             surface: ToolSurface::Preresolved,
+                            final_output: None,
+                            outcome: "skipped".into(),
                         });
                     }
                     continue;
@@ -747,6 +1204,8 @@ where
                     hook_ctx,
                     &runner.tool_server_handle,
                     &runner.tool_extensions,
+                    &runner.run_context,
+                    &runner.nested_tool_policy,
                     &tool_call,
                     &internal_call_id,
                     &full_history_for_errors,
@@ -760,10 +1219,17 @@ where
                             ToolExecution::Skipped => ToolSurface::Skipped,
                         };
                         if let Some(slot) = collected.get_mut(index) {
+                            let final_output = runner
+                                .tool_server_handle
+                                .is_final_result(&tool_call.function.name)
+                                .await
+                                .then_some(outcome.model_output);
                             *slot = Some(CollectedToolResult {
                                 content: outcome.content,
                                 internal_call_id,
                                 surface,
+                                final_output,
+                                outcome: outcome.outcome.as_str().into(),
                             });
                         }
                     }
@@ -786,6 +1252,8 @@ where
                     let hooks = &runner.hooks;
                     let tool_server_handle = &runner.tool_server_handle;
                     let tool_extensions = &runner.tool_extensions;
+                    let run_context = &runner.run_context;
+                    let nested_tool_policy = &runner.nested_tool_policy;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
                     async move {
@@ -796,6 +1264,8 @@ where
                                     content: result,
                                     internal_call_id,
                                     surface: ToolSurface::Preresolved,
+                                    final_output: None,
+                                    outcome: "skipped".into(),
                                 })),
                             );
                         }
@@ -808,24 +1278,35 @@ where
                             hook_ctx,
                             tool_server_handle,
                             tool_extensions,
+                            run_context,
+                            nested_tool_policy,
                             &tool_call,
                             &internal_call_id,
                             full_history_for_errors,
                         )
                         .await;
-                        let mapped = outcome.map(|o| {
-                            let surface = match o.execution {
-                                ToolExecution::Executed(effective) => {
-                                    ToolSurface::Executed(effective)
-                                }
-                                ToolExecution::Skipped => ToolSurface::Skipped,
-                            };
-                            CollectedToolResult {
-                                content: o.content,
-                                internal_call_id,
-                                surface,
+                        let mapped = match outcome {
+                            Ok(o) => {
+                                let surface = match o.execution {
+                                    ToolExecution::Executed(effective) => {
+                                        ToolSurface::Executed(effective)
+                                    }
+                                    ToolExecution::Skipped => ToolSurface::Skipped,
+                                };
+                                let final_output = tool_server_handle
+                                    .is_final_result(&tool_call.function.name)
+                                    .await
+                                    .then_some(o.model_output);
+                                Ok(CollectedToolResult {
+                                    content: o.content,
+                                    internal_call_id,
+                                    surface,
+                                    final_output,
+                                    outcome: o.outcome.as_str().into(),
+                                })
                             }
-                        });
+                            Err(error) => Err(error),
+                        };
                         (index, Some(mapped))
                     }
                     .instrument(span)
@@ -872,8 +1353,15 @@ where
         // turn) but is still committed. Every non-dropped slot is filled; a
         // dropped slot only occurs after a termination, handled above.
         let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
+        let mut final_output = None;
         for slot in collected {
-            let CollectedToolResult { content, internal_call_id, surface } = match slot {
+            let CollectedToolResult {
+                content,
+                internal_call_id,
+                surface,
+                final_output: call_final_output,
+                outcome,
+            } = match slot {
                 Some(collected_result) => collected_result,
                 None => {
                     yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
@@ -884,6 +1372,24 @@ where
                     return;
                 }
             };
+            if let UserContent::ToolResult(tool_result) = &content
+                && let Err(error) = append_session_event(
+                    runner,
+                    crate::session::SessionEventKind::ToolResult {
+                        outcome,
+                        content: serde_json::to_value(tool_result).unwrap_or_default(),
+                        internal_call_id: tool_result
+                            .internal_call_id
+                            .clone()
+                            .unwrap_or_else(|| internal_call_id.clone()),
+                        parent_internal_call_id: tool_result.parent_internal_call_id.clone(),
+                    },
+                )
+                .await
+            {
+                yield Err(StreamingError::Prompt(Box::new(PromptError::SessionError(error))));
+                return;
+            }
             if forward_items {
                 // An executed call also surfaces its execution-start; a skipped
                 // call surfaces only its result; a preresolved call surfaces
@@ -910,12 +1416,30 @@ where
                     ));
                 }
             }
+            if call_final_output.is_some() {
+                final_output = call_final_output;
+            }
             committed.push(content);
         }
 
         if let Err(err) = run.tool_results(committed) {
             yield Err(Box::new(err).into());
             return;
+        }
+        if let Some(message) = run.messages().last()
+            && let Err(error) = append_session_event(
+                runner,
+                crate::session::SessionEventKind::Message(message.clone()),
+            )
+            .await
+        {
+            yield Err(StreamingError::Prompt(Box::new(PromptError::SessionError(error))));
+            return;
+        }
+        if let Some(output) = final_output
+            && let Err(err) = run.finish_from_tool(output)
+        {
+            yield Err(Box::new(err).into());
         }
     })
 }
@@ -962,7 +1486,7 @@ impl StreamingTurnSource {
 
 impl<M> TurnSource<M> for StreamingTurnSource
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
 {
     type Raw = M::StreamingResponse;
@@ -1006,6 +1530,9 @@ where
                 prepared.executable_tool_names.clone(),
                 prepared.allowed_tool_names.clone(),
             );
+            assembler.set_parent_internal_call_id(
+                runner.run_context.current_call_id().map(str::to_owned),
+            );
             let mut completion_call_emitted = false;
             let mut turn_abandoned = false;
             // Mirrors the blocking driver's `response_hook_suppressed`: a turn
@@ -1021,14 +1548,18 @@ where
             // Returns the item to yield (`Some` the first time, `None` after), or
             // the terminal error to surface.
             macro_rules! emit_completion_call {
-                ($usage:expr) => {{
+                ($usage:expr, $finish_reason:expr, $raw_finish_reason:expr $(,)?) => {{
                     let usage = $usage;
                     last_usage = usage;
                     if !completion_call_emitted {
                         if usage.has_values() {
                             record_usage_on_span(&chat_span, usage);
                         }
-                        match run.record_streamed_completion_call(usage) {
+                        match run.record_streamed_completion_call_with_finish(
+                            usage,
+                            $finish_reason,
+                            $raw_finish_reason,
+                        ) {
                             Ok(call) => {
                                 completion_call_emitted = true;
                                 Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
@@ -1120,8 +1651,13 @@ where
                                 },
                             ));
                         }
-                        StreamedTurnEvent::Completed { usage, emit_final } => {
-                            match emit_completion_call!(usage) {
+                        StreamedTurnEvent::Completed {
+                            usage,
+                            finish_reason,
+                            raw_finish_reason,
+                            emit_final,
+                        } => {
+                            match emit_completion_call!(usage, finish_reason, raw_finish_reason) {
                                 Ok(Some(item)) => yield Ok(item),
                                 Ok(None) => {}
                                 Err(err) => {
@@ -1208,14 +1744,18 @@ where
                                         yield Err(err.into());
                                         return;
                                     }
-                                    let drained_usage = match drain_stream_usage(&mut stream).await {
-                                        Ok(usage) => usage,
+                                    let (drained_usage, finish_reason, raw_finish_reason) = match drain_stream_usage(&mut stream).await {
+                                        Ok(metadata) => metadata,
                                         Err(err) => {
                                             yield Err(err);
                                             return;
                                         }
                                     };
-                                    match emit_completion_call!(drained_usage) {
+                                    match emit_completion_call!(
+                                        drained_usage,
+                                        finish_reason,
+                                        raw_finish_reason,
+                                    ) {
                                         Ok(Some(item)) => yield Ok(item),
                                         Ok(None) => {}
                                         Err(err) => {
@@ -1274,7 +1814,15 @@ where
             }
 
             self.last_message_id = stream.message_id.clone();
-            let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            let mut streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            for part in streamed_turn.choice.iter_mut() {
+                if let AssistantContent::ToolCall(call) = part {
+                    call.parent_internal_call_id = runner
+                        .run_context
+                        .current_call_id()
+                        .map(str::to_owned);
+                }
+            }
             // The canonical (committed) assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
             // `stream.choice` aggregate. `ModelTurnFinished` — the normalized
@@ -1378,7 +1926,7 @@ where
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
+    pub async fn stream(mut self) -> StreamingResult<M::StreamingResponse> {
         let (agent_span, created_agent_span) =
             acquire_agent_span(self.agent_name_or_default(), self.preamble.as_deref());
 
@@ -1389,12 +1937,13 @@ where
         // When the caller passes explicit history, memory is fully bypassed for
         // this request (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
+        let (mut history_override, memory_handle) = match &self.chat_history {
             Some(_) => (None, None),
             None => match (&self.memory, &self.conversation_id) {
                 (Some(memory), Some(id)) => match memory.load(id).await {
                     Ok(loaded) => (Some(loaded), Some((memory.clone(), id.clone()))),
                     Err(err) => {
+                        self.control.finish(TerminalReason::Failed);
                         let stream = async_stream::stream! {
                             yield Err(StreamingError::from(err));
                         };
@@ -1407,7 +1956,100 @@ where
             },
         };
 
-        let run = self.build_run(history_override);
+        let mut resumed_run = None;
+        if history_override.is_none()
+            && let (Some(store), Some(session_id)) = (&self.session_store, &self.session_id)
+        {
+            let events = match store.load(session_id, &self.session_branch).await {
+                Ok(events) => events,
+                Err(error) => {
+                    self.control.finish(TerminalReason::Failed);
+                    let stream = async_stream::stream! {
+                        yield Err(StreamingError::Prompt(Box::new(PromptError::SessionError(error))));
+                    };
+                    return Box::pin(stream.instrument(agent_span));
+                }
+            };
+            let mut messages = Vec::new();
+            let mut recovery_snapshot = None;
+            let mut recovery_correlation = None;
+            let mut unsafe_interruption = false;
+            for event in &events {
+                match &event.kind {
+                    crate::session::SessionEventKind::Message(message) => {
+                        messages.push(message.clone())
+                    }
+                    crate::session::SessionEventKind::Checkpoint { snapshot } => {
+                        recovery_snapshot = Some(snapshot.clone());
+                        recovery_correlation = event.correlation_id.clone();
+                        unsafe_interruption = false;
+                    }
+                    crate::session::SessionEventKind::Interrupted { checkpoint, run_id } => {
+                        unsafe_interruption = checkpoint.is_none();
+                        if let Some(checkpoint) = checkpoint {
+                            recovery_snapshot = Some(checkpoint.clone());
+                            recovery_correlation = Some(run_id.clone());
+                        }
+                    }
+                    crate::session::SessionEventKind::Lifecycle { status, .. }
+                        if status == "completed" =>
+                    {
+                        recovery_snapshot = None;
+                        recovery_correlation = None;
+                        unsafe_interruption = false;
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(correlation) = recovery_correlation {
+                self.session_correlation_id = correlation.clone();
+                self.session_loaded_messages = events
+                    .iter()
+                    .filter(|event| {
+                        event.correlation_id.as_deref() == Some(correlation.as_str())
+                            && matches!(&event.kind, crate::session::SessionEventKind::Message(_))
+                    })
+                    .count();
+                self.session_loaded_completion_calls = events
+                    .iter()
+                    .filter(|event| {
+                        event.correlation_id.as_deref() == Some(correlation.as_str())
+                            && matches!(
+                                &event.kind,
+                                crate::session::SessionEventKind::ModelResponse { .. }
+                            )
+                    })
+                    .count();
+            }
+            let recovery_error = if unsafe_interruption {
+                Some(crate::session::SessionError::UnsafeRecovery)
+            } else if let Some(snapshot) = recovery_snapshot {
+                match serde_json::from_str::<AgentRun>(&snapshot) {
+                    Ok(restored) if restored.is_safe_checkpoint() => {
+                        resumed_run = Some(restored);
+                        None
+                    }
+                    Ok(_) => Some(crate::session::SessionError::UnsafeRecovery),
+                    Err(error) => Some(crate::session::SessionError::InvalidCheckpoint(
+                        error.to_string(),
+                    )),
+                }
+            } else {
+                None
+            };
+            if let Some(error) = recovery_error {
+                self.control.finish(TerminalReason::Failed);
+                let stream = async_stream::stream! {
+                    yield Err(StreamingError::Prompt(Box::new(PromptError::SessionError(error))));
+                };
+                return Box::pin(stream.instrument(agent_span));
+            }
+            if !messages.is_empty() {
+                history_override = Some(messages);
+            }
+        }
+
+        let run = resumed_run.unwrap_or_else(|| self.build_run(history_override));
         let source = StreamingTurnSource::new(
             &self.hooks,
             self.agent_name_or_default().to_string(),
@@ -1929,6 +2571,7 @@ mod tests {
 
     fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
         ToolDefinition {
+            output_schema: None,
             name: name.to_string(),
             description: description.to_string(),
             parameters: serde_json::json!({
@@ -5956,7 +6599,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn streaming_append_error_does_not_suppress_final_response() {
+    async fn streaming_append_error_is_terminal_and_suppresses_final_response() {
         let agent = AgentBuilder::new(streaming_text_then_final_model())
             .memory(AppendFailingMemory::default())
             .build();
@@ -5964,15 +6607,22 @@ mod tests {
         let mut stream = agent.stream_prompt("hi").conversation("t1").await;
 
         let mut saw_final = false;
+        let mut saw_memory_error = false;
         while let Some(item) = stream.next().await {
-            if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
-                saw_final = true;
-                break;
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
+                Err(StreamingError::Prompt(error))
+                    if matches!(*error, PromptError::MemoryError(_)) =>
+                {
+                    saw_memory_error = true;
+                }
+                _ => {}
             }
         }
+        assert!(saw_memory_error);
         assert!(
-            saw_final,
-            "FinalResponse must be yielded even when memory.append fails"
+            !saw_final,
+            "an unpersisted response must not settle successfully"
         );
     }
 }

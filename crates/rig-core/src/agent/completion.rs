@@ -234,6 +234,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     additional_params: Option<&serde_json::Value>,
+    provider_tools: &[crate::completion::ProviderToolDefinition],
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
@@ -248,6 +249,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         temperature,
         max_tokens,
         additional_params,
+        provider_tools,
         tool_choice,
         tool_server_handle,
         dynamic_context,
@@ -275,6 +277,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     additional_params: Option<&serde_json::Value>,
+    provider_tools: &[crate::completion::ProviderToolDefinition],
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
@@ -549,6 +552,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
                           schema."
                 .to_string(),
             parameters: schema.clone().to_value(),
+            output_schema: Some(schema.clone().to_value()),
         });
     }
 
@@ -559,7 +563,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params)
         .documents(static_context.to_vec())
-        .tools(tooldefs);
+        .tools(tooldefs)
+        .provider_tools(provider_tools.to_vec());
 
     if !fetched_context.is_empty() {
         completion_request = completion_request.documents(fetched_context);
@@ -681,6 +686,20 @@ where
     pub memory: Option<Arc<dyn crate::memory::ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
     pub default_conversation_id: Option<String>,
+    /// Optional wall-clock deadline applied independently to each run.
+    pub default_run_deadline: Option<std::time::Duration>,
+    /// Provider-hosted tools sent to the model but not executable by Rig.
+    pub provider_tools: Vec<crate::completion::ProviderToolDefinition>,
+    /// Restrictions inherited by scoped nested tool executors.
+    pub nested_tool_policy: crate::tool::server::NestedToolPolicy,
+    /// Optional durable event session store, separate from conversation memory.
+    pub session_store: Option<Arc<dyn crate::session::SessionStore>>,
+    /// Default durable session identifier.
+    pub session_id: Option<String>,
+    /// Default durable session branch.
+    pub session_branch: String,
+    /// Optional progressive-disclosure skill catalog.
+    pub skill_catalog: Option<Arc<dyn crate::skills::SkillCatalog>>,
 }
 
 impl<M> Agent<M>
@@ -697,6 +716,39 @@ where
     /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
     pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner<M> {
         AgentRunner::from_agent(self, prompt)
+    }
+
+    /// List skill names/descriptions without disclosing instructions.
+    pub fn skills(&self) -> Vec<(String, String)> {
+        self.skill_catalog
+            .as_ref()
+            .map_or_else(Vec::new, |catalog| catalog.list())
+    }
+
+    /// Activate one skill and disclose its instructions and restrictions.
+    pub fn activate_skill(&self, name: &str) -> Option<crate::skills::Skill> {
+        self.skill_catalog.as_ref()?.activate(name)
+    }
+
+    /// Return the complete catalog immediately, including hosted tools that
+    /// have not yet been installed into a shared server by a run.
+    pub async fn tool_catalog(&self) -> Vec<crate::tool::server::ToolCatalogEntry> {
+        let mut entries = self.tool_server_handle.catalog().await;
+        for hosted in &self.provider_tools {
+            if !entries.iter().any(|entry| {
+                entry.kind == crate::tool::server::ToolCatalogKind::ProviderHosted
+                    && entry.name == hosted.kind
+            }) {
+                entries.push(crate::tool::server::ToolCatalogEntry {
+                    name: hosted.kind.clone(),
+                    kind: crate::tool::server::ToolCatalogKind::ProviderHosted,
+                    definition: None,
+                    provider_definition: Some(hosted.clone()),
+                    metadata: crate::tool::server::ToolCatalogMetadata::default(),
+                });
+            }
+        }
+        entries
     }
 }
 
@@ -723,6 +775,7 @@ where
             self.temperature,
             self.max_tokens,
             self.additional_params.as_ref(),
+            &self.provider_tools,
             self.tool_choice.as_ref(),
             &self.tool_server_handle,
             &self.dynamic_context,

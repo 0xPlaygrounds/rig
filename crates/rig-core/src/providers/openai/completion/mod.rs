@@ -472,6 +472,14 @@ pub struct ToolDefinition {
     pub function: FunctionDefinition,
 }
 
+/// Native function tools and provider-hosted tool declarations share one wire array.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(untagged)]
+pub enum ChatToolDefinition {
+    Function(ToolDefinition),
+    Hosted(serde_json::Value),
+}
+
 impl From<completion::ToolDefinition> for ToolDefinition {
     fn from(tool: completion::ToolDefinition) -> Self {
         Self {
@@ -928,6 +936,8 @@ impl From<ToolCall> for message::ToolCall {
         Self {
             id: tool_call.id,
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             function: message::ToolFunction {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
@@ -1204,6 +1214,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
+            finish_reason: None,
+            raw_finish_reason: None,
             choice,
             usage,
             raw_response: response,
@@ -1471,14 +1483,18 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         request: CoreCompletionRequest,
         options: CompletionModelOptions,
     ) -> Result<CompletionRequest, CompletionError> {
-        CompletionRequest::try_from(OpenAIRequestParams {
+        let mut request = CompletionRequest::try_from(OpenAIRequestParams {
             model,
             request,
             strict_tools: options.strict_tools,
             tool_result_array_content: options.tool_result_array_content,
             supports_response_format: Self::SUPPORTS_RESPONSE_FORMAT,
             supports_tools: Self::SUPPORTS_TOOLS,
-        })
+        })?;
+        if Self::PROVIDER_NAME == "openai" {
+            request.merge_provider_tools();
+        }
+        Ok(request)
     }
 
     /// Adjust the typed request before serialization (e.g. rewrite the model
@@ -1586,7 +1602,7 @@ pub struct CompletionRequest {
     pub model: String,
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<ToolDefinition>,
+    pub tools: Vec<ChatToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1595,6 +1611,19 @@ pub struct CompletionRequest {
     pub max_tokens: Option<u64>,
     #[serde(flatten)]
     pub additional_params: Option<serde_json::Value>,
+}
+
+impl CompletionRequest {
+    fn merge_provider_tools(&mut self) {
+        if let Some(params) = self.additional_params.as_mut()
+            && let Some(object) = params.as_object_mut()
+            && let Some(hosted) = object.remove("tools")
+        {
+            let hosted = hosted.as_array().cloned().unwrap_or_else(|| vec![hosted]);
+            self.tools
+                .extend(hosted.into_iter().map(ChatToolDefinition::Hosted));
+        }
+    }
 }
 
 /// Shared helper for provider `finalize_request_body` hooks whose APIs take
@@ -1802,11 +1831,11 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let (tools, tool_choice) = if supports_tools {
             let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
-            let tools: Vec<ToolDefinition> = tools
+            let tools: Vec<ChatToolDefinition> = tools
                 .into_iter()
                 .map(|tool| {
                     let def = ToolDefinition::from(tool);
-                    if strict_tools { def.with_strict() } else { def }
+                    ChatToolDefinition::Function(if strict_tools { def.with_strict() } else { def })
                 })
                 .collect();
             (tools, tool_choice)
@@ -2603,6 +2632,7 @@ mod tests {
             )),
             documents: vec![],
             tools: vec![completion::ToolDefinition {
+                output_schema: None,
                 name: "weather".to_string(),
                 description: "Get the weather".to_string(),
                 parameters: serde_json::json!({
@@ -2673,6 +2703,7 @@ mod tests {
             .expect("history should be non-empty"),
             documents: vec![],
             tools: vec![completion::ToolDefinition {
+                output_schema: None,
                 name: "weather".to_string(),
                 description: "Get the weather".to_string(),
                 parameters: serde_json::json!({
@@ -3077,6 +3108,38 @@ mod tests {
             }
             other => panic!("expected ProviderResponse, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn mixed_native_and_hosted_chat_tools_use_one_wire_key() {
+        let mut request = CompletionRequest {
+            model: "gpt".into(),
+            messages: vec![],
+            tools: vec![ChatToolDefinition::Function(ToolDefinition {
+                r#type: "function".into(),
+                function: FunctionDefinition {
+                    name: "native".into(),
+                    description: "native".into(),
+                    parameters: serde_json::json!({"type":"object"}),
+                    strict: None,
+                },
+            })],
+            tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            additional_params: Some(serde_json::json!({"tools":[{"type":"web_search"}]})),
+        };
+        request.merge_provider_tools();
+        let json = serde_json::to_value(request).unwrap();
+        assert_eq!(json["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            json.as_object()
+                .unwrap()
+                .keys()
+                .filter(|key| *key == "tools")
+                .count(),
+            1
+        );
     }
 
     #[tokio::test]

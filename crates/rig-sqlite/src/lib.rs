@@ -5,7 +5,11 @@
 //! document table schemas by implementing [`SqliteVectorStoreTable`].
 //!
 //! The root `rig` facade re-exports this crate as `rig::sqlite` when the
-//! `sqlite` feature is enabled.
+//! `sqlite` feature is enabled. Durable conversation and branchable event
+//! storage are available from [`memory`].
+
+pub mod memory;
+pub use memory::{SessionEntry, SqliteConversationMemory, SqliteSessionStore, StoredSessionEvent};
 
 use rig_core::embeddings::{Embedding, EmbeddingModel};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};

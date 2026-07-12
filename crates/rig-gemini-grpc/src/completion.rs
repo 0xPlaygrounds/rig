@@ -489,11 +489,22 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             })
             .unwrap_or_default();
 
+        let raw_finish_reason = format!("{:?}", candidate.finish_reason);
+        let finish_reason = match raw_finish_reason.as_str() {
+            "Stop" => rig_core::runtime::TerminalReason::Completed,
+            "MaxTokens" => rig_core::runtime::TerminalReason::MaxTokens,
+            "Safety" | "Recitation" | "Blocklist" | "ProhibitedContent" | "Spii" => {
+                rig_core::runtime::TerminalReason::ContentFiltered
+            }
+            other => rig_core::runtime::TerminalReason::Other(other.to_string()),
+        };
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason: Some(finish_reason),
+            raw_finish_reason: Some(raw_finish_reason),
         })
     }
 }
@@ -962,6 +973,7 @@ mod tests {
                 },
                 "required": ["city"]
             }),
+            output_schema: None,
         };
 
         let req = create_grpc_request(

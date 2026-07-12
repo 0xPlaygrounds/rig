@@ -23,6 +23,7 @@ tokio-rusqlite = { workspace = true, features = ["bundled"] }
 tracing = { workspace = true }
 zerocopy = { workspace = true }
 chrono = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

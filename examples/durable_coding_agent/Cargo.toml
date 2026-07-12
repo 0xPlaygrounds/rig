@@ -1,0 +1,14 @@
+[package]
+name = "durable_coding_agent"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rig.workspace = true
+rig-sqlite = { path = "../../crates/rig-sqlite" }
+anyhow.workspace = true
+tokio = { workspace = true, features = ["full"] }

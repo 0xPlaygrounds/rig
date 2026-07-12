@@ -496,6 +496,8 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
+            finish_reason: None,
+            raw_finish_reason: None,
             choice,
             usage,
             raw_response: response,
@@ -1796,6 +1798,7 @@ pub mod interactions_api_types {
                     id,
                     call_id,
                     content,
+                    ..
                 }) => {
                     let Some(call_id) = call_id else {
                         return Err(message::MessageError::ConversionError(
@@ -2575,6 +2578,8 @@ mod tests {
         let content = message::UserContent::ToolResult(message::ToolResult {
             id: "get_weather".to_string(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             content: OneOrMany::one(message::ToolResultContent::text("ok")),
         });
 

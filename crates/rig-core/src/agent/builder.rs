@@ -4,12 +4,14 @@ use schemars::{JsonSchema, Schema, schema_for};
 
 use crate::{
     agent::hook::{AgentHook, HookStack},
-    completion::{CompletionModel, Document},
+    completion::{CompletionModel, Document, ProviderToolDefinition},
     memory::ConversationMemory,
     message::ToolChoice,
+    session::SessionStore,
+    skills::SkillCatalog,
     tool::{
         Tool, ToolDyn, ToolSet,
-        server::{ToolServer, ToolServerHandle},
+        server::{NestedToolPolicy, ToolCatalogKind, ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
 };
@@ -66,6 +68,7 @@ pub struct WithBuilderTools {
     static_tools: Vec<String>,
     tools: ToolSet,
     dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    tool_kinds: HashMap<String, ToolCatalogKind>,
 }
 
 /// A builder for creating an agent
@@ -131,6 +134,16 @@ where
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
     default_conversation_id: Option<String>,
+    /// Optional default wall-clock deadline applied independently to each run.
+    default_run_deadline: Option<std::time::Duration>,
+    /// Provider-hosted tools advertised but never dispatched by Rig.
+    provider_tools: Vec<ProviderToolDefinition>,
+    /// Restrictions inherited by scoped nested tool executors.
+    nested_tool_policy: NestedToolPolicy,
+    session_store: Option<Arc<dyn SessionStore>>,
+    session_id: Option<String>,
+    session_branch: String,
+    skill_catalog: Option<Arc<dyn SkillCatalog>>,
 }
 
 impl<M, ToolState> AgentBuilder<M, ToolState>
@@ -199,6 +212,59 @@ where
     /// every retry or continuation. Zero permits no model calls.
     pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
         self.default_max_turns = Some(default_max_turns);
+        self
+    }
+
+    /// Set a default wall-clock deadline for every run created by this agent.
+    pub fn run_deadline(mut self, deadline: std::time::Duration) -> Self {
+        self.default_run_deadline = Some(deadline);
+        self
+    }
+
+    /// Add a provider-hosted tool. Hosted tools are advertised to the provider
+    /// but are never added to Rig's executable tool server.
+    pub fn provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
+        self.provider_tools.push(tool);
+        self
+    }
+
+    /// Add provider-hosted tools in registration order.
+    pub fn provider_tools(
+        mut self,
+        tools: impl IntoIterator<Item = ProviderToolDefinition>,
+    ) -> Self {
+        self.provider_tools.extend(tools);
+        self
+    }
+
+    /// Configure allowlist, depth, and recursion restrictions for nested tools.
+    pub fn nested_tool_policy(mut self, policy: NestedToolPolicy) -> Self {
+        self.nested_tool_policy = policy;
+        self
+    }
+
+    /// Attach a durable event session independently of conversation memory.
+    pub fn session<S>(mut self, store: S, id: impl Into<String>) -> Self
+    where
+        S: SessionStore + 'static,
+    {
+        self.session_store = Some(Arc::new(store));
+        self.session_id = Some(id.into());
+        self
+    }
+
+    /// Set the default session branch (`main` by default).
+    pub fn session_branch(mut self, branch: impl Into<String>) -> Self {
+        self.session_branch = branch.into();
+        self
+    }
+
+    /// Attach a provider-independent progressive-disclosure skill catalog.
+    pub fn skills<S>(mut self, catalog: S) -> Self
+    where
+        S: SkillCatalog + 'static,
+    {
+        self.skill_catalog = Some(Arc::new(catalog));
         self
     }
 
@@ -309,6 +375,13 @@ where
             output_mode: OutputMode::default(),
             memory: None,
             default_conversation_id: None,
+            default_run_deadline: None,
+            provider_tools: Vec::new(),
+            nested_tool_policy: NestedToolPolicy::default(),
+            session_store: None,
+            session_id: None,
+            session_branch: "main".into(),
+            skill_catalog: None,
         }
     }
 }
@@ -344,6 +417,13 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
         }
     }
 
@@ -366,6 +446,7 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             tool_state: WithBuilderTools {
+                tool_kinds: HashMap::new(),
                 static_tools: vec![toolname],
                 tools: ToolSet::from_tools(vec![tool]),
                 dynamic_tools: vec![],
@@ -375,6 +456,13 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
         }
     }
 
@@ -403,7 +491,15 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
             tool_state: WithBuilderTools {
+                tool_kinds: HashMap::new(),
                 static_tools,
                 tools,
                 dynamic_tools: vec![],
@@ -504,7 +600,15 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
             tool_state: WithBuilderTools {
+                tool_kinds: HashMap::new(),
                 static_tools,
                 tools: ToolSet::from_tools(toolset),
                 dynamic_tools: vec![],
@@ -539,7 +643,15 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
             tool_state: WithBuilderTools {
+                tool_kinds: HashMap::new(),
                 static_tools: vec![],
                 tools: toolset,
                 dynamic_tools: vec![(sample, Arc::new(dynamic_tools))],
@@ -551,7 +663,9 @@ where
     ///
     /// An empty `ToolServer` will be created for the agent.
     pub fn build(self) -> Agent<M> {
-        let tool_server_handle = ToolServer::new().run();
+        let tool_server_handle = ToolServer::new()
+            .provider_tools(self.provider_tools.clone())
+            .run();
 
         Agent {
             name: self.name,
@@ -571,6 +685,13 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
         }
     }
 }
@@ -599,6 +720,13 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
         }
     }
 }
@@ -611,7 +739,10 @@ where
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.tool_state.tools.add_tool(tool);
-        self.tool_state.static_tools.push(toolname);
+        self.tool_state.static_tools.push(toolname.clone());
+        self.tool_state
+            .tool_kinds
+            .insert(toolname, ToolCatalogKind::Native);
         self
     }
 
@@ -620,6 +751,11 @@ where
         let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
         let tools = ToolSet::from_tools_boxed(tools);
         self.tool_state.tools.add_tools(tools);
+        for name in &toolnames {
+            self.tool_state
+                .tool_kinds
+                .insert(name.clone(), ToolCatalogKind::Native);
+        }
         self.tool_state.static_tools.extend(toolnames);
         self
     }
@@ -658,7 +794,10 @@ where
     #[cfg(feature = "rmcp")]
     fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
         for (name, tool) in built {
-            self.tool_state.static_tools.push(name);
+            self.tool_state.static_tools.push(name.clone());
+            self.tool_state
+                .tool_kinds
+                .insert(name, ToolCatalogKind::Mcp);
             self.tool_state.tools.add_tool(tool);
         }
 
@@ -676,6 +815,11 @@ where
         self.tool_state
             .dynamic_tools
             .push((sample, Arc::new(dynamic_tools)));
+        for name in toolset.ordered_names() {
+            self.tool_state
+                .tool_kinds
+                .insert(name.clone(), ToolCatalogKind::Dynamic);
+        }
         self.tool_state.tools.add_tools(toolset);
         self
     }
@@ -689,6 +833,8 @@ where
             .static_tool_names(self.tool_state.static_tools)
             .add_tools(self.tool_state.tools)
             .add_dynamic_tools(self.tool_state.dynamic_tools)
+            .catalog_kinds(self.tool_state.tool_kinds)
+            .provider_tools(self.provider_tools.clone())
             .run();
 
         Agent {
@@ -709,6 +855,13 @@ where
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            default_run_deadline: self.default_run_deadline,
+            provider_tools: self.provider_tools,
+            nested_tool_policy: self.nested_tool_policy,
+            session_store: self.session_store,
+            session_id: self.session_id,
+            session_branch: self.session_branch,
+            skill_catalog: self.skill_catalog,
         }
     }
 }

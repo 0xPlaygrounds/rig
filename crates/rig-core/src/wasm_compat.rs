@@ -3,19 +3,19 @@ use std::pin::Pin;
 
 use futures::Stream;
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-/// `Send` on native targets and a no-op marker on wasm32 with the `wasm` feature.
+#[cfg(not(target_arch = "wasm32"))]
+/// `Send` on native targets and a no-op marker on wasm32.
 pub trait WasmCompatSend: Send {}
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-/// `Send` on native targets and a no-op marker on wasm32 with the `wasm` feature.
+#[cfg(target_arch = "wasm32")]
+/// `Send` on native targets and a no-op marker on wasm32.
 pub trait WasmCompatSend {}
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 impl<T> WasmCompatSend for T where T: Send {}
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 impl<T> WasmCompatSend for T {}
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 /// Streaming response bound that includes `Send` on native targets.
 pub trait WasmCompatSendStream:
     Stream<Item = Result<Bytes, crate::http_client::Error>> + Send
@@ -23,13 +23,13 @@ pub trait WasmCompatSendStream:
     type InnerItem: Send;
 }
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-/// Streaming response bound without `Send` on wasm32 with the `wasm` feature.
+#[cfg(target_arch = "wasm32")]
+/// Streaming response bound without `Send` on wasm32.
 pub trait WasmCompatSendStream: Stream<Item = Result<Bytes, crate::http_client::Error>> {
     type InnerItem;
 }
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 impl<T> WasmCompatSendStream for T
 where
     T: Stream<Item = Result<Bytes, crate::http_client::Error>> + Send,
@@ -37,7 +37,7 @@ where
     type InnerItem = Result<Bytes, crate::http_client::Error>;
 }
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 impl<T> WasmCompatSendStream for T
 where
     T: Stream<Item = Result<Bytes, crate::http_client::Error>>,
@@ -45,20 +45,20 @@ where
     type InnerItem = Result<Bytes, crate::http_client::Error>;
 }
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-/// `Sync` on native targets and a no-op marker on wasm32 with the `wasm` feature.
+#[cfg(not(target_arch = "wasm32"))]
+/// `Sync` on native targets and a no-op marker on wasm32.
 pub trait WasmCompatSync: Sync {}
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-/// `Sync` on native targets and a no-op marker on wasm32 with the `wasm` feature.
+#[cfg(target_arch = "wasm32")]
+/// `Sync` on native targets and a no-op marker on wasm32.
 pub trait WasmCompatSync {}
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 impl<T> WasmCompatSync for T where T: Sync {}
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 impl<T> WasmCompatSync for T {}
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-/// Boxed future type that includes `Send`, except on wasm32 with the `wasm` feature.
+#[cfg(not(target_arch = "wasm32"))]
+/// Boxed future type that includes `Send`, except on wasm32.
 ///
 /// Gated to match [`WasmCompatSend`]/[`WasmCompatSync`] (and the streaming `Box`
 /// selection) — a `WasmBoxedFuture` returned by a `WasmCompatSend` bound (e.g.
@@ -66,8 +66,8 @@ impl<T> WasmCompatSync for T {}
 /// condition the marker relaxes it, or the two disagree on wasm.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-/// Boxed future type without `Send`, on wasm32 with the `wasm` feature.
+#[cfg(target_arch = "wasm32")]
+/// Boxed future type without `Send`, on wasm32.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 /// Error returned by [`timeout`] when the future does not complete in time.
@@ -118,7 +118,7 @@ where
 #[macro_export]
 macro_rules! if_wasm {
     ($($tokens:tt)*) => {
-        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+        #[cfg(target_arch = "wasm32")]
         $($tokens)*
 
     };
@@ -127,7 +127,7 @@ macro_rules! if_wasm {
 #[macro_export]
 macro_rules! if_not_wasm {
     ($($tokens:tt)*) => {
-        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+        #[cfg(not(target_arch = "wasm32"))]
         $($tokens)*
 
     };

@@ -233,6 +233,7 @@ pub(crate) fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
             "properties": {},
             "required": [],
         }),
+        output_schema: None,
     }
 }
 

@@ -45,6 +45,10 @@ pub struct StreamingCompletionResponse {
     /// The effective reasoning context from the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_context: Option<String>,
+    /// Provider-neutral terminal status from the terminal response event.
+    pub finish_reason: Option<crate::runtime::TerminalReason>,
+    /// Raw terminal response status.
+    pub raw_finish_reason: Option<String>,
 }
 
 pub(crate) fn reasoning_choices_from_done_item(
@@ -84,6 +88,14 @@ pub(crate) fn reasoning_choices_from_done_item(
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
+    }
+
+    fn finish_reason(&self) -> Option<crate::runtime::TerminalReason> {
+        self.finish_reason.clone()
+    }
+
+    fn raw_finish_reason(&self) -> Option<String> {
+        self.raw_finish_reason.clone()
     }
 }
 
@@ -223,6 +235,8 @@ struct RawChoiceAccumulator {
     reasoning_context: Option<String>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
+    finish_reason: Option<crate::runtime::TerminalReason>,
+    raw_finish_reason: Option<String>,
 }
 
 impl RawChoiceAccumulator {
@@ -233,6 +247,8 @@ impl RawChoiceAccumulator {
             reasoning_context: None,
             tool_calls: Vec::new(),
             tool_call_internal_ids: std::collections::HashMap::new(),
+            finish_reason: None,
+            raw_finish_reason: None,
         }
     }
 
@@ -318,6 +334,8 @@ impl RawChoiceAccumulator {
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
+                (self.finish_reason, self.raw_finish_reason) =
+                    super::normalized_response_status(&response.status);
                 if let Some(usage) = response.usage {
                     self.final_usage = usage;
                 }
@@ -396,6 +414,8 @@ impl RawChoiceAccumulator {
                 usage: self.final_usage,
                 reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
+                finish_reason: self.finish_reason,
+                raw_finish_reason: self.raw_finish_reason,
             },
         ));
         choices
@@ -562,6 +582,8 @@ pub(crate) async fn completion_response_from_sse_body(
     }
 
     Ok(completion::CompletionResponse {
+        finish_reason: None,
+        raw_finish_reason: None,
         usage: stream
             .response
             .as_ref()
@@ -1560,10 +1582,18 @@ mod tests {
             "response": response,
         });
 
-        let usage = final_response_from_event(event).await.usage;
-        assert_eq!(usage.input_tokens, 10);
-        assert_eq!(usage.output_tokens, 5);
-        assert_eq!(usage.total_tokens, 15);
+        let final_response = final_response_from_event(event).await;
+        assert_eq!(final_response.usage.input_tokens, 10);
+        assert_eq!(final_response.usage.output_tokens, 5);
+        assert_eq!(final_response.usage.total_tokens, 15);
+        assert_eq!(
+            final_response.finish_reason,
+            Some(crate::runtime::TerminalReason::Completed)
+        );
+        assert_eq!(
+            final_response.raw_finish_reason.as_deref(),
+            Some("completed")
+        );
     }
 
     #[tokio::test]

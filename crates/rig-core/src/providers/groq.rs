@@ -372,6 +372,7 @@ mod tests {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
             .max_tokens(64)
             .tool(crate::completion::ToolDefinition {
+                output_schema: None,
                 name: "choose_beta".to_string(),
                 description: "Choose beta".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
@@ -424,6 +425,7 @@ mod tests {
     fn groq_prepare_request_merges_native_tools_into_compound_custom() {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "search")
             .tool(crate::completion::ToolDefinition {
+                output_schema: None,
                 name: "local_tool".to_string(),
                 description: "A local function tool".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),

@@ -217,6 +217,8 @@ impl From<RawStreamingToolCall> for ToolCall {
         ToolCall {
             id: tool_call.id,
             call_id: tool_call.call_id,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             function: ToolFunction {
                 name: tool_call.name,
                 arguments: tool_call.arguments,
@@ -227,12 +229,12 @@ impl From<RawStreamingToolCall> for ToolCall {
     }
 }
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 /// Provider stream of raw completion chunks on native targets.
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 /// Provider stream of raw completion chunks on wasm targets.
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
@@ -419,6 +421,8 @@ where
             // yields the provider's usage when present and the zero sentinel
             // (`Usage::new`) when the stream produced no final response.
             usage: value.response.token_usage(),
+            finish_reason: value.response.finish_reason(),
+            raw_finish_reason: value.response.raw_finish_reason(),
             raw_response: value.response,
             message_id: value.message_id,
         }
@@ -644,7 +648,7 @@ mod tests {
     use async_stream::stream;
     use tokio::time::sleep;
 
-    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    #[cfg(not(target_arch = "wasm32"))]
     fn to_stream_result(
         stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
         + Send
@@ -653,7 +657,7 @@ mod tests {
         Box::pin(stream)
     }
 
-    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    #[cfg(target_arch = "wasm32")]
     fn to_stream_result(
         stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
         + 'static,
@@ -1039,6 +1043,7 @@ mod tests {
 /// Describes responses from a streamed provider response which is either text, a tool call or a final usage response.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum StreamedAssistantContent<R> {
     /// Text delta emitted by the assistant.
     Text(Text),

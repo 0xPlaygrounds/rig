@@ -88,6 +88,7 @@ where
                 tool_call_id,
                 internal_call_id,
                 args,
+                ..
             } => {
                 let tool_no = self.next_tool_call();
 

@@ -180,17 +180,23 @@ impl PartialStreamedTurn {
             .pending_tool_calls
             .iter()
             .map(|tool_call| {
-                tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
+                correlated_tool_result(
+                    tool_result_message(
+                        tool_call.id.clone(),
+                        tool_call.call_id.clone(),
+                        TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
+                    ),
+                    tool_call,
                 )
             })
             .collect::<Vec<_>>();
-        retry_results.push(tool_result_message(
-            invalid_tool_call.id,
-            invalid_tool_call.call_id,
-            feedback,
+        retry_results.push(correlated_tool_result(
+            tool_result_message(
+                invalid_tool_call.id.clone(),
+                invalid_tool_call.call_id.clone(),
+                feedback,
+            ),
+            &invalid_tool_call,
         ));
 
         let user_message = Message::User {
@@ -198,6 +204,20 @@ impl PartialStreamedTurn {
         };
 
         Some((assistant_message, user_message))
+    }
+}
+
+fn correlated_tool_result(
+    content: crate::message::UserContent,
+    call: &ToolCall,
+) -> crate::message::UserContent {
+    match content {
+        crate::message::UserContent::ToolResult(mut result) => {
+            result.internal_call_id = call.internal_call_id.clone();
+            result.parent_internal_call_id = call.parent_internal_call_id.clone();
+            crate::message::UserContent::ToolResult(result)
+        }
+        other => other,
     }
 }
 
@@ -228,6 +248,7 @@ pub struct StreamedTurn {
 /// Deliberately exhaustive: a driver must handle every resolution, so adding
 /// a variant is a breaking change by design.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum StreamedResolution {
     /// The tool name was repaired. Apply it via
     /// [`StreamedTurnAssembler::resolve_pending_invalid`] and keep consuming
@@ -279,6 +300,10 @@ pub enum StreamedTurnEvent {
         /// Provider-reported usage for this call. Zero-valued usage means the
         /// provider reported no usage metrics.
         usage: Usage,
+        /// Provider-neutral reason this request stopped.
+        finish_reason: Option<crate::runtime::TerminalReason>,
+        /// Unmodified provider finish/status value.
+        raw_finish_reason: Option<String>,
         /// Whether the ingested final item should be forwarded to the
         /// consumer (set when the turn streamed text).
         emit_final: bool,
@@ -317,9 +342,21 @@ pub struct StreamedTurnAssembler {
     pending_tool_calls: Vec<(ToolCall, String)>,
     delta_states: HashMap<(String, String), ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
+    parent_internal_call_id: Option<String>,
 }
 
 impl StreamedTurnAssembler {
+    /// Attach the enclosing Rig call ID to every tool call assembled this turn.
+    pub fn set_parent_internal_call_id(&mut self, parent: Option<String>) {
+        self.parent_internal_call_id = parent.clone();
+        for (call, _) in &mut self.pending_tool_calls {
+            call.parent_internal_call_id = parent.clone();
+        }
+        if let Some(PendingInvalid::FullCall { tool_call, .. }) = &mut self.pending_invalid {
+            tool_call.parent_internal_call_id = parent;
+        }
+    }
+
     /// Create an assembler for one streamed turn with the tool names
     /// advertised to the provider for that turn.
     pub fn new(
@@ -337,6 +374,7 @@ impl StreamedTurnAssembler {
             pending_tool_calls: Vec::new(),
             delta_states: HashMap::new(),
             pending_invalid: None,
+            parent_internal_call_id: None,
         }
     }
 
@@ -394,8 +432,11 @@ impl StreamedTurnAssembler {
                 internal_call_id,
             } => {
                 if !self.allowed_tool_names.contains(&tool_call.function.name) {
+                    let mut correlated = tool_call.clone();
+                    correlated.internal_call_id = Some(internal_call_id.clone());
+                    correlated.parent_internal_call_id = self.parent_internal_call_id.clone();
                     let invalid = StreamedInvalidToolCall {
-                        tool_call: tool_call.clone(),
+                        tool_call: correlated.clone(),
                         internal_call_id: internal_call_id.clone(),
                         args: Some(json_utils::value_to_json_string(
                             &tool_call.function.arguments,
@@ -404,14 +445,17 @@ impl StreamedTurnAssembler {
                         allowed_tool_names: self.allowed_tool_names.clone(),
                     };
                     self.pending_invalid = Some(PendingInvalid::FullCall {
-                        tool_call: Box::new(tool_call.clone()),
+                        tool_call: Box::new(correlated),
                         internal_call_id: internal_call_id.clone(),
                     });
                     return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
                 }
 
+                let mut correlated = tool_call.clone();
+                correlated.internal_call_id = Some(internal_call_id.clone());
+                correlated.parent_internal_call_id = self.parent_internal_call_id.clone();
                 self.pending_tool_calls
-                    .push((tool_call.clone(), internal_call_id.clone()));
+                    .push((correlated, internal_call_id.clone()));
                 Ok(Vec::new())
             }
             StreamedAssistantContent::ToolCallDelta {
@@ -433,6 +477,7 @@ impl StreamedTurnAssembler {
                                     id,
                                     name,
                                     &buffered_args,
+                                    internal_call_id,
                                 ),
                                 internal_call_id: internal_call_id.clone(),
                                 args: Some(buffered_args),
@@ -471,7 +516,12 @@ impl StreamedTurnAssembler {
                 let usage = final_response.token_usage();
                 let emit_final = self.saw_text;
                 self.saw_text = false;
-                Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
+                Ok(vec![StreamedTurnEvent::Completed {
+                    usage,
+                    finish_reason: final_response.finish_reason(),
+                    raw_finish_reason: final_response.raw_finish_reason(),
+                    emit_final,
+                }])
             }
             StreamedAssistantContent::Unknown(_) => {
                 // Unmodeled provider item (e.g. a hosted-tool result): forward it
@@ -504,6 +554,8 @@ impl StreamedTurnAssembler {
                 },
             ) => {
                 tool_call.function.name = tool_name.clone();
+                tool_call.internal_call_id = Some(internal_call_id.clone());
+                tool_call.parent_internal_call_id = self.parent_internal_call_id.clone();
                 self.pending_tool_calls.push((*tool_call, internal_call_id));
                 Vec::new()
             }
@@ -604,7 +656,11 @@ impl StreamedTurnAssembler {
                 let tool_items = self
                     .pending_tool_calls
                     .iter()
-                    .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
+                    .map(|(tool_call, internal_call_id)| {
+                        let mut tool_call = tool_call.clone();
+                        tool_call.internal_call_id = Some(internal_call_id.clone());
+                        AssistantContent::ToolCall(tool_call)
+                    })
                     .collect::<Vec<_>>();
                 ordered_streaming_assistant_content(
                     self.accumulated_reasoning.drain(..),
@@ -630,6 +686,7 @@ impl StreamedTurnAssembler {
         id: &str,
         name: &str,
         buffered_args: &str,
+        internal_call_id: &str,
     ) -> ToolCall {
         let diagnostic_args = if buffered_args.trim().is_empty() {
             serde_json::Value::Null
@@ -639,6 +696,10 @@ impl StreamedTurnAssembler {
         ToolCall::new(
             id.to_string(),
             ToolFunction::new(name.to_string(), diagnostic_args),
+        )
+        .with_internal_call_ids(
+            Some(internal_call_id.to_owned()),
+            self.parent_internal_call_id.clone(),
         )
     }
 
@@ -1154,6 +1215,14 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_a"));
         assert_eq!(calls[1].internal_call_id.as_deref(), Some("internal_b"));
+        assert_eq!(
+            calls[0].tool_call.internal_call_id.as_deref(),
+            Some("internal_a")
+        );
+        assert_eq!(
+            calls[1].tool_call.internal_call_id.as_deref(),
+            Some("internal_b")
+        );
     }
 
     #[test]

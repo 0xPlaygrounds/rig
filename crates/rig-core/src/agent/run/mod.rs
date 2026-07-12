@@ -163,6 +163,12 @@ pub struct ModelTurn {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
     pub allowed_tool_names: BTreeSet<String>,
+    /// Provider-neutral reason this turn stopped.
+    #[serde(default)]
+    pub finish_reason: Option<crate::runtime::TerminalReason>,
+    /// Unmodified provider finish/status value.
+    #[serde(default)]
+    pub raw_finish_reason: Option<String>,
 }
 
 impl ModelTurn {
@@ -181,7 +187,20 @@ impl ModelTurn {
             usage,
             executable_tool_names,
             allowed_tool_names,
+            finish_reason: None,
+            raw_finish_reason: None,
         }
+    }
+
+    /// Attach normalized and raw provider finish metadata.
+    pub fn with_finish_reason(
+        mut self,
+        finish_reason: Option<crate::runtime::TerminalReason>,
+        raw_finish_reason: Option<String>,
+    ) -> Self {
+        self.finish_reason = finish_reason;
+        self.raw_finish_reason = raw_finish_reason;
+        self
     }
 }
 
@@ -310,6 +329,15 @@ pub struct AgentRun {
 }
 
 impl AgentRun {
+    /// Whether serializing now can be resumed without replaying an in-flight
+    /// provider call or tool side effect.
+    pub(crate) fn is_safe_checkpoint(&self) -> bool {
+        matches!(
+            self.state,
+            RunState::PreparingRequest | RunState::AwaitingAdvance(_) | RunState::Done(_)
+        )
+    }
+
     /// Create a run for one prompt with no input history, a one-model-call
     /// budget, and no invalid tool-call retries.
     pub fn new(prompt: impl Into<Message>) -> Self {
@@ -497,6 +525,29 @@ impl AgentRun {
         }
     }
 
+    /// Returns whether host steering can be appended at this boundary.
+    pub(crate) fn accepts_steering(&self) -> bool {
+        matches!(self.state, RunState::PreparingRequest)
+    }
+
+    /// Appends host steering messages at a safe pre-model boundary.
+    ///
+    /// Messages are accepted only while the machine is preparing a request;
+    /// callers must not inject into an in-flight model or tool step.
+    pub fn steer<I>(&mut self, messages: I) -> Result<(), PromptError>
+    where
+        I: IntoIterator<Item = Message>,
+    {
+        if !matches!(self.state, RunState::PreparingRequest) {
+            return Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "steering attempted outside a safe pre-model boundary",
+            ));
+        }
+        self.new_messages.extend(messages);
+        Ok(())
+    }
+
     /// Build the cancellation error a driver should return when one of its
     /// hooks terminates the run, carrying the current full history.
     pub fn cancel_error(&self, reason: impl Into<String>) -> PromptError {
@@ -680,7 +731,8 @@ impl AgentRun {
                                 let internal_call_id = internal_call_ids
                                     .iter()
                                     .position(|(id, _)| *id == tool_call.id)
-                                    .map(|index| internal_call_ids.remove(index).1);
+                                    .map(|index| internal_call_ids.remove(index).1)
+                                    .or_else(|| tool_call.internal_call_id.clone());
                                 Some(PendingToolCall {
                                     tool_call: tool_call.clone(),
                                     preresolved_result: skipped.get(&tool_call.id).cloned(),
@@ -774,7 +826,7 @@ impl AgentRun {
             ));
         }
 
-        self.record_completion_call(turn.usage);
+        self.record_completion_call(turn.usage, turn.finish_reason, turn.raw_finish_reason);
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -803,10 +855,16 @@ impl AgentRun {
     /// ingestion paths. Callers own the once-per-turn `streamed_completion_call_recorded`
     /// guard/flag; this helper never touches it, so it cannot be mistaken for
     /// "a completion call happened" and re-introduce a double count.
-    fn record_completion_call(&mut self, usage: Usage) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage);
+    fn record_completion_call(
+        &mut self,
+        usage: Usage,
+        finish_reason: Option<crate::runtime::TerminalReason>,
+        raw_finish_reason: Option<String>,
+    ) -> CompletionCall {
+        let call = CompletionCall::new(self.completion_call_index, usage)
+            .with_finish_reason(finish_reason, raw_finish_reason);
         self.completion_call_index += 1;
-        self.completion_calls.push(call);
+        self.completion_calls.push(call.clone());
         self.usage += usage;
         call
     }
@@ -964,6 +1022,22 @@ impl AgentRun {
         }
     }
 
+    /// Finish successfully from a host-declared final-result tool after its
+    /// result has been committed to history.
+    pub(crate) fn finish_from_tool(&mut self, output: String) -> Result<(), PromptError> {
+        if !matches!(self.state, RunState::PreparingRequest) {
+            return Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "final-result tool settled outside a safe boundary",
+            ));
+        }
+        let response = PromptResponse::new(output, self.usage)
+            .with_messages(self.new_messages.clone())
+            .with_completion_calls(self.completion_calls.clone());
+        self.state = RunState::Done(Box::new(response));
+        Ok(())
+    }
+
     /// Feed the tool results for the pending [`AgentRunStep::CallTools`].
     ///
     /// Results may be in any order; they are appended as a single user
@@ -1107,6 +1181,16 @@ impl AgentRun {
         &mut self,
         usage: Usage,
     ) -> Result<CompletionCall, PromptError> {
+        self.record_streamed_completion_call_with_finish(usage, None, None)
+    }
+
+    /// Record a streamed completion call including normalized and raw finish metadata.
+    pub fn record_streamed_completion_call_with_finish(
+        &mut self,
+        usage: Usage,
+        finish_reason: Option<crate::runtime::TerminalReason>,
+        raw_finish_reason: Option<String>,
+    ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
         if !recordable {
@@ -1121,7 +1205,7 @@ impl AgentRun {
         }
         self.streamed_completion_call_recorded = true;
 
-        Ok(self.record_completion_call(usage))
+        Ok(self.record_completion_call(usage, finish_reason, raw_finish_reason))
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
@@ -1238,6 +1322,8 @@ impl AgentRun {
                 let skipped_tool_result = ToolResult {
                     id: invalid.tool_call.id.clone(),
                     call_id: invalid.tool_call.call_id.clone(),
+                    internal_call_id: Some(invalid.internal_call_id.clone()),
+                    parent_internal_call_id: invalid.tool_call.parent_internal_call_id.clone(),
                     content: OneOrMany::one(ToolResultContent::text(reason.clone())),
                 };
                 let Some((assistant_message, user_message)) =
@@ -1280,7 +1366,7 @@ impl AgentRun {
             // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
             // so routing the no-usage fallback through `record_completion_call`
             // leaves the run total unchanged while unifying the accounting.
-            self.record_completion_call(Usage::new());
+            self.record_completion_call(Usage::new(), None, None);
             self.streamed_completion_call_recorded = true;
         }
 

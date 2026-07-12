@@ -56,6 +56,8 @@ struct MockTurnResponse {
     choice: OneOrMany<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
+    finish_reason: Option<crate::runtime::TerminalReason>,
+    raw_finish_reason: Option<String>,
 }
 
 impl MockTurn {
@@ -97,6 +99,8 @@ impl MockTurn {
                 choice: OneOrMany::one(content),
                 usage: Usage::new(),
                 message_id: None,
+                finish_reason: None,
+                raw_finish_reason: None,
             }),
         }
     }
@@ -110,6 +114,8 @@ impl MockTurn {
                 choice: OneOrMany::many(content)?,
                 usage: Usage::new(),
                 message_id: None,
+                finish_reason: None,
+                raw_finish_reason: None,
             }),
         })
     }
@@ -144,9 +150,24 @@ impl MockTurn {
         self
     }
 
+    /// Attach normalized and raw provider finish metadata.
+    pub fn with_finish_reason(
+        mut self,
+        finish_reason: crate::runtime::TerminalReason,
+        raw_finish_reason: impl Into<String>,
+    ) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.finish_reason = Some(finish_reason);
+            response.raw_finish_reason = Some(raw_finish_reason.into());
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse<MockResponse>, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(CompletionResponse {
+            finish_reason: response.finish_reason,
+            raw_finish_reason: response.raw_finish_reason,
             choice: response.choice,
             usage: response.usage,
             raw_response: MockResponse::with_usage(response.usage),

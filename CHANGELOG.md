@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(completion/tool)* [**breaking**] `ToolDefinition` now requires `output_schema`, and `ToolCall`/`ToolResult` carry Rig-only correlation fields. Downstream struct literals must initialize these fields; prefer `ToolDefinition::new`, `ToolDefinition::with_output_schema`, `ToolCall::new`, and the `UserContent::tool_result*` constructors. Legacy serialized values remain compatible through serde defaults.
 - *(core)* [**breaking**] Mark `PromptError`, `StructuredOutputError`, `ToolError`, `ToolSetError`, and `VectorStoreError` as non-exhaustive, requiring downstream match expressions to include a wildcard arm. Conversation memory load failures now surface as the typed `PromptError::MemoryError` variant instead of `CompletionError::RequestError`.
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/v0.39.0...v0.40.0) - 2026-07-10

@@ -44,18 +44,27 @@ use super::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
             drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
         },
-        tool_result_message, tool_result_output,
+        tool_result_content, tool_result_message, tool_result_output,
     },
     run::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
     },
 };
 use crate::{
-    completion::{CompletionError, CompletionModel, Document, Message, PromptError},
+    completion::{
+        CompletionError, CompletionModel, Document, Message, PromptError, ProviderToolDefinition,
+    },
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::{ToolCallExtensions, ToolExecutionResult, ToolOutcome, server::ToolServerHandle},
+    runtime::{RunContext, RunControlHandle},
+    session::{SessionEventKind, SessionStore},
+    skills::SkillCatalog,
+    tool::{
+        ToolCallExtensions, ToolExecutionResult, ToolOutcome,
+        server::{NestedToolPolicy, ScopedToolDispatch, ScopedToolExecutor, ToolServerHandle},
+    },
+    wasm_compat::WasmBoxedFuture,
 };
 
 use super::UNKNOWN_AGENT_NAME;
@@ -277,6 +286,8 @@ where
     pub(crate) temperature: Option<f64>,
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
+    pub(crate) provider_tools: Vec<ProviderToolDefinition>,
+    pub(crate) nested_tool_policy: NestedToolPolicy,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Per-call runtime extensions made available to every tool executed during
     /// this run via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
@@ -291,6 +302,31 @@ where
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack<M>,
+    pub(crate) session_store: Option<Arc<dyn SessionStore>>,
+    pub(crate) session_id: Option<String>,
+    pub(crate) session_branch: String,
+    pub(crate) skill_catalog: Option<Arc<dyn SkillCatalog>>,
+    pub(crate) skill_allowed_tools: Option<Vec<String>>,
+    pub(crate) session_loaded_messages: usize,
+    pub(crate) session_loaded_completion_calls: usize,
+    pub(crate) session_correlation_id: String,
+    pub(crate) control: RunControlHandle,
+    pub(crate) run_context: RunContext,
+}
+
+fn skill_catalog_preamble(catalog: Option<&dyn SkillCatalog>) -> Option<String> {
+    let entries = catalog?.list();
+    if entries.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "\n\nAvailable skills (activate before detailed instructions are disclosed):\n{}",
+        entries
+            .into_iter()
+            .map(|(name, description)| format!("- {name}: {description}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    ))
 }
 
 impl<M> AgentRunner<M>
@@ -300,6 +336,11 @@ where
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
     pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+        let deadline = agent
+            .default_run_deadline
+            .and_then(|duration| std::time::Instant::now().checked_add(duration));
+        let (control, run_context) =
+            RunControlHandle::new(agent.default_conversation_id.clone(), deadline);
         Self {
             prompt: prompt.into(),
             chat_history: None,
@@ -307,11 +348,21 @@ where
             max_invalid_tool_call_retries: 0,
             model: agent.model.clone(),
             agent_name: agent.name.clone(),
-            preamble: agent.preamble.clone(),
+            preamble: agent.preamble.clone().map_or_else(
+                || skill_catalog_preamble(agent.skill_catalog.as_deref()),
+                |base| {
+                    Some(format!(
+                        "{base}{}",
+                        skill_catalog_preamble(agent.skill_catalog.as_deref()).unwrap_or_default()
+                    ))
+                },
+            ),
             static_context: agent.static_context.clone(),
             temperature: agent.temperature,
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
+            provider_tools: agent.provider_tools.clone(),
+            nested_tool_policy: agent.nested_tool_policy.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_extensions: ToolCallExtensions::new(),
             dynamic_context: agent.dynamic_context.clone(),
@@ -322,7 +373,52 @@ where
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
+            session_store: agent.session_store.clone(),
+            session_id: agent.session_id.clone(),
+            session_branch: agent.session_branch.clone(),
+            skill_catalog: agent.skill_catalog.clone(),
+            skill_allowed_tools: None,
+            session_loaded_messages: 0,
+            session_loaded_completion_calls: 0,
+            session_correlation_id: run_context.run_id().to_string(),
+            control,
+            run_context,
         }
+    }
+
+    /// Activate a skill for this run. Its detailed instructions are disclosed
+    /// only now, and its tool allow-list is intersected with every active skill.
+    pub fn skill(mut self, name: &str) -> Result<Self, String> {
+        let skill = self
+            .skill_catalog
+            .as_ref()
+            .and_then(|catalog| catalog.activate(name))
+            .ok_or_else(|| format!("unknown skill `{name}`"))?;
+        let provenance = format!("{:?}", skill.provenance);
+        let guidance = format!(
+            "\n\nActivated skill `{}` ({provenance}):\n{}",
+            skill.name, skill.instructions
+        );
+        self.preamble
+            .get_or_insert_with(String::new)
+            .push_str(&guidance);
+        let allowed = match self.skill_allowed_tools.take() {
+            None => skill.allowed_tools,
+            Some(previous) => previous
+                .into_iter()
+                .filter(|tool| skill.allowed_tools.contains(tool))
+                .collect(),
+        };
+        let allowed_set = allowed
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
+        self.nested_tool_policy.allowlist = Some(match self.nested_tool_policy.allowlist.take() {
+            Some(existing) => existing.intersection(&allowed_set).cloned().collect(),
+            None => allowed_set,
+        });
+        self.skill_allowed_tools = Some(allowed);
+        Ok(self)
     }
 
     /// Append a hook to the stack (on top of any the agent already carries).
@@ -360,6 +456,17 @@ where
     /// without the model ever seeing them. Replaces any extensions already set.
     pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
         self.tool_extensions = extensions;
+        self
+    }
+
+    /// Inherit runtime identity and control from nested agent execution.
+    pub(crate) fn inherit_runtime(
+        mut self,
+        control: RunControlHandle,
+        context: RunContext,
+    ) -> Self {
+        self.control = control;
+        self.run_context = context;
         self
     }
 
@@ -401,14 +508,37 @@ where
 
     /// Set the conversation id used to load and persist memory for this run.
     pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.conversation_id = Some(id.into());
+        let id = id.into();
+        self.conversation_id = Some(id.clone());
+        self.run_context = self.run_context.with_conversation(Some(id));
         self
+    }
+
+    /// Set a wall-clock deadline relative to now for this run.
+    pub fn deadline(mut self, duration: std::time::Duration) -> Self {
+        self.run_context = self
+            .run_context
+            .with_deadline(std::time::Instant::now().checked_add(duration));
+        self
+    }
+
+    /// Returns the cloneable control handle before the runner is consumed.
+    pub fn control_handle(&self) -> RunControlHandle {
+        self.control.clone()
     }
 
     /// Disable conversation memory for this run (no load, no save).
     pub fn without_memory(mut self) -> Self {
         self.memory = None;
         self.conversation_id = None;
+        self.run_context = self.run_context.with_conversation(None);
+        self
+    }
+
+    /// Set the bounded budget for model-regenerated tool names/arguments.
+    /// Every repair also consumes the shared model-turn budget.
+    pub fn max_tool_repairs(mut self, repairs: usize) -> Self {
+        self.max_invalid_tool_call_retries = repairs;
         self
     }
 
@@ -540,22 +670,120 @@ where
     }
 }
 
-/// Append a finished run's messages to conversation memory, logging and
-/// proceeding on failure. Shared `Done`-arm behavior for both drivers.
+/// Append a finished run's messages to conversation memory. Persistence is
+/// part of successful settlement, so failures propagate to both surfaces.
 pub(crate) async fn append_run_messages(
     memory_handle: Option<&(Arc<dyn ConversationMemory>, String)>,
     messages: &[Message],
-) {
-    // Clone into an owned vec only when there is a backend to append to — the
-    // common no-memory path pays nothing.
-    if let Some((memory, id)) = memory_handle
-        && let Err(err) = memory.append(id, messages.to_vec()).await
-    {
-        tracing::warn!(
-            error = %err,
-            conversation_id = %id,
-            "conversation memory append failed; surfacing final response anyway"
-        );
+) -> Result<(), crate::memory::MemoryError> {
+    if let Some((memory, id)) = memory_handle {
+        memory.append(id, messages.to_vec()).await?;
+    }
+    Ok(())
+}
+
+struct RunnerScopedDispatch<M>
+where
+    M: CompletionModel,
+{
+    hooks: HookStack<M>,
+    context: HookContext,
+}
+
+impl<M> ScopedToolDispatch for RunnerScopedDispatch<M>
+where
+    M: CompletionModel + 'static,
+{
+    fn dispatch<'a>(
+        &'a self,
+        server: &'a ToolServerHandle,
+        extensions: ToolCallExtensions,
+        context: RunContext,
+        name: &'a str,
+        args: &'a str,
+        internal_call_id: &'a str,
+        parent_internal_call_id: Option<&'a str>,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        Box::pin(async move {
+            let span = new_execute_tool_span();
+            async move {
+                let (flow, salvaged) = self
+                    .hooks
+                    .resolve_tool_call(
+                        &self.context,
+                        name,
+                        None,
+                        internal_call_id,
+                        parent_internal_call_id,
+                        args,
+                    )
+                    .await;
+                let mut effective_args = salvaged
+                    .map(|value| json_utils::value_to_json_string(&value))
+                    .unwrap_or_else(|| args.to_string());
+                let mut result = match flow_into_tool_call(flow) {
+                    ToolCallDecision::Terminate(reason) => ToolExecutionResult::failed(
+                        reason.clone(),
+                        crate::tool::ToolFailure::cancelled(reason),
+                    ),
+                    ToolCallDecision::Skip(reason) => ToolExecutionResult::skipped(reason),
+                    ToolCallDecision::ProceedWith(value) => {
+                        effective_args = json_utils::value_to_json_string(&value);
+                        server
+                            .call_tool_structured(name, &effective_args, &extensions)
+                            .await
+                    }
+                    ToolCallDecision::Proceed => {
+                        server
+                            .call_tool_structured(name, &effective_args, &extensions)
+                            .await
+                    }
+                };
+                let decision = flow_into_tool_result(
+                    self.hooks
+                        .on_event(
+                            &self.context,
+                            StepEvent::ToolResult {
+                                tool_name: name,
+                                tool_call_id: None,
+                                internal_call_id,
+                                parent_internal_call_id,
+                                args: &effective_args,
+                                result: result.model_output(),
+                                outcome: result.outcome(),
+                                extensions: result.extensions(),
+                            },
+                        )
+                        .await,
+                );
+                match decision {
+                    ToolResultDecision::Keep => {}
+                    ToolResultDecision::Replace(replacement) => {
+                        result.model_output = replacement;
+                        result.content = None;
+                    }
+                    ToolResultDecision::Terminate(reason) => {
+                        result = ToolExecutionResult::failed(
+                            reason.clone(),
+                            crate::tool::ToolFailure::cancelled(reason),
+                        );
+                    }
+                }
+                let current = tracing::Span::current();
+                current.record("gen_ai.tool.name", name);
+                current.record(
+                    "gen_ai.tool.call.parent_internal_id",
+                    parent_internal_call_id,
+                );
+                current.record("gen_ai.tool.call.arguments", &effective_args);
+                current.record("gen_ai.tool.call.result", result.model_output());
+                record_tool_outcome(&current, result.outcome());
+                let _ = context;
+                result
+            }
+            .instrument(span)
+            .await
+        })
     }
 }
 
@@ -580,8 +808,12 @@ pub(crate) struct ToolCallOutcome {
     /// The tool result delivered to the model (a real output, a redacted
     /// replacement, or a hook skip reason).
     pub content: UserContent,
+    /// Effective model-visible string used for final-result tools.
+    pub model_output: String,
     /// How the call resolved: executed (with the effective tool call) or skipped.
     pub execution: ToolExecution,
+    /// Structured execution outcome retained for durable lifecycle records.
+    pub outcome: ToolOutcome,
 }
 
 /// Execute a single tool call, firing the `ToolCall` and `ToolResult` hooks and
@@ -592,17 +824,20 @@ pub(crate) struct ToolCallOutcome {
 /// ([`tool_result_output`]). Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
     ctx: &HookContext,
     tool_server: &ToolServerHandle,
     tool_extensions: &ToolCallExtensions,
+    run_context: &RunContext,
+    nested_tool_policy: &NestedToolPolicy,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
 ) -> Result<ToolCallOutcome, PromptError>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     let tool_name = &tool_call.function.name;
     // `mut` so a `Flow::RewriteArgs` hook can rewrite the arguments the tool
@@ -612,6 +847,9 @@ where
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
     tool_span.record("gen_ai.tool.call.id", &tool_call.id);
+    if let Some(parent) = run_context.current_call_id() {
+        tool_span.record("gen_ai.tool.call.parent_internal_id", parent);
+    }
     tool_span.record("gen_ai.tool.call.arguments", &args);
 
     // Resolve the `ToolCall` hook chain. A proceeding chain carries any
@@ -626,6 +864,7 @@ where
             tool_name,
             tool_call.call_id.as_deref(),
             internal_call_id,
+            run_context.current_call_id(),
             &args,
         )
         .await;
@@ -686,8 +925,23 @@ where
         None => {
             let mut effective_tool_call = tool_call.clone();
             effective_tool_call.function.arguments = effective_args;
+            let mut call_extensions = tool_extensions.clone();
+            let child_context =
+                run_context.child(tool_name.to_string(), internal_call_id.to_string());
+            let nested = ScopedToolExecutor::new(
+                tool_server.clone(),
+                call_extensions.clone(),
+                child_context.clone(),
+                nested_tool_policy.clone(),
+                Some(Arc::new(RunnerScopedDispatch {
+                    hooks: hooks.clone(),
+                    context: ctx.clone(),
+                })),
+            );
+            call_extensions.insert(child_context);
+            call_extensions.insert(nested);
             let exec = tool_server
-                .call_tool_structured(tool_name, &args, tool_extensions)
+                .call_tool_structured(tool_name, &args, &call_extensions)
                 .await;
             (exec, ToolExecution::Executed(Box::new(effective_tool_call)))
         }
@@ -705,6 +959,7 @@ where
     // tool-end / model-visible output for the same reason.) The hook still
     // observes the tool's actual output via `result` and the structured
     // classification via `outcome` / `extensions`.
+    let structured_outcome = exec.outcome.clone();
     match flow_into_tool_result(
         hooks
             .on_event(
@@ -713,6 +968,7 @@ where
                     tool_name,
                     tool_call_id: tool_call.call_id.as_deref(),
                     internal_call_id,
+                    parent_internal_call_id: run_context.current_call_id(),
                     // The first result hook observes the tool's actual output,
                     // before any `RewriteResult` replacement is applied below.
                     args: &args,
@@ -745,12 +1001,18 @@ where
             tool_span.record("gen_ai.tool.call.result", &replacement);
             tracing::info!("tool {tool_name} with args {args}; result rewritten by a hook");
             Ok(ToolCallOutcome {
-                content: tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    replacement,
+                content: with_tool_result_correlation(
+                    tool_result_message(
+                        tool_call.id.clone(),
+                        tool_call.call_id.clone(),
+                        replacement.clone(),
+                    ),
+                    internal_call_id,
+                    run_context.current_call_id(),
                 ),
+                model_output: replacement,
                 execution,
+                outcome: structured_outcome,
             })
         }
         ToolResultDecision::Keep => {
@@ -770,12 +1032,15 @@ where
                     exec.model_output
                 );
             }
+            let model_output = exec.model_output.clone();
             let content = if synthetic {
                 tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     exec.model_output,
                 )
+            } else if let Some(rich) = exec.content {
+                tool_result_content(tool_call.id.clone(), tool_call.call_id.clone(), rich)
             } else {
                 tool_result_output(
                     tool_call.id.clone(),
@@ -783,8 +1048,47 @@ where
                     exec.model_output,
                 )
             };
-            Ok(ToolCallOutcome { content, execution })
+            Ok(ToolCallOutcome {
+                content: with_tool_result_correlation(
+                    content,
+                    internal_call_id,
+                    run_context.current_call_id(),
+                ),
+                model_output,
+                execution,
+                outcome: structured_outcome,
+            })
         }
+    }
+}
+
+fn correlate_tool_calls(
+    choice: crate::OneOrMany<crate::message::AssistantContent>,
+    parent_internal_call_id: Option<&str>,
+) -> crate::OneOrMany<crate::message::AssistantContent> {
+    crate::OneOrMany::from_iter_optional(choice.into_iter().map(|part| match part {
+        crate::message::AssistantContent::ToolCall(mut call) => {
+            call.internal_call_id = Some(crate::id::generate());
+            call.parent_internal_call_id = parent_internal_call_id.map(str::to_owned);
+            crate::message::AssistantContent::ToolCall(call)
+        }
+        other => other,
+    }))
+    .unwrap_or_else(|| crate::OneOrMany::one(crate::message::AssistantContent::text("")))
+}
+
+fn with_tool_result_correlation(
+    content: UserContent,
+    internal_call_id: &str,
+    parent_internal_call_id: Option<&str>,
+) -> UserContent {
+    match content {
+        UserContent::ToolResult(mut result) => {
+            result.internal_call_id = Some(internal_call_id.to_owned());
+            result.parent_internal_call_id = parent_internal_call_id.map(str::to_owned);
+            UserContent::ToolResult(result)
+        }
+        other => other,
     }
 }
 
@@ -812,6 +1116,7 @@ pub(crate) fn new_execute_tool_span() -> tracing::Span {
         gen_ai.tool.type = "function",
         gen_ai.tool.name = tracing::field::Empty,
         gen_ai.tool.call.id = tracing::field::Empty,
+        gen_ai.tool.call.parent_internal_id = tracing::field::Empty,
         gen_ai.tool.call.arguments = tracing::field::Empty,
         gen_ai.tool.call.result = tracing::field::Empty,
         gen_ai.tool.call.outcome = tracing::field::Empty,
@@ -859,7 +1164,7 @@ impl UnaryTurnSource {
 
 impl<M> TurnSource<M> for UnaryTurnSource
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     type Raw = M::Response;
 
@@ -891,13 +1196,17 @@ where
                 }
             };
 
+            let choice = correlate_tool_calls(
+                resp.choice.clone(),
+                runner.run_context.current_call_id(),
+            );
             let mut outcome = match run.model_response(ModelTurn::new(
                 resp.message_id.clone(),
-                resp.choice.clone(),
+                choice,
                 resp.usage,
                 prepared.executable_tool_names,
                 prepared.allowed_tool_names,
-            )) {
+            ).with_finish_reason(resp.finish_reason.clone(), resp.raw_finish_reason.clone())) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     yield Err(Box::new(err).into());
@@ -1016,12 +1325,12 @@ where
 
 impl<M> AgentRunner<M>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+    pub async fn run(mut self) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) =
             acquire_agent_span(self.agent_name_or_default(), self.preamble.as_deref());
 
@@ -1032,18 +1341,102 @@ where
         // When the caller passes explicit history, memory is fully bypassed for
         // this run (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
+        let (mut history_override, memory_handle) = match &self.chat_history {
             Some(_) => (None, None),
             None => match (&self.memory, &self.conversation_id) {
-                (Some(memory), Some(id)) => {
-                    let loaded = memory.load(id).await?;
-                    (Some(loaded), Some((memory.clone(), id.clone())))
-                }
+                (Some(memory), Some(id)) => match memory.load(id).await {
+                    Ok(loaded) => (Some(loaded), Some((memory.clone(), id.clone()))),
+                    Err(err) => {
+                        self.control.finish(crate::runtime::TerminalReason::Failed);
+                        return Err(err.into());
+                    }
+                },
                 _ => (None, None),
             },
         };
 
-        let run = self.build_run(history_override);
+        let mut resumed_run = None;
+        if history_override.is_none()
+            && let (Some(store), Some(session_id)) = (&self.session_store, &self.session_id)
+        {
+            let events = match store.load(session_id, &self.session_branch).await {
+                Ok(events) => events,
+                Err(error) => {
+                    self.control.finish(crate::runtime::TerminalReason::Failed);
+                    return Err(error.into());
+                }
+            };
+            let mut messages = Vec::new();
+            let mut recovery_snapshot = None;
+            let mut recovery_correlation = None;
+            let mut unsafe_interruption = false;
+            for event in &events {
+                match &event.kind {
+                    SessionEventKind::Message(message) => messages.push(message.clone()),
+                    SessionEventKind::Checkpoint { snapshot } => {
+                        recovery_snapshot = Some(snapshot.clone());
+                        recovery_correlation = event.correlation_id.clone();
+                        unsafe_interruption = false;
+                    }
+                    SessionEventKind::Interrupted { checkpoint, run_id } => {
+                        unsafe_interruption = checkpoint.is_none();
+                        if let Some(checkpoint) = checkpoint {
+                            recovery_snapshot = Some(checkpoint.clone());
+                            recovery_correlation = Some(run_id.clone());
+                        }
+                    }
+                    SessionEventKind::Lifecycle { status, .. } if status == "completed" => {
+                        recovery_snapshot = None;
+                        recovery_correlation = None;
+                        unsafe_interruption = false;
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(correlation) = recovery_correlation {
+                self.session_correlation_id = correlation.clone();
+                self.session_loaded_messages = events
+                    .iter()
+                    .filter(|event| {
+                        event.correlation_id.as_deref() == Some(correlation.as_str())
+                            && matches!(&event.kind, SessionEventKind::Message(_))
+                    })
+                    .count();
+                self.session_loaded_completion_calls = events
+                    .iter()
+                    .filter(|event| {
+                        event.correlation_id.as_deref() == Some(correlation.as_str())
+                            && matches!(&event.kind, SessionEventKind::ModelResponse { .. })
+                    })
+                    .count();
+            }
+            if unsafe_interruption {
+                self.control.finish(crate::runtime::TerminalReason::Failed);
+                return Err(crate::session::SessionError::UnsafeRecovery.into());
+            }
+            if let Some(snapshot) = recovery_snapshot {
+                let restored: AgentRun = match serde_json::from_str(&snapshot) {
+                    Ok(restored) => restored,
+                    Err(error) => {
+                        self.control.finish(crate::runtime::TerminalReason::Failed);
+                        return Err(crate::session::SessionError::InvalidCheckpoint(
+                            error.to_string(),
+                        )
+                        .into());
+                    }
+                };
+                if !restored.is_safe_checkpoint() {
+                    self.control.finish(crate::runtime::TerminalReason::Failed);
+                    return Err(crate::session::SessionError::UnsafeRecovery.into());
+                }
+                resumed_run = Some(restored);
+            }
+            if !messages.is_empty() {
+                history_override = Some(messages);
+            }
+        }
+
+        let run = resumed_run.unwrap_or_else(|| self.build_run(history_override));
 
         // Fold the shared engine to its final response. The blocking surface
         // uses a unary model transport and ignores the intermediate items the
@@ -1062,12 +1455,16 @@ where
         futures::pin_mut!(driver);
 
         let mut response = None;
+        let mut terminal_error = None;
         while let Some(item) = driver.next().await {
             match item {
                 Ok(DriveItem::Done(done)) => response = Some(*done),
                 Ok(DriveItem::Item(_)) => {}
-                Err(err) => return Err(streaming_error_into_prompt(err)),
+                Err(err) => terminal_error = Some(streaming_error_into_prompt(err)),
             }
+        }
+        if let Some(error) = terminal_error {
+            return Err(error);
         }
 
         // The engine yields `Done` unless it errored (handled above).
@@ -1099,8 +1496,8 @@ mod tests {
     use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
-        MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-        MockSubtractTool, MockToolError, MockTurn,
+        MockAddTool, MockBarrierTool, MockCompletionModel, MockDeniedTool, MockOperationArgs,
+        MockResponse, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn,
     };
     use crate::tool::Tool;
 
@@ -1326,16 +1723,83 @@ mod tests {
         assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
         assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
 
-        // Same final message history (compared via serialized form to normalize).
+        // Both surfaces preserve exact Rig correlation from call to result.
         let blocking_messages = blocking.messages.expect("blocking messages");
         let streaming_messages = final_response
             .messages()
             .expect("streaming history")
             .to_vec();
+        fn assert_exact_correlation(messages: &[Message]) {
+            let call = messages
+                .iter()
+                .find_map(|message| match message {
+                    Message::Assistant { content, .. } => {
+                        content.iter().find_map(|part| match part {
+                            AssistantContent::ToolCall(call) => Some(call),
+                            _ => None,
+                        })
+                    }
+                    _ => None,
+                })
+                .expect("tool call");
+            let result = messages
+                .iter()
+                .find_map(|message| match message {
+                    Message::User { content } => content.iter().find_map(|part| match part {
+                        UserContent::ToolResult(result) => Some(result),
+                        _ => None,
+                    }),
+                    _ => None,
+                })
+                .expect("tool result");
+            assert!(call.internal_call_id.is_some());
+            assert_eq!(result.internal_call_id, call.internal_call_id);
+            assert_eq!(result.parent_internal_call_id, call.parent_internal_call_id);
+            assert_ne!(call.internal_call_id.as_deref(), call.call_id.as_deref());
+        }
+        assert_exact_correlation(&blocking_messages);
+        assert_exact_correlation(&streaming_messages);
+    }
+
+    #[tokio::test]
+    async fn normalized_and_raw_finish_metadata_have_unary_streaming_parity() {
+        let unary = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")
+            .with_finish_reason(crate::runtime::TerminalReason::MaxTokens, "length")]))
+        .build()
+        .runner("go")
+        .run()
+        .await
+        .unwrap();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::FinalResponse(
+                MockResponse::new()
+                    .with_finish_reason(crate::runtime::TerminalReason::MaxTokens, "length"),
+            ),
+        ]]))
+        .build()
+        .runner("go")
+        .stream()
+        .await;
+        let mut streamed = None;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(response) = item.unwrap() {
+                streamed = Some(response);
+            }
+        }
+        let streamed = streamed.unwrap();
+        assert_eq!(unary.completion_calls, streamed.completion_calls().to_vec());
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            unary.completion_calls[0].finish_reason,
+            Some(crate::runtime::TerminalReason::MaxTokens)
         );
+        assert_eq!(
+            unary.completion_calls[0].raw_finish_reason.as_deref(),
+            Some("length")
+        );
+        let round_trip: crate::agent::prompt_request::PromptResponse =
+            serde_json::from_value(serde_json::to_value(&unary).unwrap()).unwrap();
+        assert_eq!(round_trip.completion_calls, unary.completion_calls);
     }
 
     /// Structured tool-execution results reach `StepEvent::ToolResult` as machine
@@ -2465,6 +2929,29 @@ mod tests {
         })
     }
 
+    fn without_rig_correlation<T: serde::Serialize>(value: &T) -> serde_json::Value {
+        fn strip(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    map.remove("internal_call_id");
+                    map.remove("parent_internal_call_id");
+                    for child in map.values_mut() {
+                        strip(child);
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for child in values {
+                        strip(child);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut value = serde_json::to_value(value).expect("serialize messages");
+        strip(&mut value);
+        value
+    }
+
     /// Even with `run()` executing tools concurrently, the tool-result order —
     /// and so the whole message history — matches the sequential streaming
     /// driver. (`run()` runs tools with `buffer_unordered` but writes each result
@@ -2523,8 +3010,8 @@ mod tests {
             .expect("streaming history")
             .to_vec();
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking_messages),
+            without_rig_correlation(&streaming_messages),
         );
     }
 
@@ -2696,8 +3183,8 @@ mod tests {
             .expect("streaming history")
             .to_vec();
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking_messages),
+            without_rig_correlation(&streaming_messages),
         );
     }
 
@@ -4094,8 +4581,8 @@ mod tests {
             .expect("streaming history")
             .to_vec();
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking_messages),
+            without_rig_correlation(&streaming_messages),
         );
     }
 
@@ -4282,8 +4769,8 @@ mod tests {
             "{label}: tool-result content diverged"
         );
         assert_eq!(
-            serde_json::to_value(&blocking.messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming.messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking.messages),
+            without_rig_correlation(&streaming.messages),
             "{label}: message history diverged"
         );
     }
@@ -4441,8 +4928,8 @@ mod tests {
             .expect("streaming history")
             .to_vec();
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking_messages),
+            without_rig_correlation(&streaming_messages),
         );
         // Pin the actual reason, not just blocking == streaming (see the valid-tool
         // skip test): a reason dropped or altered on BOTH paths would still pass.
@@ -4683,8 +5170,8 @@ mod tests {
             .expect("streaming history")
             .to_vec();
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking_messages),
+            without_rig_correlation(&streaming_messages),
         );
         // Pin the actual reason, not just blocking == streaming: a reason dropped
         // or altered on BOTH paths would still satisfy the equality above.
@@ -4929,8 +5416,8 @@ mod tests {
             .expect("streaming history")
             .to_vec();
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking_messages),
+            without_rig_correlation(&streaming_messages),
         );
         assert!(
             tool_result_text_in_history(&blocking_messages, "redacted-result"),
@@ -6013,8 +6500,8 @@ mod tests {
             .expect("streaming history")
             .to_vec();
         assert_eq!(
-            serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-            serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+            without_rig_correlation(&blocking_messages),
+            without_rig_correlation(&streaming_messages),
         );
         assert!(
             tool_result_text_in_history(&blocking_messages, denial),
@@ -6196,6 +6683,507 @@ mod tests {
         assert!(
             tool_result_text_in_history(&messages, "denied by policy: `subtract` not allowed"),
             "the policy denial reason must reach the model as the subtract tool result"
+        );
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingSessionStore(Arc<std::sync::Mutex<Vec<crate::session::SessionEvent>>>);
+
+    impl RecordingSessionStore {
+        fn events(&self) -> Vec<crate::session::SessionEvent> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    impl crate::session::SessionStore for RecordingSessionStore {
+        fn load<'a>(
+            &'a self,
+            session: &'a str,
+            branch: &'a str,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<Vec<crate::session::SessionEvent>, crate::session::SessionError>,
+        > {
+            Box::pin(async move {
+                Ok(self
+                    .events()
+                    .into_iter()
+                    .filter(|event| event.session_id == session && event.branch == branch)
+                    .collect())
+            })
+        }
+
+        fn append<'a>(
+            &'a self,
+            session: &'a str,
+            branch: &'a str,
+            parent_sequence: Option<u64>,
+            correlation_id: Option<String>,
+            kind: crate::session::SessionEventKind,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<crate::session::SessionEvent, crate::session::SessionError>,
+        > {
+            Box::pin(async move {
+                let mut events = self.0.lock().unwrap();
+                let sequence = events
+                    .iter()
+                    .filter(|event| event.session_id == session && event.branch == branch)
+                    .count() as u64;
+                let event = crate::session::SessionEvent {
+                    session_id: session.into(),
+                    branch: branch.into(),
+                    sequence,
+                    parent_sequence,
+                    correlation_id,
+                    kind,
+                };
+                events.push(event.clone());
+                Ok(event)
+            })
+        }
+
+        fn branch<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: &'a str,
+            _: u64,
+        ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<(), crate::session::SessionError>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn sequential_session_runs_persist_each_run_without_cross_run_deduplication() {
+        let store = RecordingSessionStore::default();
+        let model = MockCompletionModel::from_turns([
+            MockTurn::text("first")
+                .with_finish_reason(crate::runtime::TerminalReason::MaxTokens, "MAX_TOKENS"),
+            MockTurn::text("second"),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .session(store.clone(), "session")
+            .build();
+        assert_eq!(agent.runner("one").run().await.unwrap().output, "first");
+        assert_eq!(agent.runner("two").run().await.unwrap().output, "second");
+
+        let events = store.events();
+        let completed = events
+            .iter()
+            .filter(|event| matches!(&event.kind, crate::session::SessionEventKind::Lifecycle { status, .. } if status == "completed"))
+            .count();
+        assert_eq!(completed, 2);
+        assert!(
+            events.iter().all(|event| !matches!(
+                event.kind,
+                crate::session::SessionEventKind::Interrupted { .. }
+            )),
+            "successful non-Completed terminal reasons must not be marked interrupted"
+        );
+        let correlations = events
+            .iter()
+            .filter_map(|event| event.correlation_id.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(correlations.len(), 2);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event.kind,
+                    crate::session::SessionEventKind::ModelResponse { .. }
+                ))
+                .count(),
+            2
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event.kind, crate::session::SessionEventKind::Message(_)))
+                .count(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn session_events_follow_lifecycle_order_and_preserve_denied_outcome() {
+        let store = RecordingSessionStore::default();
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "guarded", json!({})),
+            MockTurn::text("done"),
+        ]);
+        AgentBuilder::new(model)
+            .tool(MockDeniedTool)
+            .session(store.clone(), "session")
+            .build()
+            .runner("go")
+            .max_turns(2)
+            .run()
+            .await
+            .unwrap();
+
+        let events = store.events();
+        let model_call = events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event.kind,
+                    crate::session::SessionEventKind::ModelCall { .. }
+                )
+            })
+            .unwrap();
+        let model_response = events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event.kind,
+                    crate::session::SessionEventKind::ModelResponse { .. }
+                )
+            })
+            .unwrap();
+        let tool_call = events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event.kind,
+                    crate::session::SessionEventKind::ToolCall { .. }
+                )
+            })
+            .unwrap();
+        let tool_result = events
+            .iter()
+            .position(|event| matches!(&event.kind, crate::session::SessionEventKind::ToolResult { outcome, .. } if outcome == "denied"))
+            .expect("tool-side denial must retain its structured outcome");
+        let lifecycle = events
+            .iter()
+            .position(|event| matches!(&event.kind, crate::session::SessionEventKind::Lifecycle { status, .. } if status == "completed"))
+            .unwrap();
+        assert!(model_call < model_response);
+        assert!(model_response < tool_call);
+        assert!(tool_call < tool_result);
+        assert!(tool_result < lifecycle);
+    }
+
+    struct FailingSessionStore;
+    impl crate::session::SessionStore for FailingSessionStore {
+        fn load<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<Vec<crate::session::SessionEvent>, crate::session::SessionError>,
+        > {
+            Box::pin(async {
+                Err(crate::session::SessionError::Backend(
+                    "injected load failure".into(),
+                ))
+            })
+        }
+        fn append<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: Option<u64>,
+            _: Option<String>,
+            _: crate::session::SessionEventKind,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<crate::session::SessionEvent, crate::session::SessionError>,
+        > {
+            Box::pin(async {
+                Err(crate::session::SessionError::Backend(
+                    "injected append failure".into(),
+                ))
+            })
+        }
+        fn branch<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: &'a str,
+            _: u64,
+        ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<(), crate::session::SessionError>>
+        {
+            Box::pin(async {
+                Err(crate::session::SessionError::Backend(
+                    "injected branch failure".into(),
+                ))
+            })
+        }
+    }
+
+    struct InvalidCheckpointStore;
+    impl crate::session::SessionStore for InvalidCheckpointStore {
+        fn load<'a>(
+            &'a self,
+            session: &'a str,
+            branch: &'a str,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<Vec<crate::session::SessionEvent>, crate::session::SessionError>,
+        > {
+            Box::pin(async move {
+                Ok(vec![crate::session::SessionEvent {
+                    session_id: session.into(),
+                    branch: branch.into(),
+                    sequence: 0,
+                    parent_sequence: None,
+                    correlation_id: Some("run".into()),
+                    kind: crate::session::SessionEventKind::Checkpoint {
+                        snapshot: "not-json".into(),
+                    },
+                }])
+            })
+        }
+        fn append<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: Option<u64>,
+            _: Option<String>,
+            _: crate::session::SessionEventKind,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<crate::session::SessionEvent, crate::session::SessionError>,
+        > {
+            Box::pin(async {
+                Err(crate::session::SessionError::Backend(
+                    "unexpected append".into(),
+                ))
+            })
+        }
+        fn branch<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: &'a str,
+            _: u64,
+        ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<(), crate::session::SessionError>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    struct AppendFailSessionStore;
+    impl crate::session::SessionStore for AppendFailSessionStore {
+        fn load<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<Vec<crate::session::SessionEvent>, crate::session::SessionError>,
+        > {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+        fn append<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: Option<u64>,
+            _: Option<String>,
+            _: crate::session::SessionEventKind,
+        ) -> crate::wasm_compat::WasmBoxedFuture<
+            'a,
+            Result<crate::session::SessionEvent, crate::session::SessionError>,
+        > {
+            Box::pin(async {
+                Err(crate::session::SessionError::Backend(
+                    "injected append failure".into(),
+                ))
+            })
+        }
+        fn branch<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: &'a str,
+            _: u64,
+        ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<(), crate::session::SessionError>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    struct AppendFailMemory;
+    impl crate::memory::ConversationMemory for AppendFailMemory {
+        fn load<'a>(
+            &'a self,
+            _: &'a str,
+        ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<Vec<Message>, crate::memory::MemoryError>>
+        {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+
+        fn append<'a>(
+            &'a self,
+            _: &'a str,
+            _: Vec<Message>,
+        ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<(), crate::memory::MemoryError>>
+        {
+            Box::pin(async {
+                Err(crate::memory::MemoryError::Internal(
+                    "injected memory append failure".into(),
+                ))
+            })
+        }
+
+        fn clear<'a>(
+            &'a self,
+            _: &'a str,
+        ) -> crate::wasm_compat::WasmBoxedFuture<'a, Result<(), crate::memory::MemoryError>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn memory_append_failure_is_typed_and_settles_unary_and_streaming() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+            .memory(AppendFailMemory)
+            .conversation("conversation")
+            .build();
+        let runner = agent.runner("go");
+        let control = runner.control_handle();
+        let error = runner.run().await.unwrap_err();
+        assert!(matches!(error, PromptError::MemoryError(_)));
+        assert_eq!(
+            control.status(),
+            crate::runtime::RunStatus::Terminal(crate::runtime::TerminalReason::Failed)
+        );
+
+        let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ]]))
+        .memory(AppendFailMemory)
+        .conversation("conversation")
+        .build();
+        let runner = agent.runner("go");
+        let control = runner.control_handle();
+        let mut stream = runner.stream().await;
+        let error = loop {
+            if let Some(Err(error)) = stream.next().await {
+                break error;
+            }
+        };
+        assert!(matches!(
+            error,
+            StreamingError::Prompt(error) if matches!(*error, PromptError::MemoryError(_))
+        ));
+        assert_eq!(
+            control.status(),
+            crate::runtime::RunStatus::Terminal(crate::runtime::TerminalReason::Failed)
+        );
+    }
+
+    #[tokio::test]
+    async fn unary_session_load_failure_is_typed_and_settles_control() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .session(FailingSessionStore, "session")
+            .build();
+        let runner = agent.runner("go");
+        let control = runner.control_handle();
+        let error = runner.run().await.unwrap_err();
+        assert!(matches!(error, PromptError::SessionError(_)));
+        assert_eq!(
+            control.status(),
+            crate::runtime::RunStatus::Terminal(crate::runtime::TerminalReason::Failed)
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_durable_checkpoint_errors_without_starting_model() {
+        let model = MockCompletionModel::text("must not run");
+        let recorded = model.clone();
+        let error = AgentBuilder::new(model)
+            .session(InvalidCheckpointStore, "session")
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            PromptError::SessionError(crate::session::SessionError::InvalidCheckpoint(_))
+        ));
+        assert_eq!(recorded.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn session_append_failure_is_typed_on_unary_and_streaming() {
+        let unary = AgentBuilder::new(MockCompletionModel::text("done"))
+            .session(AppendFailSessionStore, "session")
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .unwrap_err();
+        assert!(matches!(unary, PromptError::SessionError(_)));
+
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ]]))
+        .session(AppendFailSessionStore, "session")
+        .build()
+        .runner("go")
+        .stream()
+        .await;
+        let mut errors = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Err(error) = item {
+                errors.push(error);
+            }
+        }
+        assert_eq!(
+            errors.len(),
+            1,
+            "a failed Interrupted append must yield one terminal error without a fallback retry"
+        );
+        assert!(matches!(
+            errors.first(),
+            Some(StreamingError::Prompt(error))
+                if matches!(**error, PromptError::SessionError(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn activated_skill_discloses_instructions_and_narrows_tools() {
+        use crate::skills::{InMemorySkillCatalog, Skill, SkillProvenance};
+        let catalog = InMemorySkillCatalog::default();
+        catalog.insert(Skill {
+            name: "math".into(),
+            description: "safe math".into(),
+            instructions: "Only use approved arithmetic.".into(),
+            provenance: SkillProvenance::ProviderHosted("host-1".into()),
+            assets: vec![],
+            allowed_tools: vec!["add".into()],
+        });
+        let model = MockCompletionModel::text("done");
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .skills(catalog)
+            .build();
+        let runner = agent.runner("calculate").skill("math").unwrap();
+        assert_eq!(
+            runner.nested_tool_policy.allowlist.as_ref().unwrap(),
+            &["add".to_string()].into_iter().collect()
+        );
+        runner.run().await.unwrap();
+        let request = recorded.requests().into_iter().next().unwrap();
+        assert!(request.chat_history.iter().any(|message| matches!(message, Message::System { content } if content.contains("Available skills") && content.contains("Only use approved arithmetic") && content.contains("ProviderHosted"))));
+        assert_eq!(
+            request
+                .tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["add"]
         );
     }
 }

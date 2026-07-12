@@ -32,6 +32,12 @@ macro_rules! forward_prompt_setters {
             self
         }
 
+        /// Set a wall-clock deadline relative to now for this run.
+        pub fn deadline(mut self, duration: std::time::Duration) -> Self {
+            self.$recv = self.$recv.deadline(duration);
+            self
+        }
+
         /// Add chat history to the prompt request.
         pub fn history<H, Item>(mut self, history: H) -> Self
         where
@@ -56,6 +62,13 @@ macro_rules! forward_prompt_setters {
         /// History will neither be loaded from nor saved to the agent's memory backend.
         pub fn without_memory(mut self) -> Self {
             self.$recv = self.$recv.without_memory();
+            self
+        }
+
+        /// Set the bounded budget for model-regenerated tool arguments.
+        /// Repairs also consume the shared model-turn budget.
+        pub fn max_tool_repairs(mut self, repairs: usize) -> Self {
+            self.$recv = self.$recv.max_tool_repairs(repairs);
             self
         }
 
@@ -133,6 +146,11 @@ where
     S: PromptType,
     M: CompletionModel,
 {
+    /// Returns the run-scoped control handle before this request is consumed.
+    pub fn control_handle(&self) -> crate::runtime::RunControlHandle {
+        self.runner.control_handle()
+    }
+
     /// Enable returning extended details for responses (includes aggregated token usage
     /// and the full message history accumulated during the agent loop).
     ///
@@ -202,7 +220,7 @@ where
 
 impl<M> PromptRequest<Standard, M>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
@@ -210,7 +228,7 @@ where
 }
 
 /// Details for one successfully completed completion request made by an agent run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
@@ -222,12 +240,34 @@ pub struct CompletionCall {
     /// from "unreported".
     #[serde(default, deserialize_with = "usage_null_as_default")]
     pub usage: Usage,
+    /// Provider-neutral reason this request stopped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<crate::runtime::TerminalReason>,
+    /// Unmodified provider finish/status value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_finish_reason: Option<String>,
 }
 
 impl CompletionCall {
     /// Create details for one completion request in an agent run.
     pub fn new(call_index: usize, usage: Usage) -> Self {
-        Self { call_index, usage }
+        Self {
+            call_index,
+            usage,
+            finish_reason: None,
+            raw_finish_reason: None,
+        }
+    }
+
+    /// Attach normalized and raw provider finish metadata.
+    pub fn with_finish_reason(
+        mut self,
+        finish_reason: Option<crate::runtime::TerminalReason>,
+        raw_finish_reason: Option<String>,
+    ) -> Self {
+        self.finish_reason = finish_reason;
+        self.raw_finish_reason = raw_finish_reason;
+        self
     }
 }
 
@@ -282,6 +322,8 @@ pub struct PromptResponse {
     /// Where [`output`](Self::output) is the concatenated text, this preserves
     /// the individual content parts (text, reasoning, images, …).
     pub content: OneOrMany<AssistantContent>,
+    /// Normalized reason the agent run settled.
+    pub terminal_reason: crate::runtime::TerminalReason,
 }
 
 /// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
@@ -300,6 +342,8 @@ struct PromptResponseRepr {
     messages: Option<Vec<Message>>,
     #[serde(default)]
     content: Option<OneOrMany<AssistantContent>>,
+    #[serde(default)]
+    terminal_reason: crate::runtime::TerminalReason,
 }
 
 impl From<PromptResponseRepr> for PromptResponse {
@@ -313,6 +357,7 @@ impl From<PromptResponseRepr> for PromptResponse {
             completion_calls: repr.completion_calls,
             messages: repr.messages,
             content,
+            terminal_reason: repr.terminal_reason,
         }
     }
 }
@@ -325,6 +370,7 @@ impl From<PromptResponse> for PromptResponseRepr {
             completion_calls: response.completion_calls,
             messages: response.messages,
             content: Some(response.content),
+            terminal_reason: response.terminal_reason,
         }
     }
 }
@@ -344,6 +390,7 @@ impl PromptResponse {
             usage,
             completion_calls: Vec::new(),
             messages: None,
+            terminal_reason: crate::runtime::TerminalReason::Completed,
         }
     }
 
@@ -377,6 +424,11 @@ impl PromptResponse {
     /// Aggregated token usage across the whole run.
     pub fn usage(&self) -> Usage {
         self.usage
+    }
+
+    /// Returns the normalized terminal reason.
+    pub fn terminal_reason(&self) -> &crate::runtime::TerminalReason {
+        &self.terminal_reason
     }
 
     /// The run's accumulated message history, if tracked.
@@ -492,6 +544,15 @@ pub(crate) fn tool_result_output(
     tool_result_with(id, call_id, ToolResultContent::from_tool_output(output))
 }
 
+/// Shape explicit rich tool content without parsing a string envelope.
+pub(crate) fn tool_result_content(
+    id: String,
+    call_id: Option<String>,
+    content: OneOrMany<ToolResultContent>,
+) -> UserContent {
+    tool_result_with(id, call_id, content)
+}
+
 /// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
 /// "not executed" notice) as a tool result. Emitted **verbatim as text** and
 /// never re-parsed as structured tool output, so a JSON-shaped message is not
@@ -558,7 +619,7 @@ pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -
 
 impl<M> PromptRequest<Extended, M>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     async fn send(self) -> Result<PromptResponse, PromptError> {
         self.runner.run().await
@@ -691,7 +752,7 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
 impl<T, M> TypedPromptRequest<T, Standard, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -709,7 +770,7 @@ where
 impl<T, M> TypedPromptRequest<T, Extended, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
@@ -2532,17 +2593,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn memory_append_error_does_not_drop_response() {
+    async fn memory_append_error_surfaces_as_prompt_error() {
         let model = MockCompletionModel::text("ack");
         let agent = AgentBuilder::new(model)
             .memory(AppendFailingMemory::default())
             .build();
-        let response: String = agent
+        let error = agent
             .prompt("hello")
             .conversation("t1")
             .await
-            .expect("append failure must not block successful completion");
+            .expect_err("append failure must fail successful settlement");
 
-        assert!(!response.is_empty());
+        assert!(matches!(error, PromptError::MemoryError(_)));
+        assert!(error.to_string().contains("append boom"));
     }
 }

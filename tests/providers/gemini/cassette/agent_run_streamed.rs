@@ -29,6 +29,7 @@ use crate::support::{assert_mentions_expected_number, assert_nonempty_response};
 
 /// How one hand-driven streamed turn ended.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum TurnEnd {
     /// The turn was assembled and fed to the machine.
     Finished,

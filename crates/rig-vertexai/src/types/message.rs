@@ -416,6 +416,8 @@ mod tests {
         let tool_result = ToolResult {
             id: "add".to_string(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             content: OneOrMany::one(ToolResultContent::Text(Text::new("8".to_string()))),
         };
 

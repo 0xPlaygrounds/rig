@@ -8,8 +8,8 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, create_request_body, function_call_finish_reason_error, resolve_request_model,
-    streaming_endpoint,
+    CompletionModel, create_request_body, function_call_finish_reason_error,
+    normalized_finish_reason, resolve_request_model, streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -85,6 +85,20 @@ pub struct StreamingCompletionResponse {
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage_metadata.token_usage()
+    }
+
+    fn finish_reason(&self) -> Option<crate::runtime::TerminalReason> {
+        self.finish_reason
+            .as_ref()
+            .map(normalized_finish_reason)
+            .map(|(reason, _)| reason)
+    }
+
+    fn raw_finish_reason(&self) -> Option<String> {
+        self.finish_reason
+            .as_ref()
+            .map(normalized_finish_reason)
+            .map(|(_, raw)| raw)
     }
 }
 

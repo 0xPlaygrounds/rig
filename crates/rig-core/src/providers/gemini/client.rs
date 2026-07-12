@@ -233,8 +233,10 @@ pub struct ApiErrorResponse {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ApiResponse<T> {
-    Ok(T),
+    // Check the error envelope first: several successful response structs use
+    // serde defaults and can otherwise accept an error body as an empty success.
     Err(ApiErrorResponse),
+    Ok(T),
 }
 
 // ================================================================

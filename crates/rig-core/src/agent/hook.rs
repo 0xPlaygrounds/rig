@@ -306,28 +306,39 @@ impl std::fmt::Debug for Scratchpad {
 /// hooks for different tools in a turn can run concurrently against this shared
 /// context — see the [`Scratchpad` concurrency note](Scratchpad#concurrency) for
 /// how to store run-scoped state safely under that concurrency.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HookContext {
     run_id: RunId,
-    // Interior-mutable so the driver can advance it each turn while hooks hold a
-    // shared `&HookContext`; also the reason the context is `Sync`.
-    turn: AtomicUsize,
+    // Shared so scoped nested executors retain the same turn and scratch state.
+    turn: Arc<AtomicUsize>,
     is_streaming: bool,
     agent_name: Option<String>,
     scratchpad: Scratchpad,
+    call_scratchpads: Arc<std::sync::Mutex<std::collections::HashMap<String, Scratchpad>>>,
 }
 
 impl HookContext {
     /// Build a fresh run-scoped context. `is_streaming` records which surface is
     /// driving ([`run`](crate::agent::AgentRunner::run) vs.
     /// [`stream`](crate::agent::AgentRunner::stream)).
+    #[cfg(test)]
     pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
+        Self::with_run_id(RunId::generate(), is_streaming, agent_name)
+    }
+
+    /// Build a hook context correlated with an externally controlled run.
+    pub(crate) fn with_run_id(
+        run_id: RunId,
+        is_streaming: bool,
+        agent_name: Option<String>,
+    ) -> Self {
         Self {
-            run_id: RunId::generate(),
-            turn: AtomicUsize::new(0),
+            run_id,
+            turn: Arc::new(AtomicUsize::new(0)),
             is_streaming,
             agent_name,
             scratchpad: Scratchpad::default(),
+            call_scratchpads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -360,6 +371,25 @@ impl HookContext {
     /// The run-scoped shared scratchpad.
     pub fn scratchpad(&self) -> &Scratchpad {
         &self.scratchpad
+    }
+
+    /// Returns a scratchpad isolated to one immutable internal call ID.
+    /// Clones for the same ID share state; different IDs never alias.
+    pub fn call_scratchpad(&self, internal_call_id: impl Into<String>) -> Scratchpad {
+        self.call_scratchpads
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .entry(internal_call_id.into())
+            .or_default()
+            .clone()
+    }
+
+    /// Removes call-scoped state after a call has settled.
+    pub fn remove_call_scratchpad(&self, internal_call_id: &str) -> Option<Scratchpad> {
+        self.call_scratchpads
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(internal_call_id)
     }
 }
 
@@ -520,6 +550,8 @@ pub enum StepEvent<'a, M: CompletionModel> {
         tool_call_id: Option<&'a str>,
         /// Internal Rig call ID correlating this call's events.
         internal_call_id: &'a str,
+        /// Internal call ID of the invoking parent tool, for nested calls.
+        parent_internal_call_id: Option<&'a str>,
         /// JSON arguments for the call.
         args: &'a str,
     },
@@ -551,6 +583,8 @@ pub enum StepEvent<'a, M: CompletionModel> {
         tool_call_id: Option<&'a str>,
         /// Internal Rig call ID correlating this call's events.
         internal_call_id: &'a str,
+        /// Internal call ID of the invoking parent tool, for nested calls.
+        parent_internal_call_id: Option<&'a str>,
         /// JSON arguments for the call.
         args: &'a str,
         /// The model-visible tool result. Reflects any earlier hook's
@@ -1116,6 +1150,14 @@ impl Flow {
         }
     }
 
+    /// Ask the model to regenerate a tool call and its arguments.
+    ///
+    /// This is an explicit name for [`retry`](Self::retry); it consumes both the
+    /// invalid-call repair budget and the shared model-turn budget.
+    pub fn regenerate_args(feedback: impl Into<String>) -> Self {
+        Self::retry(feedback)
+    }
+
     /// Repair the emitted tool name (invalid tool calls only).
     pub fn repair(tool_name: impl Into<String>) -> Self {
         Self::Repair {
@@ -1192,6 +1234,7 @@ where
         tool_name: &str,
         tool_call_id: Option<&str>,
         internal_call_id: &str,
+        parent_internal_call_id: Option<&str>,
         args: &str,
     ) -> impl Future<Output = (Flow, Option<serde_json::Value>)> + WasmCompatSend {
         async move {
@@ -1202,6 +1245,7 @@ where
                         tool_name,
                         tool_call_id,
                         internal_call_id,
+                        parent_internal_call_id,
                         args,
                     },
                 )
@@ -1269,6 +1313,7 @@ where
         tool_name: &'a str,
         tool_call_id: Option<&'a str>,
         internal_call_id: &'a str,
+        parent_internal_call_id: Option<&'a str>,
         args: &'a str,
     ) -> WasmBoxedFuture<'a, (Flow, Option<serde_json::Value>)>
     where
@@ -1299,12 +1344,20 @@ where
         tool_name: &'a str,
         tool_call_id: Option<&'a str>,
         internal_call_id: &'a str,
+        parent_internal_call_id: Option<&'a str>,
         args: &'a str,
     ) -> WasmBoxedFuture<'a, (Flow, Option<serde_json::Value>)>
     where
         M: 'a,
     {
-        Box::pin(self.resolve_tool_call(ctx, tool_name, tool_call_id, internal_call_id, args))
+        Box::pin(self.resolve_tool_call(
+            ctx,
+            tool_name,
+            tool_call_id,
+            internal_call_id,
+            parent_internal_call_id,
+            args,
+        ))
     }
 
     fn observes_dyn(&self, kind: StepEventKind) -> bool {
@@ -1435,6 +1488,7 @@ where
         tool_name: &str,
         tool_call_id: Option<&str>,
         internal_call_id: &str,
+        parent_internal_call_id: Option<&str>,
         args: &str,
     ) -> (Flow, Option<serde_json::Value>) {
         let mut effective: Option<serde_json::Value> = None;
@@ -1447,6 +1501,7 @@ where
                     tool_name,
                     tool_call_id,
                     internal_call_id,
+                    parent_internal_call_id,
                     args_for_hook,
                 )
                 .await;
@@ -1508,11 +1563,19 @@ where
                 tool_name,
                 tool_call_id,
                 internal_call_id,
+                parent_internal_call_id,
                 args,
             } => {
-                self.resolve_tool_call(ctx, tool_name, tool_call_id, internal_call_id, args)
-                    .await
-                    .0
+                self.resolve_tool_call(
+                    ctx,
+                    tool_name,
+                    tool_call_id,
+                    internal_call_id,
+                    parent_internal_call_id,
+                    args,
+                )
+                .await
+                .0
             }
             // Chain tool-result rewrites: thread the effective (model-visible)
             // result through each hook (the first hook sees the tool's real
@@ -1523,6 +1586,7 @@ where
                 tool_name,
                 tool_call_id,
                 internal_call_id,
+                parent_internal_call_id,
                 args,
                 result,
                 outcome,
@@ -1535,6 +1599,7 @@ where
                         tool_name,
                         tool_call_id,
                         internal_call_id,
+                        parent_internal_call_id,
                         args,
                         result: result_for_hook,
                         outcome,
@@ -1642,6 +1707,7 @@ mod tests {
             tool_name: "add",
             tool_call_id: Some("tc1"),
             internal_call_id: "ic1",
+            parent_internal_call_id: None,
             args: "{}",
         }
     }
@@ -2069,7 +2135,7 @@ mod tests {
 
         async fn resolve(stack: &HookStack<M>) -> (Flow, Option<Value>) {
             stack
-                .resolve_tool_call(&ctx(), "add", Some("tc1"), "ic1", "{}")
+                .resolve_tool_call(&ctx(), "add", Some("tc1"), "ic1", None, "{}")
                 .await
         }
 

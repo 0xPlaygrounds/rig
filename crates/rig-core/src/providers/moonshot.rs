@@ -389,6 +389,8 @@ mod tests {
                 AssistantContent::ToolCall(ToolCall {
                     id: "call_1".to_string(),
                     call_id: None,
+                    internal_call_id: None,
+                    parent_internal_call_id: None,
                     function: ToolFunction {
                         name: "lookup".to_string(),
                         arguments: serde_json::json!({}),

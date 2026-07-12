@@ -62,6 +62,7 @@ reqwest-middleware = { workspace = true, optional = true, features = [
 # Native-only dependency for OpenAI Responses websocket mode.
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = ["process", "io-util", "fs"] }
 tokio-tungstenite = { workspace = true, optional = true }
 
 # futures-timer's default backend uses a background timer thread, which cannot

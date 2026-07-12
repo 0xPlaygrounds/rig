@@ -852,7 +852,7 @@ where
     }
 }
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 mod wasm_model_listing_compile_checks {
     use super::{ModelListingClient, Nothing};
     use crate::{

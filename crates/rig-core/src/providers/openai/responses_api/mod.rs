@@ -733,6 +733,7 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
             name,
             parameters,
             description,
+            output_schema: _,
         } = value;
 
         Self::function(name, description, parameters)
@@ -997,6 +998,24 @@ pub enum ResponseStatus {
     Cancelled,
     Queued,
     Incomplete,
+}
+
+pub(crate) fn normalized_response_status(
+    status: &ResponseStatus,
+) -> (Option<crate::runtime::TerminalReason>, Option<String>) {
+    use crate::runtime::TerminalReason;
+    let (reason, raw) = match status {
+        ResponseStatus::Completed => (Some(TerminalReason::Completed), "completed"),
+        ResponseStatus::Cancelled => (Some(TerminalReason::Cancelled), "cancelled"),
+        ResponseStatus::Failed => (Some(TerminalReason::Failed), "failed"),
+        ResponseStatus::Incomplete => (
+            Some(TerminalReason::Other("incomplete".to_string())),
+            "incomplete",
+        ),
+        ResponseStatus::InProgress => (None, "in_progress"),
+        ResponseStatus::Queued => (None, "queued"),
+    };
+    (reason, Some(raw.to_string()))
 }
 
 /// Controls where Rig system instructions are placed in an OpenAI Responses request.
@@ -2255,7 +2274,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
+        let (finish_reason, raw_finish_reason) = normalized_response_status(&response.status);
+
         Ok(completion::CompletionResponse {
+            finish_reason,
+            raw_finish_reason,
             choice,
             usage,
             raw_response: response,
@@ -2671,6 +2694,40 @@ impl FromStr for UserContent {
 mod tests {
     use super::*;
     use crate::completion::CompletionRequestBuilder;
+
+    #[test]
+    fn mixed_native_and_hosted_tools_serialize_under_one_tools_key() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::text("unused"), "hi")
+            .tool(weather_tool_definition())
+            .provider_tool(completion::ProviderToolDefinition::new("web_search"))
+            .build();
+        let converted = CompletionRequest::try_from(("gpt-5".to_string(), request)).unwrap();
+        let value = serde_json::to_value(converted).unwrap();
+        let object = value.as_object().unwrap();
+        assert_eq!(
+            object.keys().filter(|key| key.as_str() == "tools").count(),
+            1
+        );
+        assert_eq!(object["tools"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn response_status_is_normalized_and_raw_value_is_preserved() {
+        assert_eq!(
+            normalized_response_status(&ResponseStatus::Completed),
+            (
+                Some(crate::runtime::TerminalReason::Completed),
+                Some("completed".to_string())
+            )
+        );
+        assert_eq!(
+            normalized_response_status(&ResponseStatus::Incomplete),
+            (
+                Some(crate::runtime::TerminalReason::Other("incomplete".into())),
+                Some("incomplete".to_string())
+            )
+        );
+    }
     use crate::message;
     use crate::test_utils::MockCompletionModel;
     use serde_json::json;
@@ -2686,6 +2743,7 @@ mod tests {
 
     fn weather_tool_definition() -> completion::ToolDefinition {
         completion::ToolDefinition {
+            output_schema: None,
             name: "get_weather".to_string(),
             description: "Get the weather".to_string(),
             parameters: json!({
@@ -3077,6 +3135,7 @@ mod tests {
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_strict_tools()
             .with_tool(completion::ToolDefinition {
+                output_schema: None,
                 name: "lookup".to_string(),
                 description: "Look something up".to_string(),
                 parameters: json!({

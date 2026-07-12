@@ -147,6 +147,7 @@ pub mod agent;
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod client;
+pub mod code_mode;
 pub mod completion;
 pub mod embeddings;
 pub mod extractor;
@@ -166,8 +167,13 @@ pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
 pub mod rerank;
+/// Provider-independent contracts for interactive and nested execution.
+pub mod runtime;
+pub mod session;
+pub mod skills;
 
 pub mod streaming;
+pub mod subagent;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;

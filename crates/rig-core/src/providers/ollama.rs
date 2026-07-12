@@ -380,6 +380,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 };
 
                 Ok(completion::CompletionResponse {
+                    finish_reason: None,
+                    raw_finish_reason: None,
                     choice,
                     usage: Usage {
                         input_tokens: prompt_tokens,
@@ -873,7 +875,15 @@ where
 pub struct ToolDefinition {
     #[serde(rename = "type")]
     pub type_field: String, // Fixed as "function"
-    pub function: completion::ToolDefinition,
+    pub function: OllamaFunctionDefinition,
+}
+
+/// Ollama's wire function shape; Rig-only output schemas are intentionally omitted.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct OllamaFunctionDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
 }
 
 /// Convert internal ToolDefinition (from the completion module) into Ollama's tool definition.
@@ -881,7 +891,7 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
     fn from(tool: crate::completion::ToolDefinition) -> Self {
         ToolDefinition {
             type_field: "function".to_owned(),
-            function: completion::ToolDefinition {
+            function: OllamaFunctionDefinition {
                 name: tool.name,
                 description: tool.description,
                 parameters: tool.parameters,
@@ -1320,6 +1330,7 @@ mod tests {
     fn test_tool_definition_conversion() {
         // Internal tool definition from the completion module.
         let internal_tool = crate::completion::ToolDefinition {
+            output_schema: Some(json!({"type": "string"})),
             name: "get_current_weather".to_owned(),
             description: "Get the current weather for a location".to_owned(),
             parameters: json!({
@@ -1342,6 +1353,11 @@ mod tests {
         let ollama_tool: ToolDefinition = internal_tool.into();
         assert_eq!(ollama_tool.type_field, "function");
         assert_eq!(ollama_tool.function.name, "get_current_weather");
+        assert!(
+            serde_json::to_value(&ollama_tool).unwrap()["function"]
+                .get("output_schema")
+                .is_none()
+        );
         assert_eq!(
             ollama_tool.function.description,
             "Get the current weather for a location"

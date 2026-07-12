@@ -254,6 +254,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         };
 
         Ok(completion::CompletionResponse {
+            finish_reason: None,
+            raw_finish_reason: None,
             choice,
             usage,
             raw_response: response,
@@ -3026,6 +3028,7 @@ mod tests {
 
     fn generic_tool(name: &str) -> completion::ToolDefinition {
         completion::ToolDefinition {
+            output_schema: None,
             name: name.to_string(),
             description: format!("{name} description"),
             parameters: json!({

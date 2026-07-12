@@ -154,6 +154,11 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// JSON Schema for the tool arguments.
     fn parameters(&self) -> serde_json::Value;
 
+    /// Optional JSON Schema for the model-visible result.
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
     /// be the output and input of LLM models (respectively)
@@ -210,6 +215,12 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// ```
     fn classify_error(&self, error: &Self::Error) -> ToolFailure {
         ToolFailure::other(error.to_string())
+    }
+
+    /// Attach host-only metadata when classifying an ordinary [`Tool::call`]
+    /// error, without overriding [`Tool::call_structured`].
+    fn error_extensions(&self, _error: &Self::Error) -> ToolResultExtensions {
+        ToolResultExtensions::new()
     }
 
     /// Execute the tool, returning a structured [`ToolReturn`] instead of a bare
@@ -288,6 +299,16 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
 
     /// JSON Schema for the tool arguments.
     fn parameters(&self) -> serde_json::Value;
+
+    /// Optional JSON Schema for the model-visible result.
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Host catalog kind retained through type erasure.
+    fn catalog_kind(&self) -> crate::tool::server::ToolCatalogKind {
+        crate::tool::server::ToolCatalogKind::Native
+    }
 
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
@@ -393,6 +414,7 @@ pub(crate) fn tool_definition_with_name(
         name: name.into(),
         description: tool.description(),
         parameters: tool.parameters(),
+        output_schema: tool.output_schema(),
     }
 }
 
@@ -407,6 +429,10 @@ impl<T: Tool> ToolDyn for T {
 
     fn parameters(&self) -> serde_json::Value {
         <Self as Tool>::parameters(self)
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        <Self as Tool>::output_schema(self)
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
@@ -455,6 +481,7 @@ impl<T: Tool> ToolDyn for T {
                 Err(err) => {
                     let failure = self.classify_error(&err);
                     ToolExecutionResult::failed(err.to_string(), failure)
+                        .with_extensions(self.error_extensions(&err))
                 }
             }
         })
@@ -498,6 +525,13 @@ impl ToolType {
         match self {
             ToolType::Simple(tool) => tool.name(),
             ToolType::Embedding(tool) => tool.name(),
+        }
+    }
+
+    pub(crate) fn catalog_kind(&self) -> crate::tool::server::ToolCatalogKind {
+        match self {
+            ToolType::Simple(tool) => tool.catalog_kind(),
+            ToolType::Embedding(tool) => tool.catalog_kind(),
         }
     }
 

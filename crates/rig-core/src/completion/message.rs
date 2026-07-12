@@ -214,6 +214,12 @@ pub struct ToolResult {
     /// Provider-specific call ID, when distinct from `id`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub call_id: Option<String>,
+    /// Rig-generated identifier of the call this result answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub internal_call_id: Option<String>,
+    /// Rig-generated parent identifier for nested execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_internal_call_id: Option<String>,
     /// One or more content items produced by the tool.
     pub content: OneOrMany<ToolResultContent>,
 }
@@ -233,6 +239,12 @@ pub struct ToolCall {
     pub id: String,
     /// Provider-specific call ID used by some APIs for tool result correlation.
     pub call_id: Option<String>,
+    /// Rig-generated call correlation identifier, never sent as a provider ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub internal_call_id: Option<String>,
+    /// Rig-generated parent call identifier for nested tool execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_internal_call_id: Option<String>,
     /// Function name and JSON arguments requested by the model.
     pub function: ToolFunction,
     /// Optional cryptographic signature for the tool call.
@@ -254,6 +266,8 @@ impl ToolCall {
         Self {
             id,
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             function,
             signature: None,
             additional_params: None,
@@ -262,6 +276,17 @@ impl ToolCall {
 
     pub fn with_call_id(mut self, call_id: String) -> Self {
         self.call_id = Some(call_id);
+        self
+    }
+
+    /// Attach Rig-only call correlation identifiers.
+    pub fn with_internal_call_ids(
+        mut self,
+        internal_call_id: Option<String>,
+        parent_internal_call_id: Option<String>,
+    ) -> Self {
+        self.internal_call_id = internal_call_id;
+        self.parent_internal_call_id = parent_internal_call_id;
         self
     }
 
@@ -638,6 +663,8 @@ impl Message {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: id.into(),
                 call_id: None,
+                internal_call_id: None,
+                parent_internal_call_id: None,
                 content: OneOrMany::one(ToolResultContent::text(content)),
             })),
         }
@@ -652,6 +679,8 @@ impl Message {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: id.into(),
                 call_id,
+                internal_call_id: None,
+                parent_internal_call_id: None,
                 content: OneOrMany::one(ToolResultContent::text(content)),
             })),
         }
@@ -794,6 +823,8 @@ impl UserContent {
         UserContent::ToolResult(ToolResult {
             id: id.into(),
             call_id: None,
+            internal_call_id: None,
+            parent_internal_call_id: None,
             content,
         })
     }
@@ -807,6 +838,8 @@ impl UserContent {
         UserContent::ToolResult(ToolResult {
             id: id.into(),
             call_id: Some(call_id),
+            internal_call_id: None,
+            parent_internal_call_id: None,
             content,
         })
     }
@@ -1336,6 +1369,8 @@ impl From<ToolResultContent> for Message {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: String::new(),
                 call_id: None,
+                internal_call_id: None,
+                parent_internal_call_id: None,
                 content: OneOrMany::one(tool_result_content),
             })),
         }

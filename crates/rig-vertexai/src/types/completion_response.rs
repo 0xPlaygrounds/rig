@@ -137,11 +137,25 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
             })
             .unwrap_or_default();
 
+        let provider_finish_reason = candidate.finish_reason.clone();
+        let raw_finish_reason = format!("{provider_finish_reason:?}");
+        let finish_reason = match raw_finish_reason.as_str() {
+            "Stop" => rig_core::runtime::TerminalReason::Completed,
+            "MaxTokens" => rig_core::runtime::TerminalReason::MaxTokens,
+            "Safety" | "Recitation" | "Blocklist" | "ProhibitedContent" | "Spii" => {
+                rig_core::runtime::TerminalReason::ContentFiltered
+            }
+            "Unspecified" => rig_core::runtime::TerminalReason::Other("unspecified".into()),
+            other => rig_core::runtime::TerminalReason::Other(other.to_string()),
+        };
+
         Ok(CompletionResponse {
             choice,
             usage,
             raw_response: value,
             message_id: None,
+            finish_reason: Some(finish_reason),
+            raw_finish_reason: Some(raw_finish_reason),
         })
     }
 }
@@ -293,6 +307,11 @@ mod tests {
                 "Hello, world!".to_string()
             )))
         );
+        assert_eq!(
+            response.finish_reason,
+            Some(rig_core::runtime::TerminalReason::Completed)
+        );
+        assert_eq!(response.raw_finish_reason.as_deref(), Some("Stop"));
     }
 
     #[test]
