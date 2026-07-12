@@ -28,10 +28,11 @@ use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
 use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use tracing::{Level, enabled, info_span};
+use tracing::{Level, enabled};
 
 const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_ORIGINATOR: &str = "rig";
@@ -505,24 +506,9 @@ where
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
         let request = self.create_request(completion_request)?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "chatgpt",
-                gen_ai.request.model = self.model,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new("chatgpt", &request.model, CompletionOperation::Chat)
+            .system_instructions(request.instructions.as_deref())
+            .build();
 
         tracing_futures::Instrument::instrument(
             async move {
@@ -587,22 +573,13 @@ where
             .body(body)
             .map_err(|err| CompletionError::HttpError(err.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "chatgpt",
-                gen_ai.request.model = self.model,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            "chatgpt",
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(request.instructions.as_deref())
+        .build();
 
         let client = self.client.clone();
         let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
@@ -765,6 +742,33 @@ data: [DONE]"#;
             Some("System one\n\nMid-conversation instruction")
         );
         assert_eq!(request.input.len(), 2);
+    }
+
+    #[test]
+    fn test_create_request_merges_default_and_request_instructions() {
+        let client = crate::providers::chatgpt::Client::builder()
+            .oauth()
+            .build()
+            .expect("client");
+        let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
+
+        let request = model
+            .create_request(completion::CompletionRequest {
+                model: None,
+                preamble: Some("Respond tersely.".to_string()),
+                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .expect("request");
+
+        let expected = format!("{DEFAULT_INSTRUCTIONS}\n\nRespond tersely.");
+        assert_eq!(request.instructions.as_deref(), Some(expected.as_str()));
     }
 
     #[test]

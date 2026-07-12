@@ -9,13 +9,15 @@ use crate::completion::{
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
-use crate::telemetry::{ProviderResponseExt, SpanCombinator};
+use crate::telemetry::{
+    CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
+};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
-use tracing::{Instrument, Level, enabled, info_span};
+use tracing::{Instrument, Level, enabled};
 
 use std::str::FromStr;
 
@@ -1937,24 +1939,7 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse<Ext::Response>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = Ext::PROVIDER_NAME,
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
+        let system_instructions = completion_request.preamble.clone();
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
@@ -1966,9 +1951,13 @@ where
             options,
         )?;
         self.client.ext().prepare_request(&mut request)?;
-        // The span was opened with the configured model; report the model
-        // actually requested when a per-request override applies.
-        span.record("gen_ai.request.model", &request.model);
+        let span = CompletionSpanBuilder::new(
+            Ext::PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::Chat,
+        )
+        .system_instructions(system_instructions.as_deref())
+        .build();
 
         let mut request_body = serde_json::to_value(&request)?;
         self.client

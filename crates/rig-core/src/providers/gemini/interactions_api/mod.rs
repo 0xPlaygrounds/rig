@@ -7,9 +7,9 @@ use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use serde_json::{Map, Value};
-use tracing::{Level, enabled, info_span};
+use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 use url::form_urlencoded;
 
@@ -122,26 +122,13 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "interactions",
-                gen_ai.operation.name = "interactions",
-                gen_ai.provider.name = "gcp.gemini",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = &completion_request.preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            "gcp.gemini",
+            &self.model,
+            CompletionOperation::Interactions,
+        )
+        .system_instructions(completion_request.preamble.as_deref())
+        .build();
 
         let request = self.create_completion_request(completion_request, Some(false))?;
 

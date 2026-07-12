@@ -7,11 +7,12 @@ use crate::message::ReasoningContent;
 use crate::providers::openai::responses_api::{ReasoningSummary, ResponsesUsage};
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, debug, enabled, info_span};
+use tracing::{Level, debug, enabled};
 use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, GenericResponsesCompletionModel, Output};
@@ -860,6 +861,7 @@ where
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let system_instructions = completion_request.preamble.clone();
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
@@ -879,24 +881,13 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = tracing::field::Empty,
-                gen_ai.request.model = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-        span.record("gen_ai.provider.name", "openai");
-        span.record("gen_ai.request.model", &self.model);
+        let span = CompletionSpanBuilder::new(
+            "openai",
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(system_instructions.as_deref())
+        .build();
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
 

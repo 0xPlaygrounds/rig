@@ -2,10 +2,11 @@
 //!
 //! Uses the xAI Responses API: <https://docs.x.ai/docs/guides/chat>
 
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::{Instrument, Level, enabled, info_span};
+use tracing::{Instrument, Level, enabled};
 
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
@@ -33,7 +34,7 @@ pub const GROK_4: &str = "grok-4-0709";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct XAICompletionRequest {
-    model: String,
+    pub(super) model: String,
     pub input: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
@@ -200,28 +201,12 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "xai",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
+        let system_instructions = completion_request.preamble.clone();
         let request =
             XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
+        let span = CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::Chat)
+            .system_instructions(system_instructions.as_deref())
+            .build();
 
         if enabled!(Level::TRACE) {
             tracing::trace!(target: "rig::completions",
@@ -245,6 +230,13 @@ where
             if status.is_success() {
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
+                        let span = tracing::Span::current();
+                        span.record("gen_ai.response.id", response.id.as_str());
+                        span.record("gen_ai.response.model", response.model.as_str());
+                        if let Some(usage) = &response.usage {
+                            span.record_token_usage(usage);
+                        }
+
                         if enabled!(Level::TRACE) {
                             tracing::trace!(target: "rig::completions",
                                 "xAI completion response: {}",

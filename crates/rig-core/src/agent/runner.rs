@@ -65,16 +65,16 @@ use super::UNKNOWN_AGENT_NAME;
 /// The span *name* must be a string literal — `tracing` bakes it into static
 /// metadata — so this is a macro parameterized by the name rather than a
 /// function (the two surfaces keep distinct names, `chat` vs `chat_streaming`,
-/// which dashboards split on). Every other field is identical across the
-/// blocking and streaming surfaces, so it lives here once instead of being
-/// copy-pasted into each `TurnSource::open_chat_span`.
+/// which dashboards split on). The matching operation value is passed with the
+/// name; every other field is identical across the two surfaces, so it lives
+/// here once instead of being copy-pasted into each `TurnSource::open_chat_span`.
 macro_rules! build_chat_span {
-    ($runner:expr, $effective_preamble:expr, $name:literal) => {
+    ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {
         ::tracing::info_span!(
             target: "rig::agent_chat",
             parent: ::tracing::Span::current(),
             $name,
-            gen_ai.operation.name = "chat",
+            gen_ai.operation.name = $operation,
             gen_ai.agent.name = $runner.agent_name_or_default(),
             gen_ai.system_instructions = $effective_preamble,
             gen_ai.provider.name = ::tracing::field::Empty,
@@ -868,7 +868,7 @@ where
         runner: &AgentRunner<M>,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
-        let chat_span = build_chat_span!(runner, effective_preamble, "chat");
+        let chat_span = build_chat_span!(runner, effective_preamble, "chat", "chat");
         self.chain_span(chat_span)
     }
 

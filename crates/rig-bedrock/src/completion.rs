@@ -10,7 +10,7 @@ use crate::{
 
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::telemetry::SpanCombinator;
+use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use tracing::Instrument;
 
 /// `ai21.jamba-1-5-large-v1:0`
@@ -225,24 +225,10 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
 
-        let span = if tracing::Span::current().is_disabled() {
-            tracing::info_span!(
-                target: "rig_core::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "aws_bedrock",
-                gen_ai.request.model = &request_model,
-                gen_ai.system_instructions = &completion_request.preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span =
+            CompletionSpanBuilder::new("aws_bedrock", &request_model, CompletionOperation::Chat)
+                .system_instructions(completion_request.preamble.as_deref())
+                .build();
 
         let request = AwsCompletionRequest {
             inner: completion_request,

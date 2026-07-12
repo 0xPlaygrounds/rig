@@ -3,7 +3,8 @@
 //! This module reuses OpenAI's Responses API streaming types since xAI's API
 //! is designed to be compatible with OpenAI's format.
 
-use tracing::{Level, enabled, info_span};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
 use crate::completion::{CompletionError, CompletionRequest};
@@ -50,23 +51,10 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "xai",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span =
+            CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::ChatStreaming)
+                .system_instructions(preamble.as_deref())
+                .build();
 
         send_xai_streaming_request(self.client.clone(), req)
             .instrument(span)

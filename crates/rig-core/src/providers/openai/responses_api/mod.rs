@@ -24,12 +24,13 @@ use crate::message::{
     MimeType, Text,
 };
 use crate::one_or_many::string_or_one_or_many;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
-use tracing::{Instrument, Level, enabled, info_span};
+use tracing::{Instrument, Level, enabled};
 
 use std::convert::Infallible;
 use std::ops::Add;
@@ -2139,28 +2140,11 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = tracing::field::Empty,
-                gen_ai.request.model = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.provider.name", "openai");
-        span.record("gen_ai.request.model", &self.model);
+        let system_instructions = completion_request.preamble.clone();
         let request = self.create_completion_request(completion_request)?;
+        let span = CompletionSpanBuilder::new("openai", &request.model, CompletionOperation::Chat)
+            .system_instructions(system_instructions.as_deref())
+            .build();
         let body = serde_json::to_vec(&request)?;
 
         if enabled!(Level::TRACE) {

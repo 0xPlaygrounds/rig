@@ -4,12 +4,12 @@ use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled, info_span};
+use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
@@ -97,23 +97,15 @@ where
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let system_instructions = request.preamble.clone();
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "cohere",
-                gen_ai.request.model = self.model,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = self.model,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            "cohere",
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(system_instructions.as_deref())
+        .build();
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),

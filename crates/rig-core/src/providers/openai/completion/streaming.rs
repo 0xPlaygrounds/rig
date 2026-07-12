@@ -1,7 +1,8 @@
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{Level, enabled, info_span};
+use tracing::{Level, enabled};
 
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
@@ -203,25 +204,13 @@ where
             .body(req_body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = Ext::PROVIDER_NAME,
-                gen_ai.request.model = resolved_model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            Ext::PROVIDER_NAME,
+            &resolved_model,
+            CompletionOperation::Chat,
+        )
+        .system_instructions(preamble.as_deref())
+        .build();
 
         let client = self.client.clone();
 

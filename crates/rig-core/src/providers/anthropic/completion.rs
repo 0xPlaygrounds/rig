@@ -9,13 +9,13 @@ use crate::{
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
-    telemetry::{ProviderResponseExt, SpanCombinator},
+    telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use tracing::{Instrument, Level, enabled, info_span};
+use tracing::{Instrument, Level, enabled};
 
 // ================================================================
 // Anthropic Completion API
@@ -2457,24 +2457,13 @@ where
             .model
             .clone()
             .unwrap_or_else(|| self.model.clone());
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = Ext::PROVIDER_NAME,
-                gen_ai.request.model = &request_model,
-                gen_ai.system_instructions = &completion_request.preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
+        let span = CompletionSpanBuilder::new(
+            Ext::PROVIDER_NAME,
+            &request_model,
+            CompletionOperation::Chat,
+        )
+        .system_instructions(completion_request.preamble.as_deref())
+        .build();
 
         // Check if max_tokens is set, required for Anthropic
         if completion_request.max_tokens.is_none() {
