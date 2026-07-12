@@ -329,6 +329,9 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
+    /// Optional model-facing JSON Schema describing the tool result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<serde_json::Value>,
 }
 
 /// Provider-native tool definition.
@@ -479,6 +482,26 @@ pub trait Completion<M: CompletionModel> {
         T: Into<Message>;
 }
 
+/// Provider-independent reason a model generation ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum FinishReason {
+    /// Natural model stop.
+    Stop,
+    /// Token/output limit truncation.
+    Length,
+    /// Provider safety/content filter.
+    ContentFilter,
+    /// Model handed control to one or more tools.
+    ToolCalls,
+    /// Host cancellation ended generation.
+    Cancelled,
+    /// Provider failed after beginning generation.
+    ProviderFailure,
+    /// Provider reason without a normalized mapping.
+    Other(String),
+}
+
 /// General completion response struct that contains the high-level completion choice
 /// and the raw response. The completion choice contains one or more assistant content.
 #[derive(Debug)]
@@ -493,6 +516,8 @@ pub struct CompletionResponse<T> {
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Used to pair reasoning input items with their output items in multi-turn.
     pub message_id: Option<String>,
+    /// Normalized reason generation ended, when supplied by the provider.
+    pub finish_reason: Option<FinishReason>,
 }
 
 /// A trait for grabbing the token usage of a completion response.
@@ -503,6 +528,11 @@ pub trait GetTokenUsage {
     /// [`Usage`]'s documented sentinel for missing provider usage metrics;
     /// response types that carry no usage return [`Usage::new`].
     fn token_usage(&self) -> crate::completion::Usage;
+
+    /// Normalized terminal reason for a streamed provider response.
+    fn finish_reason(&self) -> Option<FinishReason> {
+        None
+    }
 }
 
 impl GetTokenUsage for () {
@@ -760,7 +790,7 @@ impl CompletionRequest {
     }
 }
 
-fn merge_provider_tools_into_additional_params(
+pub(crate) fn merge_provider_tools_into_additional_params(
     additional_params: Option<serde_json::Value>,
     provider_tools: Vec<ProviderToolDefinition>,
 ) -> Option<serde_json::Value> {

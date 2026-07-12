@@ -10,6 +10,57 @@ use crate::{
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
+/// Operational family of a catalog entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ToolKind {
+    /// In-process Rust tool.
+    Native,
+    /// Tool discovered from an MCP server.
+    Mcp,
+    /// Tool selected dynamically from a vector index.
+    Dynamic,
+    /// Tool executed by the model provider.
+    ProviderHosted,
+}
+
+/// Scheduling policy advertised to a host.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ToolExecutionPolicy {
+    /// Calls may participate in a concurrent batch.
+    #[default]
+    ParallelSafe,
+    /// Calls must be serialized by the host runtime.
+    Sequential,
+}
+
+/// Host-only tool metadata. This is never serialized into a model request.
+#[derive(Debug, Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct ToolMetadata {
+    /// Scheduling policy.
+    pub execution: ToolExecutionPolicy,
+    /// Whether a successful result is intended to end a workflow.
+    pub terminating: bool,
+    /// Optional source/provenance label.
+    pub source: Option<String>,
+}
+
+/// One introspectable row from the shared tool server.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ToolCatalogEntry {
+    /// Registered dispatch name.
+    pub name: String,
+    /// Model-facing definition.
+    pub definition: ToolDefinition,
+    /// Operational family retained for host policy.
+    pub kind: ToolKind,
+    /// Metadata retained only by the host.
+    pub metadata: ToolMetadata,
+}
+
 /// Append `name` to the advertised static-tool list unless already present.
 /// Registration is last-wins on the toolset, so the name list only needs
 /// first-occurrence order: a re-registered name keeps its original position
@@ -150,6 +201,19 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
+    /// Snapshot this server into an independent run-local handle.
+    ///
+    /// Tools are `Arc`-cloned, while subsequent add/remove/replace mutations are
+    /// isolated from the original handle.
+    pub async fn fork(&self) -> Self {
+        let state = self.0.read().await;
+        Self(Arc::new(RwLock::new(ToolServerState {
+            static_tool_names: state.static_tool_names.clone(),
+            dynamic_tools: state.dynamic_tools.clone(),
+            toolset: state.toolset.clone(),
+        })))
+    }
+
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
@@ -257,6 +321,40 @@ impl ToolServerHandle {
                 ToolFailure::not_found(format!("no tool named `{tool_name}` is registered")),
             ),
         }
+    }
+
+    /// Enumerate registered tools in stable registration order.
+    ///
+    /// This host-facing projection remains distinct from model serialization:
+    /// metadata and provenance never leak onto the wire. Calls already cloned
+    /// for execution retain snapshot semantics if an entry is replaced/removed.
+    pub async fn catalog(&self) -> Result<Vec<ToolCatalogEntry>, ToolServerError> {
+        let state = self.0.read().await;
+        let mut entries = Vec::with_capacity(state.static_tool_names.len());
+        for name in &state.static_tool_names {
+            let Some(tool) = state.toolset.get(name) else {
+                continue;
+            };
+            entries.push(ToolCatalogEntry {
+                name: name.clone(),
+                definition: tool.definition_with_name(name.clone()),
+                kind: ToolKind::Native,
+                metadata: ToolMetadata::default(),
+            });
+        }
+        Ok(entries)
+    }
+
+    /// Look up one catalog entry by registered name.
+    pub async fn catalog_entry(
+        &self,
+        name: &str,
+    ) -> Result<Option<ToolCatalogEntry>, ToolServerError> {
+        Ok(self
+            .catalog()
+            .await?
+            .into_iter()
+            .find(|entry| entry.name == name))
     }
 
     /// Retrieve tool definitions, optionally using a prompt to select

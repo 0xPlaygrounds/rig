@@ -17,8 +17,60 @@
 //! resulting [`ToolExecutionResult`] all the way through to the
 //! [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event.
 
-use crate::tool::ToolResultExtensions;
+use crate::{OneOrMany, message::ToolResultContent, tool::ToolResultExtensions};
 use serde::Serialize;
+
+/// Model-facing tool output without magic string envelopes.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum ToolOutput {
+    /// Compatibility path for existing string-returning tools. The runner keeps
+    /// supporting Rig's historical multimodal JSON envelope parser.
+    LegacyText(String),
+    /// Explicit rich content that is never guessed by parsing reserved JSON keys.
+    Content(OneOrMany<ToolResultContent>),
+}
+
+impl ToolOutput {
+    fn text_projection(&self) -> String {
+        match self {
+            Self::LegacyText(text) => text.clone(),
+            Self::Content(content) => content
+                .iter()
+                .map(|part| match part {
+                    ToolResultContent::Text(text) => text.text.clone(),
+                    ToolResultContent::Image(_) => "[image]".to_owned(),
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }
+    }
+}
+
+/// Structured classification and host-only metadata for a tool error.
+#[derive(Debug, Clone)]
+pub struct ToolErrorReport {
+    /// Machine-readable failure classification.
+    pub failure: ToolFailure,
+    /// Metadata surfaced to hooks but never sent to the model.
+    pub extensions: ToolResultExtensions,
+}
+
+impl ToolErrorReport {
+    /// Create a report without extensions.
+    pub fn new(failure: ToolFailure) -> Self {
+        Self {
+            failure,
+            extensions: ToolResultExtensions::new(),
+        }
+    }
+
+    /// Attach error metadata.
+    pub fn with_extensions(mut self, extensions: ToolResultExtensions) -> Self {
+        self.extensions = extensions;
+        self
+    }
+}
 
 /// How a tool execution failed, as a closed set of standard kinds.
 ///
@@ -420,6 +472,7 @@ impl From<ToolReturnOutcome> for ToolOutcome {
 #[non_exhaustive]
 pub struct ToolExecutionResult {
     pub(crate) model_output: String,
+    pub(crate) output: ToolOutput,
     pub(crate) outcome: ToolOutcome,
     pub(crate) extensions: ToolResultExtensions,
 }
@@ -433,8 +486,10 @@ impl ToolExecutionResult {
     /// [`success`](Self::success) / [`failed`](Self::failed) /
     /// [`denied`](Self::denied), which cannot produce `Skipped`.
     pub(crate) fn new(model_output: impl Into<String>, outcome: ToolOutcome) -> Self {
+        let model_output = model_output.into();
         Self {
-            model_output: model_output.into(),
+            output: ToolOutput::LegacyText(model_output.clone()),
+            model_output,
             outcome,
             extensions: ToolResultExtensions::new(),
         }
@@ -443,6 +498,17 @@ impl ToolExecutionResult {
     /// A successful result whose model output is `model_output` verbatim.
     pub fn success(model_output: impl Into<String>) -> Self {
         Self::new(model_output, ToolOutcome::Success)
+    }
+
+    /// A successful explicit rich result, bypassing legacy JSON-envelope parsing.
+    pub fn success_content(content: OneOrMany<ToolResultContent>) -> Self {
+        let output = ToolOutput::Content(content);
+        Self {
+            model_output: output.text_projection(),
+            output,
+            outcome: ToolOutcome::Success,
+            extensions: ToolResultExtensions::new(),
+        }
     }
 
     /// A failed result: `model_output` is the model-visible feedback, `failure`
@@ -493,6 +559,11 @@ impl ToolExecutionResult {
     /// failure, so the model gets useful feedback (a handled error message).
     pub fn model_output(&self) -> &str {
         &self.model_output
+    }
+
+    /// Structured model-facing output.
+    pub fn output(&self) -> &ToolOutput {
+        &self.output
     }
 
     /// The structured [`ToolOutcome`] of the call.
@@ -640,6 +711,7 @@ impl<T: Serialize> ToolReturn<T> {
         } = self;
         match super::serialize_tool_output(&output) {
             Ok(model_output) => ToolExecutionResult {
+                output: ToolOutput::LegacyText(model_output.clone()),
                 model_output,
                 outcome: outcome.into(),
                 extensions,
@@ -653,8 +725,10 @@ impl<T: Serialize> ToolReturn<T> {
                     // A declared failure/denial keeps its classification.
                     other => other.into(),
                 };
+                let model_output = format!("failed to serialize tool output: {err}");
                 ToolExecutionResult {
-                    model_output: format!("failed to serialize tool output: {err}"),
+                    output: ToolOutput::LegacyText(model_output.clone()),
+                    model_output,
                     outcome,
                     extensions,
                 }

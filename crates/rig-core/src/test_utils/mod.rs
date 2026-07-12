@@ -2,6 +2,7 @@
 
 mod completion;
 mod embeddings;
+mod hook;
 mod http;
 #[cfg(test)]
 pub(crate) mod internal_streaming_profiles;
@@ -13,6 +14,7 @@ mod tracing_isolation;
 
 pub use completion::{MockCompletionModel, MockError, MockTurn};
 pub use embeddings::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
+pub use hook::HookTestHarness;
 pub use http::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
     RecordingHttpClient, SequencedStreamingHttpClient,

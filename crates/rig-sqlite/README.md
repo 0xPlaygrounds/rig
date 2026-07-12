@@ -16,7 +16,7 @@
 
 ## Rig-SQLite
 
-This companion crate implements a Rig vector store based on SQLite.
+This companion crate implements a Rig vector store and durable conversation memory based on SQLite.
 
 ## Usage
 
@@ -34,7 +34,32 @@ You can also run `cargo add rig-sqlite rig-core serde_json` and
 `cargo add serde --features derive` to add the most recent versions of the
 dependencies to your project.
 
-See the [`/examples`](./examples) folder for usage examples.
+See the [`/examples`](./examples) folder for vector-store usage examples.
+
+## Durable Conversation Memory
+
+`SqliteConversationMemory` implements `rig_core::memory::ConversationMemory`,
+preserving ordered conversations across process restarts. It composes with
+`rig-memory` policies because it uses the existing core trait.
+
+```rust,no_run
+use rig_sqlite::SqliteConversationMemory;
+use tokio_rusqlite::Connection;
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let connection = Connection::open("agent-memory.sqlite").await?;
+let memory = SqliteConversationMemory::new(connection).await?;
+
+// Attach with: client.agent(MODEL).memory(memory).build()
+// Then select a conversation per request with `.conversation("user-123")`.
+# let _ = memory;
+# Ok(())
+# }
+```
+
+Custom table names are available through `with_table`; names are validated as
+SQL identifiers. Call `migrate().await` after selecting a custom table. Appends
+are transactional and sequence messages independently for each conversation.
 
 ## Important Note
 

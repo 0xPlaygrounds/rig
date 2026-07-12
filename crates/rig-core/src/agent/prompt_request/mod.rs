@@ -202,7 +202,7 @@ where
 
 impl<M> PromptRequest<Standard, M>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
@@ -492,6 +492,15 @@ pub(crate) fn tool_result_output(
     tool_result_with(id, call_id, ToolResultContent::from_tool_output(output))
 }
 
+/// Shape explicit rich content without interpreting JSON strings.
+pub(crate) fn tool_result_content(
+    id: String,
+    call_id: Option<String>,
+    content: OneOrMany<ToolResultContent>,
+) -> UserContent {
+    tool_result_with(id, call_id, content)
+}
+
 /// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
 /// "not executed" notice) as a tool result. Emitted **verbatim as text** and
 /// never re-parsed as structured tool output, so a JSON-shaped message is not
@@ -558,7 +567,7 @@ pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -
 
 impl<M> PromptRequest<Extended, M>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     async fn send(self) -> Result<PromptResponse, PromptError> {
         self.runner.run().await
@@ -691,7 +700,7 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
 impl<T, M> TypedPromptRequest<T, Standard, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -709,7 +718,7 @@ where
 impl<T, M> TypedPromptRequest<T, Extended, M>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {

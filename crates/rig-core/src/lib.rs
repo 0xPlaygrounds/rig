@@ -166,6 +166,8 @@ pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
 pub mod rerank;
+pub mod session;
+pub mod skills;
 
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]

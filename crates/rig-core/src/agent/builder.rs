@@ -4,7 +4,8 @@ use schemars::{JsonSchema, Schema, schema_for};
 
 use crate::{
     agent::hook::{AgentHook, HookStack},
-    completion::{CompletionModel, Document},
+    completion::request::merge_provider_tools_into_additional_params,
+    completion::{CompletionModel, Document, ProviderToolDefinition},
     memory::ConversationMemory,
     message::ToolChoice,
     tool::{
@@ -217,6 +218,21 @@ where
     /// Set additional parameters to be passed to the model
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.additional_params = Some(params);
+        self
+    }
+
+    /// Add a provider-hosted tool executed by the model provider rather than
+    /// Rig's local tool server.
+    pub fn provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
+        self.additional_params =
+            merge_provider_tools_into_additional_params(self.additional_params, vec![tool]);
+        self
+    }
+
+    /// Add provider-hosted tools executed by the model provider.
+    pub fn provider_tools(mut self, tools: Vec<ProviderToolDefinition>) -> Self {
+        self.additional_params =
+            merge_provider_tools_into_additional_params(self.additional_params, tools);
         self
     }
 

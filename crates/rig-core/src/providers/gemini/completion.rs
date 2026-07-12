@@ -508,11 +508,23 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
+        let finish_reason = candidate.finish_reason.as_ref().map(|reason| match reason {
+            FinishReason::Stop => completion::FinishReason::Stop,
+            FinishReason::MaxTokens => completion::FinishReason::Length,
+            FinishReason::Safety
+            | FinishReason::Recitation
+            | FinishReason::Blocklist
+            | FinishReason::ProhibitedContent
+            | FinishReason::Spii => completion::FinishReason::ContentFilter,
+            other => completion::FinishReason::Other(format!("{other:?}")),
+        });
+
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason,
         })
     }
 }

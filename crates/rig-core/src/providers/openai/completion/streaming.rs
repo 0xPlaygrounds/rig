@@ -118,6 +118,7 @@ struct StreamingCompletionChunk<U = Usage> {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     pub usage: U,
+    pub finish_reason: Option<crate::completion::FinishReason>,
 }
 
 impl<U> GetTokenUsage for StreamingCompletionResponse<U>
@@ -126,6 +127,10 @@ where
 {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
+    }
+
+    fn finish_reason(&self) -> Option<crate::completion::FinishReason> {
+        self.finish_reason.clone()
     }
 }
 
@@ -275,6 +280,9 @@ where
                     // `function_call` is the deprecated pre-tools finish reason
                     // some compatible providers still emit for tool calls.
                     finish_reason: match &choice.finish_reason {
+                        Some(FinishReason::Stop) => CompatibleFinishReason::Stop,
+                        Some(FinishReason::Length) => CompatibleFinishReason::Length,
+                        Some(FinishReason::ContentFilter) => CompatibleFinishReason::ContentFilter,
                         Some(FinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
                         Some(FinishReason::Other(other)) if other == "function_call" => {
                             CompatibleFinishReason::ToolCalls
@@ -296,8 +304,15 @@ where
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        finish_reason: Option<crate::completion::FinishReason>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            finish_reason,
+        }
     }
 
     fn decorate_tool_call(

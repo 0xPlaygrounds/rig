@@ -733,6 +733,7 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
             name,
             parameters,
             description,
+            ..
         } = value;
 
         Self::function(name, description, parameters)
@@ -2255,11 +2256,39 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
+        let finish_reason = match response.status {
+            ResponseStatus::Completed => Some(
+                if choice
+                    .iter()
+                    .any(|item| matches!(item, completion::AssistantContent::ToolCall(_)))
+                {
+                    completion::FinishReason::ToolCalls
+                } else {
+                    completion::FinishReason::Stop
+                },
+            ),
+            ResponseStatus::Incomplete => Some(
+                match response
+                    .incomplete_details
+                    .as_ref()
+                    .map(|details| details.reason.as_str())
+                {
+                    Some("max_output_tokens") => completion::FinishReason::Length,
+                    Some(reason) => completion::FinishReason::Other(reason.to_owned()),
+                    None => completion::FinishReason::Other("incomplete".to_owned()),
+                },
+            ),
+            ResponseStatus::Cancelled => Some(completion::FinishReason::Cancelled),
+            ResponseStatus::Failed => Some(completion::FinishReason::ProviderFailure),
+            ResponseStatus::InProgress | ResponseStatus::Queued => None,
+        };
+
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id,
+            finish_reason,
         })
     }
 }
@@ -2696,6 +2725,7 @@ mod tests {
                 },
                 "required": ["location"]
             }),
+            output_schema: None,
         }
     }
 
@@ -3083,6 +3113,7 @@ mod tests {
                     "type": "object",
                     "properties": {"q": {"type": "string"}}
                 }),
+                output_schema: None,
             });
 
         let mut request = weather_tool_request();

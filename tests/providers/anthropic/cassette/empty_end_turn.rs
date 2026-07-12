@@ -53,6 +53,7 @@ fn notify_tool_definition() -> ToolDefinition {
             },
             "required": ["msg"]
         }),
+        output_schema: None,
     }
 }
 

@@ -42,7 +42,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 rmcp = { workspace = true, optional = true, features = ["client"] }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 serenity = { workspace = true, optional = true }

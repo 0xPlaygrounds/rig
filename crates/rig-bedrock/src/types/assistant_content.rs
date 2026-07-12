@@ -115,6 +115,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             usage,
             raw_response: value,
             message_id: None,
+            finish_reason: None,
         })
     }
 }

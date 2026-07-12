@@ -315,6 +315,7 @@ async fn unicode_arguments_streaming() {
                         },
                         "required": ["message"]
                     }),
+                    output_schema: None,
                 })
                 .build();
 

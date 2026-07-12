@@ -454,6 +454,45 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     }
 }
 
+struct FactoryCleanupGuard {
+    factory: Option<Arc<dyn crate::tool::factory::RunToolsetFactory>>,
+    context: crate::agent::RunContext,
+}
+
+impl FactoryCleanupGuard {
+    async fn cleanup(&mut self) -> Result<(), crate::tool::factory::ToolFactoryError> {
+        if let Some(factory) = self.factory.take() {
+            factory.close(&self.context).await
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for FactoryCleanupGuard {
+    fn drop(&mut self) {
+        let Some(factory) = self.factory.take() else {
+            return;
+        };
+        let context = self.context.clone();
+        #[cfg(not(target_family = "wasm"))]
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                if let Err(error) = factory.close(&context).await {
+                    tracing::warn!(error = %error, "run toolset cleanup failed after driver drop");
+                }
+            });
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            // Browser hosts cannot synchronously block in Drop. The factory's
+            // resources are Arc-owned and cancellation-aware; normal stream
+            // exhaustion still uses the awaited cleanup path above.
+            let _ = (factory, context);
+        }
+    }
+}
+
 /// The single agent drive loop, shared by the blocking and streaming surfaces.
 ///
 /// Owns the medium-independent loop — `next_step` dispatch, the `CompletionCall`
@@ -462,7 +501,7 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
 /// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
 /// the blocking surface folds them to `Done`.
 pub(crate) fn drive_agent<M, S>(
-    runner: AgentRunner<M>,
+    mut runner: AgentRunner<M>,
     mut source: S,
     mut run: AgentRun,
     agent_span: tracing::Span,
@@ -478,12 +517,76 @@ where
         // Run-scoped hook context: minted once, shared by every hook event on
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
-        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+        if runner.control.status() == crate::agent::RunStatus::Pending {
+            runner.control.set_status(crate::agent::RunStatus::Running);
+        }
+        let lifecycle_context = crate::agent::RunContext::new(
+            runner.control.clone(),
+            runner.conversation_id.clone(),
+        );
+        let mut factory_cleanup: Option<FactoryCleanupGuard> = None;
+        if let Some(reason) = runner.control.cancellation_reason() {
+            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+            return;
+        }
+        if let Some(factory) = runner.toolset_factory.clone() {
+            runner.tool_server_handle = runner.tool_server_handle.fork().await;
+            match factory.create(&lifecycle_context).await {
+                Ok(toolset) => {
+                    if let Err(error) = runner.tool_server_handle.append_toolset(toolset).await {
+                        runner.control.set_status(crate::agent::RunStatus::Failed);
+                        if let Err(cleanup_error) = factory.close(&lifecycle_context).await {
+                            tracing::warn!(error = %cleanup_error, "run toolset cleanup failed after registration error");
+                        }
+                        yield Err(StreamingError::Completion(crate::completion::CompletionError::ResponseError(error.to_string())));
+                        return;
+                    }
+                    factory_cleanup = Some(FactoryCleanupGuard {
+                        factory: Some(factory.clone()),
+                        context: lifecycle_context.clone(),
+                    });
+                }
+                Err(error) => {
+                    runner.control.set_status(crate::agent::RunStatus::Failed);
+                    if let Err(cleanup_error) = factory.close(&lifecycle_context).await {
+                        tracing::warn!(error = %cleanup_error, "run toolset cleanup failed after setup error");
+                    }
+                    yield Err(StreamingError::Completion(crate::completion::CompletionError::ResponseError(error.to_string())));
+                    return;
+                }
+            }
+        }
+        let hook_ctx = HookContext::new(
+            lifecycle_context.clone(),
+            is_streaming,
+            runner.agent_name.clone(),
+        );
 
         'outer: loop {
+            runner.control.wait_if_paused().await;
+            if let Some(reason) = runner.control.cancellation_reason() {
+                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                break 'outer;
+            }
+
+            if run.can_accept_input() {
+                for message in runner.control.drain_steer() {
+                    if let Err(err) = run.inject_message(message) {
+                        runner.control.set_status(crate::agent::RunStatus::Failed);
+                        yield Err(Box::new(err).into());
+                        break 'outer;
+                    }
+                }
+            }
+
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
+                    runner.control.set_status(if matches!(err, crate::completion::PromptError::MaxTurnsError { .. }) {
+                        crate::agent::RunStatus::Exhausted
+                    } else {
+                        crate::agent::RunStatus::Failed
+                    });
                     yield Err(Box::new(err).into());
                     break 'outer;
                 }
@@ -499,6 +602,7 @@ where
                     let request_patch =
                         match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
+                                runner.control.set_status(crate::agent::RunStatus::Cancelled);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
@@ -540,12 +644,14 @@ where
                     {
                         Ok(prepared) => prepared,
                         Err(err) => {
+                            runner.control.set_status(crate::agent::RunStatus::Failed);
                             yield Err(err.into());
                             break 'outer;
                         }
                     };
                     run.set_output_tool_name(prepared.output_tool_name.clone());
 
+                    let cancellation_history = run.full_history();
                     let mut turn_stream = source.run_model_turn(
                         &runner,
                         &hook_ctx,
@@ -556,11 +662,26 @@ where
                         prompt,
                     );
                     let mut errored = false;
-                    while let Some(item) = turn_stream.next().await {
+                    loop {
+                        let next = tokio::select! {
+                            reason = runner.control.cancelled() => {
+                                errored = true;
+                                yield Err(StreamingError::Prompt(Box::new(
+                                    crate::completion::PromptError::prompt_cancelled(
+                                        cancellation_history.clone(),
+                                        reason,
+                                    ),
+                                )));
+                                None
+                            }
+                            item = turn_stream.next() => item,
+                        };
+                        let Some(item) = next else { break; };
                         match item {
                             Ok(item) => yield Ok(DriveItem::Item(item)),
                             Err(err) => {
                                 errored = true;
+                                runner.control.set_status(crate::agent::RunStatus::Failed);
                                 yield Err(err);
                                 break;
                             }
@@ -572,13 +693,29 @@ where
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
+                    let cancellation_history = run.full_history();
                     let mut tool_stream = source.run_tool_calls(&runner, &hook_ctx, &mut run, calls);
                     let mut errored = false;
-                    while let Some(item) = tool_stream.next().await {
+                    loop {
+                        let next = tokio::select! {
+                            reason = runner.control.cancelled() => {
+                                errored = true;
+                                yield Err(StreamingError::Prompt(Box::new(
+                                    crate::completion::PromptError::prompt_cancelled(
+                                        cancellation_history.clone(),
+                                        reason,
+                                    ),
+                                )));
+                                None
+                            }
+                            item = tool_stream.next() => item,
+                        };
+                        let Some(item) = next else { break; };
                         match item {
                             Ok(item) => yield Ok(DriveItem::Item(item)),
                             Err(err) => {
                                 errored = true;
+                                runner.control.set_status(crate::agent::RunStatus::Failed);
                                 yield Err(err);
                                 break;
                             }
@@ -590,6 +727,25 @@ where
                     }
                 }
                 AgentRunStep::Done(response) => {
+                    if let Some(message) = runner.control.pop_follow_up() {
+                        if let Err(err) = run.inject_message(message) {
+                            runner.control.set_status(crate::agent::RunStatus::Failed);
+                            yield Err(Box::new(err).into());
+                            break 'outer;
+                        }
+                        continue 'outer;
+                    }
+
+                    if let Some(cleanup) = factory_cleanup.as_mut()
+                        && let Err(error) = cleanup.cleanup().await
+                    {
+                        runner.control.set_status(crate::agent::RunStatus::Failed);
+                        yield Err(StreamingError::Completion(
+                            crate::completion::CompletionError::ResponseError(error.to_string()),
+                        ));
+                        break 'outer;
+                    }
+
                     // Run-completion marker, unifying the blocking and streaming
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(
@@ -609,10 +765,17 @@ where
                     if let Some(final_item) = source.final_item(&response) {
                         yield Ok(DriveItem::Item(final_item));
                     }
+                    runner.control.set_status(crate::agent::RunStatus::Completed);
                     yield Ok(DriveItem::Done(Box::new(response)));
                     break 'outer;
                 }
             }
+        }
+
+        if let Some(cleanup) = factory_cleanup.as_mut()
+            && let Err(error) = cleanup.cleanup().await
+        {
+            tracing::warn!(error = %error, "run toolset cleanup failed after run error");
         }
     }
 }
@@ -649,7 +812,7 @@ pub(crate) fn drive_tool_calls<'a, M, R, F>(
     forward_items: bool,
 ) -> DriveStream<'a, R>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     R: WasmCompatSend + 'a,
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
@@ -742,11 +905,17 @@ where
                     }
                     continue;
                 }
+                let call_extensions = runner.tool_call_extensions(
+                    hook_ctx,
+                    &tool_call.function.name,
+                    &internal_call_id,
+                    tool_call.call_id.as_deref(),
+                );
                 let outcome = run_single_tool(
                     &runner.hooks,
                     hook_ctx,
                     &runner.tool_server_handle,
-                    &runner.tool_extensions,
+                    &call_extensions,
                     &tool_call,
                     &internal_call_id,
                     &full_history_for_errors,
@@ -785,7 +954,12 @@ where
                     let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
                     let hooks = &runner.hooks;
                     let tool_server_handle = &runner.tool_server_handle;
-                    let tool_extensions = &runner.tool_extensions;
+                    let tool_extensions = runner.tool_call_extensions(
+                        hook_ctx,
+                        &tool_call.function.name,
+                        &internal_call_id,
+                        tool_call.call_id.as_deref(),
+                    );
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
                     async move {
@@ -807,7 +981,7 @@ where
                             hooks,
                             hook_ctx,
                             tool_server_handle,
-                            tool_extensions,
+                            &tool_extensions,
                             &tool_call,
                             &internal_call_id,
                             full_history_for_errors,
@@ -962,7 +1136,7 @@ impl StreamingTurnSource {
 
 impl<M> TurnSource<M> for StreamingTurnSource
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
 {
     type Raw = M::StreamingResponse;
@@ -1945,6 +2119,7 @@ mod tests {
                 },
                 "required": ["x", "y"],
             }),
+            output_schema: None,
         }
     }
 

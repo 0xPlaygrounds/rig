@@ -419,6 +419,7 @@ where
             // yields the provider's usage when present and the zero sentinel
             // (`Usage::new`) when the stream produced no final response.
             usage: value.response.token_usage(),
+            finish_reason: value.response.finish_reason(),
             raw_response: value.response,
             message_id: value.message_id,
         }

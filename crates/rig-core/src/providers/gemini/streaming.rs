@@ -86,6 +86,19 @@ impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage_metadata.token_usage()
     }
+
+    fn finish_reason(&self) -> Option<crate::completion::FinishReason> {
+        self.finish_reason.as_ref().map(|reason| match reason {
+            FinishReason::Stop => crate::completion::FinishReason::Stop,
+            FinishReason::MaxTokens => crate::completion::FinishReason::Length,
+            FinishReason::Safety
+            | FinishReason::Recitation
+            | FinishReason::Blocklist
+            | FinishReason::ProhibitedContent
+            | FinishReason::Spii => crate::completion::FinishReason::ContentFilter,
+            other => crate::completion::FinishReason::Other(format!("{other:?}")),
+        })
+    }
 }
 
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {

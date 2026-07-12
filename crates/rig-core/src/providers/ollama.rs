@@ -392,6 +392,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     },
                     raw_response,
                     message_id: None,
+                    finish_reason: None,
                 })
             }
             _ => Err(CompletionError::ResponseError(
@@ -885,6 +886,7 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
                 name: tool.name,
                 description: tool.description,
                 parameters: tool.parameters,
+                output_schema: tool.output_schema,
             },
         }
     }
@@ -1337,6 +1339,7 @@ mod tests {
                 },
                 "required": ["location", "format"]
             }),
+            output_schema: None,
         };
         // Convert internal tool to Ollama's tool definition.
         let ollama_tool: ToolDefinition = internal_tool.into();

@@ -217,6 +217,7 @@ mod tests {
             name: "lookup".to_string(),
             description: String::new(),
             parameters: serde_json::json!({}),
+            output_schema: None,
         }];
 
         let converted = OpenAICompletionRequest::try_from(OpenAIRequestParams {
@@ -277,6 +278,7 @@ mod tests {
             name: "lookup".to_string(),
             description: "Lookup".to_string(),
             parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+            output_schema: None,
         })
         .tool_choice(crate::message::ToolChoice::Required)
         .build();

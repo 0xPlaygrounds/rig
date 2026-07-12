@@ -267,6 +267,24 @@ enum RunState {
     Failed,
 }
 
+/// Serialized agent state captured only at a safe step boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCheckpoint {
+    state: String,
+}
+
+/// Checkpoint creation/restoration failure.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum CheckpointError {
+    /// A provider/tool/hook future or invalid-call decision is still pending.
+    #[error("agent run is not at a checkpoint-safe boundary")]
+    UnsafeBoundary,
+    /// State serialization or deserialization failed.
+    #[error("invalid agent checkpoint: {0}")]
+    Serialization(#[from] serde_json::Error),
+}
+
 /// The sans-IO agent loop state machine. See the [module docs](self) for the
 /// driving protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -481,9 +499,52 @@ impl AgentRun {
         build_full_history(self.chat_history.as_deref(), self.new_messages.clone())
     }
 
+    /// Capture resumable state at a safe boundary.
+    ///
+    /// Arbitrary Rust futures are never suspended. A checkpoint is rejected
+    /// while a model response or invalid-call hook decision is pending.
+    pub fn checkpoint(&self) -> Result<AgentCheckpoint, CheckpointError> {
+        if matches!(
+            self.state,
+            RunState::AwaitingModel | RunState::ResolvingToolCalls(_)
+        ) {
+            return Err(CheckpointError::UnsafeBoundary);
+        }
+        Ok(AgentCheckpoint {
+            state: serde_json::to_string(self)?,
+        })
+    }
+
+    /// Restore a run captured by [`checkpoint`](Self::checkpoint).
+    pub fn from_checkpoint(checkpoint: &AgentCheckpoint) -> Result<Self, CheckpointError> {
+        Ok(serde_json::from_str(&checkpoint.state)?)
+    }
+
     /// Whether the run reached [`AgentRunStep::Done`].
     pub fn is_done(&self) -> bool {
         matches!(self.state, RunState::Done(_))
+    }
+
+    /// Whether a host message can be injected without interrupting an in-flight
+    /// model response, tool batch, or invalid-call recovery.
+    pub fn can_accept_input(&self) -> bool {
+        matches!(self.state, RunState::PreparingRequest | RunState::Done(_))
+    }
+
+    /// Inject a host message at a safe boundary.
+    ///
+    /// In a preparing run the message becomes the next prompt. In a completed
+    /// run it starts a follow-up turn while retaining the accumulated transcript.
+    /// Arbitrary in-flight futures are never suspended or serialized.
+    pub fn inject_message(&mut self, message: impl Into<Message>) -> Result<(), PromptError> {
+        if !self.can_accept_input() {
+            return Err(self.protocol_violation(
+                "host input can only be injected before a model call or after completion",
+            ));
+        }
+        self.new_messages.push(message.into());
+        self.state = RunState::PreparingRequest;
+        Ok(())
     }
 
     /// The final response once the run is done, without cloning it.
