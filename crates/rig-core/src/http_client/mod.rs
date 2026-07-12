@@ -176,7 +176,8 @@ where
 }
 
 macro_rules! impl_http_client_ext {
-    ($client:ty) => {
+    ($(#[$attribute:meta])* $client:ty) => {
+        $(#[$attribute])*
         impl HttpClientExt for $client {
             fn send<T, U>(
                 &self,
@@ -275,6 +276,8 @@ macro_rules! impl_http_client_ext {
 
 impl_http_client_ext!(reqwest::Client);
 
-#[cfg(feature = "reqwest-middleware")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
-impl_http_client_ext!(reqwest_middleware::ClientWithMiddleware);
+impl_http_client_ext!(
+    #[cfg(feature = "reqwest-middleware")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
+    reqwest_middleware::ClientWithMiddleware
+);
