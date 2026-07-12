@@ -2523,11 +2523,11 @@ mod tests {
         let result = agent.prompt("hello").conversation("t1").await;
 
         match result {
-            Err(PromptError::CompletionError(CompletionError::RequestError(err))) => {
-                let msg = format!("{err}");
+            Err(PromptError::MemoryError(err)) => {
+                let msg = err.to_string();
                 assert!(msg.contains("load boom"), "got: {msg}");
             }
-            other => panic!("expected PromptError::CompletionError(RequestError), got {other:?}"),
+            other => panic!("expected PromptError::MemoryError, got {other:?}"),
         }
     }
 
