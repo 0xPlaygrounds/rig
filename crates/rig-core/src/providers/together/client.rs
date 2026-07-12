@@ -47,6 +47,13 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Together
     }
 }
 
+impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for TogetherExt {
+    // The client base URL is the bare host, so the version segment is explicit.
+    fn embeddings_path(&self) -> String {
+        "/v1/embeddings".to_string()
+    }
+}
+
 impl<H> Capabilities<H> for TogetherExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
@@ -94,28 +101,6 @@ impl ProviderClient for Client {
     }
 }
 
-pub mod together_ai_api_types {
-    use serde::Deserialize;
-
-    impl ApiErrorResponse {
-        pub fn message(&self) -> String {
-            format!("Code `{}`: {}", self.code, self.error)
-        }
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ApiErrorResponse {
-        pub error: String,
-        pub code: String,
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(untagged)]
-    pub enum ApiResponse<T> {
-        Ok(T),
-        Error(ApiErrorResponse),
-    }
-}
 #[cfg(test)]
 mod tests {
     #[test]

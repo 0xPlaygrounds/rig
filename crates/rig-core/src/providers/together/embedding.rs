@@ -3,15 +3,14 @@
 //! From [Together AI Reference](https://docs.together.ai/docs/embeddings-overview)
 // ================================================================
 
-use serde::Deserialize;
-use serde_json::json;
+//! Together's embeddings endpoint is OpenAI-compatible, so [`EmbeddingModel`] is
+//! a thin alias over the shared [`GenericEmbeddingModel`]. The `/v1/embeddings`
+//! path is supplied by [`TogetherExt`](super::client::TogetherExt)'s
+//! [`OpenAIEmbeddingsCompatible`](crate::providers::openai::embedding::OpenAIEmbeddingsCompatible)
+//! implementation in `client.rs`.
 
-use crate::{
-    embeddings::{self, EmbeddingError},
-    http_client::{self, HttpClientExt},
-};
-
-use super::{Client, client::together_ai_api_types::ApiResponse};
+use super::client::TogetherExt;
+use crate::providers::openai::embedding::GenericEmbeddingModel;
 
 // ================================================================
 // Together AI Embedding API
@@ -26,122 +25,54 @@ pub const M2_BERT_80M_8K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-8k-retr
 pub const SENTENCE_BERT: &str = "sentence-transformers/msmarco-bert-base-dot-v5";
 pub const UAE_LARGE_V1: &str = "WhereIsAI/UAE-Large-V1";
 
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingResponse {
-    pub model: String,
-    pub object: String,
-    pub data: Vec<EmbeddingData>,
-}
+/// Together AI embedding model, backed by the shared OpenAI-compatible
+/// [`GenericEmbeddingModel`]. Unlike the previous hand-rolled implementation
+/// this honors `ndims` (sent as `dimensions`), `encoding_format`, and `user`.
+pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<TogetherExt, H>;
 
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingData {
-    pub object: String,
-    pub embedding: Vec<serde_json::Number>,
-    pub index: usize,
-}
+#[cfg(test)]
+mod tests {
+    use super::BGE_BASE_EN_V1_5;
+    use crate::client::EmbeddingsClient;
+    use crate::embeddings::EmbeddingModel as _;
+    use crate::providers::together;
+    use crate::test_utils::RecordingHttpClient;
 
-#[derive(Debug, Deserialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
+    // Minimal OpenAI-compatible embeddings response. `usage` is intentionally
+    // omitted to exercise the optional-usage path the generic model now allows.
+    const RESPONSE_BODY: &str = r#"{
+        "object": "list",
+        "model": "BAAI/bge-base-en-v1.5",
+        "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3] }]
+    }"#;
 
-#[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    ndims: usize,
-}
+    #[tokio::test]
+    async fn together_embeddings_send_dimensions_to_v1_path() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = together::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Default + Clone + Send + 'static,
-{
-    const MAX_DOCUMENTS: usize = 1024; // This might need to be adjusted based on Together AI's actual limit
+        // With `ndims` set, `dimensions` must be sent — the previous hand-rolled
+        // Together model silently dropped it (the bug this migration fixes).
+        let model = client.embedding_model_with_ndims(BGE_BASE_EN_V1_5, 3);
+        model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect("embedding request should succeed");
 
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims.unwrap_or_default())
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
-
-        let body = serde_json::to_vec(&json!({
-            "model": self.model,
-            "input": documents,
-        }))?;
-
-        let req = self
-            .client
-            .post("/v1/embeddings")?
-            .body(body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-
-        let response = self.client.send(req).await?;
-
-        let status = response.status();
-        if status.is_success() {
-            let response_body: Vec<u8> = response.into_body().await?;
-            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
-
-            match parsed {
-                ApiResponse::Ok(response) => {
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
-
-                    Ok(response
-                        .data
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding
-                                .embedding
-                                .into_iter()
-                                .filter_map(|n| n.as_f64())
-                                .collect(),
-                        })
-                        .collect())
-                }
-                ApiResponse::Error(err) => {
-                    tracing::warn!(
-                        message = %err.error,
-                        "provider returned an error response"
-                    );
-                    Err(EmbeddingError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
-            }
-        } else {
-            let text = http_client::text(response).await?;
-            Err(EmbeddingError::from_http_response(status, text))
-        }
-    }
-}
-
-impl<T> EmbeddingModel<T>
-where
-    T: Default,
-{
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0].uri.ends_with("/v1/embeddings"),
+            "expected Together to POST /v1/embeddings, got {}",
+            requests[0].uri
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
+        assert_eq!(body["dimensions"], serde_json::json!(3));
+        assert_eq!(body["model"], BGE_BASE_EN_V1_5);
     }
 }

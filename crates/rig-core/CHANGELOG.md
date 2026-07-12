@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(providers)* [**breaking**] Collapse the hand-rolled Together, OpenRouter, and Mistral embedding models onto the shared `GenericEmbeddingModel<Ext>`, routed through a new `OpenAIEmbeddingsCompatible` path hook (mirroring `OpenAICompatibleProvider::completion_path`). Together embeddings now honor `dimensions` (via `ndims`), `encoding_format`, and `user`, which the previous implementation silently dropped. Removes the now-redundant per-provider embedding types: `together::{EmbeddingResponse, EmbeddingData, Usage}` and the `together_ai_api_types` module, `openrouter::{EncodingFormat, EmbeddingResponse, EmbeddingData}`, and `mistral::{EmbeddingResponse, EmbeddingData}`.
 - *(core)* [**breaking**] Mark `PromptError`, `StructuredOutputError`, `ToolError`, `ToolSetError`, and `VectorStoreError` as non-exhaustive, requiring downstream match expressions to include a wildcard arm. Conversation memory load failures now surface as the typed `PromptError::MemoryError` variant instead of `CompletionError::RequestError`.
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.39.0...rig-core-v0.40.0) - 2026-07-10

@@ -20,8 +20,43 @@ pub struct EmbeddingResponse {
     pub object: String,
     pub data: Vec<EmbeddingData>,
     pub model: String,
-    pub usage: Usage,
+    /// Token usage for the request. Optional because some OpenAI-compatible
+    /// providers routed through [`GenericEmbeddingModel`] omit it (e.g.
+    /// OpenRouter returns it only for some models, Together historically did
+    /// not surface it at all). OpenAI itself always populates it.
+    #[serde(default)]
+    pub usage: Option<Usage>,
 }
+
+/// Provider hook selecting the request path for the OpenAI-compatible
+/// embeddings endpoint.
+///
+/// This mirrors [`OpenAICompatibleProvider::completion_path`] on the completion
+/// side: it lets a provider that shares the OpenAI embeddings transport but
+/// exposes it at a different path (typically a bare-host base URL that needs an
+/// explicit `/v1` segment) reuse [`GenericEmbeddingModel`] instead of
+/// hand-rolling the request flow.
+///
+/// It is deliberately a dedicated trait rather than a method on
+/// [`OpenAICompatibleProvider`](super::completion::OpenAICompatibleProvider):
+/// a provider's embeddings capability and chat-completions capability can live
+/// on different provider extensions. OpenAI's own embeddings run on
+/// [`OpenAIResponsesExt`](super::OpenAIResponsesExt), which is not an
+/// `OpenAICompatibleProvider`, so bounding the embedding model on that trait
+/// would exclude OpenAI itself.
+#[doc(hidden)]
+pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
+    /// The request path for embeddings, resolved against the client base URL by
+    /// [`Provider::build_uri`](crate::client::Provider::build_uri). Defaults to
+    /// `/embeddings`; providers whose base URL omits the API-version segment
+    /// override this (e.g. `/v1/embeddings`).
+    fn embeddings_path(&self) -> String {
+        "/embeddings".to_string()
+    }
+}
+
+impl OpenAIEmbeddingsCompatible for super::OpenAIResponsesExt {}
+impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {}
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -64,7 +99,7 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
 impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + Send + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
+    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
@@ -124,7 +159,7 @@ where
 
         let req = self
             .client
-            .post("/embeddings")?
+            .post(self.client.ext().embeddings_path())?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -138,7 +173,7 @@ where
             match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "OpenAI embedding token usage: {:?}",
+                        "embedding token usage: {:?}",
                         response.usage
                     );
 
@@ -148,19 +183,22 @@ where
                         ));
                     }
 
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.prompt_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: response
-                            .usage
-                            .prompt_tokens_details
-                            .as_ref()
-                            .map_or(0, |d| d.cached_tokens as u64),
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    };
+                    let usage = response
+                        .usage
+                        .as_ref()
+                        .map(|usage| crate::completion::Usage {
+                            input_tokens: usage.prompt_tokens as u64,
+                            output_tokens: 0,
+                            total_tokens: usage.total_tokens as u64,
+                            cached_input_tokens: usage
+                                .prompt_tokens_details
+                                .as_ref()
+                                .map_or(0, |d| d.cached_tokens as u64),
+                            cache_creation_input_tokens: 0,
+                            tool_use_prompt_tokens: 0,
+                            reasoning_tokens: 0,
+                        })
+                        .unwrap_or_else(crate::completion::Usage::new);
 
                     let embeddings = response
                         .data

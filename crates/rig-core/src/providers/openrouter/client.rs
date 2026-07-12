@@ -45,6 +45,10 @@ impl<H> Capabilities<H> for OpenRouterExt {
     type Rerank = Nothing;
 }
 
+// OpenRouter's base URL already includes `/api/v1`, so the default
+// `/embeddings` path is correct.
+impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for OpenRouterExt {}
+
 impl DebugExt for OpenRouterExt {}
 
 impl ProviderBuilder for OpenRouterExtBuilder {
@@ -80,18 +84,6 @@ impl ProviderClient for Client {
     fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
         Self::new(input).map_err(Into::into)
     }
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ApiErrorResponse {
-    pub message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

@@ -101,6 +101,13 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
     }
 }
 
+impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for MistralExt {
+    // The client base URL is the bare host, so the version segment is explicit.
+    fn embeddings_path(&self) -> String {
+        "/v1/embeddings".to_string()
+    }
+}
+
 impl<H> Capabilities<H> for MistralExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
@@ -215,18 +222,6 @@ impl std::fmt::Display for Usage {
             self.prompt_tokens, self.total_tokens
         )
     }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ApiErrorResponse {
-    pub(crate) message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
 }
 
 #[cfg(test)]

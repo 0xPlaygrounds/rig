@@ -68,6 +68,10 @@ impl openai::completion::OpenAICompatibleProvider for LlamafileExt {
     type Response = openai::CompletionResponse;
 }
 
+// llama.cpp's `build_uri` injects the `/v1/` segment, so the default
+// `/embeddings` path is correct.
+impl openai::embedding::OpenAIEmbeddingsCompatible for LlamafileExt {}
+
 impl<H> Capabilities<H> for LlamafileExt {
     type Completion = Capable<openai::completion::GenericCompletionModel<LlamafileExt, H>>;
     type Embeddings = Capable<openai::embedding::GenericEmbeddingModel<LlamafileExt, H>>;
