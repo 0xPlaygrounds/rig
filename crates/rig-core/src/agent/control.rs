@@ -9,8 +9,6 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
-use futures::task::AtomicWaker;
-
 use super::{MessageInjectError, MessageInjector, hook::RunId};
 use crate::completion::Message;
 
@@ -68,7 +66,7 @@ impl RunStatus {
 pub(crate) struct RunControlState {
     run_id: RunId,
     cancelled: AtomicBool,
-    cancel_waker: AtomicWaker,
+    changed: tokio::sync::Notify,
     status: AtomicU8,
     deadline: Mutex<Option<std::time::SystemTime>>,
     follow_ups: Mutex<Vec<Message>>,
@@ -88,7 +86,7 @@ impl RunControlHandle {
             state: Arc::new(RunControlState {
                 run_id: RunId::generate(),
                 cancelled: AtomicBool::new(false),
-                cancel_waker: AtomicWaker::new(),
+                changed: tokio::sync::Notify::new(),
                 status: AtomicU8::new(RunStatus::Pending.as_u8()),
                 deadline: Mutex::new(None),
                 follow_ups: Mutex::new(Vec::new()),
@@ -114,7 +112,7 @@ impl RunControlHandle {
     /// start later work. Tools can also read [`RunContext`] from call extensions.
     pub fn cancel(&self) {
         self.state.cancelled.store(true, Ordering::Release);
-        self.state.cancel_waker.wake();
+        self.state.changed.notify_one();
     }
 
     /// Whether cancellation has been requested.
@@ -129,7 +127,7 @@ impl RunControlHandle {
             .deadline
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Some(deadline);
-        self.state.cancel_waker.wake();
+        self.state.changed.notify_one();
     }
 
     /// Configured absolute deadline.
@@ -205,28 +203,23 @@ impl RunControlHandle {
     }
 
     pub(crate) async fn cancelled(&self) {
-        let explicit_cancel = std::future::poll_fn(|cx| {
-            if self.state.cancelled.load(Ordering::Acquire) {
-                return std::task::Poll::Ready(());
+        loop {
+            if self.is_cancelled() {
+                return;
             }
-            self.state.cancel_waker.register(cx.waker());
-            if self.state.cancelled.load(Ordering::Acquire) {
-                std::task::Poll::Ready(())
-            } else {
-                std::task::Poll::Pending
-            }
-        });
 
-        if let Some(deadline) = self.deadline() {
-            let duration = deadline
-                .duration_since(std::time::SystemTime::now())
-                .unwrap_or_default();
-            futures::pin_mut!(explicit_cancel);
-            let deadline = tokio::time::sleep(duration);
-            futures::pin_mut!(deadline);
-            let _ = futures::future::select(explicit_cancel, deadline).await;
-        } else {
-            explicit_cancel.await;
+            let changed = self.state.changed.notified();
+            if let Some(deadline) = self.deadline() {
+                let duration = deadline
+                    .duration_since(std::time::SystemTime::now())
+                    .unwrap_or_default();
+                futures::pin_mut!(changed);
+                let deadline = tokio::time::sleep(duration);
+                futures::pin_mut!(deadline);
+                let _ = futures::future::select(changed, deadline).await;
+            } else {
+                changed.await;
+            }
         }
     }
 }
