@@ -33,7 +33,7 @@ macro_rules! new_completion_span {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CompletionOperation {
-    /// A non-streaming chat completion.
+    /// A chat completion.
     Chat,
     /// A streaming chat completion.
     ChatStreaming,
