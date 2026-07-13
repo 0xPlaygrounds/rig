@@ -15,6 +15,8 @@ use serde_json::json;
 // as a tool
 struct TranslatorTool<M: CompletionModel>(Agent<M>);
 
+const TRANSLATOR_TOOL_NAME: &str = "translator";
+
 // The input that will be sent to the translator agent from the main agent
 #[derive(Deserialize)]
 struct TranslatorArgs {
@@ -22,7 +24,7 @@ struct TranslatorArgs {
 }
 
 impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
-    const NAME: &'static str = "translator";
+    const NAME: &'static str = TRANSLATOR_TOOL_NAME;
 
     type Args = TranslatorArgs;
     type Output = String;
@@ -87,7 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
             When you receive input that is not in English, or contains grammatical errors \
             use the {} tool first to ensure proper English, then provide your response. \
             Always show both the translated text and your final response.",
-            translator_tool.name()
+            TRANSLATOR_TOOL_NAME
         ))
         .tool(translator_tool)
         .build();

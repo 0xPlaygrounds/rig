@@ -6,10 +6,12 @@
 
 pub mod builtin;
 pub(crate) mod extensions;
+mod output;
 mod result;
 pub mod server;
 
 pub use extensions::{MissingToolContext, ToolContext};
+pub use output::{IntoToolOutput, ToolOutput};
 pub use result::{ToolErrorKind, ToolExecutionError, ToolResult};
 
 use std::{collections::HashMap, sync::Arc};
@@ -33,13 +35,11 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     const NAME: &'static str;
     /// Typed JSON arguments.
     type Args: for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync;
-    /// Serializable output.
-    type Output: Serialize;
-
-    /// Registration name. Defaults to [`Self::NAME`].
-    fn name(&self) -> String {
-        Self::NAME.to_string()
-    }
+    /// Output convertible into Rig's canonical model presentation.
+    ///
+    /// Every serializable value implements [`IntoToolOutput`] automatically;
+    /// use [`ToolOutput`] directly for explicit multimodal content.
+    type Output: IntoToolOutput;
 
     /// Model-facing description.
     fn description(&self) -> String;
@@ -70,17 +70,6 @@ pub trait ToolEmbedding: Tool {
     fn context(&self) -> Self::Context;
     /// Reconstruct the tool.
     fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
-}
-
-fn serialize_tool_output(output: impl Serialize) -> Result<String, ToolExecutionError> {
-    let value = serde_json::to_value(output).map_err(|error| {
-        ToolExecutionError::other(format!("failed to serialize tool output: {error}"))
-            .with_source(error)
-    })?;
-    Ok(match value {
-        serde_json::Value::String(text) => text,
-        value => value.to_string(),
-    })
 }
 
 fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
@@ -117,7 +106,7 @@ where
     T: Tool,
 {
     fn name(&self) -> String {
-        Tool::name(self)
+        T::NAME.to_string()
     }
 
     fn description(&self) -> String {
@@ -139,7 +128,7 @@ where
                 Err(error) => return ToolResult::failed(error),
             };
             match Tool::call(self, context, args).await {
-                Ok(output) => match serialize_tool_output(output) {
+                Ok(output) => match output.into_tool_output() {
                     Ok(output) => ToolResult::success(output),
                     Err(error) => ToolResult::failed(error),
                 },
@@ -153,7 +142,7 @@ trait DynamicCallback:
     for<'a> Fn(
         &'a mut ToolContext,
         serde_json::Value,
-    ) -> WasmBoxedFuture<'a, Result<serde_json::Value, ToolExecutionError>>
+    ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
     + WasmCompatSend
     + WasmCompatSync
 {
@@ -163,7 +152,7 @@ impl<F> DynamicCallback for F where
     F: for<'a> Fn(
             &'a mut ToolContext,
             serde_json::Value,
-        ) -> WasmBoxedFuture<'a, Result<serde_json::Value, ToolExecutionError>>
+        ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
         + WasmCompatSend
         + WasmCompatSync
 {
@@ -193,8 +182,7 @@ impl DynamicTool {
         F: for<'a> Fn(
                 &'a mut ToolContext,
                 serde_json::Value,
-            )
-                -> WasmBoxedFuture<'a, Result<serde_json::Value, ToolExecutionError>>
+            ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
             + WasmCompatSend
             + WasmCompatSync
             + 'static,
@@ -253,7 +241,7 @@ impl ErasedTool for DynamicTool {
                 }
             };
             match (self.callback)(context, args).await {
-                Ok(output) => match serialize_tool_output(output) {
+                Ok(output) => match output.into_tool_output() {
                     Ok(output) => ToolResult::success(output),
                     Err(error) => ToolResult::failed(error),
                 },
@@ -266,7 +254,7 @@ impl ErasedTool for DynamicTool {
 /// Generate the provider-facing definition for a typed tool.
 pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
     ToolDefinition {
-        name: tool.name(),
+        name: T::NAME.to_string(),
         description: tool.description(),
         parameters: tool.parameters(),
     }
@@ -329,22 +317,61 @@ impl RegisteredTool {
     }
 }
 
-/// Errors while preparing a tool set's definitions/documents.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum ToolSetError {
-    /// JSON serialization failed while preparing tool data.
-    #[error("JsonError: {0}")]
-    JsonError(#[from] serde_json::Error),
-    /// Tool processing was interrupted.
-    #[error("Tool call interrupted")]
-    Interrupted,
+/// One authoritative registry entry for execution and provider exposure.
+#[derive(Clone)]
+pub(crate) struct ToolRegistration {
+    tool: RegisteredTool,
+    always_exposed: bool,
+}
+
+impl ToolRegistration {
+    fn new(tool: RegisteredTool, always_exposed: bool) -> Self {
+        Self {
+            tool,
+            always_exposed,
+        }
+    }
+}
+
+/// The outcome of one isolated tool dispatch.
+pub(crate) struct ToolDispatch {
+    pub(crate) result: ToolResult,
+    pub(crate) context: ToolContext,
+}
+
+/// Execute a resolved registry entry through the single dispatch boundary.
+///
+/// Every surface enters here with its caller-owned context. The helper clones
+/// inbound values exactly once, clears prior result metadata, and returns the
+/// per-dispatch context so callers can expose its metadata without publishing
+/// mutations the tool made to its local inbound snapshot.
+pub(crate) async fn dispatch_tool(
+    name: &str,
+    args: String,
+    tool: Option<RegisteredTool>,
+    context: &ToolContext,
+) -> ToolDispatch {
+    let mut dispatch_context = context.for_dispatch();
+    let result = match tool {
+        Some(tool) => {
+            tracing::debug!(target: "rig", tool_name = name, "calling tool with args:\n{args}");
+            tool.execute(args, &mut dispatch_context).await
+        }
+        None => ToolResult::failed(
+            ToolExecutionError::not_found(format!("no tool named `{name}` is registered"))
+                .with_model_feedback(format!("tool `{name}` not found")),
+        ),
+    };
+    ToolDispatch {
+        result,
+        context: dispatch_context,
+    }
 }
 
 /// An ordered collection of tools.
 #[derive(Default)]
 pub struct ToolSet {
-    pub(crate) tools: IndexMap<String, RegisteredTool>,
+    pub(crate) tools: IndexMap<String, ToolRegistration>,
 }
 
 impl ToolSet {
@@ -399,10 +426,18 @@ impl ToolSet {
 
     pub(crate) fn insert(&mut self, tool: RegisteredTool) -> String {
         let name = tool.name();
-        if self.tools.insert(name.clone(), tool).is_some() {
-            tracing::warn!(tool_name = %name, "replacing an existing tool registration");
-        }
+        self.insert_registration(name.clone(), ToolRegistration::new(tool, true));
         name
+    }
+
+    fn insert_registration(&mut self, name: String, mut registration: ToolRegistration) {
+        if let Some(current) = self.tools.get_mut(&name) {
+            registration.always_exposed |= current.always_exposed;
+            *current = registration;
+            tracing::warn!(tool_name = %name, "replacing an existing tool registration");
+        } else {
+            self.tools.insert(name, registration);
+        }
     }
 
     /// Delete a tool by name.
@@ -412,71 +447,86 @@ impl ToolSet {
 
     /// Merge another set, preserving registration order and replacing duplicates.
     pub fn add_tools(&mut self, set: ToolSet) {
-        for (name, tool) in set.tools {
-            if self.tools.insert(name.clone(), tool).is_some() {
-                tracing::warn!(tool_name = %name, "replacing an existing tool registration");
-            }
+        for (name, registration) in set.tools {
+            self.insert_registration(name, registration);
+        }
+    }
+
+    /// Merge tools that are advertised only when selected by a retrieval index.
+    pub(crate) fn add_retrievable_tools(&mut self, set: ToolSet) {
+        for (name, mut registration) in set.tools {
+            registration.always_exposed = false;
+            self.insert_registration(name, registration);
         }
     }
 
     pub(crate) fn get(&self, name: &str) -> Option<&RegisteredTool> {
-        self.tools.get(name)
+        self.tools.get(name).map(|registration| &registration.tool)
     }
 
-    pub(crate) fn ordered_names(&self) -> impl Iterator<Item = &String> {
-        self.tools.keys()
+    pub(crate) fn always_exposed_names(&self) -> impl Iterator<Item = &String> {
+        self.tools
+            .iter()
+            .filter_map(|(name, registration)| registration.always_exposed.then_some(name))
     }
 
     /// Provider-facing definitions in registration order.
-    pub fn get_tool_definitions(&self) -> Result<Vec<ToolDefinition>, ToolSetError> {
-        Ok(self
-            .tools
+    pub fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
+        self.tools
             .iter()
-            .map(|(name, tool)| tool.definition_with_name(name.clone()))
-            .collect())
+            .map(|(name, registration)| registration.tool.definition_with_name(name.clone()))
+            .collect()
     }
 
     /// Execute one registered tool through the canonical structured path.
+    ///
+    /// The tool receives a snapshot of inbound context. Result metadata is
+    /// published back to `context`; mutations to inbound values are discarded.
     pub async fn execute(
         &self,
         name: &str,
         args: impl Into<String>,
         context: &mut ToolContext,
     ) -> ToolResult {
-        let mut dispatch = context.for_dispatch();
-        let result = match self.tools.get(name) {
-            Some(tool) => tool.execute(args.into(), &mut dispatch).await,
-            None => ToolResult::failed(
-                ToolExecutionError::not_found(format!("no tool named `{name}` is registered"))
-                    .with_model_feedback(format!("tool `{name}` not found")),
-            ),
-        };
-        *context = dispatch;
+        let tool = self.get(name).cloned();
+        let ToolDispatch {
+            result,
+            context: dispatch_context,
+        } = dispatch_tool(name, args.into(), tool, context).await;
+        context.accept_dispatch_result(dispatch_context);
         result
     }
 
     /// Documents describing all registered tools.
-    pub async fn documents(&self) -> Result<Vec<completion::Document>, ToolSetError> {
+    pub fn documents(&self) -> Vec<completion::Document> {
         let mut docs = Vec::new();
-        for (name, tool) in &self.tools {
-            let definition = tool.definition_with_name(name.clone());
+        for (name, registration) in &self.tools {
+            let definition = registration.tool.definition_with_name(name.clone());
+            let serialized = serde_json::to_string_pretty(&definition).unwrap_or_else(|error| {
+                tracing::warn!(
+                    tool_name = %name,
+                    %error,
+                    "tool definition could not be pretty-printed; using a plain representation"
+                );
+                format!(
+                    "name: {}\ndescription: {}\nparameters: {}",
+                    definition.name, definition.description, definition.parameters
+                )
+            });
             docs.push(completion::Document {
                 id: name.clone(),
-                text: format!(
-                    "Tool: {name}\nDefinition: \n{}",
-                    serde_json::to_string_pretty(&definition)?
-                ),
+                text: format!("Tool: {name}\nDefinition: \n{serialized}"),
                 additional_props: HashMap::new(),
             });
         }
-        Ok(docs)
+        docs
     }
 
     /// Convert embedding tools to vector-store schemas.
     pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
         self.tools
             .iter()
-            .filter_map(|(name, registered)| match registered {
+            .filter_map(|(name, registration)| match &registration.tool {
                 RegisteredTool::Embedding(tool) => {
                     Some(ToolSchema::from_tool(name.clone(), &**tool))
                 }
@@ -502,14 +552,14 @@ impl ToolSetBuilder {
         self
     }
 
-    /// Add a runtime-defined static tool.
-    pub fn runtime_tool(mut self, tool: DynamicTool) -> Self {
+    /// Add a runtime-defined tool.
+    pub fn dynamic_tool(mut self, tool: DynamicTool) -> Self {
         self.tools.push(RegisteredTool::Static(Arc::new(tool)));
         self
     }
 
-    /// Add an embedding-backed tool.
-    pub fn dynamic_tool<T>(mut self, tool: T) -> Self
+    /// Add a tool that is retrieved from an embedding index at prompt time.
+    pub fn retrieved_tool<T>(mut self, tool: T) -> Self
     where
         T: ToolEmbedding + 'static,
     {
@@ -529,7 +579,21 @@ impl ToolSetBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use super::*;
+
+    struct CloneTracked(Arc<AtomicUsize>);
+
+    impl Clone for CloneTracked {
+        fn clone(&self) -> Self {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Self(self.0.clone())
+        }
+    }
 
     struct Echo;
 
@@ -551,24 +615,33 @@ mod tests {
             context: &mut ToolContext,
             args: Self::Args,
         ) -> Result<Self::Output, ToolExecutionError> {
+            if let Some(value) = context.get_mut::<u32>() {
+                *value += 1;
+            }
             context.insert_result("result-metadata".to_string());
             Ok(args)
         }
     }
 
     #[tokio::test]
-    async fn ordered_definitions_and_structured_execution_are_canonical() {
+    async fn toolset_dispatch_snapshot_is_canonical_and_returns_result_metadata() {
         let mut set = ToolSet::default();
         set.add_tool(Echo);
-        let definitions = set.get_tool_definitions().unwrap();
+        let definitions = set.get_tool_definitions();
         assert_eq!(definitions[0].name, "echo");
 
         let mut context = ToolContext::new();
         context.insert(7_u32);
+        let clones = Arc::new(AtomicUsize::new(0));
+        context.insert(CloneTracked(clones.clone()));
         let result = set.execute("echo", r#"{"value":1}"#, &mut context).await;
         assert!(result.is_success());
-        assert_eq!(result.model_output(), r#"{"value":1}"#);
+        assert_eq!(
+            result.output(),
+            &ToolOutput::Json(serde_json::json!({"value": 1}))
+        );
         assert_eq!(context.get::<u32>(), Some(&7));
+        assert_eq!(clones.load(Ordering::SeqCst), 1);
         assert_eq!(
             context.result::<String>().map(String::as_str),
             Some("result-metadata")
@@ -613,7 +686,7 @@ mod migrated_tests {
     #[test]
     fn test_get_tool_definitions() {
         let toolset = get_test_toolset();
-        let tools = toolset.get_tool_definitions().unwrap();
+        let tools = toolset.get_tool_definitions();
         assert_eq!(tools.len(), 2);
         assert_eq!(
             tools
@@ -635,7 +708,7 @@ mod migrated_tests {
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
         assert_eq!(
-            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            toolset.tools.keys().cloned().collect::<Vec<_>>(),
             vec!["subtract".to_string()]
         );
     }
@@ -654,7 +727,7 @@ mod migrated_tests {
         toolset.delete_tool("beta");
 
         assert_eq!(
-            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            toolset.tools.keys().cloned().collect::<Vec<_>>(),
             vec![
                 "alpha".to_string(),
                 "gamma".to_string(),
@@ -673,7 +746,7 @@ mod migrated_tests {
             json!({ "type": "object", "properties": {} }),
             move |_context, _args| {
                 let output = output.clone();
-                Box::pin(async move { Ok(serde_json::Value::String(output)) })
+                Box::pin(async move { Ok(ToolOutput::text(output)) })
             },
         )
     }
@@ -699,36 +772,26 @@ mod migrated_tests {
             toolset.add_dynamic_tool(named_tool(name, "test tool"));
         }
 
-        let defs = toolset.get_tool_definitions().unwrap();
+        let defs = toolset.get_tool_definitions();
         let def_names: Vec<String> = defs.into_iter().map(|def| def.name).collect();
         assert_eq!(def_names, names);
 
-        let docs = toolset.documents().await.unwrap();
+        let docs = toolset.documents();
         let doc_ids: Vec<String> = docs.into_iter().map(|doc| doc.id).collect();
         assert_eq!(doc_ids, names);
     }
 
     #[tokio::test]
-    async fn registered_name_is_definition_source_of_truth() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+    async fn typed_tool_name_is_definition_source_of_truth() {
+        struct NamedTool;
 
-        struct ChangingNameTool {
-            calls: AtomicUsize,
-        }
-
-        impl Tool for ChangingNameTool {
-            const NAME: &'static str = "unused";
+        impl Tool for NamedTool {
+            const NAME: &'static str = "canonical";
             type Args = serde_json::Value;
             type Output = String;
 
-            fn name(&self) -> String {
-                match self.calls.fetch_add(1, Ordering::SeqCst) {
-                    0 => "registered".to_string(),
-                    _ => "changed".to_string(),
-                }
-            }
             fn description(&self) -> String {
-                "changes name after registration".to_string()
+                "uses the canonical typed name".to_string()
             }
             fn parameters(&self) -> serde_json::Value {
                 json!({ "type": "object", "properties": {} })
@@ -743,42 +806,28 @@ mod migrated_tests {
         }
 
         let mut toolset = ToolSet::default();
-        toolset.add_tool(ChangingNameTool {
-            calls: AtomicUsize::new(0),
-        });
+        toolset.add_tool(NamedTool);
 
-        let defs = toolset.get_tool_definitions().unwrap();
-        assert_eq!(defs[0].name, "registered");
+        let defs = toolset.get_tool_definitions();
+        assert_eq!(defs[0].name, NamedTool::NAME);
 
-        let docs = toolset.documents().await.unwrap();
-        assert_eq!(docs[0].id, "registered");
-        assert!(docs[0].text.contains("registered"));
-        assert!(!docs[0].text.contains("changed"));
+        let docs = toolset.documents();
+        assert_eq!(docs[0].id, NamedTool::NAME);
+        assert!(docs[0].text.contains(NamedTool::NAME));
     }
 
     #[test]
-    fn dynamic_tool_schemas_use_registered_name() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
+    fn retrieved_tool_schemas_use_canonical_name() {
         #[derive(Debug, thiserror::Error)]
         #[error("init error")]
         struct InitError;
 
-        struct ChangingDynamicTool {
-            calls: AtomicUsize,
-        }
+        struct RetrievedTool;
 
-        impl Tool for ChangingDynamicTool {
-            const NAME: &'static str = "unused";
+        impl Tool for RetrievedTool {
+            const NAME: &'static str = "retrieved";
             type Args = serde_json::Value;
             type Output = String;
-
-            fn name(&self) -> String {
-                match self.calls.fetch_add(1, Ordering::SeqCst) {
-                    0 => "registered_dynamic".to_string(),
-                    _ => "changed_dynamic".to_string(),
-                }
-            }
 
             fn description(&self) -> String {
                 "dynamic tool".to_string()
@@ -797,7 +846,7 @@ mod migrated_tests {
             }
         }
 
-        impl ToolEmbedding for ChangingDynamicTool {
+        impl ToolEmbedding for RetrievedTool {
             type InitError = InitError;
             type Context = ();
             type State = ();
@@ -809,21 +858,15 @@ mod migrated_tests {
             fn context(&self) -> Self::Context {}
 
             fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self {
-                    calls: AtomicUsize::new(0),
-                })
+                Ok(Self)
             }
         }
 
-        let toolset = ToolSet::builder()
-            .dynamic_tool(ChangingDynamicTool {
-                calls: AtomicUsize::new(0),
-            })
-            .build();
+        let toolset = ToolSet::builder().retrieved_tool(RetrievedTool).build();
 
         let schemas = toolset.schemas().unwrap();
         assert_eq!(schemas.len(), 1);
-        assert_eq!(schemas[0].name, "registered_dynamic");
+        assert_eq!(schemas[0].name, RetrievedTool::NAME);
         assert_eq!(schemas[0].embedding_docs, vec!["dynamic tool docs"]);
     }
 
@@ -834,7 +877,7 @@ mod migrated_tests {
         toolset.add_dynamic_tool(named_tool("beta", "beta"));
         toolset.add_dynamic_tool(named_tool("alpha", "second alpha"));
 
-        let defs = toolset.get_tool_definitions().unwrap();
+        let defs = toolset.get_tool_definitions();
         assert_eq!(
             defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
             vec!["alpha", "beta"],
@@ -848,8 +891,8 @@ mod migrated_tests {
         let output = toolset
             .execute("alpha", "{}", &mut ToolContext::new())
             .await
-            .model_output()
-            .to_string();
+            .output()
+            .render();
         assert_eq!(output, "called second alpha");
     }
 
@@ -865,7 +908,7 @@ mod migrated_tests {
 
         base.add_tools(incoming);
 
-        let defs = base.get_tool_definitions().unwrap();
+        let defs = base.get_tool_definitions();
         assert_eq!(
             defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
             vec!["alpha", "beta", "gamma"],
@@ -881,24 +924,59 @@ mod migrated_tests {
 
         let output = toolset
             .execute("string_output", "{}", &mut ToolContext::new())
-            .await
-            .model_output()
-            .to_string();
+            .await;
 
-        assert_eq!(output, "Hello\nWorld");
+        assert_eq!(output.output(), &ToolOutput::text("Hello\nWorld"));
     }
 
     #[tokio::test]
-    async fn structured_string_tool_outputs_remain_parseable() {
+    async fn json_shaped_string_output_stays_literal_text_through_dispatch() {
+        struct JsonShapedStringTool;
+
+        impl Tool for JsonShapedStringTool {
+            const NAME: &'static str = "json_shaped_string";
+            type Args = serde_json::Value;
+            type Output = String;
+
+            fn description(&self) -> String {
+                "Returns text that happens to look like a rich-content envelope".into()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                json!({"type": "object"})
+            }
+
+            async fn call(
+                &self,
+                _context: &mut ToolContext,
+                _args: Self::Args,
+            ) -> Result<Self::Output, ToolExecutionError> {
+                Ok(r#"{"type":"image","data":"literal"}"#.to_string())
+            }
+        }
+
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(JsonShapedStringTool);
+
+        let result = toolset
+            .execute(JsonShapedStringTool::NAME, "{}", &mut ToolContext::new())
+            .await;
+
+        assert_eq!(
+            result.output(),
+            &ToolOutput::text(r#"{"type":"image","data":"literal"}"#)
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_image_tool_outputs_remain_structured() {
         let mut toolset = ToolSet::default();
         toolset.add_tool(MockImageOutputTool);
 
-        let output = toolset
+        let result = toolset
             .execute("image_output", "{}", &mut ToolContext::new())
-            .await
-            .model_output()
-            .to_string();
-        let content = ToolResultContent::from_tool_output(output);
+            .await;
+        let content = result.output().clone().into_content();
 
         assert_eq!(content.len(), 1);
         match content.first() {
@@ -915,19 +993,16 @@ mod migrated_tests {
         let mut toolset = ToolSet::default();
         toolset.add_tool(MockObjectOutputTool);
 
-        let output = toolset
+        let result = toolset
             .execute("object_output", "{}", &mut ToolContext::new())
-            .await
-            .model_output()
-            .to_string();
+            .await;
 
-        assert!(output.starts_with('{'));
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&output).unwrap(),
-            json!({
+            result.output(),
+            &ToolOutput::Json(json!({
                 "status": "ok",
                 "count": 42
-            })
+            }))
         );
     }
 
@@ -938,11 +1013,9 @@ mod migrated_tests {
 
         let output = toolset
             .execute("example_tool", "null", &mut ToolContext::new())
-            .await
-            .model_output()
-            .to_string();
+            .await;
 
-        assert_eq!(output, "Example answer");
+        assert_eq!(output.output(), &ToolOutput::text("Example answer"));
     }
 
     // Struct-typed args with all-optional fields — serde rejects `null` for these
@@ -984,13 +1057,11 @@ mod migrated_tests {
         toolset.add_tool(NoArgTool);
 
         // `null` is what LLMs send when no arguments are provided; without the
-        // normalization this would return `ToolExecutionError::JsonError`.
+        // normalization this would return an `InvalidArgs` execution error.
         let output = toolset
             .execute("no_arg_tool", "null", &mut ToolContext::new())
-            .await
-            .model_output()
-            .to_string();
+            .await;
 
-        assert_eq!(output, "default");
+        assert_eq!(output.output(), &ToolOutput::text("default"));
     }
 }

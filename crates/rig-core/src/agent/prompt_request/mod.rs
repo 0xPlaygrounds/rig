@@ -5,7 +5,7 @@ use crate::{
     OneOrMany,
     completion::{CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, ToolResultContent, UserContent},
-    tool::ToolContext,
+    tool::{ToolContext, ToolOutput},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use serde::{Deserialize, Serialize};
@@ -27,8 +27,8 @@ macro_rules! forward_prompt_setters {
         /// caller-provided values (auth tokens, session IDs, conversation state, …)
         /// through the tool's [`ToolContext`](crate::tool::ToolContext),
         /// without the model ever seeing them.
-        pub fn tool_context(mut self, extensions: ToolContext) -> Self {
-            self.$recv = self.$recv.tool_context(extensions);
+        pub fn tool_context(mut self, context: ToolContext) -> Self {
+            self.$recv = self.$recv.tool_context(context);
             self
         }
 
@@ -481,15 +481,13 @@ fn tool_result_with(
     }
 }
 
-/// Shape a **real tool output** as a tool result. Routes through
-/// [`ToolResultContent::from_tool_output`], which parses structured/multimodal
-/// payloads (text, images, …). Use this only for actual tool-server output.
+/// Shape a canonical real tool output as a tool result without reparsing text.
 pub(crate) fn tool_result_output(
     id: String,
     call_id: Option<String>,
-    output: String,
+    output: ToolOutput,
 ) -> UserContent {
-    tool_result_with(id, call_id, ToolResultContent::from_tool_output(output))
+    tool_result_with(id, call_id, output.into_content())
 }
 
 /// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
@@ -769,7 +767,7 @@ mod tests {
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockExtensionsProbeTool, MockOperationArgs, MockSubtractTool, MockTurn, SessionId,
+            MockContextProbeTool, MockOperationArgs, MockSubtractTool, MockTurn, SessionId,
         },
         tool::{Tool, ToolContext},
     };
@@ -862,7 +860,7 @@ mod tests {
             &self,
             ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
         }
         async fn on_tool_call(
@@ -882,9 +880,9 @@ mod tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             assert_eq!(event.tool_name, "default_api");
-            InvalidToolCallAction::repair("add")
+            Some(InvalidToolCallAction::repair("add"))
         }
     }
 
@@ -896,8 +894,8 @@ mod tests {
             &self,
             _ctx: &HookContext,
             _event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            InvalidToolCallAction::repair("subtract")
+        ) -> Option<InvalidToolCallAction> {
+            Some(InvalidToolCallAction::repair("subtract"))
         }
     }
 
@@ -909,11 +907,11 @@ mod tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            InvalidToolCallAction::retry(format!(
+        ) -> Option<InvalidToolCallAction> {
+            Some(InvalidToolCallAction::retry(format!(
                 "Use one of these tools instead: {:?}",
                 event.allowed_tools
-            ))
+            )))
         }
     }
 
@@ -925,8 +923,8 @@ mod tests {
             &self,
             _ctx: &HookContext,
             _event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            InvalidToolCallAction::skip("default_api is not available")
+        ) -> Option<InvalidToolCallAction> {
+            Some(InvalidToolCallAction::skip("default_api is not available"))
         }
     }
 
@@ -949,12 +947,12 @@ mod tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             self.contexts
                 .lock()
                 .expect("invalid tool context records mutex was poisoned")
                 .push(event.clone());
-            InvalidToolCallAction::fail()
+            None
         }
     }
 
@@ -1345,20 +1343,20 @@ mod tests {
     /// The motivating use-case: a `ToolContext` set on the prompt request is
     /// threaded all the way to the tool the agent loop executes.
     #[tokio::test]
-    async fn tool_context_reach_tool_through_agent_loop() {
+    async fn tool_context_reaches_tool_through_agent_loop() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
             MockTurn::text("done"),
         ]);
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
-        let mut extensions = ToolContext::new();
-        extensions.insert(SessionId("abc-123".to_string()));
+        let mut context = ToolContext::new();
+        context.insert(SessionId("abc-123".to_string()));
 
         let out = agent
             .prompt("use the tool")
-            .tool_context(extensions)
+            .tool_context(context)
             .max_turns(3)
             .await
             .expect("run succeeds");
@@ -1367,25 +1365,25 @@ mod tests {
         assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
     }
 
-    /// Extensions persist for the whole run, across *multiple* tool-call rounds
+    /// Context values persist for the whole run, across *multiple* tool-call rounds
     /// (the headline value prop). The model calls the probe in two consecutive
     /// rounds; both must observe the same injected value, not just the first.
     #[tokio::test]
-    async fn tool_context_persist_across_multiple_rounds() {
+    async fn tool_context_persists_across_multiple_rounds() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("c1", "context_probe", json!({})),
             MockTurn::tool_call("c2", "context_probe", json!({})),
             MockTurn::text("done"),
         ]);
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
-        let mut extensions = ToolContext::new();
-        extensions.insert(SessionId("abc-123".to_string()));
+        let mut context = ToolContext::new();
+        context.insert(SessionId("abc-123".to_string()));
 
         let out = agent
             .prompt("use the tool twice")
-            .tool_context(extensions)
+            .tool_context(context)
             .max_turns(5)
             .await
             .expect("run succeeds");
@@ -1405,7 +1403,7 @@ mod tests {
             MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
             MockTurn::text("done"),
         ]);
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
         let out = agent
@@ -1422,7 +1420,7 @@ mod tests {
     /// Direct typed calls use the same context contract as dispatched calls.
     #[tokio::test]
     async fn probe_direct_call_uses_context() {
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let out = probe
             .call(&mut ToolContext::new(), json!({}))
             .await
@@ -1569,8 +1567,8 @@ mod tests {
                                 if result.content.iter().any(|content| {
                                     matches!(
                                         content,
-                                        crate::message::ToolResultContent::Text(text)
-                                            if text.text == "5"
+                                        crate::message::ToolResultContent::Json { value }
+                                            if value == &serde_json::json!(5)
                                     )
                                 })
                         )

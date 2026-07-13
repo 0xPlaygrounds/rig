@@ -104,7 +104,7 @@ fn redact_ssn(record: &str) -> String {
 
 /// A guardrail hook that redacts the SSN from `get_user_record` output on the
 /// `ToolResult` event, before the model ever sees it — the post-tool redaction
-/// use case `RewriteResult` exists for.
+/// use case `ToolResultAction::Rewrite` exists for.
 struct RedactSsnFromResult;
 
 impl<M: CompletionModel> AgentHook<M> for RedactSsnFromResult {
@@ -114,7 +114,7 @@ impl<M: CompletionModel> AgentHook<M> for RedactSsnFromResult {
         event: ToolResultEvent<'_>,
     ) -> ToolResultAction {
         if event.tool_name == GetUserRecord::NAME {
-            ToolResultAction::rewrite(redact_ssn(event.result))
+            ToolResultAction::rewrite(redact_ssn(&event.presentation.render()))
         } else {
             ToolResultAction::keep()
         }

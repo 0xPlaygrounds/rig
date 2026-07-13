@@ -939,6 +939,7 @@ impl AgentRun {
                 self.advance_resolution()
             }
             InvalidToolCallAction::Stop { reason } => {
+                self.state = RunState::Failed;
                 Err(PromptError::prompt_cancelled(diagnostic_history, reason))
             }
             InvalidToolCallAction::Skip { reason } => {
@@ -1227,6 +1228,7 @@ impl AgentRun {
                 Ok(StreamedResolution::Repaired { tool_name })
             }
             InvalidToolCallAction::Stop { reason } => {
+                self.state = RunState::Failed;
                 Err(PromptError::prompt_cancelled(diagnostic_history, reason))
             }
             InvalidToolCallAction::Skip { reason } => {
@@ -1413,7 +1415,7 @@ mod tests {
     fn tool_result(id: &str, output: &str) -> UserContent {
         UserContent::tool_result(
             id.to_string(),
-            ToolResultContent::from_tool_output(output.to_string()),
+            OneOrMany::one(ToolResultContent::text(output)),
         )
     }
 
@@ -1671,6 +1673,33 @@ mod tests {
         assert!(matches!(
             err,
             PromptError::UnknownToolCall { tool_name, .. } if tool_name == "unknown"
+        ));
+    }
+
+    #[test]
+    fn invalid_tool_call_stop_leaves_run_terminal() {
+        let mut run = AgentRun::new("call something");
+
+        expect_call_model(&mut run);
+        expect_needs_resolution(
+            run.model_response(tool_call_turn("call_1", "unknown"))
+                .expect("model_response should succeed"),
+        );
+        let err = run
+            .resolve_invalid_tool_call(InvalidToolCallAction::stop("operator stop"))
+            .expect_err("stop should cancel the run");
+        assert!(matches!(
+            err,
+            PromptError::PromptCancelled { reason, .. } if reason == "operator stop"
+        ));
+
+        let err = run
+            .next_step()
+            .expect_err("a stopped run must remain terminal");
+        assert!(matches!(
+            err,
+            PromptError::PromptCancelled { reason, .. }
+                if reason.contains("next_step called after the run already failed")
         ));
     }
 

@@ -10,11 +10,6 @@ pub struct ThinkArgs {
     pub thought: String,
 }
 
-/// Error type for the Think tool
-#[derive(Debug, thiserror::Error)]
-#[error("Think tool error: {0}")]
-pub struct ThinkError(String);
-
 /// The Think tool allows agents to stop and think in complex tool use situations.
 ///
 /// This tool provides a dedicated space for structured thinking during complex tasks,

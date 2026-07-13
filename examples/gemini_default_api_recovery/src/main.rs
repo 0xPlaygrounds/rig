@@ -152,15 +152,15 @@ where
         &self,
         _ctx: &HookContext,
         context: &InvalidToolCallContext,
-    ) -> InvalidToolCallAction {
+    ) -> Option<InvalidToolCallAction> {
         if let Ok(mut invalid_tool_names) = self.invalid_tool_names.lock() {
             invalid_tool_names.push(context.tool_name.clone());
         }
-        if context.tool_name == "default_api" {
+        Some(if context.tool_name == "default_api" {
             InvalidToolCallAction::repair(JavaScript::NAME)
         } else {
             InvalidToolCallAction::fail()
-        }
+        })
     }
 }
 
@@ -270,12 +270,21 @@ async fn consume_workspace_like_stream(
                 ..
             }) => {
                 observation.events.push("tool_result");
-                let ToolResultContent::Text(text) = tool_result.content.first() else {
-                    return Err("JS Runtime can only respond with JSON text".to_string());
+                let value = match tool_result.content.first() {
+                    ToolResultContent::Json { value } => value.clone(),
+                    ToolResultContent::Text(_) => {
+                        return Err(
+                            "JS Runtime returned literal text instead of structured JSON"
+                                .to_string(),
+                        );
+                    }
+                    ToolResultContent::Image(_) => {
+                        return Err("JS Runtime returned an unexpected image".to_string());
+                    }
                 };
-                observation.tool_results.push(text.text.clone());
+                observation.tool_results.push(value.to_string());
                 let result: ExecutorResponse =
-                    serde_json::from_str(&text.text).map_err(|error| error.to_string())?;
+                    serde_json::from_value(value).map_err(|error| error.to_string())?;
                 observation.executor_results.push(result);
             }
             MultiTurnStreamItem::CompletionCall(completion_call) => {

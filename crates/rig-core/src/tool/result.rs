@@ -2,7 +2,10 @@
 
 use std::{error::Error, sync::Arc};
 
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::{
+    tool::ToolOutput,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
 
 /// Normalized classification for a tool execution error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,6 +55,20 @@ impl ToolErrorKind {
                 Some(false)
             }
             Self::Provider | Self::Other => None,
+        }
+    }
+
+    const fn default_model_feedback(self) -> &'static str {
+        match self {
+            Self::InvalidArgs => "tool arguments were invalid",
+            Self::Timeout => "tool execution timed out",
+            Self::Cancelled => "tool execution was cancelled",
+            Self::NotFound => "the requested tool or resource was not found",
+            Self::PermissionDenied => "the tool denied the request",
+            Self::RateLimited => "the tool was rate limited; try again later",
+            Self::Provider => "the tool provider failed",
+            Self::Network => "the tool could not reach its upstream service",
+            Self::Other => "the tool failed",
         }
     }
 }
@@ -188,7 +205,10 @@ impl ToolExecutionError {
         }
     }
 
-    /// Attach model-visible feedback. Without it, the operator message is used.
+    /// Attach model-visible feedback.
+    ///
+    /// Without explicit feedback, Rig emits a stable kind-specific message so
+    /// operator diagnostics and concrete error sources cannot leak to a model.
     pub fn with_model_feedback(mut self, feedback: impl Into<String>) -> Self {
         self.model_feedback = Some(feedback.into());
         self
@@ -231,14 +251,15 @@ impl ToolExecutionError {
         &self.message
     }
 
-    /// Model feedback, falling back to the operator-facing message.
-    pub fn model_feedback(&self) -> &str {
-        self.model_feedback.as_deref().unwrap_or(&self.message)
+    /// Explicit model feedback, if configured.
+    pub fn model_feedback(&self) -> Option<&str> {
+        self.model_feedback.as_deref()
     }
 
-    /// Explicit model feedback, if configured.
-    pub fn explicit_model_feedback(&self) -> Option<&str> {
-        self.model_feedback.as_deref()
+    pub(crate) fn model_presentation(&self) -> &str {
+        self.model_feedback
+            .as_deref()
+            .unwrap_or_else(|| self.kind.default_model_feedback())
     }
 
     /// Retryability hint.
@@ -314,16 +335,16 @@ impl Error for ToolExecutionError {
 /// execution errors remain distinct without exposing another outcome hierarchy.
 #[derive(Clone, Debug)]
 pub struct ToolResult {
-    model_output: String,
+    output: ToolOutput,
     error: Option<ToolExecutionError>,
     refusal: Option<ToolExecutionError>,
     skipped: bool,
 }
 
 impl ToolResult {
-    pub(crate) fn success(model_output: impl Into<String>) -> Self {
+    pub(crate) fn success(output: ToolOutput) -> Self {
         Self {
-            model_output: model_output.into(),
+            output,
             error: None,
             refusal: None,
             skipped: false,
@@ -331,14 +352,18 @@ impl ToolResult {
     }
 
     pub(crate) fn failed(error: ToolExecutionError) -> Self {
-        let model_output = error.model_feedback().to_string();
+        let output = ToolOutput::text(error.model_presentation());
+        Self::failed_with_output(error, output)
+    }
+
+    pub(crate) fn failed_with_output(error: ToolExecutionError, output: ToolOutput) -> Self {
         let (error, refusal) = if error.is_refusal() {
             (None, Some(error))
         } else {
             (Some(error), None)
         };
         Self {
-            model_output,
+            output,
             error,
             refusal,
             skipped: false,
@@ -347,16 +372,16 @@ impl ToolResult {
 
     pub(crate) fn skipped(reason: impl Into<String>) -> Self {
         Self {
-            model_output: reason.into(),
+            output: ToolOutput::text(reason),
             error: None,
             refusal: None,
             skipped: true,
         }
     }
 
-    /// Text delivered to the model before any presentation-only hook rewrite.
-    pub fn model_output(&self) -> &str {
-        &self.model_output
+    /// Canonical model-visible output before any presentation-only hook rewrite.
+    pub fn output(&self) -> &ToolOutput {
+        &self.output
     }
 
     /// Structured execution error, if execution failed.
@@ -440,7 +465,7 @@ mod tests {
             .with_source(Concrete);
         let cloned = error.clone();
         assert_eq!(error.kind(), ToolErrorKind::Provider);
-        assert_eq!(error.model_feedback(), "safe feedback");
+        assert_eq!(error.model_feedback(), Some("safe feedback"));
         assert_eq!(error.http_status(), Some(503));
         assert!(cloned.is::<Concrete>());
         assert!(!format!("{error:?}").contains("secret detail"));
@@ -451,6 +476,17 @@ mod tests {
         let error = ToolExecutionError::from_error(ToolExecutionError::timeout("slow"));
         assert_eq!(error.kind(), ToolErrorKind::Timeout);
         assert_eq!(error.retryable(), Some(true));
+    }
+
+    #[test]
+    fn operator_details_are_not_model_visible_without_explicit_feedback() {
+        let error = ToolExecutionError::provider("authorization header Bearer secret-token");
+        let result = ToolResult::failed(error.clone());
+
+        assert_eq!(error.message(), "authorization header Bearer secret-token");
+        assert_eq!(error.model_feedback(), None);
+        assert_eq!(result.output().as_text(), Some("the tool provider failed"));
+        assert!(!result.output().render().contains("secret-token"));
     }
 
     #[test]
@@ -507,26 +543,26 @@ mod migrated_tests {
             .with_http_status(429);
         assert_eq!(error.kind(), ToolErrorKind::RateLimited);
         assert_eq!(error.message(), "operator");
-        assert_eq!(error.model_feedback(), "slow down");
+        assert_eq!(error.model_feedback(), Some("slow down"));
         assert_eq!(error.retryable(), Some(false));
         assert_eq!(error.code(), Some("RATE_42"));
         assert_eq!(error.http_status(), Some(429));
         let result = ToolResult::failed(error);
-        assert_eq!(result.model_output(), "slow down");
+        assert_eq!(result.output().as_text(), Some("slow down"));
         assert!(result.is_error_kind(ToolErrorKind::RateLimited));
     }
 
     #[test]
     fn success_preserves_multiline_output_verbatim() {
-        let result = ToolResult::success("hello\nworld");
+        let result = ToolResult::success(ToolOutput::text("hello\nworld"));
         assert!(result.is_success());
-        assert_eq!(result.model_output(), "hello\nworld");
+        assert_eq!(result.output().as_text(), Some("hello\nworld"));
         assert!(result.error().is_none());
     }
 
     #[test]
     fn result_states_are_mutually_distinguishable() {
-        let success = ToolResult::success("ok");
+        let success = ToolResult::success(ToolOutput::text("ok"));
         let failure = ToolResult::failed(ToolExecutionError::not_found("missing"));
         let skipped = ToolResult::skipped("policy");
         let refused = ToolResult::failed(ToolExecutionError::refused("denied"));

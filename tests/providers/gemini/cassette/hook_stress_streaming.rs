@@ -1,6 +1,6 @@
 //! Hook-system stress suite: streaming lifecycle and blocking-vs-streaming
 //! parity — `TextDelta` / `StreamResponseFinish` / `ModelTurnFinished` on the
-//! streaming surface, `RewriteResult` redaction reaching the `FinalResponse`,
+//! streaming surface, `ToolResultAction::Rewrite` redaction reaching the `FinalResponse`,
 //! `active_tools` narrowing and `Skip` on the streaming driver, and the same
 //! workflow producing the same answer on both surfaces. Recorded against real
 //! Gemini.

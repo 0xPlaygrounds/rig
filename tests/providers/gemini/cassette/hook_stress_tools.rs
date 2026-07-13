@@ -1,5 +1,5 @@
 //! Hook-system stress suite: the tool-execution lifecycle — chained
-//! `RewriteArgs`, chained `RewriteResult` (redact / wrap / truncate),
+//! `ToolCallAction::Rewrite`, chained `ToolResultAction::Rewrite` (redact / wrap / truncate),
 //! `Terminate` from a `ToolResult` (post-execution), and model-driven recovery
 //! from a tool error. Recorded against real Gemini.
 

@@ -14,7 +14,7 @@ use crate::{
     completion::{CompletionModel, Document, Usage},
     json_utils,
     message::{AssistantContent, Message, ToolChoice},
-    tool::{ToolContext, ToolResult},
+    tool::{ToolContext, ToolOutput, ToolResult},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -323,7 +323,7 @@ pub struct ToolCall<'a> {
 
 /// Post-execution tool event.
 ///
-/// `result` contains the running presentation rewrite. `raw_result` and
+/// `presentation` contains the running presentation rewrite. `raw_result` and
 /// `tool_context` always contain the original execution data.
 #[derive(Clone, Copy)]
 pub struct ToolResultEvent<'a> {
@@ -336,7 +336,7 @@ pub struct ToolResultEvent<'a> {
     /// Effective arguments used for execution.
     pub args: &'a str,
     /// Current model-visible presentation, including earlier rewrites.
-    pub result: &'a str,
+    pub presentation: &'a ToolOutput,
     /// Immutable raw execution result.
     pub raw_result: &'a ToolResult,
     /// Per-dispatch context containing inbound data and result metadata.
@@ -627,12 +627,12 @@ impl ToolCallAction {
 }
 
 /// Action for post-tool hooks.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ToolResultAction {
     /// Keep the current presentation.
     Keep,
     /// Replace only the model-visible presentation.
-    Rewrite(String),
+    Rewrite(ToolOutput),
     /// Stop the run.
     Stop(String),
 }
@@ -647,7 +647,13 @@ impl ToolResultAction {
     ///
     /// The tool's raw structured result remains unchanged.
     pub fn rewrite(result: impl Into<String>) -> Self {
-        Self::Rewrite(result.into())
+        Self::Rewrite(ToolOutput::text(result))
+    }
+
+    /// Creates an action that replaces the model-visible presentation with
+    /// explicit structured or multimodal output.
+    pub fn rewrite_output(output: ToolOutput) -> Self {
+        Self::Rewrite(output)
     }
 
     /// Creates an action that stops the run after result handling.
@@ -781,13 +787,15 @@ where
     /// Resolves a model-emitted tool call that cannot be dispatched as written.
     ///
     /// The call may be failed, retried, repaired, skipped, or used to stop the
-    /// run. The default action preserves fail-fast behavior.
+    /// run. Return `None` to leave the decision to a later hook. If every hook
+    /// in a [`HookStack`] returns `None`, the agent preserves fail-fast
+    /// behavior.
     fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
         _event: &InvalidToolCallContext,
-    ) -> impl Future<Output = InvalidToolCallAction> + WasmCompatSend {
-        async { InvalidToolCallAction::Fail }
+    ) -> impl Future<Output = Option<InvalidToolCallAction>> + WasmCompatSend {
+        async { None }
     }
 
     /// Runs before a valid tool call is executed.
@@ -890,7 +898,7 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, InvalidToolCallAction>
+    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>
     where
         M: 'a;
     fn tool_call<'a>(
@@ -970,7 +978,7 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, InvalidToolCallAction>
+    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>
     where
         M: 'a,
     {
@@ -1188,14 +1196,13 @@ impl<M: CompletionModel> AgentHook<M> for HookStack<M> {
         &self,
         ctx: &HookContext,
         event: &InvalidToolCallContext,
-    ) -> InvalidToolCallAction {
+    ) -> Option<InvalidToolCallAction> {
         for hook in &self.hooks {
-            let action = hook.invalid_tool_call(ctx, event).await;
-            if !matches!(action, InvalidToolCallAction::Fail) {
-                return action;
+            if let Some(action) = hook.invalid_tool_call(ctx, event).await {
+                return Some(action);
             }
         }
-        InvalidToolCallAction::Fail
+        None
     }
     async fn on_tool_call(&self, ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
         let internal_call_id = event.internal_call_id;
@@ -1212,10 +1219,10 @@ impl<M: CompletionModel> AgentHook<M> for HookStack<M> {
         ctx: &HookContext,
         event: ToolResultEvent<'_>,
     ) -> ToolResultAction {
-        let mut effective: Option<String> = None;
+        let mut effective: Option<ToolOutput> = None;
         for hook in &self.hooks {
             let current = ToolResultEvent {
-                result: effective.as_deref().unwrap_or(event.result),
+                presentation: effective.as_ref().unwrap_or(event.presentation),
                 ..event
             };
             match hook.tool_result(ctx, current).await {
@@ -1370,7 +1377,7 @@ mod tests {
             event: ToolResultEvent<'_>,
         ) -> ToolResultAction {
             self.seen.lock().unwrap().push((
-                event.result.to_string(),
+                event.presentation.render(),
                 event.raw_result.error().unwrap().kind(),
                 event.tool_context.result::<String>().unwrap().clone(),
             ));
@@ -1401,7 +1408,7 @@ mod tests {
                     tool_call_id: None,
                     internal_call_id: "internal-id",
                     args: "{}",
-                    result: raw.model_output(),
+                    presentation: raw.output(),
                     raw_result: &raw,
                     tool_context: &context,
                 },
@@ -1413,7 +1420,7 @@ mod tests {
             *seen.lock().unwrap(),
             vec![
                 (
-                    "raw failure".into(),
+                    "tool execution timed out".into(),
                     ToolErrorKind::Timeout,
                     "request-metadata".into()
                 ),
@@ -1424,7 +1431,7 @@ mod tests {
                 ),
             ]
         );
-        assert_eq!(raw.model_output(), "raw failure");
+        assert_eq!(raw.output().as_text(), Some("tool execution timed out"));
         assert_eq!(
             context.result::<String>().map(String::as_str),
             Some("request-metadata")
@@ -1462,7 +1469,7 @@ mod tests {
             stop: false,
             calls: calls.clone(),
         });
-        let raw = ToolResult::success("ok");
+        let raw = ToolResult::success(ToolOutput::text("ok"));
         let context = ToolContext::new();
         let action = stack
             .on_tool_result(
@@ -1472,7 +1479,7 @@ mod tests {
                     tool_call_id: None,
                     internal_call_id: "internal-id",
                     args: "{}",
-                    result: "ok",
+                    presentation: raw.output(),
                     raw_result: &raw,
                     tool_context: &context,
                 },
@@ -1544,6 +1551,21 @@ mod migrated_tests {
         }
     }
 
+    struct InvalidResponder {
+        action: InvalidToolCallAction,
+        calls: Arc<AtomicUsize>,
+    }
+    impl AgentHook<M> for InvalidResponder {
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &InvalidToolCallContext,
+        ) -> Option<InvalidToolCallAction> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            Some(self.action.clone())
+        }
+    }
+
     struct Patcher {
         label: u32,
         log: Arc<Mutex<Vec<u32>>>,
@@ -1579,6 +1601,20 @@ mod migrated_tests {
             prompt: PROMPT.get_or_init(|| crate::message::Message::user("hi")),
             history: &[],
             turn: 1,
+        }
+    }
+
+    fn invalid_tool_call_context() -> InvalidToolCallContext {
+        InvalidToolCallContext {
+            tool_name: "unknown".into(),
+            tool_call_id: Some("tc1".into()),
+            internal_call_id: Some("ic1".into()),
+            args: Some("{}".into()),
+            available_tools: vec!["add".into()],
+            allowed_tools: vec!["add".into()],
+            tool_choice: None,
+            chat_history: vec![],
+            is_streaming: false,
         }
     }
 
@@ -1648,6 +1684,48 @@ mod migrated_tests {
             ObservationAction::Stop(_)
         ));
         assert_eq!(*log.lock().unwrap(), vec![1]);
+    }
+
+    #[tokio::test]
+    async fn explicit_fail_short_circuits_later_invalid_tool_hooks() {
+        let fail_calls = Arc::new(AtomicUsize::new(0));
+        let retry_calls = Arc::new(AtomicUsize::new(0));
+        let mut stack = HookStack::<M>::with(InvalidResponder {
+            action: InvalidToolCallAction::fail(),
+            calls: fail_calls.clone(),
+        });
+        stack.push(InvalidResponder {
+            action: InvalidToolCallAction::retry("try another tool"),
+            calls: retry_calls.clone(),
+        });
+
+        let action = stack
+            .on_invalid_tool_call(&ctx(), &invalid_tool_call_context())
+            .await;
+
+        assert_eq!(action, Some(InvalidToolCallAction::fail()));
+        assert_eq!(fail_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(retry_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn no_invalid_tool_decision_defers_to_later_hooks() {
+        let retry_calls = Arc::new(AtomicUsize::new(0));
+        let mut stack = HookStack::<M>::with(());
+        stack.push(InvalidResponder {
+            action: InvalidToolCallAction::retry("try another tool"),
+            calls: retry_calls.clone(),
+        });
+
+        let action = stack
+            .on_invalid_tool_call(&ctx(), &invalid_tool_call_context())
+            .await;
+
+        assert_eq!(
+            action,
+            Some(InvalidToolCallAction::retry("try another tool"))
+        );
+        assert_eq!(retry_calls.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]

@@ -237,7 +237,7 @@ pub struct ToolCall {
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
-    pub r#type: Option<ProviderToolType>,
+    pub r#type: Option<ToolType>,
     #[serde(default)]
     pub function: Option<ToolCallFunction>,
 }
@@ -251,14 +251,14 @@ pub struct ToolCallFunction {
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum ProviderToolType {
+pub enum ToolType {
     #[default]
     Function,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Tool {
-    pub r#type: ProviderToolType,
+    pub r#type: ToolType,
     pub function: Function,
 }
 
@@ -273,7 +273,7 @@ pub struct Function {
 impl From<completion::ToolDefinition> for Tool {
     fn from(tool: completion::ToolDefinition) -> Self {
         Self {
-            r#type: ProviderToolType::default(),
+            r#type: ToolType::default(),
             function: Function {
                 name: tool.name,
                 description: Some(tool.description),
@@ -389,9 +389,17 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::ToolResultContent::Text(text) => {
                                 Ok(ToolResultContent::Text { text: text.text })
                             }
-                            _ => Err(message::MessageError::ConversionError(
-                                "Only text tool result content is supported by Cohere".to_owned(),
-                            )),
+                            message::ToolResultContent::Json { value } => {
+                                Ok(ToolResultContent::Text {
+                                    text: value.to_string(),
+                                })
+                            }
+                            message::ToolResultContent::Image(_) => {
+                                Err(message::MessageError::ConversionError(
+                                    "Only text tool result content is supported by Cohere"
+                                        .to_owned(),
+                                ))
+                            }
                         })?,
                     }),
                     _ => Err(message::MessageError::ConversionError(
@@ -421,7 +429,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         }) => {
                             tool_calls.push(ToolCall {
                                 id: Some(id),
-                                r#type: Some(ProviderToolType::Function),
+                                r#type: Some(ToolType::Function),
                                 function: Some(ToolCallFunction {
                                     name,
                                     arguments: serde_json::to_value(arguments).unwrap_or_default(),
@@ -507,10 +515,10 @@ impl TryFrom<Message> for message::Message {
                     Ok(match content {
                         ToolResultContent::Text { text } => message::ToolResultContent::text(text),
                         ToolResultContent::Document { document } => {
-                            message::ToolResultContent::text(
-                                serde_json::to_string(&document.data).map_err(|e| {
+                            message::ToolResultContent::json(
+                                serde_json::to_value(document.data).map_err(|e| {
                                     message::MessageError::ConversionError(
-                                        format!("Failed to convert tool result document content into text: {e}"),
+                                        format!("Failed to convert tool result document content into JSON: {e}"),
                                     )
                                 })?,
                             )

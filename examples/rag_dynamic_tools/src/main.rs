@@ -133,8 +133,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::from_env()?;
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let toolset = ToolSet::builder()
-        .dynamic_tool(Add)
-        .dynamic_tool(Subtract)
+        .retrieved_tool(Add)
+        .retrieved_tool(Subtract)
         .build();
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?
@@ -154,7 +154,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         // Add a dynamic tool source with a sample rate of 1 (i.e.: only
         // 1 additional tool will be added to prompts)
-        .dynamic_tools(1, index, toolset)
+        .retrieved_tools(1, index, toolset)
         .default_max_turns(2)
         .build();
 

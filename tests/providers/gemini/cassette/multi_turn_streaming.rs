@@ -9,7 +9,7 @@ use rig::OneOrMany;
 use rig::agent::Agent;
 use rig::client::CompletionClient;
 use rig::completion::{self, CompletionError, CompletionModel, PromptError};
-use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
+use rig::message::{AssistantContent, Message, Text, UserContent};
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingCompletion};
 use rig::tool::{Tool, ToolContext, ToolExecutionError};
@@ -131,7 +131,7 @@ where
                         if let Some(error) = execution.error() {
                             Err(StreamingError::Tool(error.clone()))?;
                         }
-                        let tool_result = execution.model_output().to_string();
+                        let tool_result = execution.output().clone();
 
                         tool_calls.push(AssistantContent::ToolCall(tool_call.clone()));
                         tool_results.push((tool_call.id, tool_call.call_id, tool_result));
@@ -160,7 +160,7 @@ where
             }
 
             for (id, call_id, tool_result) in tool_results {
-                let tool_content = ToolResultContent::from_tool_output(tool_result);
+                let tool_content = tool_result.into_content();
                 let user_content = if let Some(call_id) = call_id {
                     UserContent::tool_result_with_call_id(id, call_id, tool_content)
                 } else {

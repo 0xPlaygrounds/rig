@@ -22,6 +22,12 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
                 let image = RigImage(image).try_into()?;
                 Ok(aws_bedrock::ToolResultContentBlock::Image(image))
             }
+            ToolResultContent::Json { value } => {
+                // Keep Rig's value structured until the terminal provider
+                // boundary while preserving Bedrock's established text wire
+                // representation for serialized tool outputs.
+                Ok(aws_bedrock::ToolResultContentBlock::Text(value.to_string()))
+            }
         }
     }
 }
@@ -37,9 +43,9 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
             }
             aws_bedrock::ToolResultContentBlock::Json(document) => {
                 let json: Value = AwsDocument(document).into();
-                Ok(RigToolResultContent(ToolResultContent::Text(Text::new(
-                    json.to_string(),
-                ))))
+                Ok(RigToolResultContent(ToolResultContent::Json {
+                    value: json,
+                }))
             }
             aws_bedrock::ToolResultContentBlock::Text(text) => Ok(RigToolResultContent(
                 ToolResultContent::Text(Text::new(text)),
@@ -86,6 +92,27 @@ mod tests {
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
         assert!(aws_tool.is_ok());
         assert!(aws_tool.unwrap().is_image())
+    }
+
+    #[test]
+    fn rig_tool_json_preserves_the_established_aws_text_wire_shape() {
+        let expected = serde_json::json!({ "answer": -3, "exact": true });
+        let tool = RigToolResultContent(ToolResultContent::Json {
+            value: expected.clone(),
+        });
+
+        let aws_tool: aws_bedrock::ToolResultContentBlock = tool
+            .try_into()
+            .expect("JSON should render at the AWS boundary");
+        assert_eq!(
+            aws_tool.as_text().expect("AWS text tool result"),
+            &expected.to_string()
+        );
+
+        let roundtrip: RigToolResultContent = aws_tool
+            .try_into()
+            .expect("AWS text should convert back to a Rig tool result");
+        assert_eq!(roundtrip.0, ToolResultContent::text(expected.to_string()));
     }
 
     #[test]

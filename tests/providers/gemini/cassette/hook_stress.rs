@@ -4,8 +4,8 @@
 //! drive rich multi-turn workflows and assert *structural invariants* of the
 //! merged hook system: `HookContext` identity/turn/streaming, a shared
 //! `Scratchpad` threaded across hooks and turns, `RequestPatch` context
-//! injection + `active_tools` narrowing, chained `RewriteArgs` -> observe ->
-//! `RewriteResult` redaction, and streaming lifecycle ordering / blocking-vs-
+//! injection + `active_tools` narrowing, chained `ToolCallAction::Rewrite` -> observe ->
+//! `ToolResultAction::Rewrite` redaction, and streaming lifecycle ordering / blocking-vs-
 //! streaming parity.
 //!
 //! ## On loose assertions
@@ -431,7 +431,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Chained tool lifecycle: RewriteArgs -> observe -> RewriteResult redaction.
+// 3. Chained tool lifecycle: ToolCallAction::Rewrite -> observe -> ToolResultAction::Rewrite.
 // ---------------------------------------------------------------------------
 
 const REDACTION_MARKER: &str = "REDACTED-SUM-ZK7";

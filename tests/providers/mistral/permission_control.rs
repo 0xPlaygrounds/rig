@@ -141,8 +141,7 @@ impl<M: CompletionModel> AgentHook<M> for PermissionHook {
         _ctx: &rig::agent::HookContext,
         event: ToolResultEvent<'_>,
     ) -> ToolResultAction {
-        let normalized = serde_json::from_str::<String>(event.result)
-            .unwrap_or_else(|_| event.result.to_string());
+        let normalized = event.presentation.render();
         *self.last_result.lock().expect("lock last_result") = Some(normalized);
         ToolResultAction::keep()
     }

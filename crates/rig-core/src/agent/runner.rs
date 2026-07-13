@@ -47,7 +47,7 @@ use super::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
             drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
         },
-        tool_result_message, tool_result_output,
+        tool_result_output,
     },
     run::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
@@ -58,7 +58,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::{ToolContext, ToolResult, server::ToolServerHandle},
+    tool::{ToolContext, ToolDispatch, ToolOutput, ToolResult, server::ToolServerHandle},
 };
 
 use super::UNKNOWN_AGENT_NAME;
@@ -123,7 +123,7 @@ pub(crate) fn tool_call_decision(action: ToolCallAction) -> ToolCallDecision {
 
 pub(crate) enum ToolResultDecision {
     Keep,
-    Replace(String),
+    Replace(ToolOutput),
     Terminate(String),
 }
 
@@ -146,18 +146,6 @@ pub(crate) fn completion_call_decision(action: CompletionCallAction) -> Completi
         CompletionCallAction::Continue => CompletionCallDecision::Proceed,
         CompletionCallAction::Patch(patch) => CompletionCallDecision::Patch(patch),
         CompletionCallAction::Stop(reason) => CompletionCallDecision::Terminate(reason),
-    }
-}
-
-pub(crate) enum InvalidDecision {
-    Terminate(String),
-    Action(InvalidToolCallAction),
-}
-
-pub(crate) fn invalid_decision(action: InvalidToolCallAction) -> InvalidDecision {
-    match action {
-        InvalidToolCallAction::Stop { reason } => InvalidDecision::Terminate(reason),
-        action => InvalidDecision::Action(action),
     }
 }
 
@@ -485,9 +473,10 @@ pub(crate) struct ToolCallOutcome {
 /// Execute a single tool call, firing the `ToolCall` and `ToolResult` hooks and
 /// shaping the result. **Shared by the blocking and streaming drivers** so a
 /// tool call behaves identically in both: same hook events, same fail-closed
-/// skip/terminate handling, and the same result shaping — a hook skip reason is
-/// emitted verbatim ([`tool_result_message`]) while a real tool output is parsed
-/// ([`tool_result_output`]). Records `gen_ai.tool.*` on the current span;
+/// skip/terminate handling, and the same result shaping. Hook skips become
+/// [`ToolResult::skipped`], and every result is converted directly into typed
+/// message content through [`tool_result_output`] without reparsing text.
+/// Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
 pub(crate) async fn run_single_tool<M>(
@@ -544,7 +533,7 @@ where
     // On `Skip` the body does not run and the structured outcome is `Skipped`;
     // otherwise the tool executes into a structured `ToolResult`.
     // `effective_args` is what the tool actually ran with (the model's, a hook's
-    // `RewriteArgs` replacement, or a salvaged rewrite) — surfaced in the
+    // `ToolCallAction::Rewrite` replacement, or a salvaged rewrite) — surfaced in the
     // execution-start event so a redaction rewrite does not leak. Unused for a skip.
     let mut skipped: Option<ToolResult> = None;
     let effective_args: serde_json::Value = match tool_call_decision(action) {
@@ -580,16 +569,16 @@ where
 
     // Resolve the structured execution result and how the call surfaced. A skip
     // produces no execution-start event; a real execution carries the effective
-    // tool call (the model's call with any `RewriteArgs` applied).
+    // tool call (the model's call with any `ToolCallAction::Rewrite` applied).
     let (exec, execution, dispatch_context) = match skipped {
         Some(exec) => (exec, ToolExecution::Skipped, tool_context.for_dispatch()),
         None => {
             let mut effective_tool_call = tool_call.clone();
             effective_tool_call.function.arguments = effective_args;
-            let mut dispatch_context = tool_context.for_dispatch();
-            let exec = tool_server
-                .execute(tool_name, &args, &mut dispatch_context)
-                .await;
+            let ToolDispatch {
+                result: exec,
+                context: dispatch_context,
+            } = tool_server.dispatch(tool_name, &args, tool_context).await;
             (
                 exec,
                 ToolExecution::Executed(Box::new(effective_tool_call)),
@@ -597,10 +586,6 @@ where
             )
         }
     };
-    // A synthetic (skip) result is delivered verbatim; a real tool output is
-    // parsed (it may be multimodal).
-    let synthetic = matches!(execution, ToolExecution::Skipped);
-
     // Presentation rewrites happen after execution. The raw structured result
     // and per-dispatch context remain unchanged for every hook and telemetry.
     match tool_result_decision(
@@ -612,7 +597,7 @@ where
                     tool_call_id: tool_call.call_id.as_deref(),
                     internal_call_id,
                     args: &args,
-                    result: exec.model_output(),
+                    presentation: exec.output(),
                     raw_result: &exec,
                     tool_context: &dispatch_context,
                 },
@@ -625,9 +610,9 @@ where
         )),
         ToolResultDecision::Replace(replacement) => {
             record_tool_result(&tool_span, &exec);
-            tool_span.record("gen_ai.tool.call.result", &replacement);
+            tool_span.record("gen_ai.tool.call.result", exec.output().render());
             Ok(ToolCallOutcome {
-                content: tool_result_message(
+                content: tool_result_output(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     replacement,
@@ -637,13 +622,12 @@ where
         }
         ToolResultDecision::Keep => {
             record_tool_result(&tool_span, &exec);
-            tool_span.record("gen_ai.tool.call.result", exec.model_output());
-            let output = exec.model_output().to_string();
-            let content = if synthetic {
-                tool_result_message(tool_call.id.clone(), tool_call.call_id.clone(), output)
-            } else {
-                tool_result_output(tool_call.id.clone(), tool_call.call_id.clone(), output)
-            };
+            tool_span.record("gen_ai.tool.call.result", exec.output().render());
+            let content = tool_result_output(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                exec.output().clone(),
+            );
             Ok(ToolCallOutcome { content, execution })
         }
     }
@@ -767,24 +751,15 @@ where
                         let action = runner
                             .hooks
                             .on_invalid_tool_call(hook_ctx, &context)
-                            .await;
-                        match invalid_decision(action) {
-                            InvalidDecision::Terminate(reason) => {
-                                yield Err(StreamingError::Prompt(Box::new(
-                                    run.cancel_error(reason),
-                                )));
+                            .await
+                            .unwrap_or_else(InvalidToolCallAction::fail);
+                        outcome = match run.resolve_invalid_tool_call(action) {
+                            Ok(outcome) => outcome,
+                            Err(err) => {
+                                yield Err(Box::new(err).into());
                                 return;
                             }
-                            InvalidDecision::Action(action) => {
-                                outcome = match run.resolve_invalid_tool_call(action) {
-                                    Ok(outcome) => outcome,
-                                    Err(err) => {
-                                        yield Err(Box::new(err).into());
-                                        return;
-                                    }
-                                };
-                            }
-                        }
+                        };
                     }
                     ModelTurnOutcome::TurnRetried => break,
                     ModelTurnOutcome::Continue {
@@ -943,7 +918,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     use futures::StreamExt;
     use serde_json::json;
@@ -956,6 +934,75 @@ mod tests {
     };
 
     struct MetadataFailingTool;
+
+    struct SnapshotValue {
+        value: usize,
+        clones: Arc<AtomicUsize>,
+    }
+
+    impl Clone for SnapshotValue {
+        fn clone(&self) -> Self {
+            self.clones.fetch_add(1, Ordering::SeqCst);
+            Self {
+                value: self.value,
+                clones: self.clones.clone(),
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct SnapshotMutatingTool(Arc<Mutex<Vec<usize>>>);
+
+    impl Tool for SnapshotMutatingTool {
+        const NAME: &'static str = "snapshot_mutator";
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "Mutates its per-dispatch context snapshot".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({"type": "object", "properties": {}})
+        }
+
+        async fn call(
+            &self,
+            context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            let initial = context.require::<SnapshotValue>()?.value;
+            self.0.lock().expect("observed values").push(initial);
+            let updated = {
+                let value = context
+                    .get_mut::<SnapshotValue>()
+                    .expect("required snapshot value");
+                value.value += 1;
+                value.value
+            };
+            context.insert_result(updated);
+            Ok(updated.to_string())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct SnapshotResults(Arc<Mutex<Vec<usize>>>);
+
+    impl<M: CompletionModel> AgentHook<M> for SnapshotResults {
+        async fn on_tool_result(
+            &self,
+            _ctx: &HookContext,
+            event: ToolResultEvent<'_>,
+        ) -> ToolResultAction {
+            self.0.lock().expect("result values").push(
+                *event
+                    .tool_context
+                    .require_result::<usize>()
+                    .expect("per-dispatch result metadata"),
+            );
+            ToolResultAction::keep()
+        }
+    }
 
     impl Tool for MetadataFailingTool {
         const NAME: &'static str = "flaky_tool";
@@ -992,7 +1039,7 @@ mod tests {
             if let Some(error) = event.raw_result.error() {
                 self.0.lock().expect("results").push((
                     error.kind(),
-                    event.raw_result.model_output().to_string(),
+                    event.raw_result.output().render(),
                     event
                         .tool_context
                         .result::<String>()
@@ -1051,7 +1098,7 @@ mod tests {
             *blocking.0.lock().unwrap(),
             vec![(
                 ToolErrorKind::Timeout,
-                "raw timeout failure".into(),
+                "tool execution timed out".into(),
                 "shared-result-metadata".into()
             )]
         );
@@ -1076,6 +1123,41 @@ mod tests {
         let history = blocking_history.to_string();
         assert!(history.contains("rewritten for model"));
         assert!(!history.contains("raw timeout failure"));
+    }
+
+    #[tokio::test]
+    async fn agent_dispatch_snapshot_clones_once_and_isolates_tool_mutations() {
+        let clones = Arc::new(AtomicUsize::new(0));
+        let mut context = ToolContext::new();
+        context.insert(SnapshotValue {
+            value: 0,
+            clones: clones.clone(),
+        });
+        let tool = SnapshotMutatingTool::default();
+        let results = SnapshotResults::default();
+
+        AgentBuilder::new(MockCompletionModel::from_turns([
+            MockTurn::tool_call("tc1", SnapshotMutatingTool::NAME, json!({})),
+            MockTurn::tool_call("tc2", SnapshotMutatingTool::NAME, json!({})),
+            MockTurn::text("done"),
+        ]))
+        .tool(tool.clone())
+        .add_hook(results.clone())
+        .build()
+        .runner("go")
+        .tool_context(context)
+        .max_turns(4)
+        .run()
+        .await
+        .expect("agent run");
+
+        assert_eq!(*tool.0.lock().expect("observed values"), vec![0, 0]);
+        assert_eq!(*results.0.lock().expect("result values"), vec![1, 1]);
+        assert_eq!(
+            clones.load(Ordering::SeqCst),
+            2,
+            "each of the two agent dispatches should clone inbound context once"
+        );
     }
 }
 
@@ -1200,9 +1282,9 @@ mod migrated_tests {
             &self,
             _: &HookContext,
             _: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             self.record(StepEventKind::InvalidToolCall);
-            InvalidToolCallAction::fail()
+            None
         }
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             self.record(StepEventKind::ToolCall);
@@ -1217,7 +1299,7 @@ mod migrated_tests {
             self.tool_results
                 .lock()
                 .expect("results lock")
-                .push(event.result.to_string());
+                .push(event.presentation.render());
             ToolResultAction::keep()
         }
         async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
@@ -1418,7 +1500,7 @@ mod migrated_tests {
     }
 
     /// Structured tool-execution results reach `ToolResultEvent` as machine
-    /// metadata (outcome + extensions), on both the blocking and streaming paths,
+    /// metadata (error/refusal state plus result context), on both the blocking and streaming paths,
     /// so hooks can steer on a classified failure without parsing the result
     /// string.
     mod structured_tool_results {
@@ -1476,7 +1558,9 @@ mod migrated_tests {
                 event: ToolResultEvent<'_>,
             ) -> ToolResultAction {
                 if let ToolResultEvent {
-                    result, raw_result, ..
+                    presentation,
+                    raw_result,
+                    ..
                 } = event
                 {
                     self.outcomes
@@ -1486,7 +1570,7 @@ mod migrated_tests {
                     self.results
                         .lock()
                         .expect("results")
-                        .push(result.to_string());
+                        .push(presentation.render());
                 }
                 ToolResultAction::keep()
             }
@@ -1533,7 +1617,7 @@ mod migrated_tests {
 
             assert_eq!(hook.outcomes(), vec!["error:timeout".to_string()]);
             // (4) The model still receives useful text for the handled failure.
-            assert_eq!(hook.results(), vec!["mock tool call failed".to_string()]);
+            assert_eq!(hook.results(), vec!["tool execution timed out".to_string()]);
         }
 
         // (2) A hook counts timeout failures in the run scratchpad and terminates
@@ -1734,10 +1818,13 @@ mod migrated_tests {
                 .expect("a permission failure is model-visible feedback, not fatal");
 
             assert_eq!(hook.outcomes(), vec!["error:permission_denied".to_string()]);
-            assert_eq!(hook.results(), vec!["mock tool call failed".to_string()]);
+            assert_eq!(
+                hook.results(),
+                vec!["the tool denied the request".to_string()]
+            );
         }
 
-        // A `RewriteArgs` hook followed by a `Skip` hook: the tool must not run,
+        // A `ToolCallAction::Rewrite` hook followed by a `Skip` hook: the tool must not run,
         // the `ToolResult` reports the *rewritten* args (not the model's
         // original), and the outcome is `Skipped` — the rewrite (e.g. a
         // redaction) is not lost when a later hook short-circuits. Verified on
@@ -1992,25 +2079,25 @@ mod migrated_tests {
             assert_eq!(hook.outcomes(), vec!["error:invalid_args".to_string()]);
         }
 
-        // Result extensions a tool attaches reach the hook but never appear in the
+        // Result metadata a tool attaches reaches the hook but never appears in the
         // model-visible output.
         #[tokio::test]
         async fn success_result_metadata_reaches_hook_but_not_model() {
             let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
             let model_output: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
-            struct ExtProbe {
+            struct MetadataProbe {
                 seen: Arc<Mutex<Option<String>>>,
                 model_output: Arc<Mutex<Option<String>>>,
             }
-            impl<M: CompletionModel> AgentHook<M> for ExtProbe {
+            impl<M: CompletionModel> AgentHook<M> for MetadataProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
                     event: ToolResultEvent<'_>,
                 ) -> ToolResultAction {
                     if let ToolResultEvent {
-                        result,
+                        presentation,
                         tool_context,
                         ..
                     } = event
@@ -2018,7 +2105,8 @@ mod migrated_tests {
                         *self.seen.lock().expect("seen") = tool_context
                             .result::<MockRequestId>()
                             .map(|id| id.0.clone());
-                        *self.model_output.lock().expect("model_output") = Some(result.to_string());
+                        *self.model_output.lock().expect("model_output") =
+                            Some(presentation.render());
                     }
                     ToolResultAction::keep()
                 }
@@ -2026,7 +2114,7 @@ mod migrated_tests {
 
             AgentBuilder::new(model_one_tool_then_text("with_meta"))
                 .tool(MockMetadataTool)
-                .add_hook(ExtProbe {
+                .add_hook(MetadataProbe {
                     seen: seen.clone(),
                     model_output: model_output.clone(),
                 })
@@ -2040,7 +2128,7 @@ mod migrated_tests {
             assert_eq!(
                 *seen.lock().expect("seen"),
                 Some("req-7".to_string()),
-                "the tool's result extension must reach the hook"
+                "the tool's result metadata must reach the hook"
             );
             let output = model_output
                 .lock()
@@ -2050,11 +2138,11 @@ mod migrated_tests {
             assert_eq!(output, "done");
             assert!(
                 !output.contains("req-7"),
-                "result extensions must never leak into the model-visible output"
+                "result metadata must never leak into the model-visible output"
             );
         }
 
-        // (6) A `RewriteResult` hook redacts the model-visible text, but a later
+        // (6) A `ToolResultAction::Rewrite` hook redacts the model-visible text, but a later
         // policy hook still sees the tool's *raw* structured outcome — a rewrite
         // changes only what the model sees, not the classification.
         #[tokio::test]
@@ -2478,17 +2566,17 @@ mod migrated_tests {
             );
         }
 
-        // --- Tool-result redaction: raw output must not leak to the span ---
+        // --- Tool-result rewrites are presentation-only ---
 
-        /// A tool that returns a secret; a redaction hook replaces it before the
-        /// model — and the trace — sees it.
-        struct SecretTool;
-        impl crate::tool::Tool for SecretTool {
-            const NAME: &'static str = "leak";
+        /// A tool that returns a raw marker; a rewrite hook replaces only the
+        /// model-visible presentation.
+        struct RawOutputTool;
+        impl crate::tool::Tool for RawOutputTool {
+            const NAME: &'static str = "raw_output";
             type Args = serde_json::Value;
             type Output = String;
             fn description(&self) -> String {
-                "returns a secret".to_string()
+                "returns a raw output marker".to_string()
             }
 
             fn parameters(&self) -> serde_json::Value {
@@ -2499,7 +2587,7 @@ mod migrated_tests {
                 _context: &mut ToolContext,
                 _args: Self::Args,
             ) -> Result<Self::Output, ToolExecutionError> {
-                Ok("SUPER_SECRET_TOKEN_42".to_string())
+                Ok("RAW_EXECUTION_OUTPUT_42".to_string())
             }
         }
 
@@ -2520,7 +2608,7 @@ mod migrated_tests {
         }
 
         /// Captures every value recorded into the `gen_ai.tool.call.result` span
-        /// field, so a test can assert the raw secret never reaches the trace.
+        /// field, so a test can assert telemetry retains the raw execution data.
         #[derive(Default)]
         struct ResultValueVisitor {
             values: Vec<String>,
@@ -2554,12 +2642,11 @@ mod migrated_tests {
             }
         }
 
-        /// A `ToolResult` hook that redacts the tool's output must prevent the raw
-        /// secret from ever reaching the `gen_ai.tool.call.result` span field: the
-        /// result is recorded only AFTER the hook runs, so only the redacted
-        /// replacement is traced.
+        /// A `ToolResult` rewrite changes only model presentation. Telemetry must
+        /// retain the raw output so a presentation hook cannot rewrite policy or
+        /// observability data.
         #[tokio::test]
-        async fn tool_result_redaction_does_not_leak_raw_output_to_the_span() {
+        async fn tool_result_rewrite_does_not_mutate_raw_span_output() {
             let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
             let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
             let subscriber = Registry::default().with(ResultValueLayer {
@@ -2574,11 +2661,11 @@ mod migrated_tests {
             values.lock().expect("values").clear();
 
             let model = MockCompletionModel::from_turns([
-                MockTurn::tool_call("tc1", "leak", serde_json::json!({})),
+                MockTurn::tool_call("tc1", "raw_output", serde_json::json!({})),
                 MockTurn::text("ok"),
             ]);
             let response = AgentBuilder::new(model)
-                .tool(SecretTool)
+                .tool(RawOutputTool)
                 .add_hook(RedactResultHook)
                 .build()
                 .runner("go")
@@ -2590,12 +2677,14 @@ mod migrated_tests {
 
             let captured = values.lock().expect("values").clone();
             assert!(
-                !captured.iter().any(|v| v.contains("SUPER_SECRET_TOKEN_42")),
-                "the raw tool output must never be recorded on the span; captured: {captured:?}"
+                captured
+                    .iter()
+                    .any(|v| v.contains("RAW_EXECUTION_OUTPUT_42")),
+                "the raw tool output must remain in telemetry; captured: {captured:?}"
             );
             assert!(
-                captured.iter().any(|v| v.contains("[REDACTED]")),
-                "only the redacted replacement is recorded on the span; captured: {captured:?}"
+                !captured.iter().any(|v| v.contains("[REDACTED]")),
+                "the presentation rewrite must not replace raw telemetry; captured: {captured:?}"
             );
         }
     }
@@ -2622,6 +2711,25 @@ mod migrated_tests {
                                 c,
                                 crate::message::ToolResultContent::Text(text)
                                     if text.text == expected
+                            ))
+                    ))
+            )
+        })
+    }
+
+    /// Whether any tool result in `messages` carries the exact structured JSON value.
+    fn tool_result_json_in_history(messages: &[Message], expected: &serde_json::Value) -> bool {
+        messages.iter().any(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.content.iter().any(|content| matches!(
+                                content,
+                                crate::message::ToolResultContent::Json { value }
+                                    if value == expected
                             ))
                     ))
             )
@@ -3686,7 +3794,7 @@ mod migrated_tests {
 
     /// The model tool-call event carries the model's **original** arguments; the
     /// execution-start event carries the **effective** (hook-rewritten) arguments
-    /// — so a `RewriteArgs` rewrite (e.g. a redaction) is reflected in what
+    /// — so a `ToolCallAction::Rewrite` (e.g. a redaction) is reflected in what
     /// actually ran, not leaked as the original.
     #[tokio::test]
     async fn stream_tool_execution_start_carries_effective_rewritten_args() {
@@ -4167,12 +4275,12 @@ mod migrated_tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            if let _ = event {
+        ) -> Option<InvalidToolCallAction> {
+            Some(if let _ = event {
                 InvalidToolCallAction::repair(self.0)
             } else {
                 InvalidToolCallAction::fail()
-            }
+            })
         }
     }
 
@@ -4527,12 +4635,12 @@ mod migrated_tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            if let _ = event {
+        ) -> Option<InvalidToolCallAction> {
+            Some(if let _ = event {
                 InvalidToolCallAction::skip(self.0)
             } else {
                 InvalidToolCallAction::fail()
-            }
+            })
         }
     }
 
@@ -4886,7 +4994,7 @@ mod migrated_tests {
         let args = json!({"x": 1, "y": 2});
         match super::tool_call_decision(ToolCallAction::rewrite(args.clone())) {
             super::ToolCallDecision::ProceedWith(replacement) => assert_eq!(replacement, args),
-            _ => panic!("RewriteArgs should resolve to ProceedWith for a tool call"),
+            _ => panic!("ToolCallAction::Rewrite should resolve to ProceedWith"),
         }
         // The typed convenience builds the same variant as the value constructor.
         assert_eq!(
@@ -4986,8 +5094,10 @@ mod migrated_tests {
     #[test]
     fn rewrite_result_resolves_to_replace_for_tool_result() {
         match super::tool_result_decision(ToolResultAction::rewrite("redacted")) {
-            super::ToolResultDecision::Replace(result) => assert_eq!(result, "redacted"),
-            _ => panic!("RewriteResult should resolve to Replace for a tool result"),
+            super::ToolResultDecision::Replace(result) => {
+                assert_eq!(result.as_text(), Some("redacted"))
+            }
+            _ => panic!("ToolResultAction::Rewrite should resolve to Replace"),
         }
     }
 
@@ -5074,7 +5184,7 @@ mod migrated_tests {
         );
     }
 
-    /// A `RewriteResult` replacement is delivered to the model verbatim, not
+    /// A `ToolResultAction::Rewrite` replacement is delivered to the model verbatim, not
     /// re-parsed as structured/multimodal tool output. A JSON-shaped replacement
     /// (here, an image payload that `tool_result_output` would turn into an image
     /// content block for *real* tool output) reaches history as literal text —
@@ -5630,7 +5740,7 @@ mod migrated_tests {
         );
     }
 
-    /// `RewriteArgs` and `RewriteResult` chain across hooks: a later hook observes
+    /// `ToolCallAction::Rewrite` and `ToolResultAction::Rewrite` chain across hooks: a later hook observes
     /// (and further rewrites) the value produced by earlier hooks.
     #[tokio::test]
     async fn chained_rewrites_compose_across_hooks() {
@@ -5664,8 +5774,8 @@ mod migrated_tests {
                 _ctx: &HookContext,
                 event: ToolResultEvent<'_>,
             ) -> ToolResultAction {
-                if let ToolResultEvent { result, .. } = event {
-                    ToolResultAction::rewrite(format!("{}({})", self.0, result))
+                if let ToolResultEvent { presentation, .. } = event {
+                    ToolResultAction::rewrite(format!("{}({})", self.0, presentation.render()))
                 } else {
                     ToolResultAction::keep()
                 }
@@ -6536,7 +6646,7 @@ mod migrated_tests {
             "the denial reason must be the denied call's tool result in the history"
         );
         assert!(
-            tool_result_text_in_history(&blocking_messages, "101"),
+            tool_result_json_in_history(&blocking_messages, &json!(101)),
             "the edited call must have executed with the rewritten arguments"
         );
     }

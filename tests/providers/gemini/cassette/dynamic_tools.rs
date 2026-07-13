@@ -54,8 +54,8 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
         "dynamic_tools/dynamic_tool_retrieved_and_merged_with_static",
         |client| async move {
             let toolset = ToolSet::builder()
-                .dynamic_tool(subtract)
-                .dynamic_tool(EmbedMultiply::default())
+                .retrieved_tool(subtract)
+                .retrieved_tool(EmbedMultiply::default())
                 .build();
             let index = build_tool_index(&client, &toolset).await;
 
@@ -64,7 +64,7 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(add)
-                .dynamic_tools(1, index, toolset)
+                .retrieved_tools(1, index, toolset)
                 .default_max_turns(3)
                 .build();
 
@@ -98,8 +98,8 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
         "dynamic_tools/dynamic_only_agent_retrieves_tool_per_prompt",
         |client| async move {
             let toolset = ToolSet::builder()
-                .dynamic_tool(add)
-                .dynamic_tool(EmbedSubtract::default())
+                .retrieved_tool(add)
+                .retrieved_tool(EmbedSubtract::default())
                 .build();
             let index = build_tool_index(&client, &toolset).await;
 
@@ -107,7 +107,7 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
-                .dynamic_tools(1, index, toolset)
+                .retrieved_tools(1, index, toolset)
                 .default_max_turns(3)
                 .build();
 
@@ -136,9 +136,9 @@ async fn sample_caps_retrieved_definitions() {
         "dynamic_tools/sample_caps_retrieved_definitions",
         |client| async move {
             let toolset = ToolSet::builder()
-                .dynamic_tool(EmbedAdd::default())
-                .dynamic_tool(EmbedSubtract::default())
-                .dynamic_tool(EmbedMultiply::default())
+                .retrieved_tool(EmbedAdd::default())
+                .retrieved_tool(EmbedSubtract::default())
+                .retrieved_tool(EmbedMultiply::default())
                 .build();
             let index = build_tool_index(&client, &toolset).await;
 
@@ -146,7 +146,7 @@ async fn sample_caps_retrieved_definitions() {
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
-                .dynamic_tools(2, index, toolset)
+                .retrieved_tools(2, index, toolset)
                 .build();
 
             let defs = agent

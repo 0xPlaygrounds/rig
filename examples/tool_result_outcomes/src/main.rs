@@ -128,10 +128,12 @@ impl Tool for SystemProbe {
         let message = error.to_string();
         let execution_error = match error {
             ProbeError::DiskIo => ToolExecutionError::other(message)
+                .with_model_feedback("the requested disk operation failed")
                 .with_code("EIO")
                 .with_retryable(false)
                 .with_source(ProbeError::DiskIo),
             ProbeError::NetworkUnreachable => ToolExecutionError::network(message)
+                .with_model_feedback("the backup service is unreachable; try again later")
                 .with_code("ENETUNREACH")
                 .with_source(ProbeError::NetworkUnreachable),
         };
@@ -384,7 +386,7 @@ mod tests {
         };
         assert_eq!(error.kind(), ToolErrorKind::Network);
         assert_eq!(error.code(), Some("ENETUNREACH"));
-        assert_eq!(result.model_output(), error.model_feedback());
+        assert_eq!(result.output().as_text(), error.model_feedback());
         assert_eq!(
             context.result::<FailureSite>(),
             Some(&FailureSite {

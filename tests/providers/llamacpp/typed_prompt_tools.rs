@@ -113,7 +113,7 @@ where
         println!("tool_call_id: {:?}", event.tool_call_id);
         println!("internal_call_id: {}", event.internal_call_id);
         println!("args: {}", event.args);
-        println!("result: {}", event.result);
+        println!("result: {}", event.presentation.render());
         ToolResultAction::keep()
     }
 }

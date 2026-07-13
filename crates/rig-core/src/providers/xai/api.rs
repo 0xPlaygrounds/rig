@@ -247,6 +247,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                                 }
                             } else if !text_parts.is_empty() {
                                 items.push(Message::user(text_parts.join("\n")));
+                                text_parts.clear();
                             }
                             has_images = false;
 
@@ -256,6 +257,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                                 .into_iter()
                                 .map(|tc| match tc {
                                     ToolResultContent::Text(t) => Ok(t.text),
+                                    ToolResultContent::Json { value } => Ok(value.to_string()),
                                     ToolResultContent::Image(_) => {
                                         Err(CompletionError::RequestError(
                                             "xAI does not support images in tool results".into(),
@@ -391,11 +393,52 @@ impl ApiError {
 
 #[cfg(test)]
 mod tests {
-    use super::Message;
+    use super::{Content, Message, Role};
     use crate::OneOrMany;
     use crate::completion::CompletionError;
-    use crate::message::{AssistantContent, Message as RigMessage, Reasoning, ReasoningContent};
+    use crate::message::{
+        AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolResultContent,
+        UserContent,
+    };
     use crate::providers::openai::responses_api::ReasoningSummary;
+
+    #[test]
+    fn mixed_user_content_preserves_order_without_duplicate_text() {
+        let message = RigMessage::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("before"),
+                UserContent::tool_result_with_call_id(
+                    "result-id",
+                    "call-id".to_string(),
+                    OneOrMany::one(ToolResultContent::json(serde_json::json!({ "ok": true }))),
+                ),
+                UserContent::text("after"),
+            ])
+            .expect("mixed content is non-empty"),
+        };
+
+        let messages = Vec::<Message>::try_from(message).expect("mixed content should convert");
+        assert_eq!(messages.len(), 3);
+        assert!(matches!(
+            &messages[0],
+            Message::Message {
+                role: Role::User,
+                content: Content::Text(text),
+            } if text == "before"
+        ));
+        assert!(matches!(
+            &messages[1],
+            Message::FunctionCallOutput { call_id, output }
+                if call_id == "call-id" && output == r#"{"ok":true}"#
+        ));
+        assert!(matches!(
+            &messages[2],
+            Message::Message {
+                role: Role::User,
+                content: Content::Text(text),
+            } if text == "after"
+        ));
+    }
 
     #[test]
     fn assistant_redacted_reasoning_is_serialized_as_encrypted_content() {

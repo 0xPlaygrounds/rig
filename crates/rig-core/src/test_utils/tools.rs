@@ -6,15 +6,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
-    tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolSet},
+    OneOrMany,
+    message::{ImageMediaType, ToolResultContent},
+    tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolOutput, ToolSet},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
 };
-
-/// Shared error type for mock tools.
-#[derive(Debug, thiserror::Error)]
-#[error("Mock tool error")]
-pub struct MockToolError;
 
 /// Arguments for arithmetic mock tools.
 #[derive(Deserialize)]
@@ -72,13 +69,13 @@ pub struct SessionId(pub String);
 ///
 /// The single `call` method records `session:<id>` (or `no-session`).
 #[derive(Clone, Default)]
-pub struct MockExtensionsProbeTool {
+pub struct MockContextProbeTool {
     /// One entry per call, in call order — lets tests assert across multiple
     /// tool-call rounds, not just the most recent.
     seen: Arc<Mutex<Vec<String>>>,
 }
 
-impl MockExtensionsProbeTool {
+impl MockContextProbeTool {
     /// What the tool observed on its most recent call, if it has been called.
     pub fn observed(&self) -> Option<String> {
         self.seen
@@ -97,7 +94,7 @@ impl MockExtensionsProbeTool {
     }
 }
 
-impl Tool for MockExtensionsProbeTool {
+impl Tool for MockContextProbeTool {
     const NAME: &'static str = "context_probe";
     type Args = serde_json::Value;
     type Output = String;
@@ -203,17 +200,17 @@ impl Tool for MockStringOutputTool {
     }
 }
 
-/// A mock tool that returns image JSON as a string.
+/// A mock tool that returns explicit image content.
 #[derive(Deserialize, Serialize)]
 pub struct MockImageOutputTool;
 
 impl Tool for MockImageOutputTool {
     const NAME: &'static str = "image_output";
     type Args = serde_json::Value;
-    type Output = String;
+    type Output = ToolOutput;
 
     fn description(&self) -> String {
-        "Returns image JSON".to_string()
+        "Returns an image".to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -228,12 +225,9 @@ impl Tool for MockImageOutputTool {
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
-        Ok(json!({
-            "type": "image",
-            "data": "base64data==",
-            "mimeType": "image/png"
-        })
-        .to_string())
+        Ok(ToolOutput::content(OneOrMany::one(
+            ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+        )))
     }
 }
 
@@ -244,7 +238,7 @@ pub struct MockImageGeneratorTool;
 impl Tool for MockImageGeneratorTool {
     const NAME: &'static str = "generate_test_image";
     type Args = serde_json::Value;
-    type Output = String;
+    type Output = ToolOutput;
 
     fn description(&self) -> String {
         "Generates a small test image (a 1x1 red pixel). Call this tool when asked to generate or show an image.".to_string()
@@ -263,12 +257,13 @@ impl Tool for MockImageGeneratorTool {
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
-        Ok(json!({
-            "type": "image",
-            "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
-            "mimeType": "image/png"
-        })
-        .to_string())
+        Ok(ToolOutput::content(OneOrMany::one(
+            ToolResultContent::image_base64(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+                Some(ImageMediaType::PNG),
+                None,
+            ),
+        )))
     }
 }
 
@@ -584,18 +579,19 @@ impl Tool for MockDeniedTool {
         _context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        Err(ToolExecutionError::refused(
-            "access to this resource is not permitted",
-        ))
+        Err(
+            ToolExecutionError::refused("operator authorization policy rejected the request")
+                .with_model_feedback("access to this resource is not permitted"),
+        )
     }
 }
 
-/// A cloneable extension value a [`MockMetadataTool`] attaches to its result, to
-/// verify result extensions reach hooks without being sent to the model.
+/// Cloneable metadata a [`MockMetadataTool`] attaches to its result, used to
+/// verify that result metadata reaches hooks without being sent to the model.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MockRequestId(pub String);
 
-/// A tool whose success carries a [`MockRequestId`] in its result extensions.
+/// A tool whose success carries a [`MockRequestId`] in its result metadata.
 /// Registered under the name `with_meta`.
 #[derive(Clone)]
 pub struct MockMetadataTool;

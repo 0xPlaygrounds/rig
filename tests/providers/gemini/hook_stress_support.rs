@@ -214,9 +214,9 @@ impl<M: CompletionModel> AgentHook<M> for EventTap {
         &self,
         ctx: &HookContext,
         _event: &rig::agent::InvalidToolCallContext,
-    ) -> InvalidToolCallAction {
+    ) -> Option<InvalidToolCallAction> {
         self.record(ctx, "InvalidToolCall");
-        InvalidToolCallAction::fail()
+        None
     }
     async fn on_tool_call(&self, ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
         self.record(ctx, "ToolCall");
@@ -396,8 +396,10 @@ impl<M: CompletionModel> AgentHook<M> for RewriteToolResult {
         }
         let new = match &self.rewrite {
             ResultRewrite::Replace(marker) => (*marker).to_string(),
-            ResultRewrite::Wrap { prefix, suffix } => format!("{prefix}{}{suffix}", event.result),
-            ResultRewrite::Truncate(n) => event.result.chars().take(*n).collect(),
+            ResultRewrite::Wrap { prefix, suffix } => {
+                format!("{prefix}{}{suffix}", event.presentation.render())
+            }
+            ResultRewrite::Truncate(n) => event.presentation.render().chars().take(*n).collect(),
         };
         ToolResultAction::rewrite(new)
     }

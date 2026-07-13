@@ -276,6 +276,63 @@ fn is_option_type(ty: &Type) -> bool {
     false
 }
 
+/// Returns whether `ty` names Rig's tool execution context.
+///
+/// We intentionally match the final path segment so callers can use either an
+/// imported `ToolContext` or a fully-qualified path through `rig`/`rig_core`.
+fn is_tool_context_type(ty: &Type) -> bool {
+    let ty = match ty {
+        Type::Group(group) => &*group.elem,
+        Type::Paren(paren) => &*paren.elem,
+        ty => ty,
+    };
+
+    matches!(
+        ty,
+        Type::Path(type_path)
+            if type_path
+                .path
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "ToolContext")
+    )
+}
+
+/// Classify a function parameter as the distinguished execution context.
+///
+/// An owned or shared `ToolContext` is almost certainly an authoring mistake:
+/// tools need the exact mutable context supplied by the runtime so result
+/// metadata and mutations remain visible to the caller.
+fn is_tool_context_parameter(ty: &Type) -> syn::Result<bool> {
+    let ty = match ty {
+        Type::Group(group) => &*group.elem,
+        Type::Paren(paren) => &*paren.elem,
+        ty => ty,
+    };
+
+    if let Type::Reference(reference) = ty
+        && is_tool_context_type(&reference.elem)
+    {
+        if reference.mutability.is_none() {
+            return Err(syn::Error::new_spanned(
+                ty,
+                "a `ToolContext` parameter must have type `&mut ToolContext`",
+            ));
+        }
+
+        return Ok(true);
+    }
+
+    if is_tool_context_type(ty) {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "a `ToolContext` parameter must have type `&mut ToolContext`",
+        ));
+    }
+
+    Ok(false)
+}
+
 fn result_type_tokens(
     return_type: &ReturnType,
 ) -> syn::Result<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
@@ -401,6 +458,23 @@ fn result_type_tokens(
 ///     }
 /// }
 /// ```
+///
+/// With execution context:
+/// ```text
+/// use rig_derive::rig_tool;
+///
+/// #[rig_tool]
+/// fn current_user(
+///     context: &mut rig::tool::ToolContext,
+///     greeting: String,
+/// ) -> Result<String, rig::tool::ToolExecutionError> {
+///     let user = context
+///         .get::<String>()
+///         .map(String::as_str)
+///         .unwrap_or("guest");
+///     Ok(format!("{greeting}, {user}!"))
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as MacroArgs);
@@ -445,47 +519,102 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         },
     };
 
-    // Extract parameter names, doc comments, and build struct field tokens
+    // Build model-facing fields independently from function-call arguments so
+    // the host-only ToolContext never enters the generated JSON schema.
     let mut param_names = Vec::new();
     let mut field_tokens = Vec::new();
+    let mut call_arguments = Vec::new();
+    let mut context_param_name = None;
 
     for arg in input_fn.sig.inputs.iter() {
-        if let syn::FnArg::Typed(pat_type) = arg
-            && let syn::Pat::Ident(param_ident) = &*pat_type.pat
-        {
-            let param_name = &param_ident.ident;
-            let param_name_str = param_name.to_string();
-            let ty = &pat_type.ty;
+        let syn::FnArg::Typed(pat_type) = arg else {
+            return syn::Error::new_spanned(arg, "tools cannot have a receiver parameter")
+                .into_compile_error()
+                .into();
+        };
 
-            // Determine the description for this field:
-            // explicit params() > parameter doc comment > default
-            let field_doc_attr =
-                if let Some(explicit) = args.param_descriptions.get(&param_name_str) {
-                    // Explicit override via params() — use #[schemars(description = "...")]
-                    quote! { #[schemars(description = #explicit)] }
-                } else if let Some(doc) = extract_doc_comment(&pat_type.attrs) {
-                    // Doc comment on the parameter — propagate as #[doc = "..."]
-                    quote! { #[doc = #doc] }
-                } else {
-                    // Default fallback
-                    let default_desc = format!("Parameter {param_name_str}");
-                    quote! { #[schemars(description = #default_desc)] }
-                };
+        let is_context = match is_tool_context_parameter(&pat_type.ty) {
+            Ok(is_context) => is_context,
+            Err(error) => return error.into_compile_error().into(),
+        };
 
-            // Auto-add #[serde(default)] for Option<T> fields
-            let serde_default = if is_option_type(ty) {
-                quote! { #[serde(default)] }
+        if is_context {
+            if context_param_name.is_some() {
+                return syn::Error::new_spanned(
+                    pat_type,
+                    "a tool function may have at most one `&mut ToolContext` parameter",
+                )
+                .into_compile_error()
+                .into();
+            }
+
+            if let syn::Pat::Ident(param_ident) = &*pat_type.pat {
+                context_param_name = Some(param_ident.ident.to_string());
             } else {
-                quote! {}
-            };
+                context_param_name = Some(String::new());
+            }
+            call_arguments.push(quote! { _context });
+            continue;
+        }
 
-            field_tokens.push(quote! {
-                #field_doc_attr
-                #serde_default
-                #vis #param_name: #ty
-            });
+        let syn::Pat::Ident(param_ident) = &*pat_type.pat else {
+            return syn::Error::new_spanned(
+                &pat_type.pat,
+                "tool parameters must use identifier patterns",
+            )
+            .into_compile_error()
+            .into();
+        };
 
-            param_names.push(param_name);
+        let param_name = &param_ident.ident;
+        let param_name_str = param_name.to_string();
+        let ty = &pat_type.ty;
+
+        // Determine the description for this field:
+        // explicit params() > parameter doc comment > default
+        let field_doc_attr = if let Some(explicit) = args.param_descriptions.get(&param_name_str) {
+            // Explicit override via params() — use #[schemars(description = "...")]
+            quote! { #[schemars(description = #explicit)] }
+        } else if let Some(doc) = extract_doc_comment(&pat_type.attrs) {
+            // Doc comment on the parameter — propagate as #[doc = "..."]
+            quote! { #[doc = #doc] }
+        } else {
+            // Default fallback
+            let default_desc = format!("Parameter {param_name_str}");
+            quote! { #[schemars(description = #default_desc)] }
+        };
+
+        // Auto-add #[serde(default)] for Option<T> fields
+        let serde_default = if is_option_type(ty) {
+            quote! { #[serde(default)] }
+        } else {
+            quote! {}
+        };
+
+        field_tokens.push(quote! {
+            #field_doc_attr
+            #serde_default
+            #vis #param_name: #ty
+        });
+
+        param_names.push(param_name);
+        call_arguments.push(quote! { args.#param_name });
+    }
+
+    if let Some(context_param_name) = context_param_name.as_deref() {
+        let context_is_described = args.param_descriptions.contains_key(context_param_name);
+        let context_is_required = args
+            .required
+            .as_ref()
+            .is_some_and(|required| required.iter().any(|name| name == context_param_name));
+
+        if context_is_described || context_is_required {
+            return syn::Error::new_spanned(
+                &input_fn.sig,
+                "`ToolContext` is host-only and cannot be listed in `params(...)` or `required(...)`",
+            )
+            .into_compile_error()
+            .into();
         }
     }
 
@@ -507,7 +636,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 _context: &mut #rig_core::tool::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
-                #fn_name(#(args.#param_names,)*).await
+                #fn_name(#(#call_arguments),*).await
                     .map_err(#rig_core::tool::ToolExecutionError::from_error)
             }
         }
@@ -518,7 +647,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 _context: &mut #rig_core::tool::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
-                #fn_name(#(args.#param_names,)*)
+                #fn_name(#(#call_arguments),*)
                     .map_err(#rig_core::tool::ToolExecutionError::from_error)
             }
         }
@@ -542,10 +671,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             type Args = #params_struct_name;
             type Output = #output_type;
-
-            fn name(&self) -> String {
-                #tool_name.to_string()
-            }
 
             fn description(&self) -> String {
                 #tool_description.to_string()

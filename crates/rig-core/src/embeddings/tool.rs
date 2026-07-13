@@ -37,10 +37,6 @@ impl ToolSchema {
     /// };
     ///
     /// #[derive(Debug, thiserror::Error)]
-    /// #[error("Math error")]
-    /// struct NothingError;
-    ///
-    /// #[derive(Debug, thiserror::Error)]
     /// #[error("Init error")]
     /// struct InitError;
     ///
@@ -89,14 +85,13 @@ impl ToolSchema {
     where
         T: ToolEmbedding + 'static,
     {
-        Self::from_tool(tool.name(), tool)
+        Self::from_tool(T::NAME, tool)
     }
 
     /// Convert a tool to a schema using an explicit registered name.
     ///
     /// Registry paths should pass the key under which the tool was registered so
-    /// vector-store IDs resolve back to the same entry even if `tool.name()` is
-    /// computed dynamically.
+    /// vector-store IDs resolve back to the same entry.
     pub(crate) fn from_tool(
         name: impl Into<String>,
         tool: &dyn ErasedEmbeddingTool,
@@ -116,20 +111,16 @@ mod tests {
     use super::ToolSchema;
     use crate::tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError};
 
-    struct RuntimeNamedTool;
+    struct NamedTool;
 
-    impl Tool for RuntimeNamedTool {
+    impl Tool for NamedTool {
         const NAME: &'static str = "static_name";
 
         type Args = ();
         type Output = ();
 
-        fn name(&self) -> String {
-            "runtime_name".to_string()
-        }
-
         fn description(&self) -> String {
-            "A tool with a runtime-defined name".to_string()
+            "A statically named tool".to_string()
         }
 
         fn parameters(&self) -> serde_json::Value {
@@ -145,13 +136,13 @@ mod tests {
         }
     }
 
-    impl ToolEmbedding for RuntimeNamedTool {
+    impl ToolEmbedding for NamedTool {
         type InitError = Infallible;
         type Context = ();
         type State = ();
 
         fn embedding_docs(&self) -> Vec<String> {
-            vec!["runtime-named tool".to_string()]
+            vec!["named tool".to_string()]
         }
 
         fn context(&self) -> Self::Context {}
@@ -162,10 +153,9 @@ mod tests {
     }
 
     #[test]
-    fn try_from_uses_runtime_tool_name() {
-        let schema = ToolSchema::try_from(&RuntimeNamedTool).unwrap();
+    fn try_from_uses_canonical_tool_name() {
+        let schema = ToolSchema::try_from(&NamedTool).unwrap();
 
-        assert_eq!(schema.name, "runtime_name");
-        assert_ne!(schema.name, RuntimeNamedTool::NAME);
+        assert_eq!(schema.name, NamedTool::NAME);
     }
 }

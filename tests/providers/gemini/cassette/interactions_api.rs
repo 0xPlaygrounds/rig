@@ -4,7 +4,9 @@ use futures::StreamExt;
 use rig::OneOrMany;
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, GetTokenUsage};
-use rig::message::{AssistantContent, Message, ToolCall, ToolChoice};
+use rig::message::{
+    AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
+};
 use rig::providers::gemini::interactions_api::{AdditionalParameters, Tool};
 use rig::streaming::StreamedAssistantContent;
 
@@ -184,11 +186,13 @@ async fn tool_result_roundtrip() {
             let followup = model
                 .completion(
                     model
-                        .completion_request(Message::tool_result_with_call_id(
+                        .completion_request(Message::from(UserContent::tool_result_with_call_id(
                             tool_call.function.name,
-                            Some(call_id),
-                            serde_json::json!({ "sum": 18.0 }).to_string(),
-                        ))
+                            call_id,
+                            OneOrMany::one(ToolResultContent::json(
+                                serde_json::json!({ "sum": 18.0 }),
+                            )),
+                        )))
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
                                 previous_interaction_id: Some(interaction_id),

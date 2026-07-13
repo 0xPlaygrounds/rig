@@ -1,6 +1,7 @@
 //! Gemini streaming regression for multimodal tool results in chat history.
 
 use futures::StreamExt;
+use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
 use rig::message::{
@@ -11,7 +12,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolOutput};
 use serde_json::json;
 
 use crate::support::assert_nonempty_response;
@@ -30,7 +31,7 @@ struct HybridImageTool;
 impl Tool for HybridImageTool {
     const NAME: &'static str = "render_reference_image";
     type Args = serde_json::Value;
-    type Output = String;
+    type Output = ToolOutput;
 
     fn description(&self) -> String {
         "Return a reference image the assistant must inspect before answering.".to_string()
@@ -49,19 +50,15 @@ impl Tool for HybridImageTool {
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
-        Ok(json!({
-            "response": {
-                "instruction": "Use the image part to answer the user's question."
-            },
-            "parts": [
-                {
-                    "type": "image",
-                    "data": RED_PIXEL_PNG_BASE64,
-                    "mimeType": "image/png"
-                }
-            ]
-        })
-        .to_string())
+        let mut content = OneOrMany::one(ToolResultContent::json(json!({
+            "instruction": "Use the image part to answer the user's question."
+        })));
+        content.push(ToolResultContent::image_base64(
+            RED_PIXEL_PNG_BASE64,
+            Some(ImageMediaType::PNG),
+            None,
+        ));
+        Ok(ToolOutput::content(content))
     }
 }
 
@@ -135,24 +132,16 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     assert_eq!(
         tool_result.content.len(),
         2,
-        "hybrid tool results should round-trip as [text, image], not a single text blob: {tool_result:#?}"
+        "hybrid tool results should round-trip as [json, image], not a single text blob: {tool_result:#?}"
     );
 
-    let mut saw_instruction_text = false;
+    let mut saw_instruction_json = false;
     let mut saw_image = false;
 
     for content in tool_result.content.iter() {
         match content {
             ToolResultContent::Text(text) => {
-                saw_instruction_text = true;
-                assert!(
-                    text.text.contains("Use the image part"),
-                    "tool result text should contain only the structured response payload: {text:?}"
-                );
-                assert!(
-                    !text.text.contains(RED_PIXEL_PNG_BASE64),
-                    "tool result text should not inline the image base64 payload: {text:?}"
-                );
+                panic!("expected structured JSON and image blocks, got text: {text:?}")
             }
             ToolResultContent::Image(image) => {
                 saw_image = true;
@@ -162,12 +151,22 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
                     "tool result image should preserve the base64 image payload: {image:?}"
                 );
             }
+            ToolResultContent::Json { value } => {
+                saw_instruction_json = true;
+                assert_eq!(
+                    value,
+                    &json!({
+                        "instruction": "Use the image part to answer the user's question."
+                    }),
+                    "tool result JSON should preserve the structured response payload"
+                );
+            }
         }
     }
 
     assert!(
-        saw_instruction_text,
-        "hybrid tool results should preserve the response text payload"
+        saw_instruction_json,
+        "hybrid tool results should preserve the structured response payload"
     );
     assert!(
         saw_image,

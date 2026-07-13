@@ -142,9 +142,9 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .tool(ThinkTool)
         .tool(vector_index)
-        .tool(research_agent)
-        .tool(analysis_agent)
-        .tool(recommendation_agent)
+        .dynamic_tool(research_agent.into_tool())
+        .dynamic_tool(analysis_agent.into_tool())
+        .dynamic_tool(recommendation_agent.into_tool())
         .name("orchestrator_agent")
         .build();
 

@@ -1,0 +1,5 @@
+error: a tool function may have at most one `&mut ToolContext` parameter
+ --> tests/ui/tool_context/fail_multiple_contexts.rs:9:5
+  |
+9 |     second: &mut ToolContext,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^

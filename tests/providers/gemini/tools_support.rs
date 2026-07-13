@@ -23,12 +23,14 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rig::OneOrMany;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
 use rig::completion::{CompletionModel, ToolDefinition};
+use rig::message::{ImageMediaType, ToolResultContent};
 use rig::tool::server::ToolServerHandle;
-use rig::tool::{Tool, ToolEmbedding};
+use rig::tool::{Tool, ToolEmbedding, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -186,8 +188,8 @@ pub(crate) const CODEWORD_GUIDANCE: &str =
     "the red team was disbanded; look up the codeword for the \"blue\" team instead";
 pub(crate) const BLUE_CODEWORD: &str = "azure-falcon";
 
-/// Tool whose first expected call fails with corrective guidance, pinning how
-/// tool `Err` values are stringified into tool results the model can act on.
+/// Tool whose first expected call fails with explicitly model-visible
+/// corrective guidance while retaining the full error for operators.
 #[derive(Clone, Default)]
 pub(crate) struct CodewordLookup {
     pub(crate) counter: CallCounter,
@@ -221,6 +223,7 @@ impl Tool for CodewordLookup {
         match args.team.as_str() {
             "blue" => Ok(BLUE_CODEWORD.to_string()),
             _ => Err(rig::tool::ToolExecutionError::other(CODEWORD_GUIDANCE)
+                .with_model_feedback(CODEWORD_GUIDANCE)
                 .with_source(CodewordError(CODEWORD_GUIDANCE.to_string()))),
         }
     }
@@ -347,15 +350,14 @@ impl Tool for ConfigTool {
     }
 }
 
-/// Tool returning the top-level image JSON shape that
-/// `ToolResultContent::from_tool_output` converts into an image part.
+/// Tool returning explicit image content without routing it through JSON text.
 #[derive(Clone, Default)]
 pub(crate) struct BadgeImageTool;
 
 impl Tool for BadgeImageTool {
     const NAME: &'static str = "fetch_badge_image";
     type Args = EmptyArgs;
-    type Output = String;
+    type Output = ToolOutput;
 
     fn description(&self) -> String {
         "Fetch the attendee badge as an image the assistant must inspect.".to_string()
@@ -370,12 +372,9 @@ impl Tool for BadgeImageTool {
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
-        Ok(json!({
-            "type": "image",
-            "data": RED_PIXEL_PNG_BASE64,
-            "mimeType": "image/png"
-        })
-        .to_string())
+        Ok(ToolOutput::content(OneOrMany::one(
+            ToolResultContent::image_base64(RED_PIXEL_PNG_BASE64, Some(ImageMediaType::PNG), None),
+        )))
     }
 }
 
@@ -429,7 +428,7 @@ where
             .push((
                 event.tool_name.to_string(),
                 event.args.to_string(),
-                event.result.to_string(),
+                event.presentation.render(),
             ));
         ToolResultAction::keep()
     }
@@ -501,10 +500,7 @@ where
         event: ToolCallEvent<'_>,
     ) -> ToolCallAction {
         if event.tool_name == self.tool_name {
-            self.handle
-                .remove_tool(self.tool_name)
-                .await
-                .expect("tool removal should succeed");
+            self.handle.remove_tool(self.tool_name).await;
         }
         ToolCallAction::run()
     }

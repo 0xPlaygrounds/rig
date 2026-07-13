@@ -6,7 +6,7 @@ use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
-use rig::tool::DynamicTool;
+use rig::tool::{DynamicTool, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -36,7 +36,7 @@ fn runtime_tools() -> Vec<DynamicTool> {
                         rig::tool::ToolExecutionError::invalid_args(error.to_string())
                             .with_source(error)
                     })?;
-                    Ok(json!(args.x + args.y))
+                    Ok(ToolOutput::json(json!(args.x + args.y)))
                 })
             },
         ),
@@ -50,7 +50,7 @@ fn runtime_tools() -> Vec<DynamicTool> {
                         rig::tool::ToolExecutionError::invalid_args(error.to_string())
                             .with_source(error)
                     })?;
-                    Ok(json!(args.x - args.y))
+                    Ok(ToolOutput::json(json!(args.x - args.y)))
                 })
             },
         ),
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
             "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",
         )
-        .tools(runtime_tools())
+        .dynamic_tools(runtime_tools())
         .max_tokens(1024)
         .default_max_turns(2)
         .build();

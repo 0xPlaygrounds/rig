@@ -369,6 +369,9 @@ impl HeuristicTokenCounter {
                     rig_core::message::ToolResultContent::Text(t) => {
                         self.bytes_to_tokens(t.text.len())
                     }
+                    rig_core::message::ToolResultContent::Json { value } => {
+                        self.bytes_to_tokens(value.to_string().len())
+                    }
                     rig_core::message::ToolResultContent::Image(_) => self.per_attachment_tokens,
                 })
                 .sum(),

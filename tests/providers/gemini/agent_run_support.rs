@@ -118,7 +118,7 @@ pub(crate) fn tool_names(names: &[&str]) -> BTreeSet<String> {
 }
 
 /// Execute one arithmetic tool call by name, the way a driver would.
-pub(crate) fn execute_arithmetic(name: &str, arguments: &serde_json::Value) -> String {
+pub(crate) fn execute_arithmetic(name: &str, arguments: &serde_json::Value) -> i64 {
     let operand = |key: &str| {
         arguments
             .get(key)
@@ -126,12 +126,11 @@ pub(crate) fn execute_arithmetic(name: &str, arguments: &serde_json::Value) -> S
             .unwrap_or_else(|| panic!("tool args should carry `{key}`: {arguments}")) as i64
     };
     let (x, y) = (operand("x"), operand("y"));
-    let result = match name {
+    match name {
         "add" | "sum" => x + y,
         "subtract" => x - y,
         other => panic!("unexpected tool `{other}`"),
-    };
-    result.to_string()
+    }
 }
 
 /// Answer every pending call: preresolved results pass through unexecuted,
@@ -147,7 +146,7 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
                 &call.tool_call.function.name,
                 &call.tool_call.function.arguments,
             );
-            let content = ToolResultContent::from_tool_output(output);
+            let content = rig::OneOrMany::one(ToolResultContent::json(serde_json::json!(output)));
             match call.tool_call.call_id.clone() {
                 Some(call_id) => UserContent::tool_result_with_call_id(
                     call.tool_call.id.clone(),
@@ -227,7 +226,8 @@ pub(crate) fn user_content_tool_result_texts(content: &UserContent) -> Vec<Strin
         .iter()
         .filter_map(|item| match item {
             ToolResultContent::Text(text) => Some(text.text.clone()),
-            _ => None,
+            ToolResultContent::Json { value } => Some(value.to_string()),
+            ToolResultContent::Image(_) => None,
         })
         .collect()
 }

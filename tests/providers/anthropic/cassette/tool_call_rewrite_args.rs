@@ -98,7 +98,7 @@ impl Tool for GetWeather {
 }
 
 /// A guardrail hook that injects `units: "celsius"` into every `get_weather`
-/// call before it runs — the parameter-normalization use case `RewriteArgs`
+/// call before it runs — the parameter-normalization use case for `ToolCallAction::Rewrite`
 /// exists for. It reads the model's emitted arguments, adds the field, and
 /// returns the rewritten object via [`ToolCallAction::rewrite`].
 struct PinUnitsToCelsius;

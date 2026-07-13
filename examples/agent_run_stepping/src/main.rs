@@ -26,7 +26,7 @@ use rig::agent::{
 };
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Completion, CompletionModel};
-use rig::message::{ToolResultContent, UserContent};
+use rig::message::UserContent;
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -158,7 +158,7 @@ async fn main() -> Result<()> {
                         .await;
                     results.push(UserContent::tool_result(
                         call.tool_call.id.clone(),
-                        ToolResultContent::from_tool_output(result.model_output().to_string()),
+                        result.output().clone().into_content(),
                     ));
                 }
                 run_resumed.tool_results(results)?;

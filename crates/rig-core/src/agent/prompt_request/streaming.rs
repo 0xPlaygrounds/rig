@@ -11,9 +11,9 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, InvalidDecision, ToolExecution, acquire_agent_span,
-        append_run_messages, build_chat_span, invalid_decision, new_execute_tool_span,
-        observe_action, resolve_completion_call, run_single_tool,
+        AgentRunner, CompletionCallOutcome, ToolExecution, acquire_agent_span, append_run_messages,
+        build_chat_span, new_execute_tool_span, observe_action, resolve_completion_call,
+        run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
@@ -31,7 +31,6 @@ use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
     message::{Message, Text},
-    tool::ToolSetError,
 };
 
 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
@@ -64,8 +63,8 @@ pub enum MultiTurnStreamItem<R> {
     StreamAssistantItem(StreamedAssistantContent<R>),
     /// Rig **executed** a tool call. Surfaced only for a tool whose body actually
     /// ran (it passed its `ToolCall` hook checks) — never for a model tool call
-    /// that was dropped by a sibling's termination, skipped by a hook
-    /// skipped by a hook, or resolved by invalid-tool-call recovery. The tool batch
+    /// that was dropped by a sibling's termination, skipped by a hook, or
+    /// resolved by invalid-tool-call recovery. The tool batch
     /// commits and surfaces **atomically at every `tool_concurrency`** (including
     /// the sequential default): this event is surfaced together with its
     /// `ToolResult` once the whole batch has settled successfully, so a run that
@@ -258,8 +257,6 @@ pub enum StreamingError {
     Completion(#[from] CompletionError),
     #[error("PromptError: {0}")]
     Prompt(#[from] Box<PromptError>),
-    #[error("ToolSetError: {0}")]
-    Tool(#[from] ToolSetError),
 }
 
 impl From<crate::memory::MemoryError> for StreamingError {
@@ -451,7 +448,6 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     match err {
         StreamingError::Completion(err) => PromptError::CompletionError(err),
         StreamingError::Prompt(err) => *err,
-        StreamingError::Tool(err) => PromptError::ToolSetError(err),
     }
 }
 
@@ -1173,20 +1169,11 @@ where
                             let action = if self.has_hooks {
                                 let context =
                                     run.streamed_invalid_tool_call_context(&partial, &invalid);
-                                match invalid_decision(
-                                    runner
-                                        .hooks
-                                        .on_invalid_tool_call(hook_ctx, &context)
-                                        .await,
-                                ) {
-                                    InvalidDecision::Action(action) => action,
-                                    InvalidDecision::Terminate(reason) => {
-                                        yield Err(StreamingError::Prompt(Box::new(
-                                            run.cancel_error(reason),
-                                        )));
-                                        return;
-                                    }
-                                }
+                                runner
+                                    .hooks
+                                    .on_invalid_tool_call(hook_ctx, &context)
+                                    .await
+                                    .unwrap_or_else(InvalidToolCallAction::fail)
                             } else {
                                 InvalidToolCallAction::fail()
                             };
@@ -1528,7 +1515,7 @@ mod migrated_tests {
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
-        MockExtensionsProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, SessionId,
+        MockContextProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, SessionId,
     };
     use crate::tool::{Tool, ToolContext, ToolExecutionError};
     use futures::{StreamExt, TryStreamExt};
@@ -1700,22 +1687,19 @@ mod migrated_tests {
 
     #[test]
     fn tool_result_output_preserves_multimodal_tool_output() {
+        let instruction = serde_json::json!({
+            "instruction": "Use the image part to answer."
+        });
+        let mut content = crate::OneOrMany::one(ToolResultContent::json(instruction.clone()));
+        content.push(ToolResultContent::image_base64(
+            "base64data==",
+            Some(ImageMediaType::PNG),
+            None,
+        ));
         let user_content = tool_result_output(
             "tool_call_1".to_string(),
             Some("call_1".to_string()),
-            serde_json::json!({
-                "response": {
-                    "instruction": "Use the image part to answer."
-                },
-                "parts": [
-                    {
-                        "type": "image",
-                        "data": "base64data==",
-                        "mimeType": "image/png"
-                    }
-                ]
-            })
-            .to_string(),
+            crate::tool::ToolOutput::content(content),
         );
 
         let tool_result = match user_content {
@@ -1729,10 +1713,10 @@ mod migrated_tests {
 
         let mut items = tool_result.content.iter();
         match items.next() {
-            Some(ToolResultContent::Text(text)) => {
-                assert!(text.text.contains("Use the image part to answer."));
+            Some(ToolResultContent::Json { value }) => {
+                assert_eq!(value, &instruction);
             }
-            other => panic!("expected structured text payload first, got {other:?}"),
+            other => panic!("expected structured JSON payload first, got {other:?}"),
         }
 
         match items.next() {
@@ -2508,14 +2492,14 @@ mod migrated_tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            match event {
+        ) -> Option<InvalidToolCallAction> {
+            Some(match event {
                 context => {
                     assert_eq!(context.tool_name, "default_api");
                     InvalidToolCallAction::repair("add")
                 }
                 _ => InvalidToolCallAction::fail(),
-            }
+            })
         }
     }
 
@@ -2527,8 +2511,8 @@ mod migrated_tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            match event {
+        ) -> Option<InvalidToolCallAction> {
+            Some(match event {
                 context => {
                     assert_eq!(context.tool_name, "default_api");
                     if let Some(args) = context.args.as_deref() {
@@ -2537,7 +2521,7 @@ mod migrated_tests {
                     InvalidToolCallAction::retry("Use the add tool instead")
                 }
                 _ => InvalidToolCallAction::fail(),
-            }
+            })
         }
     }
 
@@ -2549,14 +2533,14 @@ mod migrated_tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            match event {
+        ) -> Option<InvalidToolCallAction> {
+            Some(match event {
                 context => {
                     assert_eq!(context.tool_name, "default_api");
                     InvalidToolCallAction::skip("default_api was skipped")
                 }
                 _ => InvalidToolCallAction::fail(),
-            }
+            })
         }
     }
 
@@ -2579,8 +2563,8 @@ mod migrated_tests {
             &self,
             _ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
-            match event {
+        ) -> Option<InvalidToolCallAction> {
+            Some(match event {
                 context => {
                     self.contexts
                         .lock()
@@ -2589,7 +2573,7 @@ mod migrated_tests {
                     InvalidToolCallAction::fail()
                 }
                 _ => InvalidToolCallAction::fail(),
-            }
+            })
         }
     }
 
@@ -2688,7 +2672,7 @@ mod migrated_tests {
             &self,
             ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
         }
     }
@@ -2710,7 +2694,7 @@ mod migrated_tests {
             &self,
             ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             RetryDefaultApiHook.on_invalid_tool_call(ctx, event).await
         }
     }
@@ -2732,7 +2716,7 @@ mod migrated_tests {
             &self,
             ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             RetryDefaultApiHook.on_invalid_tool_call(ctx, event).await
         }
     }
@@ -2754,7 +2738,7 @@ mod migrated_tests {
             &self,
             ctx: &HookContext,
             event: &InvalidToolCallContext,
-        ) -> InvalidToolCallAction {
+        ) -> Option<InvalidToolCallAction> {
             SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
         }
     }
@@ -2930,7 +2914,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(6),
             ],
         ]);
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
         let empty_history: &[Message] = &[];
 
@@ -2971,7 +2955,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(6),
             ],
         ]);
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
         let empty_history: &[Message] = &[];
 
@@ -3100,7 +3084,8 @@ mod migrated_tests {
                     assert!(tool_result.content.iter().any(|content| {
                         matches!(
                             content,
-                            ToolResultContent::Text(text) if text.text == "5"
+                            ToolResultContent::Json { value }
+                                if value == &serde_json::json!(5)
                         )
                     }));
                     saw_tool_result = true;

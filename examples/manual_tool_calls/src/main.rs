@@ -13,9 +13,9 @@ use anyhow::{Result, bail};
 use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Completion;
-use rig::message::{AssistantContent, Message, ToolCall, ToolChoice};
+use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::{Tool, ToolOutput, ToolSet};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -110,8 +110,17 @@ fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
         .join("\n")
 }
 
-fn tool_result_message(tool_call: &ToolCall, output: String) -> Message {
-    Message::tool_result_with_call_id(tool_call.id.clone(), tool_call.call_id.clone(), output)
+fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
+    let content = output.into_content();
+    let result = match &tool_call.call_id {
+        Some(call_id) => {
+            UserContent::tool_result_with_call_id(tool_call.id.clone(), call_id.clone(), content)
+        }
+        None => UserContent::tool_result(tool_call.id.clone(), content),
+    };
+    Message::User {
+        content: OneOrMany::one(result),
+    }
 }
 
 #[tokio::main]
@@ -178,8 +187,12 @@ async fn main() -> Result<()> {
                     &mut rig::tool::ToolContext::new(),
                 )
                 .await;
-            let output = result.model_output().to_string();
-            println!("  {}({args}) -> {}", tool_call.function.name, output);
+            let output = result.output().clone();
+            println!(
+                "  {}({args}) -> {}",
+                tool_call.function.name,
+                output.render()
+            );
             history.push(tool_result_message(tool_call, output));
         }
 

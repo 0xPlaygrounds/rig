@@ -893,12 +893,12 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
     #[serde(default, rename = "type")]
-    pub r#type: ProviderToolType,
+    pub r#type: ToolType,
     pub function: Function,
 }
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum ProviderToolType {
+pub enum ToolType {
     #[default]
     Function,
 }
@@ -950,6 +950,60 @@ pub enum Message {
 /// -----------------------------
 /// Provider Message Conversions
 /// -----------------------------
+fn user_message_from_content(
+    content: Vec<crate::message::UserContent>,
+) -> Result<Message, crate::message::MessageError> {
+    let mut texts = Vec::new();
+    let mut images = Vec::new();
+
+    for content in content {
+        match content {
+            crate::message::UserContent::Text(crate::message::Text { text, .. }) => {
+                texts.push(text);
+            }
+            crate::message::UserContent::Image(crate::message::Image {
+                data: DocumentSourceKind::Base64(data),
+                ..
+            }) => images.push(data),
+            crate::message::UserContent::Image(_) => {
+                return Err(crate::message::MessageError::ConversionError(
+                    "Ollama images must be base64 encoded data".into(),
+                ));
+            }
+            crate::message::UserContent::Document(crate::message::Document {
+                data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
+                ..
+            }) => texts.push(data),
+            crate::message::UserContent::Document(_) => {
+                return Err(crate::message::MessageError::ConversionError(
+                    "Ollama documents must be string or base64 encoded data".into(),
+                ));
+            }
+            crate::message::UserContent::Audio(_) => {
+                return Err(crate::message::MessageError::ConversionError(
+                    "Ollama does not support audio user content".into(),
+                ));
+            }
+            crate::message::UserContent::Video(_) => {
+                return Err(crate::message::MessageError::ConversionError(
+                    "Ollama does not support video user content".into(),
+                ));
+            }
+            crate::message::UserContent::ToolResult(_) => {
+                return Err(crate::message::MessageError::ConversionError(
+                    "tool results must be converted to a separate Ollama message".into(),
+                ));
+            }
+        }
+    }
+
+    Ok(Message::User {
+        content: texts.join(" "),
+        images: (!images.is_empty()).then_some(images),
+        name: None,
+    })
+}
+
 /// Conversion from an internal Rig message (crate::message::Message) to a provider Message.
 /// (Only User and Assistant variants are supported.)
 impl TryFrom<crate::message::Message> for Vec<Message> {
@@ -963,81 +1017,48 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 name: None,
             }]),
             InternalMessage::User { content, .. } => {
-                let (tool_results, other_content): (Vec<_>, Vec<_>) =
-                    content.into_iter().partition(|content| {
-                        matches!(content, crate::message::UserContent::ToolResult(_))
-                    });
+                let mut messages = Vec::new();
+                let mut pending_user_content = Vec::new();
 
-                if !tool_results.is_empty() {
-                    tool_results
-                        .into_iter()
-                        .map(|content| match content {
-                            crate::message::UserContent::ToolResult(
-                                crate::message::ToolResult { id, content, .. },
-                            ) => {
-                                // Ollama expects a single string for tool results, so we concatenate
-                                let content_string = content
-                                    .into_iter()
-                                    .map(|content| match content {
-                                        crate::message::ToolResultContent::Text(text) => text.text,
-                                        _ => "[Non-text content]".to_string(),
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
+                for content in content {
+                    match content {
+                        crate::message::UserContent::ToolResult(crate::message::ToolResult {
+                            id,
+                            content,
+                            ..
+                        }) => {
+                            if !pending_user_content.is_empty() {
+                                messages.push(user_message_from_content(std::mem::take(
+                                    &mut pending_user_content,
+                                ))?);
+                            }
 
-                                Ok::<_, crate::message::MessageError>(Message::ToolResult {
-                                    name: id,
-                                    content: content_string,
+                            let content = content
+                                .into_iter()
+                                .map(|content| match content {
+                                    crate::message::ToolResultContent::Text(text) => Ok(text.text),
+                                    crate::message::ToolResultContent::Json { value } => {
+                                        Ok(value.to_string())
+                                    }
+                                    crate::message::ToolResultContent::Image(_) => {
+                                        Err(crate::message::MessageError::ConversionError(
+                                            "Ollama does not support images in tool results".into(),
+                                        ))
+                                    }
                                 })
-                            }
-                            _ => Err(crate::message::MessageError::ConversionError(
-                                "expected tool result content while converting Ollama input".into(),
-                            )),
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                } else {
-                    // Ollama requires separate text content and images array
-                    let (texts, images) = other_content.into_iter().fold(
-                        (Vec::new(), Vec::new()),
-                        |(mut texts, mut images), content| {
-                            match content {
-                                crate::message::UserContent::Text(crate::message::Text {
-                                    text,
-                                    ..
-                                }) => texts.push(text),
-                                crate::message::UserContent::Image(crate::message::Image {
-                                    data: DocumentSourceKind::Base64(data),
-                                    ..
-                                }) => images.push(data),
-                                crate::message::UserContent::Document(
-                                    crate::message::Document {
-                                        data:
-                                            DocumentSourceKind::Base64(data)
-                                            | DocumentSourceKind::String(data),
-                                        ..
-                                    },
-                                ) => texts.push(data),
-                                _ => {} // Audio not supported by Ollama
-                            }
-                            (texts, images)
-                        },
-                    );
-
-                    Ok(vec![Message::User {
-                        content: texts.join(" "),
-                        images: if images.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                images
-                                    .into_iter()
-                                    .map(|x| x.to_string())
-                                    .collect::<Vec<String>>(),
-                            )
-                        },
-                        name: None,
-                    }])
+                                .collect::<Result<Vec<_>, _>>()?
+                                .join("\n");
+                            messages.push(Message::ToolResult { name: id, content });
+                        }
+                        content => pending_user_content.push(content),
+                    }
                 }
+
+                if !pending_user_content.is_empty() {
+                    messages.push(user_message_from_content(pending_user_content)?);
+                }
+
+                Ok(messages)
             }
             InternalMessage::Assistant { content, .. } => {
                 let mut thinking: Option<String> = None;
@@ -1159,7 +1180,7 @@ impl Message {
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
-            r#type: ProviderToolType::Function,
+            r#type: ToolType::Function,
             function: Function {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
@@ -1313,6 +1334,57 @@ mod tests {
             }
             _ => panic!("Conversion from provider Message to completion Message failed"),
         }
+    }
+
+    #[test]
+    fn mixed_user_content_preserves_message_order() {
+        use crate::OneOrMany;
+        use crate::message::{Message as RigMessage, ToolResultContent, UserContent};
+
+        let message = RigMessage::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("before"),
+                UserContent::tool_result(
+                    "lookup",
+                    OneOrMany::one(ToolResultContent::json(json!({ "ok": true }))),
+                ),
+                UserContent::text("after"),
+            ])
+            .expect("mixed content is non-empty"),
+        };
+
+        let messages = Vec::<Message>::try_from(message).expect("mixed content should convert");
+        assert_eq!(messages.len(), 3);
+        assert!(matches!(
+            &messages[0],
+            Message::User { content, .. } if content == "before"
+        ));
+        assert!(matches!(
+            &messages[1],
+            Message::ToolResult { name, content }
+                if name == "lookup" && content == r#"{"ok":true}"#
+        ));
+        assert!(matches!(
+            &messages[2],
+            Message::User { content, .. } if content == "after"
+        ));
+    }
+
+    #[test]
+    fn unsupported_user_content_returns_a_conversion_error() {
+        use crate::OneOrMany;
+        use crate::message::{ImageMediaType, Message as RigMessage, UserContent};
+
+        let message = RigMessage::User {
+            content: OneOrMany::one(UserContent::image_url(
+                "https://example.com/image.png",
+                Some(ImageMediaType::PNG),
+                None,
+            )),
+        };
+
+        let error = Vec::<Message>::try_from(message).expect_err("URL image should be rejected");
+        assert!(error.to_string().contains("base64"));
     }
 
     // Test conversion of internal tool definition to Ollama's ToolDefinition format.

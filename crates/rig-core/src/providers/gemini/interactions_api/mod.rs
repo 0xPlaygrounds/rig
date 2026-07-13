@@ -634,7 +634,7 @@ pub mod interactions_api_types {
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
-    use serde_json::{Value, json};
+    use serde_json::Value;
 
     // =================================================================
     // Request / Response Types
@@ -1803,18 +1803,24 @@ pub mod interactions_api_types {
                         ));
                     };
 
-                    let content = content.first();
-
-                    let message::ToolResultContent::Text(text) = content else {
-                        return Err(message::MessageError::ConversionError(
-                            "Tool result content must be text".to_string(),
-                        ));
+                    let mut results = content
+                        .into_iter()
+                        .map(|content| match content {
+                            message::ToolResultContent::Text(text) => Ok(Value::String(text.text)),
+                            message::ToolResultContent::Json { value } => Ok(value),
+                            message::ToolResultContent::Image(_) => {
+                                Err(message::MessageError::ConversionError(
+                                    "Gemini Interactions API does not support images in tool results"
+                                        .to_string(),
+                                ))
+                            }
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let result = if results.len() == 1 {
+                        results.remove(0)
+                    } else {
+                        Value::Array(results)
                     };
-
-                    let result: Value = serde_json::from_str(&text.text).unwrap_or_else(|error| {
-                        tracing::trace!(?error, "Tool result is not valid JSON; sending as string");
-                        json!(text.text)
-                    });
 
                     Ok(Self::FunctionResult(FunctionResultContent {
                         name: Some(id),
@@ -2580,6 +2586,31 @@ mod tests {
 
         let err = Content::try_from(content).expect_err("should require call_id");
         assert!(format!("{err}").contains("call_id"));
+    }
+
+    #[test]
+    fn test_tool_result_preserves_text_and_json_types() {
+        let content = message::UserContent::ToolResult(message::ToolResult {
+            id: "get_weather".to_string(),
+            call_id: Some("call-123".to_string()),
+            content: OneOrMany::many(vec![
+                message::ToolResultContent::text(r#"{"status":"literal"}"#),
+                message::ToolResultContent::json(json!({ "status": "structured" })),
+            ])
+            .expect("tool result content is non-empty"),
+        });
+
+        let converted = Content::try_from(content).expect("tool result should convert");
+        let Content::FunctionResult(result) = converted else {
+            panic!("expected function result");
+        };
+        assert_eq!(
+            result.result,
+            Some(json!([
+                "{\"status\":\"literal\"}",
+                { "status": "structured" }
+            ]))
+        );
     }
 
     #[test]

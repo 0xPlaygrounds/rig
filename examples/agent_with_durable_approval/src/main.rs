@@ -226,9 +226,7 @@ async fn main() -> Result<()> {
                                 .await;
                             results.push(UserContent::tool_result(
                                 id,
-                                ToolResultContent::from_tool_output(
-                                    execution.model_output().to_string(),
-                                ),
+                                execution.output().clone().into_content(),
                             ));
                         }
                         Some("e") | Some("edit") => {
@@ -248,18 +246,16 @@ async fn main() -> Result<()> {
                                         .await;
                                     results.push(UserContent::tool_result(
                                         id,
-                                        ToolResultContent::from_tool_output(
-                                            execution.model_output().to_string(),
-                                        ),
+                                        execution.output().clone().into_content(),
                                     ));
                                 }
                                 _ => {
                                     println!("     ! no valid JSON; denying instead");
                                     results.push(UserContent::tool_result(
                                         id,
-                                        ToolResultContent::from_tool_output(
+                                        rig::OneOrMany::one(ToolResultContent::text(
                                             "denied: the reviewer supplied no valid JSON to edit with",
-                                        ),
+                                        )),
                                     ));
                                 }
                             }
@@ -281,7 +277,7 @@ async fn main() -> Result<()> {
                             };
                             results.push(UserContent::tool_result(
                                 id,
-                                ToolResultContent::from_tool_output(reason),
+                                rig::OneOrMany::one(ToolResultContent::text(reason)),
                             ));
                         }
                     }

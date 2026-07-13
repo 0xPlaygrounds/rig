@@ -445,13 +445,13 @@ impl ToolResultContentValue {
 pub struct ToolCall {
     pub id: String,
     #[serde(default)]
-    pub r#type: ProviderToolType,
+    pub r#type: ToolType,
     pub function: Function,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum ProviderToolType {
+pub enum ToolType {
     #[default]
     Function,
 }
@@ -608,6 +608,7 @@ impl TryFrom<message::ToolResult> for Message {
             .map(|content| {
                 match content {
                 message::ToolResultContent::Text(message::Text { text, .. }) => Ok(text),
+                message::ToolResultContent::Json { value } => Ok(value.to_string()),
                 message::ToolResultContent::Image(_) => Err(message::MessageError::ConversionError(
                     "OpenAI does not support images in tool results. Tool results must be text."
                         .into(),
@@ -802,39 +803,41 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
     type Error = message::MessageError;
 
     fn try_from(value: OneOrMany<message::UserContent>) -> Result<Self, Self::Error> {
-        let (tool_results, other_content): (Vec<_>, Vec<_>) = value
-            .into_iter()
-            .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+        fn flush_user_content(
+            messages: &mut Vec<Message>,
+            pending: &mut Vec<UserContent>,
+        ) -> Result<(), message::MessageError> {
+            if pending.is_empty() {
+                return Ok(());
+            }
 
-        // If there are messages with both tool results and user content, openai will only
-        //  handle tool results. It's unlikely that there will be both.
-        if !tool_results.is_empty() {
-            tool_results
-                .into_iter()
-                .map(|content| match content {
-                    message::UserContent::ToolResult(tool_result) => tool_result.try_into(),
-                    _ => Err(message::MessageError::ConversionError(
-                        "expected tool result content while converting OpenAI input".into(),
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()
-        } else {
-            let other_content: Vec<UserContent> = other_content
-                .into_iter()
-                .map(|content| content.try_into())
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let other_content = OneOrMany::many(other_content).map_err(|_| {
+            let content = OneOrMany::many(std::mem::take(pending)).map_err(|_| {
                 message::MessageError::ConversionError(
                     "OpenAI user message did not contain any non-tool content".into(),
                 )
             })?;
-
-            Ok(vec![Message::User {
-                content: other_content,
+            messages.push(Message::User {
+                content,
                 name: None,
-            }])
+            });
+            Ok(())
         }
+
+        let mut messages = Vec::new();
+        let mut pending = Vec::new();
+
+        for content in value {
+            match content {
+                message::UserContent::ToolResult(tool_result) => {
+                    flush_user_content(&mut messages, &mut pending)?;
+                    messages.push(tool_result.try_into()?);
+                }
+                content => pending.push(content.try_into()?),
+            }
+        }
+
+        flush_user_content(&mut messages, &mut pending)?;
+        Ok(messages)
     }
 }
 
@@ -914,7 +917,7 @@ impl From<message::ToolCall> for ToolCall {
             // which prefers the provider-issued `call_id` over the rig-level
             // id (e.g. Responses-API history replayed via chat completions).
             id: tool_call.call_id.unwrap_or(tool_call.id),
-            r#type: ProviderToolType::default(),
+            r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
@@ -2059,6 +2062,33 @@ mod tests {
             text: text.to_string(),
             additional_props: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn mixed_user_content_preserves_order_around_tool_results() {
+        let content = OneOrMany::many(vec![
+            message::UserContent::text("before"),
+            message::UserContent::tool_result_with_call_id(
+                "result-id",
+                "call-id".to_string(),
+                OneOrMany::one(message::ToolResultContent::text("tool output")),
+            ),
+            message::UserContent::text("after"),
+        ])
+        .expect("mixed content should be non-empty");
+
+        let messages = Vec::<Message>::try_from(content).expect("message conversion");
+
+        assert!(matches!(
+            messages.as_slice(),
+            [
+                Message::User { content: before, .. },
+                Message::ToolResult { tool_call_id, .. },
+                Message::User { content: after, .. },
+            ] if matches!(before.first(), UserContent::Text { text } if text == "before")
+                && tool_call_id == "call-id"
+                && matches!(after.first(), UserContent::Text { text } if text == "after")
+        ));
     }
 
     #[test]

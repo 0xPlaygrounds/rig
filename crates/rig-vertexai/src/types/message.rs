@@ -30,18 +30,26 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             let outputs: Vec<serde_json::Value> = tool_result
                                 .content
                                 .iter()
-                                .map(|content| match content {
-                                    ToolResultContent::Text(Text { text, .. }) => {
-                                        serde_json::Value::String(text.clone())
-                                    }
-                                    ToolResultContent::Image(_) => {
-                                        tracing::warn!("Tool call result contains image, which is not supported at this time");
-                                        serde_json::Value::String(
-                                            "Image result (not serialized)".to_string(),
-                                        )
+                                .map(|content| -> Result<_, CompletionError> {
+                                    match content {
+                                        ToolResultContent::Text(Text { text, .. }) => {
+                                            Ok(serde_json::Value::String(text.clone()))
+                                        }
+                                        // Keep Rig's value structured until the terminal provider
+                                        // boundary while preserving Vertex AI's established JSON
+                                        // string representation for serialized tool outputs.
+                                        ToolResultContent::Json { value } => {
+                                            Ok(serde_json::Value::String(value.to_string()))
+                                        }
+                                        ToolResultContent::Image(_) => {
+                                            Err(CompletionError::ProviderError(
+                                                "Vertex AI does not support images in tool results"
+                                                    .to_string(),
+                                            ))
+                                        }
                                     }
                                 })
-                                .collect();
+                                .collect::<Result<_, _>>()?;
 
                             let output_value = match outputs.as_slice() {
                                 [single] => single.clone(),
@@ -435,5 +443,38 @@ mod tests {
         assert!(function_response.is_some());
         let function_response = function_response.unwrap();
         assert_eq!(function_response.name.as_str(), "add");
+        assert_eq!(
+            function_response
+                .response
+                .as_ref()
+                .and_then(|response| response.get("output")),
+            Some(&serde_json::Value::String("8".to_string()))
+        );
+    }
+
+    #[test]
+    fn structured_tool_result_preserves_the_established_vertex_string_wire_shape() {
+        let value = serde_json::json!({ "answer": 8 });
+        let message = Message::User {
+            content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
+                id: "lookup".to_string(),
+                call_id: None,
+                content: OneOrMany::one(ToolResultContent::json(value.clone())),
+            })),
+        };
+
+        let content: vertexai::model::Content = RigMessage(message)
+            .try_into()
+            .expect("tool result should convert");
+        let response = content.parts[0]
+            .function_response()
+            .expect("function response");
+        assert_eq!(
+            response
+                .response
+                .as_ref()
+                .and_then(|response| response.get("output")),
+            Some(&serde_json::Value::String(value.to_string()))
+        );
     }
 }

@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[cfg(feature = "rmcp")]
+use std::collections::HashMap;
+
 use tokio::sync::RwLock;
 
 #[cfg(feature = "rmcp")]
@@ -7,38 +10,51 @@ use crate::tool::ErasedTool;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{DynamicTool, Tool, ToolContext, ToolExecutionError, ToolResult, ToolSet, ToolSetError},
+    tool::{DynamicTool, Tool, ToolContext, ToolDispatch, ToolResult, ToolSet, dispatch_tool},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
-/// Append `name` to the advertised static-tool list unless already present.
-/// Registration is last-wins on the toolset, so the name list only needs
-/// first-occurrence order: a re-registered name keeps its original position
-/// while the toolset swaps in the new implementation. Providers reject
-/// duplicate function declarations, so the list must stay unique.
-fn push_unique_name(names: &mut Vec<String>, name: String) {
-    if !names.contains(&name) {
-        names.push(name);
+/// Shared state behind a `ToolServerHandle`.
+struct ToolServerState {
+    /// Vector indexes used to select retrieval-only tools for each prompt.
+    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    /// The authoritative ordered registry for execution and exposure.
+    toolset: ToolSet,
+    /// Generation tokens for registrations managed by MCP client handlers.
+    /// A normal registration clears the token, preventing a stale handler
+    /// refresh from replacing or removing the newer tool.
+    #[cfg(feature = "rmcp")]
+    managed_generations: HashMap<String, ManagedToolToken>,
+}
+
+/// Opaque identity for one MCP-managed registry generation.
+#[cfg(feature = "rmcp")]
+#[derive(Clone, Debug)]
+pub(crate) struct ManagedToolToken(Arc<()>);
+
+#[cfg(feature = "rmcp")]
+impl ManagedToolToken {
+    fn new() -> Self {
+        Self(Arc::new(()))
     }
 }
 
-/// Shared state behind a `ToolServerHandle`.
-struct ToolServerState {
-    /// Static tool names that persist until explicitly removed.
-    static_tool_names: Vec<String>,
-    /// Dynamic tools fetched from vector stores on each prompt.
-    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    /// The toolset where tools are registered and executed.
-    toolset: ToolSet,
+#[cfg(feature = "rmcp")]
+impl PartialEq for ManagedToolToken {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
+
+#[cfg(feature = "rmcp")]
+impl Eq for ManagedToolToken {}
 
 /// Builder for constructing a [`ToolServerHandle`].
 ///
 /// Accumulates tools and configuration, then produces a shared handle via
 /// [`run()`](ToolServer::run).
 pub struct ToolServer {
-    static_tool_names: Vec<String>,
-    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     toolset: ToolSet,
 }
 
@@ -51,21 +67,9 @@ impl Default for ToolServer {
 impl ToolServer {
     pub fn new() -> Self {
         Self {
-            static_tool_names: Vec::new(),
-            dynamic_tools: Vec::new(),
+            retrieval_indexes: Vec::new(),
             toolset: ToolSet::default(),
         }
-    }
-
-    pub(crate) fn static_tool_names(mut self, names: Vec<String>) -> Self {
-        // Last-wins registration replaces the implementation but keeps the
-        // original position, so the advertised list dedupes to first
-        // occurrence (duplicate declarations are rejected by providers).
-        self.static_tool_names = Vec::with_capacity(names.len());
-        for name in names {
-            push_unique_name(&mut self.static_tool_names, name);
-        }
-        self
     }
 
     pub(crate) fn add_tools(mut self, tools: ToolSet) -> Self {
@@ -73,19 +77,25 @@ impl ToolServer {
         self
     }
 
-    pub(crate) fn add_dynamic_tools(
+    pub(crate) fn add_retrieval_indexes(
         mut self,
-        dyn_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+        indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     ) -> Self {
-        self.dynamic_tools = dyn_tools;
+        self.retrieval_indexes = indexes;
         self
     }
 
     /// Add a static tool to the agent. Re-registering an existing name
     /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = self.toolset.add_tool(tool);
-        push_unique_name(&mut self.static_tool_names, toolname);
+        self.toolset.add_tool(tool);
+        self
+    }
+
+    /// Add a runtime-defined tool. Re-registering an existing name replaces
+    /// the implementation and keeps its position.
+    pub fn dynamic_tool(mut self, tool: DynamicTool) -> Self {
+        self.toolset.add_dynamic_tool(tool);
         self
     }
 
@@ -112,32 +122,31 @@ impl ToolServer {
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
         use crate::tool::rmcp::McpTool;
-        let toolname = self.toolset.add_erased(Arc::new(
+        self.toolset.add_erased(Arc::new(
             McpTool::from_mcp_server(tool, client).with_timeout(timeout),
         ));
-        push_unique_name(&mut self.static_tool_names, toolname);
         self
     }
 
-    /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
-    /// dynamic toolset will be inserted in the request.
-    pub fn dynamic_tools(
+    /// Configure tools retrieved from a vector index for each prompt.
+    pub fn retrieved_tools(
         mut self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> Self {
-        self.dynamic_tools.push((sample, Arc::new(dynamic_tools)));
-        self.toolset.add_tools(toolset);
+        self.retrieval_indexes.push((sample, Arc::new(index)));
+        self.toolset.add_retrievable_tools(toolset);
         self
     }
 
     /// Consume the builder and return a shared [`ToolServerHandle`].
     pub fn run(self) -> ToolServerHandle {
         ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
-            static_tool_names: self.static_tool_names,
-            dynamic_tools: self.dynamic_tools,
+            retrieval_indexes: self.retrieval_indexes,
             toolset: self.toolset,
+            #[cfg(feature = "rmcp")]
+            managed_generations: HashMap::new(),
         })))
     }
 }
@@ -153,85 +162,154 @@ pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 impl ToolServerHandle {
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
-    pub async fn add_tool<T>(&self, tool: T) -> Result<(), ToolServerError>
+    pub async fn add_tool<T>(&self, tool: T)
     where
         T: Tool + 'static,
     {
         let mut state = self.0.write().await;
-        let toolname = state.toolset.add_tool(tool);
-        push_unique_name(&mut state.static_tool_names, toolname);
-        Ok(())
+        let _name = state.toolset.add_tool(tool);
+        #[cfg(feature = "rmcp")]
+        state.managed_generations.remove(&_name);
     }
 
     /// Register a runtime-defined static tool.
-    pub async fn add_dynamic_tool(&self, tool: DynamicTool) -> Result<(), ToolServerError> {
+    pub async fn add_dynamic_tool(&self, tool: DynamicTool) {
         let mut state = self.0.write().await;
-        let toolname = state.toolset.add_dynamic_tool(tool);
-        push_unique_name(&mut state.static_tool_names, toolname);
-        Ok(())
+        let _name = state.toolset.add_dynamic_tool(tool);
+        #[cfg(feature = "rmcp")]
+        state.managed_generations.remove(&_name);
     }
 
+    #[cfg(all(feature = "rmcp", test))]
+    pub(crate) async fn add_erased_tool(&self, tool: Arc<dyn ErasedTool>) {
+        let mut state = self.0.write().await;
+        let name = state.toolset.add_erased(tool);
+        state.managed_generations.remove(&name);
+    }
+
+    /// Atomically install the initial tools owned by one MCP handler.
+    /// Initial connection retains the registry's last-registration-wins policy.
     #[cfg(feature = "rmcp")]
-    pub(crate) async fn add_erased_tool(
+    pub(crate) async fn add_managed_erased_tools(
         &self,
-        tool: Arc<dyn ErasedTool>,
-    ) -> Result<(), ToolServerError> {
+        tools: Vec<Arc<dyn ErasedTool>>,
+    ) -> HashMap<String, ManagedToolToken> {
         let mut state = self.0.write().await;
-        let toolname = state.toolset.add_erased(tool);
-        push_unique_name(&mut state.static_tool_names, toolname);
-        Ok(())
-    }
+        let mut managed = HashMap::with_capacity(tools.len());
 
-    /// Merge an entire toolset into the server. Tool names from `toolset`
-    /// are appended to the static-tool list in `toolset`'s registration
-    /// order, so the tools become visible to the LLM via
-    /// [`Self::get_tool_defs`]. Existing names are replaced (last wins) and
-    /// keep their position.
-    pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
-        let mut state = self.0.write().await;
-        for name in toolset.ordered_names() {
-            push_unique_name(&mut state.static_tool_names, name.clone());
+        for tool in tools {
+            let name = state.toolset.add_erased(tool);
+            let token = ManagedToolToken::new();
+            state
+                .managed_generations
+                .insert(name.clone(), token.clone());
+            managed.insert(name, token);
         }
-        state.toolset.add_tools(toolset);
-        Ok(())
+
+        managed
     }
 
-    /// Remove a tool by name from both the toolset and the static list.
-    pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
+    /// Atomically reconcile one handler's MCP registrations with a refreshed
+    /// tool list. Existing names are changed only when their expected generation
+    /// remains current; newer local or peer-handler registrations win.
+    #[cfg(feature = "rmcp")]
+    pub(crate) async fn reconcile_managed_erased_tools(
+        &self,
+        mut expected: HashMap<String, ManagedToolToken>,
+        tools: Vec<Arc<dyn ErasedTool>>,
+    ) -> HashMap<String, ManagedToolToken> {
         let mut state = self.0.write().await;
-        state.static_tool_names.retain(|x| *x != tool_name);
+        let mut refreshed = HashMap::with_capacity(tools.len());
+
+        for tool in tools {
+            let name = tool.name();
+            let may_register = match expected.remove(&name) {
+                Some(token) => {
+                    state.managed_generations.get(&name) == Some(&token)
+                        && state.toolset.contains(&name)
+                }
+                None => !state.toolset.contains(&name),
+            };
+
+            if may_register {
+                state.toolset.add_erased(tool);
+                let token = ManagedToolToken::new();
+                state
+                    .managed_generations
+                    .insert(name.clone(), token.clone());
+                refreshed.insert(name, token);
+            } else {
+                tracing::debug!(
+                    tool_name = name,
+                    "MCP refresh left a newer same-name registration intact"
+                );
+            }
+        }
+
+        for (name, token) in expected {
+            if state.managed_generations.get(&name) == Some(&token) {
+                state.toolset.delete_tool(&name);
+                state.managed_generations.remove(&name);
+            }
+        }
+
+        refreshed
+    }
+
+    /// Merge an entire toolset into the server in registration order.
+    /// Existing names are replaced (last wins) and keep their position.
+    pub async fn append_toolset(&self, toolset: ToolSet) {
+        let mut state = self.0.write().await;
+        #[cfg(feature = "rmcp")]
+        let names = toolset.tools.keys().cloned().collect::<Vec<_>>();
+        state.toolset.add_tools(toolset);
+        #[cfg(feature = "rmcp")]
+        for name in names {
+            state.managed_generations.remove(&name);
+        }
+    }
+
+    /// Remove a tool by name.
+    pub async fn remove_tool(&self, tool_name: &str) {
+        let mut state = self.0.write().await;
         state.toolset.delete_tool(tool_name);
-        Ok(())
+        #[cfg(feature = "rmcp")]
+        state.managed_generations.remove(tool_name);
     }
 
     /// Look up and execute a tool through the canonical structured path.
     ///
     /// The implementation handle is cloned under a brief read lock, so a long
-    /// execution never blocks registration changes. The supplied context is
-    /// refreshed for this dispatch and receives only this result's metadata.
+    /// execution never blocks registration changes. The tool receives one
+    /// snapshot of the supplied inbound values. Its result metadata is
+    /// published back to `context`, while mutations to its inbound snapshot are
+    /// discarded.
     pub async fn execute(
         &self,
         tool_name: &str,
         args: &str,
         context: &mut ToolContext,
     ) -> ToolResult {
+        let ToolDispatch {
+            result,
+            context: dispatch_context,
+        } = self.dispatch(tool_name, args, context).await;
+        context.accept_dispatch_result(dispatch_context);
+        result
+    }
+
+    /// Run one isolated dispatch and retain its full context for agent hooks.
+    pub(crate) async fn dispatch(
+        &self,
+        tool_name: &str,
+        args: &str,
+        context: &ToolContext,
+    ) -> ToolDispatch {
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
         };
-        let mut dispatch = context.for_dispatch();
-        let result = match tool {
-            Some(tool) => {
-                tracing::debug!(target: "rig", "Calling tool {tool_name} with args:\n{args}");
-                tool.execute(args.to_string(), &mut dispatch).await
-            }
-            None => ToolResult::failed(
-                ToolExecutionError::not_found(format!("no tool named `{tool_name}` is registered"))
-                    .with_model_feedback(format!("tool `{tool_name}` not found")),
-            ),
-        };
-        *context = dispatch;
-        result
+        dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
 
     /// Retrieve tool definitions, optionally using a prompt to select
@@ -241,14 +319,27 @@ impl ToolServerHandle {
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
         // Snapshot the metadata we need under a brief read lock
-        let (static_tool_names, dynamic_tools) = {
+        let (static_tool_handles, retrieval_indexes) = {
             let state = self.0.read().await;
-            (state.static_tool_names.clone(), state.dynamic_tools.clone())
+            (
+                state
+                    .toolset
+                    .always_exposed_names()
+                    .filter_map(|name| {
+                        state
+                            .toolset
+                            .get(name)
+                            .cloned()
+                            .map(|tool| (name.clone(), tool))
+                    })
+                    .collect::<Vec<_>>(),
+                state.retrieval_indexes.clone(),
+            )
         };
 
         let mut tools = if let Some(ref text) = prompt {
             // Create a future for each dynamic tool index
-            let search_futures = dynamic_tools.iter().map(|(num_sample, index)| {
+            let search_futures = retrieval_indexes.iter().map(|(num_sample, index)| {
                 let text = text.clone();
                 let num_sample = *num_sample;
                 let index = index.clone();
@@ -303,20 +394,6 @@ impl ToolServerHandle {
             Vec::new()
         };
 
-        let static_tool_handles: Vec<_> = {
-            let state = self.0.read().await;
-            static_tool_names
-                .iter()
-                .filter_map(|toolname| {
-                    let handle = state.toolset.get(toolname).cloned();
-                    if handle.is_none() {
-                        tracing::warn!("Tool implementation not found in toolset: {}", toolname);
-                    }
-                    handle.map(|handle| (toolname.clone(), handle))
-                })
-                .collect()
-        };
-
         for (name, tool) in static_tool_handles {
             tools.push(tool.definition_with_name(name));
         }
@@ -343,8 +420,6 @@ impl ToolServerHandle {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolServerError {
-    #[error("Toolset error: {0}")]
-    ToolsetError(#[from] ToolSetError),
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(CompletionError),
 }
@@ -386,36 +461,25 @@ mod tests {
         let result = handle.execute(name, args, context).await;
         match result.error() {
             Some(error) => Err(error.clone()),
-            None => Ok(result.model_output().to_string()),
+            None => Ok(result.output().render()),
         }
     }
 
-    struct ChangingNameTool {
-        calls: AtomicUsize,
-    }
+    struct NamedTool;
 
-    impl ChangingNameTool {
+    impl NamedTool {
         fn new() -> Self {
-            Self {
-                calls: AtomicUsize::new(0),
-            }
+            Self
         }
     }
 
-    impl Tool for ChangingNameTool {
-        const NAME: &'static str = "unused";
+    impl Tool for NamedTool {
+        const NAME: &'static str = "registered_named";
         type Args = serde_json::Value;
         type Output = String;
 
-        fn name(&self) -> String {
-            match self.calls.fetch_add(1, Ordering::SeqCst) {
-                0 => "registered_changing".to_string(),
-                _ => "changed_after_registration".to_string(),
-            }
-        }
-
         fn description(&self) -> String {
-            "changes name after registration".to_string()
+            "uses its canonical name".to_string()
         }
 
         fn parameters(&self) -> serde_json::Value {
@@ -435,13 +499,13 @@ mod tests {
     #[error("init error")]
     struct InitError;
 
-    impl ToolEmbedding for ChangingNameTool {
+    impl ToolEmbedding for NamedTool {
         type InitError = InitError;
         type Context = ();
         type State = ();
 
         fn embedding_docs(&self) -> Vec<String> {
-            vec!["changing dynamic tool".to_string()]
+            vec!["named retrieved tool".to_string()]
         }
 
         fn context(&self) -> Self::Context {}
@@ -457,7 +521,7 @@ mod tests {
 
         let handle = server.run();
 
-        handle.add_tool(MockAddTool).await.unwrap();
+        handle.add_tool(MockAddTool).await;
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 1);
@@ -469,7 +533,7 @@ mod tests {
             .unwrap();
         assert_eq!(res, "7");
 
-        handle.remove_tool("add").await.unwrap();
+        handle.remove_tool("add").await;
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
@@ -479,8 +543,8 @@ mod tests {
     pub async fn test_toolserver_append_toolset_matches_add_tool() {
         let mut via_add_tool = {
             let handle = ToolServer::new().run();
-            handle.add_tool(MockAddTool).await.unwrap();
-            handle.add_tool(MockSubtractTool).await.unwrap();
+            handle.add_tool(MockAddTool).await;
+            handle.add_tool(MockSubtractTool).await;
             handle.get_tool_defs(None).await.unwrap()
         };
         via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
@@ -490,7 +554,7 @@ mod tests {
             let mut toolset = ToolSet::default();
             toolset.add_tool(MockAddTool);
             toolset.add_tool(MockSubtractTool);
-            handle.append_toolset(toolset).await.unwrap();
+            handle.append_toolset(toolset).await;
             handle.get_tool_defs(None).await.unwrap()
         };
         via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
@@ -506,31 +570,29 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn builder_tool_uses_registered_key_for_static_names() {
-        let handle = ToolServer::new().tool(ChangingNameTool::new()).run();
+    pub async fn builder_tool_uses_canonical_static_name() {
+        let handle = ToolServer::new().tool(NamedTool::new()).run();
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, "registered_changing");
+        assert_eq!(defs[0].name, NamedTool::NAME);
     }
 
     #[tokio::test]
-    pub async fn handle_add_tool_uses_registered_key_for_static_names() {
+    pub async fn handle_add_tool_uses_canonical_static_name() {
         let handle = ToolServer::new().run();
-        handle.add_tool(ChangingNameTool::new()).await.unwrap();
+        handle.add_tool(NamedTool::new()).await;
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, "registered_changing");
+        assert_eq!(defs[0].name, NamedTool::NAME);
     }
 
     #[tokio::test]
-    pub async fn dynamic_retrieval_resolves_registered_key() {
-        let toolset = ToolSet::builder()
-            .dynamic_tool(ChangingNameTool::new())
-            .build();
+    pub async fn retrieval_resolves_canonical_key() {
+        let toolset = ToolSet::builder().retrieved_tool(NamedTool::new()).build();
         let handle = ToolServer::new()
-            .dynamic_tools(1, MockToolIndex::new(["registered_changing"]), toolset)
+            .retrieved_tools(1, MockToolIndex::new([NamedTool::NAME]), toolset)
             .run();
 
         let defs = handle
@@ -538,14 +600,14 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, "registered_changing");
+        assert_eq!(defs[0].name, NamedTool::NAME);
     }
 
     #[tokio::test]
     pub async fn get_tool_defs_preserves_static_registration_order() {
         let handle = ToolServer::new().run();
-        handle.add_tool(MockSubtractTool).await.unwrap();
-        handle.add_tool(MockAddTool).await.unwrap();
+        handle.add_tool(MockSubtractTool).await;
+        handle.add_tool(MockAddTool).await;
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(
@@ -560,7 +622,7 @@ mod tests {
         // name that is also static must yield a single definition.
         let handle = ToolServer::new()
             .tool(MockAddTool)
-            .dynamic_tools(1, MockToolIndex::new(["add"]), ToolSet::default())
+            .retrieved_tools(1, MockToolIndex::new(["add"]), ToolSet::default())
             .run();
 
         let defs = handle
@@ -577,13 +639,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retrieval_registration_preserves_existing_always_exposure() {
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .retrieved_tools(
+                1,
+                MockToolIndex::new(["add"]),
+                ToolSet::from_tools(vec![MockAddTool]),
+            )
+            .run();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            defs.iter()
+                .map(|definition| definition.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["add"],
+            "merging a retrieval implementation must not demote an always-exposed registration"
+        );
+    }
+
+    #[tokio::test]
     pub async fn duplicate_registration_advertises_one_definition() {
         let handle = ToolServer::new().tool(MockAddTool).run();
-        handle.add_tool(MockAddTool).await.unwrap();
+        handle.add_tool(MockAddTool).await;
 
         let mut toolset = ToolSet::default();
         toolset.add_tool(MockAddTool);
-        handle.append_toolset(toolset).await.unwrap();
+        handle.append_toolset(toolset).await;
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(
@@ -595,7 +678,7 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_toolserver_dynamic_tools() {
+    pub async fn test_toolserver_retrieved_tools() {
         // Create a toolset with both tools
         let mut toolset = ToolSet::default();
         toolset.add_tool(MockAddTool);
@@ -605,7 +688,7 @@ mod tests {
         let mock_index = MockToolIndex::new(["subtract"]);
 
         // Build server with static tool "add" and dynamic tools from the mock index
-        let server = ToolServer::new().tool(MockAddTool).dynamic_tools(
+        let server = ToolServer::new().tool(MockAddTool).retrieved_tools(
             1,
             mock_index,
             ToolSet::from_tools(vec![MockSubtractTool]),
@@ -632,7 +715,7 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_toolserver_dynamic_tools_missing_implementation() {
+    pub async fn test_toolserver_retrieved_tools_missing_implementation() {
         // Create a mock index that returns a tool ID that doesn't exist in the toolset
         let mock_index = MockToolIndex::new(["nonexistent_tool"]);
 
@@ -640,7 +723,7 @@ mod tests {
         let server =
             ToolServer::new()
                 .tool(MockAddTool)
-                .dynamic_tools(1, mock_index, ToolSet::default());
+                .retrieved_tools(1, mock_index, ToolSet::default());
 
         let handle = server.run();
 
@@ -711,7 +794,6 @@ mod tests {
             add_result.is_ok(),
             "Writing to ToolServer deadlocked! The read lock is being held across tool execution."
         );
-        assert!(add_result.unwrap().is_ok());
 
         // Allow the background tool to finish and clean up
         allow_finish.notify_one();
@@ -720,7 +802,7 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_toolserver_parallel_dynamic_tool_fetching() {
+    pub async fn test_toolserver_parallel_retrieval() {
         // We expect exactly 2 parallel searches to hit the barrier at the same time
         let barrier = Arc::new(tokio::sync::Barrier::new(2));
 
@@ -733,8 +815,8 @@ mod tests {
         toolset.add_tool(MockSubtractTool);
 
         let server = ToolServer::new()
-            .dynamic_tools(1, index1, ToolSet::default())
-            .dynamic_tools(1, index2, toolset);
+            .retrieved_tools(1, index1, ToolSet::default())
+            .retrieved_tools(1, index2, toolset);
 
         let handle = server.run();
 
@@ -762,6 +844,21 @@ mod tests {
     #[derive(Clone)]
     struct SessionId(String);
 
+    struct CloneTrackedContext {
+        clones: Arc<AtomicUsize>,
+        value: usize,
+    }
+
+    impl Clone for CloneTrackedContext {
+        fn clone(&self) -> Self {
+            self.clones.fetch_add(1, Ordering::SeqCst);
+            Self {
+                clones: self.clones.clone(),
+                value: self.value,
+            }
+        }
+    }
+
     #[derive(serde::Deserialize, serde::Serialize)]
     struct ContextReader;
 
@@ -783,6 +880,11 @@ mod tests {
             context: &mut ToolContext,
             _args: Self::Args,
         ) -> Result<Self::Output, ToolExecutionError> {
+            if let Some(value) = context.get_mut::<CloneTrackedContext>() {
+                value.value += 1;
+                let result_value = value.value;
+                context.insert_result(result_value);
+            }
             Ok(context
                 .get::<SessionId>()
                 .map(|session| format!("session:{}", session.0))
@@ -799,6 +901,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result, "session:abc-123");
+    }
+
+    #[tokio::test]
+    async fn server_dispatch_snapshot_clones_once_and_only_publishes_result_metadata() {
+        let handle = ToolServer::new().tool(ContextReader).run();
+        let clones = Arc::new(AtomicUsize::new(0));
+        let mut context = ToolContext::new();
+        context.insert(CloneTrackedContext {
+            clones: clones.clone(),
+            value: 0,
+        });
+
+        let result = execute_tool_with_context(&handle, "context_reader", "{}", &mut context)
+            .await
+            .unwrap();
+
+        assert_eq!(result, "no session");
+        assert_eq!(clones.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            context
+                .get::<CloneTrackedContext>()
+                .map(|value| value.value),
+            Some(0),
+            "tool-local inbound mutations must not change the caller's context"
+        );
+        assert_eq!(context.result::<usize>(), Some(&1));
     }
 
     #[tokio::test]
@@ -829,6 +957,10 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(error.kind(), crate::tool::ToolErrorKind::NotFound);
-        assert!(error.model_feedback().contains("does_not_exist"));
+        assert!(
+            error
+                .model_feedback()
+                .is_some_and(|feedback| feedback.contains("does_not_exist"))
+        );
     }
 }

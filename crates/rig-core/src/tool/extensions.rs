@@ -4,7 +4,10 @@ use std::any::{Any, TypeId, type_name};
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::{
+    tool::result::ToolExecutionError,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
 
 type AnyMap = HashMap<TypeId, Box<dyn AnyClone>, BuildHasherDefault<IdHasher>>;
 
@@ -145,6 +148,11 @@ impl TypeMap {
 /// host-only result metadata with [`insert_result`](Self::insert_result). Result
 /// hooks inspect that metadata through [`result`](Self::result). Neither inbound
 /// values nor result metadata are sent to the model.
+///
+/// Registry, server, and agent dispatch clone inbound values once per call.
+/// Mutating that snapshot affects only the current tool execution; the
+/// dispatch surface returns result metadata without replacing the caller's
+/// inbound values.
 #[derive(Default, Clone)]
 pub struct ToolContext {
     inbound: TypeMap,
@@ -235,11 +243,21 @@ impl ToolContext {
 
     /// Build a fresh execution context with the same inbound values and no
     /// result metadata.
+    ///
+    /// Dispatch always runs against this snapshot. A tool may therefore mutate
+    /// its local inbound values without changing the run-wide or caller-owned
+    /// context that supplied them.
     pub(crate) fn for_dispatch(&self) -> Self {
         Self {
             inbound: self.inbound.clone(),
             result: TypeMap::EMPTY,
         }
+    }
+
+    /// Publish metadata produced by one dispatch while preserving the caller's
+    /// inbound values.
+    pub(crate) fn accept_dispatch_result(&mut self, dispatched: Self) {
+        self.result = dispatched.result;
     }
 
     /// Clone only the inbound values, for nested tool execution.
@@ -263,6 +281,12 @@ impl std::fmt::Debug for ToolContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("required tool context value of type `{0}` was not found")]
 pub struct MissingToolContext(pub &'static str);
+
+impl From<MissingToolContext> for ToolExecutionError {
+    fn from(error: MissingToolContext) -> Self {
+        ToolExecutionError::other(error.to_string()).with_source(error)
+    }
+}
 
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
@@ -288,6 +312,17 @@ mod tests {
         let next = context.for_dispatch();
         assert_eq!(next.get::<u32>(), Some(&42));
         assert!(next.result::<String>().is_none());
+    }
+
+    #[test]
+    fn missing_context_converts_into_a_tool_execution_error() {
+        fn require_value(context: &ToolContext) -> Result<u32, ToolExecutionError> {
+            Ok(*context.require::<u32>()?)
+        }
+
+        let error = require_value(&ToolContext::new()).unwrap_err();
+        assert!(error.is::<MissingToolContext>());
+        assert_eq!(error.model_feedback(), None);
     }
 }
 
@@ -405,13 +440,19 @@ mod migrated_tests {
         assert_eq!(c.result::<Secret>().map(|s| s.0), Some("do-not-print"));
     }
     #[test]
-    fn dispatch_clone_keeps_inbound_and_clears_result_metadata() {
+    fn dispatch_snapshot_isolates_inbound_and_publishes_only_result_metadata() {
         let mut c = ToolContext::new();
         c.insert(7u32);
         c.insert_result("old".to_string());
-        let d = c.for_dispatch();
+        let mut d = c.for_dispatch();
         assert_eq!(d.get::<u32>(), Some(&7));
         assert!(d.result::<String>().is_none());
+        *d.get_mut::<u32>().expect("snapshot value") = 8;
+        d.insert_result("new".to_string());
+
+        c.accept_dispatch_result(d);
+        assert_eq!(c.get::<u32>(), Some(&7));
+        assert_eq!(c.result::<String>().map(String::as_str), Some("new"));
     }
     #[test]
     fn many_distinct_types_round_trip_through_type_id_hasher() {
