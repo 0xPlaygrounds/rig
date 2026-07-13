@@ -22,6 +22,9 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
                 let image = RigImage(image).try_into()?;
                 Ok(aws_bedrock::ToolResultContentBlock::Image(image))
             }
+            ToolResultContent::Json { value } => Ok(aws_bedrock::ToolResultContentBlock::Json(
+                AwsDocument::from(value).0,
+            )),
         }
     }
 }
@@ -37,9 +40,7 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
             }
             aws_bedrock::ToolResultContentBlock::Json(document) => {
                 let json: Value = AwsDocument(document).into();
-                Ok(RigToolResultContent(ToolResultContent::Text(Text::new(
-                    json.to_string(),
-                ))))
+                Ok(RigToolResultContent(ToolResultContent::json(json)))
             }
             aws_bedrock::ToolResultContentBlock::Text(text) => Ok(RigToolResultContent(
                 ToolResultContent::Text(Text::new(text)),
@@ -86,6 +87,34 @@ mod tests {
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
         assert!(aws_tool.is_ok());
         assert!(aws_tool.unwrap().is_image())
+    }
+
+    #[test]
+    fn rig_tool_json_round_trips_through_native_aws_json() {
+        let values = [
+            serde_json::Value::Null,
+            serde_json::json!(true),
+            serde_json::json!(-42),
+            serde_json::json!("structured string"),
+            serde_json::json!([1, false, null]),
+            serde_json::json!({ "answer": 42 }),
+        ];
+
+        for value in values {
+            let aws_tool: aws_bedrock::ToolResultContentBlock =
+                RigToolResultContent(ToolResultContent::json(value.clone()))
+                    .try_into()
+                    .expect("Rig JSON should convert to a Bedrock tool result");
+            assert!(
+                aws_tool.is_json(),
+                "explicit JSON must use Bedrock's native JSON block"
+            );
+
+            let roundtrip: RigToolResultContent = aws_tool
+                .try_into()
+                .expect("Bedrock JSON should convert back to Rig JSON");
+            assert_eq!(roundtrip.0, ToolResultContent::json(value));
+        }
     }
 
     #[test]

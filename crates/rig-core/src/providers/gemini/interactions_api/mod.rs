@@ -634,7 +634,7 @@ pub mod interactions_api_types {
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
-    use serde_json::{Value, json};
+    use serde_json::Value;
 
     // =================================================================
     // Request / Response Types
@@ -1781,6 +1781,53 @@ pub mod interactions_api_types {
         FileSearchResult(FileSearchResultContent),
     }
 
+    fn rich_function_result_block(
+        content: message::ToolResultContent,
+    ) -> Result<Value, message::MessageError> {
+        let content = match content {
+            message::ToolResultContent::Text(text) => Content::Text(TextContent {
+                text: text.text,
+                annotations: None,
+            }),
+            message::ToolResultContent::Json { .. } => {
+                return Err(message::MessageError::ConversionError(
+                    "Gemini Interactions cannot represent explicit JSON inside mixed tool-result content without coercing it to text; send a JSON string or object as the only result item"
+                        .to_string(),
+                ));
+            }
+            message::ToolResultContent::Image(message::Image {
+                data, media_type, ..
+            }) => {
+                let media_type = media_type.ok_or_else(|| {
+                    message::MessageError::ConversionError(
+                        "Image media type is required for Gemini Interactions tool results"
+                            .to_string(),
+                    )
+                })?;
+                if matches!(&media_type, message::ImageMediaType::SVG) {
+                    return Err(message::MessageError::ConversionError(
+                        "Gemini Interactions does not support SVG images in tool results; use PNG, JPEG, WEBP, HEIC, HEIF, or GIF"
+                            .to_string(),
+                    ));
+                }
+                let (data, uri) = split_data_uri(data)?;
+
+                Content::Image(ImageContent {
+                    data,
+                    uri,
+                    mime_type: Some(media_type.to_mime_type().to_string()),
+                    resolution: None,
+                })
+            }
+        };
+
+        serde_json::to_value(content).map_err(|err| {
+            message::MessageError::ConversionError(format!(
+                "Failed to serialize Gemini Interactions tool result content: {err}"
+            ))
+        })
+    }
+
     impl TryFrom<message::UserContent> for Content {
         type Error = message::MessageError;
 
@@ -1803,18 +1850,37 @@ pub mod interactions_api_types {
                         ));
                     };
 
-                    let content = content.first();
+                    let mut contents = content.into_iter().collect::<Vec<_>>();
+                    let result = if contents.len() == 1 {
+                        let content = contents.pop().ok_or_else(|| {
+                            message::MessageError::ConversionError(
+                                "Tool result content must not be empty".to_string(),
+                            )
+                        })?;
 
-                    let message::ToolResultContent::Text(text) = content else {
-                        return Err(message::MessageError::ConversionError(
-                            "Tool result content must be text".to_string(),
-                        ));
+                        match content {
+                            message::ToolResultContent::Text(text) => Value::String(text.text),
+                            message::ToolResultContent::Json { value } => match value {
+                                value @ (Value::String(_) | Value::Object(_)) => value,
+                                _ => {
+                                    return Err(message::MessageError::ConversionError(
+                                        "Gemini Interactions function results support explicit JSON only when it is a string or object; null, booleans, numbers, and arrays cannot be represented losslessly"
+                                            .to_string(),
+                                    ));
+                                }
+                            },
+                            rich_content => {
+                                Value::Array(vec![rich_function_result_block(rich_content)?])
+                            }
+                        }
+                    } else {
+                        Value::Array(
+                            contents
+                                .into_iter()
+                                .map(rich_function_result_block)
+                                .collect::<Result<Vec<_>, _>>()?,
+                        )
                     };
-
-                    let result: Value = serde_json::from_str(&text.text).unwrap_or_else(|error| {
-                        tracing::trace!(?error, "Tool result is not valid JSON; sending as string");
-                        json!(text.text)
-                    });
 
                     Ok(Self::FunctionResult(FunctionResultContent {
                         name: Some(id),
@@ -2521,6 +2587,27 @@ mod tests {
     use crate::message::{self, ToolChoice as MessageToolChoice};
     use serde_json::json;
 
+    fn convert_tool_result(
+        content: OneOrMany<message::ToolResultContent>,
+    ) -> Result<Value, message::MessageError> {
+        let converted = Content::try_from(message::UserContent::ToolResult(message::ToolResult {
+            id: "test_tool".to_string(),
+            call_id: Some("call-1".to_string()),
+            content,
+        }))?;
+
+        match converted {
+            Content::FunctionResult(result) => result.result.ok_or_else(|| {
+                message::MessageError::ConversionError(
+                    "Gemini Interactions omitted the function result".to_string(),
+                )
+            }),
+            other => Err(message::MessageError::ConversionError(format!(
+                "expected function result, got {other:?}"
+            ))),
+        }
+    }
+
     #[test]
     fn test_create_request_body_simple() {
         let prompt = Message::User {
@@ -2580,6 +2667,135 @@ mod tests {
 
         let err = Content::try_from(content).expect_err("should require call_id");
         assert!(format!("{err}").contains("call_id"));
+    }
+
+    #[test]
+    fn tool_result_singletons_preserve_literal_text_and_supported_json_types() {
+        let cases = vec![
+            (
+                "literal JSON-looking text",
+                message::ToolResultContent::text(r#"{"literal":true}"#),
+                json!(r#"{"literal":true}"#),
+            ),
+            (
+                "JSON string",
+                message::ToolResultContent::json(json!("structured string")),
+                json!("structured string"),
+            ),
+            (
+                "JSON object",
+                message::ToolResultContent::json(json!({"status": "ok"})),
+                json!({"status": "ok"}),
+            ),
+        ];
+
+        for (label, content, expected) in cases {
+            let result = convert_tool_result(OneOrMany::one(content))
+                .unwrap_or_else(|error| panic!("{label} should convert: {error}"));
+            assert_eq!(result, expected, "{label}");
+        }
+    }
+
+    #[test]
+    fn tool_result_rejects_explicit_json_shapes_the_api_cannot_represent() {
+        let values = vec![json!(null), json!(true), json!(42), json!([1, 2])];
+
+        for value in values {
+            let error = convert_tool_result(OneOrMany::one(message::ToolResultContent::json(
+                value.clone(),
+            )))
+            .unwrap_err();
+            assert!(
+                format!("{error}").contains("only when it is a string or object"),
+                "unexpected error for {value}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn tool_result_rejects_explicit_json_inside_mixed_rich_content() {
+        let error = convert_tool_result(
+            OneOrMany::many(vec![
+                message::ToolResultContent::text("before"),
+                message::ToolResultContent::json(json!({"status": "ok"})),
+            ])
+            .expect("tool result should be non-empty"),
+        )
+        .expect_err("mixed explicit JSON cannot be represented losslessly");
+
+        assert!(format!("{error}").contains("without coercing it to text"));
+    }
+
+    #[test]
+    fn tool_result_images_and_text_serialize_as_ordered_tagged_content() {
+        let result = convert_tool_result(
+            OneOrMany::many(vec![
+                message::ToolResultContent::image_base64(
+                    "first-image",
+                    Some(message::ImageMediaType::PNG),
+                    None,
+                ),
+                message::ToolResultContent::text("middle"),
+                message::ToolResultContent::image_url(
+                    "https://example.com/second.jpg",
+                    Some(message::ImageMediaType::JPEG),
+                    None,
+                ),
+            ])
+            .expect("tool result should be non-empty"),
+        )
+        .expect("rich content should convert");
+
+        assert_eq!(
+            result,
+            json!([
+                {
+                    "type": "image",
+                    "data": "first-image",
+                    "mime_type": "image/png"
+                },
+                {
+                    "type": "text",
+                    "text": "middle"
+                },
+                {
+                    "type": "image",
+                    "uri": "https://example.com/second.jpg",
+                    "mime_type": "image/jpeg"
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn image_only_tool_result_uses_the_tagged_content_array() {
+        let result = convert_tool_result(OneOrMany::one(message::ToolResultContent::image_base64(
+            "image-data",
+            Some(message::ImageMediaType::WEBP),
+            None,
+        )))
+        .expect("image should convert");
+
+        assert_eq!(
+            result,
+            json!([{
+                "type": "image",
+                "data": "image-data",
+                "mime_type": "image/webp"
+            }])
+        );
+    }
+
+    #[test]
+    fn tool_result_rejects_unsupported_svg_images() {
+        let error = convert_tool_result(OneOrMany::one(message::ToolResultContent::image_base64(
+            "image-data",
+            Some(message::ImageMediaType::SVG),
+            None,
+        )))
+        .expect_err("Gemini Interactions does not accept SVG image content");
+
+        assert!(format!("{error}").contains("does not support SVG"));
     }
 
     #[test]

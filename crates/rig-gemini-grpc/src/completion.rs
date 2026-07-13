@@ -253,20 +253,32 @@ fn rig_user_content_to_grpc_part(
             part_metadata: None,
         }),
         message::UserContent::ToolResult(result) => {
-            let response_text = match &result.content.first() {
-                message::ToolResultContent::Text(t) => t.text.clone(),
-                message::ToolResultContent::Image(_) => {
-                    return Err(CompletionError::RequestError(
-                        "Tool result content must be text".into(),
-                    ));
+            let mut result_values = result
+                .content
+                .into_iter()
+                .map(|content| match content {
+                    message::ToolResultContent::Text(text) => Ok(proto::Value {
+                        kind: Some(proto::value::Kind::StringValue(text.text)),
+                    }),
+                    message::ToolResultContent::Json { value } => json_to_prost_value(value),
+                    message::ToolResultContent::Image(_) => Err(message_conversion_error(
+                        "Gemini gRPC does not support images in tool results; return text or JSON instead",
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let result_value = if result_values.len() == 1 {
+                result_values.remove(0)
+            } else {
+                proto::Value {
+                    kind: Some(proto::value::Kind::ListValue(proto::ListValue {
+                        values: result_values,
+                    })),
                 }
             };
-
-            let result_value: serde_json::Value = serde_json::from_str(&response_text)
-                .unwrap_or_else(|_| serde_json::json!(response_text));
-
-            let response_struct =
-                json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
+            let response_struct = proto::Struct {
+                fields: [("result".to_string(), result_value)].into_iter().collect(),
+            };
 
             Ok(proto::Part {
                 data: Some(proto::part::Data::FunctionResponse(
@@ -599,20 +611,21 @@ fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
 
 fn json_to_prost_struct(value: serde_json::Value) -> Result<proto::Struct, CompletionError> {
     match value {
-        serde_json::Value::Object(map) => Ok(proto::Struct {
-            fields: map
+        serde_json::Value::Object(map) => {
+            let fields = map
                 .into_iter()
-                .map(|(k, v)| (k, json_to_prost_value(v)))
-                .collect(),
-        }),
+                .map(|(key, value)| json_to_prost_value(value).map(|value| (key, value)))
+                .collect::<Result<_, _>>()?;
+            Ok(proto::Struct { fields })
+        }
         _ => Err(CompletionError::RequestError(
             "Expected a JSON object for google.protobuf.Struct".into(),
         )),
     }
 }
 
-fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
-    match value {
+fn json_to_prost_value(value: serde_json::Value) -> Result<proto::Value, CompletionError> {
+    let value = match value {
         serde_json::Value::Null => proto::Value {
             kind: Some(proto::value::Kind::NullValue(
                 proto::NullValue::NullValue as i32,
@@ -622,27 +635,57 @@ fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
             kind: Some(proto::value::Kind::BoolValue(b)),
         },
         serde_json::Value::Number(n) => proto::Value {
-            kind: Some(proto::value::Kind::NumberValue(
-                n.as_f64().unwrap_or_default(),
-            )),
+            kind: Some(proto::value::Kind::NumberValue(json_number_to_f64(n)?)),
         },
         serde_json::Value::String(s) => proto::Value {
             kind: Some(proto::value::Kind::StringValue(s)),
         },
         serde_json::Value::Array(items) => proto::Value {
             kind: Some(proto::value::Kind::ListValue(proto::ListValue {
-                values: items.into_iter().map(json_to_prost_value).collect(),
+                values: items
+                    .into_iter()
+                    .map(json_to_prost_value)
+                    .collect::<Result<_, _>>()?,
             })),
         },
         serde_json::Value::Object(map) => proto::Value {
             kind: Some(proto::value::Kind::StructValue(proto::Struct {
                 fields: map
                     .into_iter()
-                    .map(|(k, v)| (k, json_to_prost_value(v)))
-                    .collect(),
+                    .map(|(key, value)| json_to_prost_value(value).map(|value| (key, value)))
+                    .collect::<Result<_, _>>()?,
             })),
         },
+    };
+    Ok(value)
+}
+
+fn json_number_to_f64(number: serde_json::Number) -> Result<f64, CompletionError> {
+    let converted = number.as_f64().ok_or_else(|| {
+        message_conversion_error(format!(
+            "Gemini gRPC cannot represent JSON number `{number}` as f64"
+        ))
+    })?;
+
+    let exact = if let Some(integer) = number.as_i64() {
+        converted as i128 == i128::from(integer)
+    } else if let Some(integer) = number.as_u64() {
+        converted as u128 == u128::from(integer)
+    } else {
+        serde_json::Number::from_f64(converted).as_ref() == Some(&number)
+    };
+
+    if exact {
+        Ok(converted)
+    } else {
+        Err(message_conversion_error(format!(
+            "Gemini gRPC cannot represent JSON number `{number}` as f64 without precision loss"
+        )))
     }
+}
+
+fn message_conversion_error(message: impl Into<String>) -> CompletionError {
+    message::MessageError::ConversionError(message.into()).into()
 }
 
 fn prost_struct_to_json(st: &proto::Struct) -> serde_json::Value {
@@ -721,6 +764,41 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 mod tests {
     use super::*;
 
+    fn grpc_tool_result(
+        content: OneOrMany<message::ToolResultContent>,
+    ) -> Result<proto::FunctionResponse, CompletionError> {
+        let part =
+            rig_user_content_to_grpc_part(message::UserContent::ToolResult(message::ToolResult {
+                id: "lookup".to_string(),
+                call_id: Some("call-1".to_string()),
+                content,
+            }))?;
+
+        match part.data {
+            Some(proto::part::Data::FunctionResponse(response)) => Ok(response),
+            other => Err(CompletionError::ResponseError(format!(
+                "expected function response, got {other:?}"
+            ))),
+        }
+    }
+
+    fn grpc_tool_result_value(response: &proto::FunctionResponse) -> serde_json::Value {
+        let response = response.response.as_ref().expect("response struct");
+        prost_value_to_json(response.fields.get("result").expect("result field"))
+    }
+
+    fn conversion_error_message(error: CompletionError) -> String {
+        let CompletionError::RequestError(source) = error else {
+            panic!("expected request error wrapping MessageError, got {error:?}");
+        };
+        let error = source
+            .downcast_ref::<message::MessageError>()
+            .expect("request error should preserve MessageError");
+        match error {
+            message::MessageError::ConversionError(message) => message.clone(),
+        }
+    }
+
     // ============================================================
     // rpc_error — pins the from_provider_body usage on the RPC error path
     // ============================================================
@@ -768,6 +846,82 @@ mod tests {
             decode_base64_bytes("data:text/plain;base64,Zm9v"),
             Ok(bytes) if bytes == b"foo".to_vec()
         ));
+    }
+
+    #[test]
+    fn tool_result_singletons_preserve_literal_text_and_native_json() {
+        let literal = grpc_tool_result(OneOrMany::one(message::ToolResultContent::text(
+            r#"{"status":"literal"}"#,
+        )))
+        .expect("literal text should convert");
+        assert_eq!(
+            grpc_tool_result_value(&literal),
+            serde_json::json!(r#"{"status":"literal"}"#)
+        );
+
+        let structured_value = serde_json::json!({
+            "status": "structured",
+            "items": [true, null]
+        });
+        let structured = grpc_tool_result(OneOrMany::one(message::ToolResultContent::json(
+            structured_value.clone(),
+        )))
+        .expect("structured JSON should convert");
+        assert_eq!(grpc_tool_result_value(&structured), structured_value);
+    }
+
+    #[test]
+    fn tool_result_multiple_items_preserve_order_in_a_native_list() {
+        let response = grpc_tool_result(
+            OneOrMany::many([
+                message::ToolResultContent::text("first"),
+                message::ToolResultContent::json(serde_json::json!("second")),
+                message::ToolResultContent::json(serde_json::json!({ "position": 3 })),
+            ])
+            .expect("non-empty tool result"),
+        )
+        .expect("ordered result should convert");
+
+        assert_eq!(
+            grpc_tool_result_value(&response),
+            serde_json::json!(["first", "second", { "position": 3.0 }])
+        );
+    }
+
+    #[test]
+    fn tool_result_images_return_conversion_errors() {
+        let error = grpc_tool_result(OneOrMany::one(message::ToolResultContent::image_base64(
+            "image-data",
+            Some(message::ImageMediaType::PNG),
+            None,
+        )))
+        .expect_err("images cannot be represented by Gemini gRPC function responses");
+
+        assert!(conversion_error_message(error).contains("does not support images"));
+    }
+
+    #[test]
+    fn tool_result_rejects_json_numbers_that_f64_would_round() {
+        let exactly_representable = 9_007_199_254_740_992_u64;
+        let response = grpc_tool_result(OneOrMany::one(message::ToolResultContent::json(
+            serde_json::json!(exactly_representable),
+        )))
+        .expect("exact f64 integer should convert");
+        assert_eq!(
+            grpc_tool_result_value(&response),
+            serde_json::json!(exactly_representable as f64)
+        );
+
+        let rounded_by_f64 = 9_007_199_254_740_993_u64;
+        let error = grpc_tool_result(OneOrMany::one(message::ToolResultContent::json(
+            serde_json::json!({
+                "nested": [rounded_by_f64]
+            }),
+        )))
+        .expect_err("lossy integers must not be rounded at the provider boundary");
+        let message = conversion_error_message(error);
+        assert!(message.contains(&rounded_by_f64.to_string()));
+        assert!(message.contains("precision loss"));
     }
 
     // ============================================================

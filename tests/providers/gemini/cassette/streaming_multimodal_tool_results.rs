@@ -1,20 +1,16 @@
-//! Gemini streaming regression for multimodal tool results in chat history.
+//! Gemini streaming regressions for multimodal tool results in chat history.
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
-use rig::message::{
-    AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
-};
+use rig::message::{DocumentSourceKind, ImageMediaType, Message, ToolResultContent};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
-use rig::streaming::StreamingPrompt;
+use rig::streaming::{StreamedUserContent, StreamingPrompt};
 use rig::tool::Tool;
 use serde_json::json;
-
-use crate::support::assert_nonempty_response;
 
 const RED_PIXEL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 const MULTIMODAL_FUNCTION_RESPONSE_MODEL: &str = gemini::completion::GEMINI_3_FLASH_PREVIEW;
@@ -67,7 +63,7 @@ impl Tool for HybridImageTool {
 }
 
 #[tokio::test]
-async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
+async fn streaming_history_rejects_lossy_hybrid_tool_result_conversion() {
     super::super::support::with_gemini_cassette("streaming_multimodal_tool_results/streaming_history_preserves_hybrid_tool_result_image_parts", |client| async move {
     let agent = client
         .agent(MULTIMODAL_FUNCTION_RESPONSE_MODEL)
@@ -89,49 +85,30 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
         .max_turns(4)
         .await;
 
-    let mut final_response = None;
-    let mut final_history = None;
+    let mut streamed_tool_result = None;
+    let mut conversion_error = None;
 
     while let Some(item) = stream.next().await {
-        match item.expect("streaming prompt should succeed") {
-            MultiTurnStreamItem::FinalResponse(response) => {
-                final_response = Some(response.output().to_owned());
-                final_history = response.messages().map(|history| history.to_vec());
+        match item {
+            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                tool_result,
+                ..
+            })) => streamed_tool_result = Some(tool_result),
+            Ok(_) => {}
+            Err(error) => {
+                conversion_error = Some(error);
                 break;
             }
-            MultiTurnStreamItem::StreamAssistantItem(_)
-            | MultiTurnStreamItem::StreamUserItem(_) => {}
-            _ => {}
         }
     }
 
-    let final_response = final_response.expect("stream should yield a final response");
-    assert_nonempty_response(&final_response);
-
-    let history = final_history.expect("final response should include updated history");
+    let error = conversion_error.expect("mixed tool-result conversion should stop the stream");
     assert!(
-        history.iter().any(|message| matches!(
-            message,
-            Message::Assistant { content, .. }
-                if content.iter().any(|item| matches!(
-                    item,
-                    AssistantContent::ToolCall(tool_call)
-                        if tool_call.function.name == HybridImageTool::NAME
-                ))
-        )),
-        "history should retain the assistant tool call: {history:#?}"
+        error.to_string().contains("cannot preserve the order"),
+        "unexpected conversion error: {error:?}"
     );
 
-    let tool_result = history
-        .iter()
-        .find_map(|message| match message {
-            Message::User { content } => content.iter().find_map(|item| match item {
-                UserContent::ToolResult(tool_result) => Some(tool_result),
-                _ => None,
-            }),
-            _ => None,
-        })
-        .expect("history should retain the tool result user message");
+    let tool_result = streamed_tool_result.expect("the executed tool result should be streamed");
 
     assert_eq!(
         tool_result.content.len(),
@@ -162,6 +139,9 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
                     matches!(image.data, DocumentSourceKind::Base64(ref data) if data == RED_PIXEL_PNG_BASE64),
                     "tool result image should preserve the base64 image payload: {image:?}"
                 );
+            }
+            ToolResultContent::Json { value } => {
+                panic!("hybrid image fixture unexpectedly produced JSON content: {value}")
             }
         }
     }

@@ -389,9 +389,16 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::ToolResultContent::Text(text) => {
                                 Ok(ToolResultContent::Text { text: text.text })
                             }
-                            _ => Err(message::MessageError::ConversionError(
-                                "Only text tool result content is supported by Cohere".to_owned(),
-                            )),
+                            message::ToolResultContent::Json { value } => {
+                                Ok(ToolResultContent::Text {
+                                    text: value.to_string(),
+                                })
+                            }
+                            message::ToolResultContent::Image(_) => {
+                                Err(message::MessageError::ConversionError(
+                                    "Cohere does not support images in tool results".to_owned(),
+                                ))
+                            }
                         })?,
                     }),
                     _ => Err(message::MessageError::ConversionError(
@@ -507,10 +514,10 @@ impl TryFrom<Message> for message::Message {
                     Ok(match content {
                         ToolResultContent::Text { text } => message::ToolResultContent::text(text),
                         ToolResultContent::Document { document } => {
-                            message::ToolResultContent::text(
-                                serde_json::to_string(&document.data).map_err(|e| {
+                            message::ToolResultContent::json(
+                                serde_json::to_value(document.data).map_err(|e| {
                                     message::MessageError::ConversionError(
-                                        format!("Failed to convert tool result document content into text: {e}"),
+                                        format!("Failed to convert tool result document content into JSON: {e}"),
                                     )
                                 })?,
                             )
@@ -807,6 +814,76 @@ mod tests {
 
         let completion_message: completion::Message = message.clone().try_into().unwrap();
         let _converted_back: Vec<Message> = completion_message.try_into().unwrap();
+    }
+
+    #[test]
+    fn tool_result_json_is_serialized_only_at_coheres_text_boundary() {
+        let values = [
+            serde_json::Value::Null,
+            serde_json::json!(true),
+            serde_json::json!(42),
+            serde_json::json!("structured string"),
+            serde_json::json!([1, false]),
+            serde_json::json!({ "answer": 42 }),
+        ];
+        let mut rig_content = vec![message::ToolResultContent::text(r#"{"literal":true}"#)];
+        rig_content.extend(values.iter().cloned().map(message::ToolResultContent::json));
+        let input = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+                id: "call-1".into(),
+                call_id: None,
+                content: OneOrMany::many(rig_content).expect("tool result is non-empty"),
+            })),
+        };
+
+        let converted = Vec::<Message>::try_from(input).expect("tool result should convert");
+        let [Message::Tool { content, .. }] = converted.as_slice() else {
+            panic!("expected one Cohere tool message");
+        };
+        let text = content
+            .iter()
+            .map(|content| match content {
+                ToolResultContent::Text { text } => text.as_str(),
+                ToolResultContent::Document { .. } => panic!("outbound JSON must use text"),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(text[0], r#"{"literal":true}"#);
+        for (actual, value) in text[1..].iter().zip(values) {
+            assert_eq!(*actual, value.to_string());
+        }
+    }
+
+    #[test]
+    fn native_cohere_tool_documents_convert_to_explicit_json() {
+        let data = std::collections::HashMap::from([
+            ("answer".to_string(), serde_json::json!(42)),
+            ("ok".to_string(), serde_json::json!(true)),
+        ]);
+        let provider = Message::Tool {
+            tool_call_id: "call-1".into(),
+            content: OneOrMany::one(ToolResultContent::Document {
+                document: Document {
+                    id: "doc-1".into(),
+                    data: data.clone(),
+                },
+            }),
+        };
+
+        let converted = message::Message::try_from(provider).expect("document should convert");
+        let message::Message::User { content } = converted else {
+            panic!("expected Rig user message");
+        };
+        let message::UserContent::ToolResult(result) = content.first() else {
+            panic!("expected Rig tool result");
+        };
+
+        assert_eq!(
+            result.content.first(),
+            message::ToolResultContent::json(
+                serde_json::to_value(data).expect("map is serializable")
+            )
+        );
     }
 
     #[test]

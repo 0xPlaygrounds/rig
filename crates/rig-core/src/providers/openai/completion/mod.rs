@@ -608,6 +608,7 @@ impl TryFrom<message::ToolResult> for Message {
             .map(|content| {
                 match content {
                 message::ToolResultContent::Text(message::Text { text, .. }) => Ok(text),
+                message::ToolResultContent::Json { value } => Ok(value.to_string()),
                 message::ToolResultContent::Image(_) => Err(message::MessageError::ConversionError(
                     "OpenAI does not support images in tool results. Tool results must be text."
                         .into(),
@@ -802,39 +803,46 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
     type Error = message::MessageError;
 
     fn try_from(value: OneOrMany<message::UserContent>) -> Result<Self, Self::Error> {
-        let (tool_results, other_content): (Vec<_>, Vec<_>) = value
-            .into_iter()
-            .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+        let flush_user_content = |messages: &mut Vec<Message>, content: &mut Vec<UserContent>| {
+            if content.is_empty() {
+                return Ok(());
+            }
 
-        // If there are messages with both tool results and user content, openai will only
-        //  handle tool results. It's unlikely that there will be both.
-        if !tool_results.is_empty() {
-            tool_results
-                .into_iter()
-                .map(|content| match content {
-                    message::UserContent::ToolResult(tool_result) => tool_result.try_into(),
-                    _ => Err(message::MessageError::ConversionError(
-                        "expected tool result content while converting OpenAI input".into(),
-                    )),
-                })
-                .collect::<Result<Vec<_>, _>>()
-        } else {
-            let other_content: Vec<UserContent> = other_content
-                .into_iter()
-                .map(|content| content.try_into())
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let other_content = OneOrMany::many(other_content).map_err(|_| {
+            let content = OneOrMany::many(std::mem::take(content)).map_err(|_| {
                 message::MessageError::ConversionError(
                     "OpenAI user message did not contain any non-tool content".into(),
                 )
             })?;
-
-            Ok(vec![Message::User {
-                content: other_content,
+            messages.push(Message::User {
+                content,
                 name: None,
-            }])
+            });
+
+            Ok::<_, message::MessageError>(())
+        };
+
+        let mut messages = Vec::new();
+        let mut user_content = Vec::new();
+
+        for content in value {
+            match content {
+                message::UserContent::ToolResult(tool_result) => {
+                    flush_user_content(&mut messages, &mut user_content)?;
+                    messages.push(tool_result.try_into()?);
+                }
+                content => user_content.push(content.try_into()?),
+            }
         }
+
+        flush_user_content(&mut messages, &mut user_content)?;
+
+        if messages.is_empty() {
+            return Err(message::MessageError::ConversionError(
+                "OpenAI user message did not contain any provider-compatible content".into(),
+            ));
+        }
+
+        Ok(messages)
     }
 }
 
@@ -2059,6 +2067,142 @@ mod tests {
             text: text.to_string(),
             additional_props: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn tool_result_text_stays_literal_and_json_is_stringified_at_the_wire_boundary() {
+        let cases = vec![
+            (
+                "literal JSON-looking text",
+                message::ToolResultContent::text(r#"{"status":"ok"}"#),
+                r#"{"status":"ok"}"#,
+            ),
+            (
+                "JSON string",
+                message::ToolResultContent::json(serde_json::json!("ok")),
+                r#""ok""#,
+            ),
+            (
+                "JSON null",
+                message::ToolResultContent::json(serde_json::Value::Null),
+                "null",
+            ),
+            (
+                "JSON boolean",
+                message::ToolResultContent::json(serde_json::json!(true)),
+                "true",
+            ),
+            (
+                "JSON number",
+                message::ToolResultContent::json(serde_json::json!(42)),
+                "42",
+            ),
+            (
+                "JSON array",
+                message::ToolResultContent::json(serde_json::json!([1, 2])),
+                "[1,2]",
+            ),
+            (
+                "JSON object",
+                message::ToolResultContent::json(serde_json::json!({"status": "ok"})),
+                r#"{"status":"ok"}"#,
+            ),
+        ];
+
+        for (label, content, expected) in cases {
+            let converted = Message::try_from(message::ToolResult {
+                id: "rig-id".to_string(),
+                call_id: Some("provider-call-id".to_string()),
+                content: OneOrMany::one(content),
+            })
+            .unwrap_or_else(|error| panic!("{label} should convert: {error}"));
+
+            assert_eq!(
+                converted,
+                Message::ToolResult {
+                    tool_call_id: "provider-call-id".to_string(),
+                    content: ToolResultContentValue::String(expected.to_string()),
+                },
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn tool_result_mixed_content_keeps_item_order_when_flattened_to_text() {
+        let converted = Message::try_from(message::ToolResult {
+            id: "call-1".to_string(),
+            call_id: None,
+            content: OneOrMany::many(vec![
+                message::ToolResultContent::text("before"),
+                message::ToolResultContent::json(serde_json::json!({"status": "ok"})),
+                message::ToolResultContent::text("after"),
+            ])
+            .expect("tool result should be non-empty"),
+        })
+        .expect("mixed text and JSON should convert");
+
+        assert_eq!(
+            converted,
+            Message::ToolResult {
+                tool_call_id: "call-1".to_string(),
+                content: ToolResultContentValue::String(
+                    "before\n{\"status\":\"ok\"}\nafter".to_string(),
+                ),
+            }
+        );
+    }
+
+    #[test]
+    fn tool_result_images_are_rejected_instead_of_silently_dropped() {
+        let error = Message::try_from(message::ToolResult {
+            id: "call-1".to_string(),
+            call_id: None,
+            content: OneOrMany::one(message::ToolResultContent::image_base64(
+                "AA==",
+                Some(message::ImageMediaType::PNG),
+                None,
+            )),
+        })
+        .expect_err("OpenAI Chat tool results cannot contain images");
+
+        assert!(format!("{error}").contains("does not support images"));
+    }
+
+    #[test]
+    fn mixed_user_content_preserves_order_around_tool_results() {
+        let user = message::Message::User {
+            content: OneOrMany::many(vec![
+                message::UserContent::text("before"),
+                message::UserContent::tool_result(
+                    "call-1",
+                    OneOrMany::one(message::ToolResultContent::json(serde_json::json!({
+                        "status": "ok"
+                    }))),
+                ),
+                message::UserContent::text("after"),
+            ])
+            .expect("user content should be non-empty"),
+        };
+
+        let converted: Vec<Message> = user.try_into().expect("history should convert");
+        assert_eq!(converted.len(), 3);
+
+        assert!(matches!(
+            &converted[0],
+            Message::User { content, .. }
+                if matches!(content.first(), UserContent::Text { text } if text == "before")
+        ));
+        assert!(matches!(
+            &converted[1],
+            Message::ToolResult { tool_call_id, content: ToolResultContentValue::String(text) }
+                if tool_call_id == "call-1" && text == r#"{"status":"ok"}"#
+        ));
+        assert!(matches!(
+            &converted[2],
+            Message::User { content, .. }
+                if matches!(content.first(), UserContent::Text { text } if text == "after")
+        ));
     }
 
     #[test]

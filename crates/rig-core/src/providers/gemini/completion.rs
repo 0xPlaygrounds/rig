@@ -802,6 +802,36 @@ pub mod gemini_api_types {
         }
     }
 
+    fn contains_reserved_media_ref(value: &Value) -> bool {
+        match value {
+            Value::Object(object) => {
+                (object.len() == 1 && object.contains_key("$ref"))
+                    || object.values().any(contains_reserved_media_ref)
+            }
+            Value::Array(values) => values.iter().any(contains_reserved_media_ref),
+            _ => false,
+        }
+    }
+
+    fn gemini_tool_result_image_mime_type(
+        media_type: Option<&ImageMediaType>,
+    ) -> Result<&'static str, MessageError> {
+        let media_type = media_type.ok_or_else(|| {
+            MessageError::ConversionError(
+                "Image media type is required for Gemini tool results".to_string(),
+            )
+        })?;
+
+        match media_type {
+            ImageMediaType::JPEG | ImageMediaType::PNG | ImageMediaType::WEBP => {
+                Ok(media_type.to_mime_type())
+            }
+            _ => Err(MessageError::ConversionError(format!(
+                "Unsupported image media type {media_type:?} for Gemini tool results; supported types are JPEG, PNG, and WEBP"
+            ))),
+        }
+    }
+
     impl TryFrom<message::UserContent> for Part {
         type Error = message::MessageError;
 
@@ -814,41 +844,47 @@ pub mod gemini_api_types {
                     additional_params: None,
                 }),
                 message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
-                    let mut response_json: Option<serde_json::Value> = None;
+                    let has_image = content
+                        .iter()
+                        .any(|item| matches!(item, message::ToolResultContent::Image(_)));
+                    let has_non_image = content
+                        .iter()
+                        .any(|item| !matches!(item, message::ToolResultContent::Image(_)));
+                    if has_image && has_non_image {
+                        return Err(message::MessageError::ConversionError(
+                            "Gemini generateContent cannot preserve the order of mixed image and text/JSON tool-result content without unsupported `$ref` media references; return only images or only text/JSON"
+                                .to_string(),
+                        ));
+                    }
+
+                    for item in content.iter() {
+                        if let message::ToolResultContent::Json { value } = item
+                            && contains_reserved_media_ref(value)
+                        {
+                            return Err(message::MessageError::ConversionError(
+                                "Gemini reserves single-key `$ref` objects in function responses for multimodal part references; explicit JSON tool results cannot contain that shape"
+                                    .to_string(),
+                            ));
+                        }
+                    }
+
+                    let mut response_values = Vec::new();
                     let mut parts: Vec<FunctionResponsePart> = Vec::new();
 
                     for item in content.iter() {
                         match item {
                             message::ToolResultContent::Text(text) => {
-                                let result: serde_json::Value =
-                                    serde_json::from_str(&text.text).unwrap_or_else(|error| {
-                                        tracing::trace!(
-                                            ?error,
-                                            "Tool result is not a valid JSON, treat it as normal string"
-                                        );
-                                        json!(&text.text)
-                                    });
-
-                                response_json = Some(match response_json {
-                                    Some(mut existing) => {
-                                        if let serde_json::Value::Object(ref mut map) = existing {
-                                            map.insert("text".to_string(), result);
-                                        }
-                                        existing
-                                    }
-                                    None => json!({ "result": result }),
-                                });
+                                response_values.push(json!(&text.text));
+                            }
+                            message::ToolResultContent::Json { value } => {
+                                response_values.push(value.clone());
                             }
                             message::ToolResultContent::Image(image) => {
                                 let part = match &image.data {
                                     DocumentSourceKind::Base64(b64) => {
-                                        let mime_type = image
-                                            .media_type
-                                            .as_ref()
-                                            .ok_or(message::MessageError::ConversionError(
-                                                "Image media type is required for Gemini tool results".to_string(),
-                                            ))?
-                                            .to_mime_type();
+                                        let mime_type = gemini_tool_result_image_mime_type(
+                                            image.media_type.as_ref(),
+                                        )?;
 
                                         FunctionResponsePart {
                                             inline_data: Some(FunctionResponseInlineData {
@@ -859,19 +895,11 @@ pub mod gemini_api_types {
                                             file_data: None,
                                         }
                                     }
-                                    DocumentSourceKind::Url(url) => {
-                                        let mime_type = image
-                                            .media_type
-                                            .as_ref()
-                                            .map(|mt| mt.to_mime_type().to_string());
-
-                                        FunctionResponsePart {
-                                            inline_data: None,
-                                            file_data: Some(FileData {
-                                                mime_type,
-                                                file_uri: url.clone(),
-                                            }),
-                                        }
+                                    DocumentSourceKind::Url(_) => {
+                                        return Err(message::MessageError::ConversionError(
+                                            "Gemini tool result images must use base64 inline data; URL-backed images are not supported"
+                                                .to_string(),
+                                        ));
                                     }
                                     _ => {
                                         return Err(message::MessageError::ConversionError(
@@ -884,6 +912,17 @@ pub mod gemini_api_types {
                             }
                         }
                     }
+
+                    let response_json = if response_values.is_empty() {
+                        None
+                    } else {
+                        let result = if response_values.len() == 1 {
+                            response_values.remove(0)
+                        } else {
+                            serde_json::Value::Array(response_values)
+                        };
+                        Some(json!({ "result": result }))
+                    };
 
                     Ok(Part {
                         thought: Some(false),
@@ -2165,7 +2204,7 @@ mod tests {
     use crate::{
         message,
         providers::gemini::completion::gemini_api_types::{
-            CitationMetadata, ContentCandidate, FinishReason, FunctionCall,
+            CitationMetadata, ContentCandidate, FinishReason, FunctionCall, FunctionResponse,
             GenerateContentResponse, LogprobsResult, ModalityTokenCount, Schema, TopCandidate,
             UsageMetadata, flatten_schema, tool_parameters_to_schema,
         },
@@ -2173,6 +2212,23 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    fn convert_tool_result(
+        content: OneOrMany<message::ToolResultContent>,
+    ) -> Result<FunctionResponse, message::MessageError> {
+        let part = Part::try_from(message::UserContent::ToolResult(message::ToolResult {
+            id: "test_tool".to_string(),
+            call_id: None,
+            content,
+        }))?;
+
+        match part.part {
+            PartKind::FunctionResponse(response) => Ok(response),
+            other => Err(message::MessageError::ConversionError(format!(
+                "expected function response, got {other:?}"
+            ))),
+        }
+    }
 
     #[test]
     fn test_usage_metadata_deserializes_without_total_token_count() {
@@ -2950,64 +3006,122 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_result_with_image_content() {
-        // Test that a ToolResult with image content converts correctly to Gemini's Part format
-        use crate::OneOrMany;
-        use crate::message::{
-            DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
-        };
+    fn tool_result_text_is_literal_and_explicit_json_keeps_its_type() {
+        let response = convert_tool_result(
+            OneOrMany::many(vec![
+                message::ToolResultContent::text(r#"{"literal":true}"#),
+                message::ToolResultContent::json(json!({"structured": true})),
+                message::ToolResultContent::json(json!("json string")),
+            ])
+            .expect("tool result should be non-empty"),
+        )
+        .expect("typed tool result should convert");
 
-        // Create a tool result with both text and image content
-        let tool_result = ToolResult {
-            id: "test_tool".to_string(),
-            call_id: None,
-            content: OneOrMany::many(vec![
-                ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
-                ToolResultContent::Image(Image {
-                    data: DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()),
-                    media_type: Some(ImageMediaType::PNG),
-                    detail: None,
-                    additional_params: None,
-                }),
-            ]).expect("Should create OneOrMany with multiple items"),
-        };
+        assert_eq!(
+            response.response,
+            Some(json!({
+                "result": [
+                    r#"{"literal":true}"#,
+                    {"structured": true},
+                    "json string"
+                ]
+            }))
+        );
+        assert!(response.parts.is_none());
+    }
 
-        let user_content = message::UserContent::ToolResult(tool_result);
-        let msg = message::Message::User {
-            content: OneOrMany::one(user_content),
-        };
+    #[test]
+    fn tool_result_supports_every_explicit_json_value_type() {
+        let values = vec![
+            json!(null),
+            json!(true),
+            json!(42),
+            json!("value"),
+            json!([1, 2]),
+            json!({"status": "ok"}),
+        ];
 
-        // Convert to Gemini Content
-        let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-        assert_eq!(content.role, Some(Role::User));
-        assert_eq!(content.parts.len(), 1);
+        for value in values {
+            let response = convert_tool_result(OneOrMany::one(message::ToolResultContent::json(
+                value.clone(),
+            )))
+            .unwrap_or_else(|error| panic!("{value} should convert: {error}"));
 
-        // Verify the part is a FunctionResponse with both response and parts
-        if let Some(Part {
-            part: PartKind::FunctionResponse(function_response),
-            ..
-        }) = content.parts.first()
-        {
-            assert_eq!(function_response.name, "test_tool");
-
-            // Check that response JSON is present
-            assert!(function_response.response.is_some());
-            let response = function_response.response.as_ref().unwrap();
-            assert!(response.get("result").is_some());
-
-            // Check that parts with image data are present
-            assert!(function_response.parts.is_some());
-            let parts = function_response.parts.as_ref().unwrap();
-            assert_eq!(parts.len(), 1);
-
-            let image_part = &parts[0];
-            assert!(image_part.inline_data.is_some());
-            let inline_data = image_part.inline_data.as_ref().unwrap();
-            assert_eq!(inline_data.mime_type, "image/png");
-            assert!(!inline_data.data.is_empty());
-        } else {
-            panic!("Expected FunctionResponse part");
+            assert_eq!(response.response, Some(json!({"result": value})));
         }
+    }
+
+    #[test]
+    fn mixed_images_and_text_or_json_return_an_actionable_error() {
+        let error = convert_tool_result(
+            OneOrMany::many(vec![
+                message::ToolResultContent::image_base64(
+                    "first-image",
+                    Some(message::ImageMediaType::PNG),
+                    None,
+                ),
+                message::ToolResultContent::text("middle"),
+                message::ToolResultContent::json(json!({"status": "ok"})),
+                message::ToolResultContent::image_base64(
+                    "second-image",
+                    Some(message::ImageMediaType::JPEG),
+                    None,
+                ),
+            ])
+            .expect("tool result should be non-empty"),
+        )
+        .expect_err("Gemini cannot preserve mixed rich-content ordering");
+
+        assert!(format!("{error}").contains("cannot preserve the order"));
+    }
+
+    #[test]
+    fn image_only_tool_results_preserve_native_part_order() {
+        let response = convert_tool_result(
+            OneOrMany::many(vec![
+                message::ToolResultContent::image_base64(
+                    "first-image",
+                    Some(message::ImageMediaType::PNG),
+                    None,
+                ),
+                message::ToolResultContent::image_base64(
+                    "second-image",
+                    Some(message::ImageMediaType::WEBP),
+                    None,
+                ),
+            ])
+            .expect("tool result should be non-empty"),
+        )
+        .expect("inline images should convert");
+
+        assert!(response.response.is_none());
+        let parts = response.parts.expect("image parts should be present");
+        assert_eq!(parts.len(), 2);
+        let first = parts[0]
+            .inline_data
+            .as_ref()
+            .expect("first image should be inline");
+        assert_eq!(first.mime_type, "image/png");
+        assert_eq!(first.data, "first-image");
+        assert!(first.display_name.is_none());
+
+        let second = parts[1]
+            .inline_data
+            .as_ref()
+            .expect("second image should be inline");
+        assert_eq!(second.mime_type, "image/webp");
+        assert_eq!(second.data, "second-image");
+        assert!(second.display_name.is_none());
+    }
+
+    #[test]
+    fn tool_result_rejects_reserved_multimodal_ref_objects_in_explicit_json() {
+        let error = convert_tool_result(OneOrMany::one(message::ToolResultContent::json(json!({
+            "existing": {"$ref": "tool_result_image_0"}
+        }))))
+        .expect_err("reserved media references cannot be represented as ordinary JSON");
+
+        assert!(format!("{error}").contains("single-key `$ref` objects"));
     }
 
     #[test]
@@ -3078,53 +3192,27 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_result_with_url_image() {
-        // Test that a ToolResult with a URL-based image converts to file_data
-        use crate::OneOrMany;
-        use crate::message::{
-            DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
-        };
+    fn tool_result_rejects_url_images() {
+        let error = convert_tool_result(OneOrMany::one(message::ToolResultContent::image_url(
+            "https://example.com/image.png",
+            Some(message::ImageMediaType::PNG),
+            None,
+        )))
+        .expect_err("URL-backed tool-result images should be rejected");
 
-        let tool_result = ToolResult {
-            id: "screenshot_tool".to_string(),
-            call_id: None,
-            content: OneOrMany::one(ToolResultContent::Image(Image {
-                data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
-                media_type: Some(ImageMediaType::PNG),
-                detail: None,
-                additional_params: None,
-            })),
-        };
+        assert!(format!("{error}").contains("must use base64 inline data"));
+    }
 
-        let user_content = message::UserContent::ToolResult(tool_result);
-        let msg = message::Message::User {
-            content: OneOrMany::one(user_content),
-        };
+    #[test]
+    fn tool_result_rejects_unsupported_image_media_types() {
+        let error = convert_tool_result(OneOrMany::one(message::ToolResultContent::image_base64(
+            "image-data",
+            Some(message::ImageMediaType::GIF),
+            None,
+        )))
+        .expect_err("unsupported image media types should be rejected");
 
-        let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-        assert_eq!(content.role, Some(Role::User));
-        assert_eq!(content.parts.len(), 1);
-
-        if let Some(Part {
-            part: PartKind::FunctionResponse(function_response),
-            ..
-        }) = content.parts.first()
-        {
-            assert_eq!(function_response.name, "screenshot_tool");
-
-            // URL images should have parts with file_data
-            assert!(function_response.parts.is_some());
-            let parts = function_response.parts.as_ref().unwrap();
-            assert_eq!(parts.len(), 1);
-
-            let image_part = &parts[0];
-            assert!(image_part.file_data.is_some());
-            let file_data = image_part.file_data.as_ref().unwrap();
-            assert_eq!(file_data.file_uri, "https://example.com/image.png");
-            assert_eq!(file_data.mime_type.as_ref().unwrap(), "image/png");
-        } else {
-            panic!("Expected FunctionResponse part");
-        }
+        assert!(format!("{error}").contains("supported types are JPEG, PNG, and WEBP"));
     }
 
     #[test]

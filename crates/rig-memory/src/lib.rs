@@ -369,6 +369,9 @@ impl HeuristicTokenCounter {
                     rig_core::message::ToolResultContent::Text(t) => {
                         self.bytes_to_tokens(t.text.len())
                     }
+                    rig_core::message::ToolResultContent::Json { value } => {
+                        self.bytes_to_tokens(value.to_string().len())
+                    }
                     rig_core::message::ToolResultContent::Image(_) => self.per_attachment_tokens,
                 })
                 .sum(),
@@ -1698,6 +1701,23 @@ mod tests {
         let counter = HeuristicTokenCounter::default();
         let cost = counter.count(&tool_call_msg());
         assert!(cost > 0);
+    }
+
+    #[test]
+    fn heuristic_counter_charges_compact_json_bytes_for_tool_results() {
+        let value = serde_json::json!({
+            "answer": [true, null, "structured value"],
+        });
+        let message = Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: "call_1".into(),
+                call_id: None,
+                content: OneOrMany::one(ToolResultContent::json(value.clone())),
+            })),
+        };
+        let counter = HeuristicTokenCounter::new(1.0, 0, usize::MAX);
+
+        assert_eq!(counter.count(&message), value.to_string().len());
     }
 
     #[test]

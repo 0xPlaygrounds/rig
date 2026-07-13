@@ -1012,17 +1012,32 @@ fn document_filename(media_type: Option<&DocumentMediaType>) -> Option<String> {
 fn user_contents_to_messages(
     value: OneOrMany<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
-    let (tool_results, other_content): (Vec<_>, Vec<_>) = value
-        .into_iter()
-        .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+    let flush_user_content = |messages: &mut Vec<Message>, content: &mut Vec<UserContent>| {
+        if content.is_empty() {
+            return Ok(());
+        }
 
-    // If there are messages with both tool results and user content, we handle
-    // tool results first. It's unlikely that there will be both.
-    if !tool_results.is_empty() {
-        tool_results
-            .into_iter()
-            .map(|content| match content {
-                message::UserContent::ToolResult(tool_result) => Ok(Message::ToolResult {
+        let content = OneOrMany::many(std::mem::take(content)).map_err(|_| {
+            message::MessageError::ConversionError(
+                "OpenRouter user message did not contain any non-tool content".into(),
+            )
+        })?;
+        messages.push(Message::User {
+            content,
+            name: None,
+        });
+
+        Ok::<_, message::MessageError>(())
+    };
+
+    let mut messages = Vec::new();
+    let mut user_content = Vec::new();
+
+    for content in value {
+        match content {
+            message::UserContent::ToolResult(tool_result) => {
+                flush_user_content(&mut messages, &mut user_content)?;
+                messages.push(Message::ToolResult {
                     // Prefer the provider-issued call id, matching the
                     // assistant echo (shared From<message::ToolCall>).
                     tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
@@ -1033,37 +1048,25 @@ fn user_contents_to_messages(
                             .map(|c| match c {
                                 message::ToolResultContent::Text(message::Text {
                                     text, ..
-                                }) => text,
+                                }) => Ok(text),
+                                message::ToolResultContent::Json { value } => Ok(value.to_string()),
                                 message::ToolResultContent::Image(_) => {
-                                    "[Image content not supported in tool results]".to_string()
+                                    Err(message::MessageError::ConversionError(
+                                        "OpenRouter does not support images in tool results".into(),
+                                    ))
                                 }
                             })
-                            .collect::<Vec<_>>()
+                            .collect::<Result<Vec<_>, _>>()?
                             .join("\n"),
                     ),
-                }),
-                _ => Err(message::MessageError::ConversionError(
-                    "expected tool result content while converting OpenRouter input".into(),
-                )),
-            })
-            .collect::<Result<Vec<_>, _>>()
-    } else {
-        let user_content: Vec<UserContent> = other_content
-            .into_iter()
-            .map(user_content_to_openai)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let content = OneOrMany::many(user_content).map_err(|_| {
-            message::MessageError::ConversionError(
-                "OpenRouter user message did not contain any non-tool content".into(),
-            )
-        })?;
-
-        Ok(vec![Message::User {
-            content,
-            name: None,
-        }])
+                });
+            }
+            content => user_content.push(user_content_to_openai(content)?),
+        }
     }
+
+    flush_user_content(&mut messages, &mut user_content)?;
+    Ok(messages)
 }
 
 // ================================================================
@@ -1520,6 +1523,65 @@ mod tests {
     use super::*;
     use crate::message::{AudioMediaType, ImageDetail, VideoMediaType};
     use serde_json::json;
+
+    #[test]
+    fn mixed_user_content_preserves_order_around_tool_results() {
+        let user = message::Message::User {
+            content: OneOrMany::many(vec![
+                message::UserContent::text("before"),
+                message::UserContent::tool_result_with_call_id(
+                    "rig-id",
+                    "provider-call-id".to_string(),
+                    OneOrMany::many(vec![
+                        message::ToolResultContent::text("literal"),
+                        message::ToolResultContent::json(json!({"status": "ok"})),
+                    ])
+                    .expect("tool result should be non-empty"),
+                ),
+                message::UserContent::text("after"),
+            ])
+            .expect("user content should be non-empty"),
+        };
+
+        let converted = messages_from_rig_message(user).expect("history should convert");
+        assert_eq!(converted.len(), 3);
+        assert!(matches!(
+            &converted[0],
+            Message::User { content, .. }
+                if matches!(content.first(), UserContent::Text { text } if text == "before")
+        ));
+        assert!(matches!(
+            &converted[1],
+            Message::ToolResult {
+                tool_call_id,
+                content: openai::completion::ToolResultContentValue::String(text),
+            } if tool_call_id == "provider-call-id"
+                && text == "literal\n{\"status\":\"ok\"}"
+        ));
+        assert!(matches!(
+            &converted[2],
+            Message::User { content, .. }
+                if matches!(content.first(), UserContent::Text { text } if text == "after")
+        ));
+    }
+
+    #[test]
+    fn tool_result_images_are_rejected_instead_of_replaced_with_placeholder_text() {
+        let user = message::Message::User {
+            content: OneOrMany::one(message::UserContent::tool_result(
+                "call-1",
+                OneOrMany::one(message::ToolResultContent::image_base64(
+                    "image-data",
+                    Some(message::ImageMediaType::PNG),
+                    None,
+                )),
+            )),
+        };
+
+        let error = messages_from_rig_message(user)
+            .expect_err("OpenRouter tool results cannot contain images");
+        assert!(format!("{error}").contains("does not support images"));
+    }
 
     #[test]
     fn test_openrouter_request_uses_request_model_override() {

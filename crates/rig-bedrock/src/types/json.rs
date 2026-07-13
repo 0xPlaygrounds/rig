@@ -44,11 +44,10 @@ impl From<Value> for AwsDocument {
             Value::Null => AwsDocument(Document::Null),
             Value::Bool(b) => AwsDocument(Document::Bool(b)),
             Value::Number(num) => {
-                if let Some(i) = num.as_i64() {
-                    match i > 0 {
-                        true => AwsDocument(Document::Number(Number::PosInt(i as u64))),
-                        false => AwsDocument(Document::Number(Number::NegInt(i))),
-                    }
+                if let Some(u) = num.as_u64() {
+                    AwsDocument(Document::Number(Number::PosInt(u)))
+                } else if let Some(i) = num.as_i64() {
+                    AwsDocument(Document::Number(Number::NegInt(i)))
                 } else if let Some(f) = num.as_f64() {
                     AwsDocument(Document::Number(Number::Float(f)))
                 } else {
@@ -113,6 +112,17 @@ mod tests {
         let value: Value = serde_json::from_str(json).unwrap();
         let document: AwsDocument = value.into();
         println!("{document:?}");
+    }
+
+    #[test]
+    fn unsigned_json_number_round_trips_without_precision_loss() {
+        let value = Value::from(u64::MAX);
+        let document: AwsDocument = value.clone().into();
+
+        assert_eq!(document.0, Document::Number(Number::PosInt(u64::MAX)));
+
+        let roundtrip: Value = document.into();
+        assert_eq!(roundtrip, value);
     }
 
     #[test]

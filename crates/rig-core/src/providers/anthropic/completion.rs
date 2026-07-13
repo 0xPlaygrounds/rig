@@ -1185,23 +1185,32 @@ impl TryFrom<message::Message> for Message {
                             message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
                             }
-                            message::ToolResultContent::Image(image) => {
-                                let DocumentSourceKind::Base64(data) = image.data else {
-                                    return Err(MessageError::ConversionError(
-                                        "Only base64 strings can be used with the Anthropic API"
-                                            .to_string(),
-                                    ));
-                                };
-                                let media_type =
-                                    image.media_type.ok_or(MessageError::ConversionError(
-                                        "Image media type is required".to_owned(),
-                                    ))?;
-                                Ok(ToolResultContent::Image {
-                                    source: ImageSource::Base64 {
-                                        data,
-                                        media_type: media_type.try_into()?,
-                                    },
+                            message::ToolResultContent::Json { value } => {
+                                Ok(ToolResultContent::Text {
+                                    text: value.to_string(),
                                 })
+                            }
+                            message::ToolResultContent::Image(image) => {
+                                let source = match image.data {
+                                    DocumentSourceKind::Base64(data) => {
+                                        let media_type = image.media_type.ok_or(
+                                            MessageError::ConversionError(
+                                                "Image media type is required".to_owned(),
+                                            ),
+                                        )?;
+                                        ImageSource::Base64 {
+                                            data,
+                                            media_type: media_type.try_into()?,
+                                        }
+                                    }
+                                    DocumentSourceKind::Url(url) => ImageSource::Url { url },
+                                    data => {
+                                        return Err(MessageError::ConversionError(format!(
+                                            "Unsupported Anthropic tool-result image source: {data:?}"
+                                        )));
+                                    }
+                                };
+                                Ok(ToolResultContent::Image { source })
                             }
                         })?,
                         is_error: None,
@@ -5037,6 +5046,47 @@ mod tests {
         assert_eq!(image_content["source"]["type"], "base64");
         assert_eq!(image_content["source"]["media_type"], "image/png");
         assert_eq!(image_content["source"]["data"], "iVBORw0KGgo...");
+    }
+
+    #[test]
+    fn tool_result_json_is_deliberately_serialized_and_url_images_stay_typed() {
+        let input = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+                id: "toolu_123".into(),
+                call_id: None,
+                content: OneOrMany::many(vec![
+                    message::ToolResultContent::text(r#"{"literal":true}"#),
+                    message::ToolResultContent::json(json!({ "structured": true })),
+                    message::ToolResultContent::image_url(
+                        "https://example.com/result.png",
+                        Some(message::ImageMediaType::PNG),
+                        None,
+                    ),
+                ])
+                .expect("mixed tool result is non-empty"),
+            })),
+        };
+
+        let converted = Message::try_from(input).expect("tool result should convert");
+        let Content::ToolResult { content, .. } = converted.content.first() else {
+            panic!("expected Anthropic tool result");
+        };
+        let items = content.iter().collect::<Vec<_>>();
+
+        assert!(matches!(
+            items[0],
+            ToolResultContent::Text { text } if text == r#"{"literal":true}"#
+        ));
+        assert!(matches!(
+            items[1],
+            ToolResultContent::Text { text } if text == r#"{"structured":true}"#
+        ));
+        assert!(matches!(
+            items[2],
+            ToolResultContent::Image {
+                source: ImageSource::Url { url }
+            } if url == "https://example.com/result.png"
+        ));
     }
 
     // -------------------------------------------------------------------

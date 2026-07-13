@@ -25,23 +25,22 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             Ok(vertexai::model::Part::new().set_text(text))
                         }
                         UserContent::ToolResult(tool_result) => {
-                            // vertexai tool calling response takes in a serde_json::Map. For now we bundle all
-                            // outputs into a single key and the value will either be a Value or Array depending on num outputs
-                            let outputs: Vec<serde_json::Value> = tool_result
+                            // Vertex AI accepts native JSON under `output`. Keep a singleton
+                            // scalar/object as-is and use an array only when preserving the
+                            // order of multiple Rig content blocks.
+                            let outputs = tool_result
                                 .content
-                                .iter()
+                                .into_iter()
                                 .map(|content| match content {
                                     ToolResultContent::Text(Text { text, .. }) => {
-                                        serde_json::Value::String(text.clone())
+                                        Ok(serde_json::Value::String(text))
                                     }
-                                    ToolResultContent::Image(_) => {
-                                        tracing::warn!("Tool call result contains image, which is not supported at this time");
-                                        serde_json::Value::String(
-                                            "Image result (not serialized)".to_string(),
-                                        )
-                                    }
+                                    ToolResultContent::Json { value } => Ok(value),
+                                    ToolResultContent::Image(_) => Err(message_conversion_error(
+                                        "Vertex AI does not support images in tool results; return text or JSON instead",
+                                    )),
                                 })
-                                .collect();
+                                .collect::<Result<Vec<_>, CompletionError>>()?;
 
                             let output_value = match outputs.as_slice() {
                                 [single] => single.clone(),
@@ -143,6 +142,10 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
     }
 }
 
+fn message_conversion_error(message: impl Into<String>) -> CompletionError {
+    rig_core::message::MessageError::ConversionError(message.into()).into()
+}
+
 fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, CompletionError> {
     let media_type = image.media_type.ok_or_else(|| {
         CompletionError::RequestError(
@@ -188,6 +191,37 @@ mod tests {
     use rig_core::OneOrMany;
     use rig_core::completion::CompletionResponse;
     use rig_core::message::{Message, Text, ToolResult, ToolResultContent};
+
+    fn vertex_tool_result(
+        content: OneOrMany<ToolResultContent>,
+    ) -> Result<vertexai::model::Content, CompletionError> {
+        RigMessage(Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: "lookup".to_string(),
+                call_id: None,
+                content,
+            })),
+        })
+        .try_into()
+    }
+
+    fn function_response(content: &vertexai::model::Content) -> &vertexai::model::FunctionResponse {
+        content.parts[0]
+            .function_response()
+            .expect("function response part")
+    }
+
+    fn conversion_error_message(error: CompletionError) -> String {
+        let CompletionError::RequestError(source) = error else {
+            panic!("expected request error wrapping MessageError, got {error:?}");
+        };
+        let error = source
+            .downcast_ref::<rig_core::message::MessageError>()
+            .expect("request error should preserve MessageError");
+        match error {
+            rig_core::message::MessageError::ConversionError(message) => message.clone(),
+        }
+    }
 
     #[test]
     fn test_user_text_message_conversion() {
@@ -413,27 +447,74 @@ mod tests {
 
     #[test]
     fn test_user_tool_result_message_conversion() {
-        let tool_result = ToolResult {
-            id: "add".to_string(),
-            call_id: None,
-            content: OneOrMany::one(ToolResultContent::Text(Text::new("8".to_string()))),
-        };
-
-        let message = Message::User {
-            content: OneOrMany::one(rig_core::message::UserContent::ToolResult(tool_result)),
-        };
-
-        let rig_message = RigMessage(message);
-        let vertex_content: Result<vertexai::model::Content, _> = rig_message.try_into();
-
-        assert!(vertex_content.is_ok());
-        let content = vertex_content.unwrap();
+        let content =
+            vertex_tool_result(OneOrMany::one(ToolResultContent::text(r#"{"answer":8}"#)))
+                .expect("literal text tool result should convert");
         assert_eq!(content.role.as_str(), "user");
         assert_eq!(content.parts.len(), 1);
 
-        let function_response = content.parts[0].function_response();
-        assert!(function_response.is_some());
-        let function_response = function_response.unwrap();
-        assert_eq!(function_response.name.as_str(), "add");
+        let function_response = function_response(&content);
+        assert_eq!(function_response.name.as_str(), "lookup");
+        assert_eq!(
+            function_response
+                .response
+                .as_ref()
+                .expect("response")
+                .get("output"),
+            Some(&serde_json::json!(r#"{"answer":8}"#))
+        );
+    }
+
+    #[test]
+    fn test_user_tool_result_preserves_native_json_singleton() {
+        let value = serde_json::json!({
+            "answer": 8,
+            "metadata": { "exact": true }
+        });
+        let content = vertex_tool_result(OneOrMany::one(ToolResultContent::json(value.clone())))
+            .expect("structured JSON tool result should convert");
+
+        assert_eq!(
+            function_response(&content)
+                .response
+                .as_ref()
+                .expect("response")
+                .get("output"),
+            Some(&value)
+        );
+    }
+
+    #[test]
+    fn test_user_tool_result_preserves_text_json_order() {
+        let content = vertex_tool_result(
+            OneOrMany::many([
+                ToolResultContent::text("before"),
+                ToolResultContent::json(serde_json::json!({ "step": 2 })),
+                ToolResultContent::text("after"),
+            ])
+            .expect("non-empty tool result"),
+        )
+        .expect("ordered mixed tool result should convert");
+
+        assert_eq!(
+            function_response(&content)
+                .response
+                .as_ref()
+                .expect("response")
+                .get("output"),
+            Some(&serde_json::json!(["before", { "step": 2 }, "after"]))
+        );
+    }
+
+    #[test]
+    fn test_user_tool_result_images_return_conversion_errors() {
+        let error = vertex_tool_result(OneOrMany::one(ToolResultContent::image_base64(
+            "image-data",
+            Some(ImageMediaType::PNG),
+            None,
+        )))
+        .expect_err("Vertex AI tool results cannot represent images");
+
+        assert!(conversion_error_message(error).contains("does not support images"));
     }
 }

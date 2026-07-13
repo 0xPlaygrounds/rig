@@ -246,7 +246,9 @@ impl TryFrom<RigMessage> for Vec<Message> {
                                     items.push(Message::user_with_content(msg_items));
                                 }
                             } else if !text_parts.is_empty() {
-                                items.push(Message::user(text_parts.join("\n")));
+                                items.push(Message::user(
+                                    std::mem::take(&mut text_parts).join("\n"),
+                                ));
                             }
                             has_images = false;
 
@@ -254,12 +256,17 @@ impl TryFrom<RigMessage> for Vec<Message> {
                             let output = tr
                                 .content
                                 .into_iter()
-                                .map(|tc| match tc {
-                                    ToolResultContent::Text(t) => Ok(t.text),
-                                    ToolResultContent::Image(_) => {
-                                        Err(CompletionError::RequestError(
-                                            "xAI does not support images in tool results".into(),
-                                        ))
+                                .map(|tc| -> Result<String, CompletionError> {
+                                    match tc {
+                                        ToolResultContent::Text(t) => Ok(t.text),
+                                        ToolResultContent::Json { value } => Ok(value.to_string()),
+                                        ToolResultContent::Image(_) => {
+                                            Err(crate::message::MessageError::ConversionError(
+                                                "xAI does not support images in tool results"
+                                                    .into(),
+                                            )
+                                            .into())
+                                        }
                                     }
                                 })
                                 .collect::<Result<Vec<_>, _>>()?
@@ -394,7 +401,10 @@ mod tests {
     use super::Message;
     use crate::OneOrMany;
     use crate::completion::CompletionError;
-    use crate::message::{AssistantContent, Message as RigMessage, Reasoning, ReasoningContent};
+    use crate::message::{
+        AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolResultContent,
+        UserContent,
+    };
     use crate::providers::openai::responses_api::ReasoningSummary;
 
     #[test]
@@ -539,6 +549,76 @@ mod tests {
                     .to_string()
                     .contains("Tool result `call_id` is required")
         ));
+    }
+
+    #[test]
+    fn user_content_preserves_order_around_tool_results_without_replaying_flushed_text() {
+        let message = RigMessage::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("before"),
+                UserContent::tool_result_with_call_id(
+                    "rig-id",
+                    "call-1".to_string(),
+                    OneOrMany::many(vec![
+                        ToolResultContent::text("literal"),
+                        ToolResultContent::json(serde_json::json!({"status": "ok"})),
+                    ])
+                    .expect("tool result should be non-empty"),
+                ),
+                UserContent::text("after"),
+            ])
+            .expect("user content should be non-empty"),
+        };
+
+        let converted = Vec::<Message>::try_from(message).expect("history should convert");
+        let serialized = serde_json::to_value(converted).expect("messages should serialize");
+        assert_eq!(
+            serialized,
+            serde_json::json!([
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": "before"
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call-1",
+                    "output": "literal\n{\"status\":\"ok\"}"
+                },
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": "after"
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn user_tool_result_images_fail_with_a_message_conversion_error() {
+        let message = RigMessage::User {
+            content: OneOrMany::one(UserContent::tool_result_with_call_id(
+                "rig-id",
+                "call-1".to_string(),
+                OneOrMany::one(ToolResultContent::image_base64(
+                    "image-data",
+                    Some(crate::message::ImageMediaType::PNG),
+                    None,
+                )),
+            )),
+        };
+
+        let error =
+            Vec::<Message>::try_from(message).expect_err("xAI tool results cannot contain images");
+        match error {
+            CompletionError::RequestError(source) => {
+                let message_error = source
+                    .downcast_ref::<crate::message::MessageError>()
+                    .expect("request error should preserve MessageError");
+                assert!(format!("{message_error}").contains("does not support images"));
+            }
+            other => panic!("expected request error, got {other:?}"),
+        }
     }
 
     #[test]

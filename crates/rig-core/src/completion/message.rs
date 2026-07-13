@@ -15,8 +15,8 @@ use super::CompletionError;
 /// Messages are role-tagged and may contain one or many content items, including
 /// text, images, audio, documents, tool calls, and tool results. Provider modules
 /// are responsible for translating these generic messages into provider-native
-/// request bodies. That conversion may be lossy when a provider does not support
-/// a particular content type.
+/// request bodies. Tool-result adapters preserve typed content and ordering or
+/// return [`MessageError::ConversionError`] when the provider cannot represent it.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
@@ -214,16 +214,28 @@ pub struct ToolResult {
     /// Provider-specific call ID, when distinct from `id`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub call_id: Option<String>,
-    /// One or more content items produced by the tool.
+    /// One or more ordered content items produced by the tool.
     pub content: OneOrMany<ToolResultContent>,
 }
 
-/// Describes the content of a tool result, which can be text or an image.
+/// Describes one typed item in a tool result.
+///
+/// Text is always literal and must not be reparsed by provider adapters to infer
+/// structured data. JSON remains structured inside Rig and is converted only at
+/// the provider boundary, while images remain explicitly typed. The order of
+/// mixed content items is significant.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ToolResultContent {
+    /// Literal text, even when the contents resemble JSON.
     Text(Text),
+    /// An explicitly typed image.
     Image(Image),
+    /// Explicit structured JSON.
+    Json {
+        /// The structured value.
+        value: serde_json::Value,
+    },
 }
 
 /// Describes a tool call with an id and function to call, generally produced by a provider.
@@ -876,6 +888,11 @@ impl ToolResultContent {
         ToolResultContent::Text(text.into().into())
     }
 
+    /// Helper constructor for explicit structured JSON tool-result content.
+    pub fn json(value: serde_json::Value) -> Self {
+        ToolResultContent::Json { value }
+    }
+
     /// Helper constructor to make tool result images from a base64-encoded string.
     pub fn image_base64(
         data: impl Into<String>,
@@ -918,14 +935,16 @@ impl ToolResultContent {
         })
     }
 
-    /// Parse a tool output string into appropriate ToolResultContent(s).
+    /// Parse a legacy string tool output into appropriate content items.
     ///
     /// Supports three formats:
     /// 1. Simple text: Any string → `OneOrMany::one(Text)`
     /// 2. Image JSON: `{"type": "image", "data": "...", "mimeType": "..."}` → `OneOrMany::one(Image)`
     /// 3. Hybrid JSON: `{"response": {...}, "parts": [...]}` → `OneOrMany::many([Text, Image, ...])`
     ///
-    /// If JSON parsing fails, treats the entire string as text.
+    /// If JSON parsing fails, treats the entire string as text. Explicitly typed
+    /// JSON should instead be constructed with [`Self::json`]; provider adapters
+    /// never use this heuristic to reinterpret [`Self::Text`].
     pub fn from_tool_output(output: impl Into<String>) -> OneOrMany<ToolResultContent> {
         let output_str = output.into();
 
@@ -1373,7 +1392,13 @@ impl From<MessageError> for CompletionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, Reasoning, ReasoningContent};
+    use serde_json::json;
+
+    use crate::OneOrMany;
+
+    use super::{
+        ImageMediaType, Message, Reasoning, ReasoningContent, ToolResult, ToolResultContent,
+    };
 
     #[test]
     fn reasoning_constructors_and_accessors_work() {
@@ -1435,5 +1460,100 @@ mod tests {
         let json = serde_json::to_string(&message).expect("serialize");
         let roundtrip: Message = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(roundtrip, message);
+    }
+
+    #[test]
+    fn tool_result_json_values_serde_roundtrip_losslessly() {
+        let values = [
+            serde_json::Value::Null,
+            json!(true),
+            json!(42),
+            json!("hello"),
+            json!(["alpha", 2, false, null]),
+            json!({ "nested": { "value": 3 }, "items": [1, 2] }),
+        ];
+
+        for value in values {
+            let content = ToolResultContent::json(value.clone());
+            let encoded = serde_json::to_value(&content).expect("serialize JSON content");
+            assert_eq!(encoded["type"], "json");
+            assert_eq!(encoded["value"], value);
+
+            let roundtrip: ToolResultContent =
+                serde_json::from_value(encoded).expect("deserialize JSON content");
+            assert_eq!(roundtrip, content);
+        }
+    }
+
+    #[test]
+    fn literal_text_and_explicit_json_strings_remain_distinct() {
+        let literal = ToolResultContent::text(r#"{"answer":42}"#);
+        let structured = ToolResultContent::json(json!(r#"{"answer":42}"#));
+
+        assert!(matches!(literal, ToolResultContent::Text(_)));
+        assert!(matches!(structured, ToolResultContent::Json { .. }));
+        assert_ne!(
+            serde_json::to_value(literal).expect("serialize literal text"),
+            serde_json::to_value(structured).expect("serialize explicit JSON")
+        );
+    }
+
+    #[test]
+    fn legacy_tool_output_parser_keeps_generic_json_as_literal_text() {
+        let parsed = ToolResultContent::from_tool_output(r#"{"answer":42}"#);
+
+        assert!(matches!(
+            parsed.first(),
+            ToolResultContent::Text(text) if text.text == r#"{"answer":42}"#
+        ));
+    }
+
+    #[test]
+    fn mixed_tool_result_content_serde_preserves_order_and_types() {
+        let content = OneOrMany::many(vec![
+            ToolResultContent::text("before"),
+            ToolResultContent::json(json!({ "status": "ok" })),
+            ToolResultContent::image_url(
+                "https://example.com/result.png",
+                Some(ImageMediaType::PNG),
+                None,
+            ),
+            ToolResultContent::text("after"),
+        ])
+        .expect("non-empty mixed content");
+        let result = ToolResult {
+            id: "call-1".to_string(),
+            call_id: Some("provider-call-1".to_string()),
+            content,
+        };
+
+        let encoded = serde_json::to_string(&result).expect("serialize mixed result");
+        let roundtrip: ToolResult =
+            serde_json::from_str(&encoded).expect("deserialize mixed result");
+
+        assert_eq!(roundtrip.id, result.id);
+        assert_eq!(roundtrip.call_id, result.call_id);
+        let items = roundtrip.content.iter().collect::<Vec<_>>();
+        assert!(matches!(
+            items[0],
+            ToolResultContent::Text(text) if text.text == "before"
+        ));
+        assert!(matches!(
+            items[1],
+            ToolResultContent::Json { value } if value == &json!({ "status": "ok" })
+        ));
+        assert!(matches!(
+            items[2],
+            ToolResultContent::Image(image)
+                if matches!(
+                    &image.data,
+                    super::DocumentSourceKind::Url(url)
+                        if url == "https://example.com/result.png"
+                )
+        ));
+        assert!(matches!(
+            items[3],
+            ToolResultContent::Text(text) if text.text == "after"
+        ));
     }
 }

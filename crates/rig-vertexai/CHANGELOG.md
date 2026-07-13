@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- Preserve ordered text and structured JSON tool results in native function responses.
+
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.39.0...rig-vertexai-v0.40.0) - 2026-07-10
 
 ### Added
