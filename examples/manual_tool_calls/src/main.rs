@@ -25,16 +25,11 @@ struct OperationArgs {
     y: i32,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-struct MathError;
-
 #[derive(Deserialize, Serialize)]
 struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -53,7 +48,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x + args.y)
     }
 }
@@ -63,7 +62,6 @@ struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -82,7 +80,11 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x - args.y)
     }
 }
@@ -170,7 +172,11 @@ async fn main() -> Result<()> {
         for tool_call in &tool_calls {
             let args = serde_json::to_string(&tool_call.function.arguments)?;
             let output = local_tools
-                .call(&tool_call.function.name, args.clone())
+                .execute(
+                    &tool_call.function.name,
+                    &args,
+                    &mut rig::tool::ToolContext::new(),
+                )
                 .await?;
             println!("  {}({args}) -> {}", tool_call.function.name, output);
             history.push(tool_result_message(tool_call, output));

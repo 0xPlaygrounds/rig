@@ -4,8 +4,8 @@
 //! drive rich multi-turn workflows and assert *structural invariants* of the
 //! merged hook system: `HookContext` identity/turn/streaming, a shared
 //! `Scratchpad` threaded across hooks and turns, `RequestPatch` context
-//! injection + `active_tools` narrowing, chained `RewriteArgs` -> observe ->
-//! `RewriteResult` redaction, and streaming lifecycle ordering / blocking-vs-
+//! injection + `active_tools` narrowing, chained `ToolCallAction::Rewrite` ->
+//! observe -> `ToolResultAction::Rewrite` redaction, and streaming lifecycle ordering / blocking-vs-
 //! streaming parity.
 //!
 //! ## On loose assertions
@@ -23,9 +23,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures::StreamExt;
-use rig::agent::{
-    AgentHook, Flow, HookContext, MultiTurnStreamItem, RequestPatch, StepEvent, StreamingError,
-};
+use rig::agent::{AgentHook, HookContext, MultiTurnStreamItem, RequestPatch, StreamingError};
 use rig::client::CompletionClient;
 use rig::completion::{Document, Prompt};
 use rig::providers::gemini;
@@ -95,39 +93,66 @@ impl LifecycleRecorder {
     }
 }
 
-impl AgentHook<GeminiModel> for LifecycleRecorder {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        let tag = match event {
-            StepEvent::CompletionCall { .. } => Some("CompletionCall"),
-            StepEvent::CompletionResponse { .. } => Some("CompletionResponse"),
-            StepEvent::ModelTurnFinished { .. } => Some("ModelTurnFinished"),
-            StepEvent::ToolCall { .. } => Some("ToolCall"),
-            StepEvent::ToolResult { .. } => Some("ToolResult"),
-            _ => None,
-        };
-        // Record identity on every event so it is proven stable across the run.
+impl LifecycleRecorder {
+    fn record(&self, ctx: &HookContext, tag: &'static str) {
         self.run_ids
             .lock()
             .expect("run_ids")
             .insert(ctx.run_id().as_str().to_string());
         *self.streaming.lock().expect("streaming") = Some(ctx.is_streaming());
         *self.agent_name.lock().expect("agent_name") = ctx.agent_name().map(str::to_string);
+        self.breadcrumbs
+            .lock()
+            .expect("breadcrumbs")
+            .push(Breadcrumb {
+                tag,
+                turn: ctx.turn(),
+            });
+    }
+}
 
-        if matches!(event, StepEvent::ToolCall { .. }) {
-            ctx.scratchpad()
-                .update(|tally: &mut ToolCallTally| tally.0 += 1);
-        }
-
-        if let Some(tag) = tag {
-            self.breadcrumbs
-                .lock()
-                .expect("breadcrumbs")
-                .push(Breadcrumb {
-                    tag,
-                    turn: ctx.turn(),
-                });
-        }
-        Flow::cont()
+impl AgentHook<GeminiModel> for LifecycleRecorder {
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionAction {
+        self.record(ctx, "CompletionCall");
+        rig::agent::CompletionAction::continue_run()
+    }
+    async fn on_completion_response(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::CompletionResponseEvent<'_, GeminiModel>,
+    ) -> rig::agent::ObserveAction {
+        self.record(ctx, "CompletionResponse");
+        rig::agent::ObserveAction::continue_run()
+    }
+    async fn on_model_turn_finished(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::ModelTurnFinishedEvent<'_>,
+    ) -> rig::agent::ObserveAction {
+        self.record(ctx, "ModelTurnFinished");
+        rig::agent::ObserveAction::continue_run()
+    }
+    async fn on_tool_call(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        ctx.scratchpad()
+            .update(|tally: &mut ToolCallTally| tally.0 += 1);
+        self.record(ctx, "ToolCall");
+        rig::agent::ToolCallAction::run()
+    }
+    async fn on_tool_result(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::ToolResultEvent<'_>,
+    ) -> rig::agent::ToolResultAction {
+        self.record(ctx, "ToolResult");
+        rig::agent::ToolResultAction::keep()
     }
 }
 
@@ -147,8 +172,12 @@ impl ScratchpadReader {
 }
 
 impl AgentHook<GeminiModel> for ScratchpadReader {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        if matches!(event, StepEvent::ModelTurnFinished { .. }) {
+    async fn on_model_turn_finished(
+        &self,
+        ctx: &HookContext,
+        event: rig::agent::ModelTurnFinishedEvent<'_>,
+    ) -> rig::agent::ObserveAction {
+        if matches!(event, rig::agent::ModelTurnFinishedEvent { .. }) {
             let tally = ctx
                 .scratchpad()
                 .get::<ToolCallTally>()
@@ -156,7 +185,7 @@ impl AgentHook<GeminiModel> for ScratchpadReader {
                 .unwrap_or(0);
             self.tallies.lock().expect("tallies").push(tally);
         }
-        Flow::cont()
+        rig::agent::ObserveAction::continue_run()
     }
 }
 
@@ -170,21 +199,25 @@ struct InjectContextAndNarrowTools {
 }
 
 impl AgentHook<GeminiModel> for InjectContextAndNarrowTools {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionAction {
+        if matches!(event, rig::agent::CompletionCallEvent { .. }) {
             let doc = Document {
                 id: self.fact_id.to_string(),
                 text: self.fact_text.to_string(),
                 additional_props: Default::default(),
             };
-            Flow::patch_request(
+            rig::agent::CompletionAction::patch(
                 RequestPatch::new()
                     .context(doc)
                     .active_tools(self.allow.iter().copied())
                     .temperature(0.0),
             )
         } else {
-            Flow::cont()
+            rig::agent::CompletionAction::continue_run()
         }
     }
 }
@@ -198,12 +231,16 @@ struct ForceArgs {
 }
 
 impl AgentHook<GeminiModel> for ForceArgs {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
+    async fn on_tool_call(
+        &self,
+        _ctx: &HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
         match event {
-            StepEvent::ToolCall { tool_name, .. } if tool_name == self.tool_name => {
-                Flow::rewrite_args(self.args.clone())
+            rig::agent::ToolCallEvent { tool_name, .. } if tool_name == self.tool_name => {
+                rig::agent::ToolCallAction::rewrite(self.args.clone())
             }
-            _ => Flow::cont(),
+            _ => rig::agent::ToolCallAction::run(),
         }
     }
 }
@@ -216,12 +253,16 @@ struct RedactResult {
 }
 
 impl AgentHook<GeminiModel> for RedactResult {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
+    async fn on_tool_result(
+        &self,
+        _ctx: &HookContext,
+        event: rig::agent::ToolResultEvent<'_>,
+    ) -> rig::agent::ToolResultAction {
         match event {
-            StepEvent::ToolResult { tool_name, .. } if tool_name == self.tool_name => {
-                Flow::rewrite_result(self.marker)
+            rig::agent::ToolResultEvent { tool_name, .. } if tool_name == self.tool_name => {
+                rig::agent::ToolResultAction::rewrite(self.marker)
             }
-            _ => Flow::cont(),
+            _ => rig::agent::ToolResultAction::keep(),
         }
     }
 }
@@ -403,7 +444,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Chained tool lifecycle: RewriteArgs -> observe -> RewriteResult redaction.
+// 3. Chained tool lifecycle: argument rewrite -> observe -> result redaction.
 // ---------------------------------------------------------------------------
 
 const REDACTION_MARKER: &str = "REDACTED-SUM-ZK7";

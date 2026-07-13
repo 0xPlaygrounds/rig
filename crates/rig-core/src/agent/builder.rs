@@ -8,7 +8,7 @@ use crate::{
     memory::ConversationMemory,
     message::ToolChoice,
     tool::{
-        Tool, ToolDyn, ToolSet,
+        DynamicTool, Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
@@ -65,7 +65,7 @@ pub struct WithToolServerHandle {
 pub struct WithBuilderTools {
     static_tools: Vec<String>,
     tools: ToolSet,
-    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn>)>,
 }
 
 /// A builder for creating an agent
@@ -352,7 +352,8 @@ where
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
     pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
-        let toolname = tool.name();
+        let mut tools = ToolSet::default();
+        let toolname = tools.add_tool(tool);
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -367,7 +368,7 @@ where
             default_max_turns: self.default_max_turns,
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
-                tools: ToolSet::from_tools(vec![tool]),
+                tools,
                 dynamic_tools: vec![],
             },
             hooks: self.hooks,
@@ -382,9 +383,9 @@ where
     ///
     /// This is useful when you need to dynamically add static tools to the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
-        let static_tools = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<M, WithBuilderTools> {
+        let tools = ToolSet::from_dynamic_tools(tools);
+        let static_tools = tools.ordered_names().cloned().collect();
 
         AgentBuilder {
             name: self.name,
@@ -485,7 +486,10 @@ where
         self,
         built: Vec<(String, RmcpTool)>,
     ) -> AgentBuilder<M, WithBuilderTools> {
-        let (static_tools, toolset): (Vec<String>, Vec<RmcpTool>) = built.into_iter().unzip();
+        let (static_tools, toolset): (Vec<String>, Vec<DynamicTool>) = built
+            .into_iter()
+            .map(|(name, tool)| (name, DynamicTool::from_erased(tool)))
+            .unzip();
 
         AgentBuilder {
             name: self.name,
@@ -506,7 +510,7 @@ where
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
-                tools: ToolSet::from_tools(toolset),
+                tools: ToolSet::from_dynamic_tools(toolset),
                 dynamic_tools: vec![],
             },
         }
@@ -519,7 +523,7 @@ where
     pub fn dynamic_tools(
         self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        dynamic_tools: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
     ) -> AgentBuilder<M, WithBuilderTools> {
         AgentBuilder {
@@ -609,18 +613,18 @@ where
 {
     /// Add another static tool to the agent.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
-        let toolname = tool.name();
-        self.tool_state.tools.add_tool(tool);
+        let toolname = self.tool_state.tools.add_tool(tool);
         self.tool_state.static_tools.push(toolname);
         self
     }
 
     /// Add a vector of boxed static tools to the agent.
-    pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
-        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(mut self, tools: Vec<DynamicTool>) -> Self {
+        let tools = ToolSet::from_dynamic_tools(tools);
+        self.tool_state
+            .static_tools
+            .extend(tools.ordered_names().cloned());
         self.tool_state.tools.add_tools(tools);
-        self.tool_state.static_tools.extend(toolnames);
         self
     }
 
@@ -659,7 +663,9 @@ where
     fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
         for (name, tool) in built {
             self.tool_state.static_tools.push(name);
-            self.tool_state.tools.add_tool(tool);
+            self.tool_state
+                .tools
+                .add_dynamic_tool(DynamicTool::from_erased(tool));
         }
 
         self
@@ -670,7 +676,7 @@ where
     pub fn dynamic_tools(
         mut self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        dynamic_tools: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
     ) -> Self {
         self.tool_state
@@ -731,6 +737,52 @@ mod tests {
             .build();
     }
 
+    struct ChangingNameTool(std::sync::atomic::AtomicUsize);
+
+    impl Tool for ChangingNameTool {
+        const NAME: &'static str = "unused";
+        type Args = ();
+        type Output = String;
+
+        fn name(&self) -> String {
+            match self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => "registered_name".to_string(),
+                _ => "changed_name".to_string(),
+            }
+        }
+
+        fn description(&self) -> String {
+            "changes its reported name".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut crate::tool::ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+            Ok("ok".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn builder_advertises_the_registered_tool_name() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+            .tool(ChangingNameTool(std::sync::atomic::AtomicUsize::new(0)))
+            .build();
+
+        let definitions = agent
+            .tool_server_handle
+            .get_tool_defs(None)
+            .await
+            .expect("tool definitions");
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, "registered_name");
+    }
+
     /// The builder's shared MCP helper threads the configured timeout (default,
     /// explicit, or `None`/disabled) onto every built tool, and the threaded
     /// timeout actually bounds a hanging call. This covers the plumbing behind
@@ -738,8 +790,8 @@ mod tests {
     #[cfg(feature = "rmcp")]
     #[tokio::test]
     async fn build_rmcp_tools_threads_timeout_into_built_tools() {
-        use crate::tool::ToolDyn;
         use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
+        use crate::tool::{ErasedTool, ToolContext};
         use rmcp::model::{
             CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
             ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
@@ -805,8 +857,11 @@ mod tests {
         );
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].0, "hang_forever");
-        let timed =
-            tokio::time::timeout(Duration::from_secs(5), built[0].1.call("{}".to_string())).await;
+        let timed = tokio::time::timeout(
+            Duration::from_secs(5),
+            ErasedTool::execute(&built[0].1, &mut ToolContext::new(), "{}"),
+        )
+        .await;
         let err = timed
             .expect("built tool hung past the safety timeout")
             .expect_err("call should time out");

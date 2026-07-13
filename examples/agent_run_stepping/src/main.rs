@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::{AgentHook, Flow, HookContext, InvalidToolCallHookAction, StepEvent};
+use rig::agent::{AgentHook, HookContext, InvalidToolCallAction, ToolCallAction, ToolCallEvent};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Completion, CompletionModel};
 use rig::message::{ToolResultContent, UserContent};
@@ -36,15 +36,10 @@ struct OperationArgs {
     y: i32,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-struct MathError;
-
 struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -63,7 +58,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x + args.y)
     }
 }
@@ -76,14 +75,12 @@ impl Tool for Add {
 struct ToolLoggerHook;
 
 impl<M: CompletionModel> AgentHook<M> for ToolLoggerHook {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::ToolCall {
+    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
+        let ToolCallEvent {
             tool_name, args, ..
-        } = event
-        {
-            println!("[hook] tool call: {tool_name}({args})");
-        }
-        Flow::cont()
+        } = event;
+        println!("[hook] tool call: {tool_name}({args})");
+        ToolCallAction::run()
     }
 }
 
@@ -130,7 +127,7 @@ async fn main() -> Result<()> {
                     eprintln!("model called unknown tool `{}`", context.tool_name);
                     // Preserve the agent loop's default fail-fast behavior; a
                     // driver could instead retry, repair, or skip here.
-                    outcome = run.resolve_invalid_tool_call(InvalidToolCallHookAction::fail())?;
+                    outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
                 }
             }
             AgentRunStep::CallTools { .. } => {
@@ -155,7 +152,10 @@ async fn main() -> Result<()> {
                     let name = &call.tool_call.function.name;
                     let args = call.tool_call.function.arguments.to_string();
                     println!("→ executing {name}({args})");
-                    let output = agent.tool_server_handle.call_tool(name, &args).await?;
+                    let output = agent
+                        .tool_server_handle
+                        .execute_tool(name, &args, &mut rig::tool::ToolContext::new())
+                        .await?;
                     results.push(UserContent::tool_result(
                         call.tool_call.id.clone(),
                         ToolResultContent::from_tool_output(output),

@@ -329,7 +329,7 @@ pub struct ToolCall {
     pub id: String,
     pub index: usize,
     #[serde(default)]
-    pub r#type: ToolType,
+    pub r#type: ToolKind,
     pub function: Function,
 }
 
@@ -342,7 +342,7 @@ pub struct Function {
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum ToolType {
+pub enum ToolKind {
     #[default]
     Function,
 }

@@ -16,15 +16,17 @@
 //! are **merged in registration order** into one effective patch (see the
 //! per-field merge rules on `RequestPatch`), so both take effect on the same
 //! turn — and `TurnCounterHook` still runs afterwards. Only a terminal action
-//! (`Flow::Terminate`, or a fail-closed misuse) stops the stack.
+//! (`CompletionAction::Stop`) stops the stack.
 //!
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, HookContext, RequestPatch, StepEvent};
+use rig::agent::{
+    AgentHook, CompletionAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
+    ObserveAction, RequestPatch,
+};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, CompletionResponse, Document, Message, Prompt};
-use rig::message::UserContent;
+use rig::completion::{CompletionModel, CompletionResponse, Document, Prompt};
 use rig::providers::openai;
 
 // ---------------------------------------------------------------------------
@@ -38,40 +40,33 @@ impl<M> AgentHook<M> for LoggingHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::CompletionCall { prompt, .. } => {
-                if let Message::User { content } = prompt {
-                    let prompt_text = content
-                        .iter()
-                        .filter_map(|c| match c {
-                            UserContent::Text(text) => Some(text.text.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    if !prompt_text.is_empty() {
-                        println!(
-                            "[run {} · turn {}] sending prompt: {}",
-                            ctx.run_id(),
-                            ctx.turn(),
-                            prompt_text
-                        );
-                    }
-                }
-                Flow::cont()
-            }
-            StepEvent::CompletionResponse { response, .. } => {
-                let response: &CompletionResponse<M::Response> = response;
-                println!(
-                    "[run {}] received response: {:?}",
-                    ctx.run_id(),
-                    response.choice
-                );
-                Flow::cont()
-            }
-            _ => Flow::cont(),
-        }
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionAction {
+        println!(
+            "[run {} turn {} streaming={}] sending prompt: {:?}",
+            ctx.run_id(),
+            event.turn,
+            ctx.is_streaming(),
+            event.prompt
+        );
+        CompletionAction::continue_run()
+    }
+
+    async fn on_completion_response(
+        &self,
+        ctx: &HookContext,
+        event: CompletionResponseEvent<'_, M>,
+    ) -> ObserveAction {
+        let response: &CompletionResponse<M::Response> = event.response;
+        println!(
+            "[run {}] received response: {:?}",
+            ctx.run_id(),
+            response.choice
+        );
+        ObserveAction::continue_run()
     }
 }
 
@@ -86,17 +81,18 @@ impl<M> AgentHook<M> for ContextHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) {
-            let doc = Document {
-                id: "style-guide".to_string(),
-                text: "House style: keep jokes short and family-friendly.".to_string(),
-                additional_props: Default::default(),
-            };
-            // Appended after the agent's static/dynamic context, for this turn only.
-            return Flow::patch_request(RequestPatch::new().context(doc));
-        }
-        Flow::cont()
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionAction {
+        let doc = Document {
+            id: "style-guide".to_string(),
+            text: "House style: keep jokes short and family-friendly.".to_string(),
+            additional_props: Default::default(),
+        };
+        // Appended after the agent's static/dynamic context, for this turn only.
+        CompletionAction::patch(RequestPatch::new().context(doc))
     }
 }
 
@@ -112,11 +108,12 @@ impl<M> AgentHook<M> for SamplingHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) {
-            return Flow::patch_request(RequestPatch::new().temperature(0.2));
-        }
-        Flow::cont()
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionAction {
+        CompletionAction::patch(RequestPatch::new().temperature(0.2))
     }
 }
 
@@ -134,16 +131,17 @@ impl<M> AgentHook<M> for TurnCounterHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::CompletionCall { .. } = event {
-            // Run-scoped state without rolling our own Arc<Mutex<…>>.
-            let n = ctx.scratchpad().update(|c: &mut TurnCount| {
-                c.0 += 1;
-                c.0
-            });
-            println!("[turn-counter] completion call #{n} this run");
-        }
-        Flow::cont()
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionAction {
+        let n = ctx.scratchpad().update(|c: &mut TurnCount| {
+            c.0 += 1;
+            c.0
+        });
+        println!("[turn-counter] completion call #{n} this run");
+        CompletionAction::continue_run()
     }
 }
 

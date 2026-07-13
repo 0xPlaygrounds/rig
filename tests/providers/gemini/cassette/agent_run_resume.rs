@@ -2,7 +2,7 @@
 //! point can be serialized, dropped, deserialized in a fresh context, and
 //! driven to completion against real Gemini turns.
 
-use rig::agent::InvalidToolCallHookAction;
+use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::client::CompletionClient;
 use rig::providers::gemini;
@@ -168,7 +168,7 @@ async fn resume_while_invalid_tool_call_awaits_resolution() {
             assert_eq!(rederived.allowed_tools, vec!["subtract".to_string()]);
 
             let outcome = resumed
-                .resolve_invalid_tool_call(InvalidToolCallHookAction::skip(
+                .resolve_invalid_tool_call(InvalidToolCallAction::skip(
                     "The add tool is disabled for this request.",
                 ))
                 .expect("skip resolution should be accepted");
@@ -257,7 +257,7 @@ async fn resume_after_invalid_tool_call_retry_rollback() {
             };
 
             let outcome = run
-                .resolve_invalid_tool_call(InvalidToolCallHookAction::retry(FEEDBACK))
+                .resolve_invalid_tool_call(InvalidToolCallAction::retry(FEEDBACK))
                 .expect("retry should be accepted within budget");
             assert!(matches!(outcome, ModelTurnOutcome::TurnRetried));
 

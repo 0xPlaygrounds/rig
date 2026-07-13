@@ -27,7 +27,6 @@ struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -43,7 +42,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x + args.y)
     }
 }
@@ -53,7 +56,6 @@ struct Divide;
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -69,9 +71,16 @@ impl Tool for Divide {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         if args.y == 0 {
-            return Err(MathError::DivisionByZero);
+            return Err(rig::tool::ToolExecutionError::invalid_args(
+                MathError::DivisionByZero.to_string(),
+            )
+            .with_source(MathError::DivisionByZero));
         }
 
         Ok(args.x / args.y)

@@ -3,7 +3,7 @@
 use rig_derive::rig_tool;
 
 #[rig_tool(nam = "search-docs")]
-fn unknown_argument() -> Result<String, rig_core::tool::ToolError> {
+fn unknown_argument() -> Result<String, rig_core::tool::ToolExecutionError> {
     Ok("ok".to_string())
 }
 

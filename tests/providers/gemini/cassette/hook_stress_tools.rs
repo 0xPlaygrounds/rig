@@ -1,6 +1,6 @@
 //! Hook-system stress suite: the tool-execution lifecycle — chained
-//! `RewriteArgs`, chained `RewriteResult` (redact / wrap / truncate),
-//! `Terminate` from a `ToolResult` (post-execution), and model-driven recovery
+//! `ToolCallAction::Rewrite`, chained `ToolResultAction::Rewrite` (redact / wrap /
+//! truncate), `ToolResultAction::Stop` (post-execution), and model-driven recovery
 //! from a tool error. Recorded against real Gemini.
 
 use rig::client::CompletionClient;
@@ -216,7 +216,7 @@ async fn result_truncation_reaches_model_blocking() {
 }
 
 // ---------------------------------------------------------------------------
-// Terminate from a ToolResult (post-execution).
+// Stop from a ToolResult (post-execution).
 // ---------------------------------------------------------------------------
 
 #[tokio::test]

@@ -22,7 +22,7 @@ fn add_doc(
     a: i32,
     /// Second number
     b: i32,
-) -> Result<i32, rig_core::tool::ToolError> {
+) -> Result<i32, rig_core::tool::ToolExecutionError> {
     Ok(a + b)
 }
 
@@ -50,7 +50,7 @@ async fn test_param_doc_comments() {
 fn search_override(
     /// This param doc should be ignored
     query: String,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, rig_core::tool::ToolExecutionError> {
     Ok(query)
 }
 
@@ -71,7 +71,7 @@ fn search_optional(
     query: String,
     /// Maximum results
     limit: Option<i32>,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, rig_core::tool::ToolExecutionError> {
     Ok(format!("{query} limit={limit:?}"))
 }
 
@@ -121,7 +121,7 @@ fn numeric_types(
     int_val: i32,
     /// A float
     float_val: f64,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, rig_core::tool::ToolExecutionError> {
     Ok(format!("{int_val} {float_val}"))
 }
 
@@ -140,7 +140,7 @@ async fn test_integer_vs_number() {
 fn sum_vec(
     /// Numbers to sum
     numbers: Vec<i64>,
-) -> Result<i64, rig_core::tool::ToolError> {
+) -> Result<i64, rig_core::tool::ToolExecutionError> {
     Ok(numbers.iter().sum())
 }
 
@@ -156,7 +156,7 @@ async fn test_vec_param() {
 
 /// Return constant
 #[rig_tool]
-fn no_params() -> Result<i32, rig_core::tool::ToolError> {
+fn no_params() -> Result<i32, rig_core::tool::ToolExecutionError> {
     Ok(42)
 }
 
@@ -179,7 +179,7 @@ async fn test_no_params() {
 fn toggle(
     /// Whether to enable
     enabled: bool,
-) -> Result<bool, rig_core::tool::ToolError> {
+) -> Result<bool, rig_core::tool::ToolExecutionError> {
     Ok(!enabled)
 }
 
@@ -193,7 +193,7 @@ async fn test_bool_param() {
 // --- Default description fallback ---
 
 #[rig_tool]
-fn no_docs(x: i32) -> Result<i32, rig_core::tool::ToolError> {
+fn no_docs(x: i32) -> Result<i32, rig_core::tool::ToolExecutionError> {
     Ok(x)
 }
 
@@ -241,7 +241,7 @@ pub enum SortOrder {
 fn sort_items(
     /// Sort direction
     order: SortOrder,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, rig_core::tool::ToolExecutionError> {
     Ok(format!("{order:?}"))
 }
 
@@ -263,7 +263,7 @@ async fn test_enum_param() {
 fn store_metadata(
     /// Key-value pairs
     metadata: HashMap<String, String>,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, rig_core::tool::ToolExecutionError> {
     Ok(format!("{metadata:?}"))
 }
 
@@ -294,7 +294,7 @@ fn find_nearby(
     location: Coordinates,
     /// Search radius in km
     radius: f64,
-) -> Result<Vec<String>, rig_core::tool::ToolError> {
+) -> Result<Vec<String>, rig_core::tool::ToolExecutionError> {
     Ok(vec![format!(
         "{},{} r={radius}",
         location.lat, location.lng
@@ -328,6 +328,38 @@ async fn test_nested_struct_param() {
     );
 }
 
+// --- ToolContext parameter ---
+
+#[derive(Clone, Debug, PartialEq)]
+struct RequestId(&'static str);
+
+#[rig_tool]
+fn contextual_tool(
+    context: &mut rig_core::tool::ToolContext,
+    value: i32,
+) -> Result<i32, rig_core::tool::ToolExecutionError> {
+    let offset = context.get::<u32>().copied().unwrap_or_default() as i32;
+    context.insert_result(RequestId("request-1"));
+    Ok(value + offset)
+}
+
+#[tokio::test]
+async fn tool_context_parameter_is_runtime_only() {
+    let definition = rig_core::tool::tool_definition(&ContextualTool);
+    let properties = definition.parameters["properties"].as_object().unwrap();
+    assert!(properties.contains_key("value"));
+    assert!(!properties.contains_key("context"));
+
+    let mut context = rig_core::tool::ToolContext::new();
+    context.insert(2u32);
+    let output = ContextualTool
+        .call(&mut context, ContextualToolParameters { value: 40 })
+        .await
+        .unwrap();
+    assert_eq!(output, serde_json::json!(42));
+    assert_eq!(context.result::<RequestId>(), Some(&RequestId("request-1")));
+}
+
 // --- Async tool with doc comments ---
 
 /// Fetch a URL asynchronously
@@ -335,7 +367,7 @@ async fn test_nested_struct_param() {
 async fn fetch_url(
     /// The URL to fetch
     url: String,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, rig_core::tool::ToolExecutionError> {
     Ok(format!("fetched: {url}"))
 }
 
@@ -350,9 +382,12 @@ async fn test_async_tool_with_docs() {
 
     // Verify it actually works (async call)
     let result = FetchUrl
-        .call(FetchUrlParameters {
-            url: "https://example.com".to_string(),
-        })
+        .call(
+            &mut rig_core::tool::ToolContext::new(),
+            FetchUrlParameters {
+                url: "https://example.com".to_string(),
+            },
+        )
         .await
         .unwrap();
     assert_eq!(result, serde_json::json!("fetched: https://example.com"));

@@ -292,7 +292,6 @@ impl WeatherTool {
 
 impl Tool for WeatherTool {
     const NAME: &'static str = "get_weather";
-    type Error = WeatherError;
     type Args = WeatherArgs;
     type Output = String;
 
@@ -313,7 +312,11 @@ impl Tool for WeatherTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "Weather in {}: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW",

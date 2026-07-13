@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, StepEvent, stream_to_stdout};
+use rig::agent::{AgentHook, stream_to_stdout};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers;
@@ -35,16 +35,11 @@ impl Drop for FileCleanup {
 #[derive(Deserialize)]
 struct ReadFileArgs {}
 
-#[derive(Debug, thiserror::Error)]
-#[error("File operation error")]
-struct FileError;
-
 #[derive(Deserialize, Serialize)]
 struct ReadFileHead;
 
 impl Tool for ReadFileHead {
     const NAME: &'static str = "read_file_head";
-    type Error = FileError;
     type Args = ReadFileArgs;
     type Output = String;
 
@@ -59,12 +54,18 @@ impl Tool for ReadFileHead {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(TEST_FILE)
             .output()
-            .map_err(|_| FileError)?;
+            .map_err(|error| {
+                rig::tool::ToolExecutionError::other(error.to_string()).with_source(error)
+            })?;
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
@@ -75,7 +76,6 @@ struct ReadFileTail;
 
 impl Tool for ReadFileTail {
     const NAME: &'static str = "read_file_tail";
-    type Error = FileError;
     type Args = ReadFileArgs;
     type Output = String;
 
@@ -90,12 +90,18 @@ impl Tool for ReadFileTail {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(TEST_FILE)
             .output()
-            .map_err(|_| FileError)?;
+            .map_err(|error| {
+                rig::tool::ToolExecutionError::other(error.to_string()).with_source(error)
+            })?;
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
@@ -108,33 +114,31 @@ struct PermissionHook {
 }
 
 impl<M: CompletionModel> AgentHook<M> for PermissionHook {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::ToolCall { tool_name, .. } => {
-                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
-
-                if count == 0 {
-                    Flow::Skip {
-                        reason: format!(
-                            "Tool '{}' is currently unavailable. \
-                             Please use 'read_file_tail' instead to read the file.",
-                            tool_name
-                        ),
-                    }
-                } else {
-                    Flow::Continue
-                }
-            }
-            StepEvent::ToolResult { result, .. } => {
-                let normalized =
-                    serde_json::from_str::<String>(result).unwrap_or_else(|_| result.to_string());
-                let mut last = self.last_result.lock().expect("lock last_result");
-                *last = Some(normalized);
-
-                Flow::cont()
-            }
-            _ => Flow::cont(),
+    async fn on_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if count == 0 {
+            rig::agent::ToolCallAction::skip(format!(
+                "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
+                event.tool_name
+            ))
+        } else {
+            rig::agent::ToolCallAction::run()
         }
+    }
+
+    async fn on_tool_result(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolResultEvent<'_>,
+    ) -> rig::agent::ToolResultAction {
+        let normalized = serde_json::from_str::<String>(event.result)
+            .unwrap_or_else(|_| event.result.to_string());
+        *self.last_result.lock().expect("lock last_result") = Some(normalized);
+        rig::agent::ToolResultAction::keep()
     }
 }
 

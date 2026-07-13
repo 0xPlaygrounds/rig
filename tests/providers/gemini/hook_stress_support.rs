@@ -12,9 +12,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, Flow, HookContext, RequestPatch, StepEvent};
+use rig::agent::{AgentHook, HookContext, RequestPatch};
 use rig::completion::{CompletionModel, Document};
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolContext, ToolExecutionError};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -39,10 +39,6 @@ pub(crate) struct OperationArgs {
     pub(crate) y: i64,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-pub(crate) struct MathError;
-
 #[derive(Clone, Default)]
 pub(crate) struct CallCounter(Arc<std::sync::atomic::AtomicUsize>);
 
@@ -63,7 +59,6 @@ pub(crate) struct CountingMultiply {
 
 impl Tool for CountingMultiply {
     const NAME: &'static str = "multiply";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -82,7 +77,11 @@ impl Tool for CountingMultiply {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         self.counter.bump();
         Ok(args.x * args.y)
     }
@@ -163,56 +162,106 @@ impl EventTap {
     }
 }
 
-impl<M: CompletionModel> AgentHook<M> for EventTap {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+impl EventTap {
+    fn record(&self, ctx: &HookContext, tag: &'static str) {
         self.run_ids
             .lock()
             .expect("run_ids")
             .insert(ctx.run_id().as_str().to_string());
         *self.streaming.lock().expect("streaming") = Some(ctx.is_streaming());
         *self.agent_name.lock().expect("agent_name") = ctx.agent_name().map(str::to_string);
+        self.breadcrumbs
+            .lock()
+            .expect("breadcrumbs")
+            .push(Breadcrumb {
+                tag,
+                turn: ctx.turn(),
+            });
+    }
+}
 
-        let tag = match event {
-            StepEvent::CompletionCall { .. } => Some("CompletionCall"),
-            StepEvent::CompletionResponse { .. } => Some("CompletionResponse"),
-            StepEvent::ModelTurnFinished { .. } => Some("ModelTurnFinished"),
-            StepEvent::InvalidToolCall(_) => Some("InvalidToolCall"),
-            StepEvent::ToolCall {
-                internal_call_id, ..
-            } => {
-                self.call_ids
-                    .lock()
-                    .expect("call_ids")
-                    .push(internal_call_id.to_string());
-                ctx.scratchpad()
-                    .update(|tally: &mut ToolCallTally| tally.0 += 1);
-                Some("ToolCall")
-            }
-            StepEvent::ToolResult {
-                internal_call_id, ..
-            } => {
-                self.result_ids
-                    .lock()
-                    .expect("result_ids")
-                    .push(internal_call_id.to_string());
-                Some("ToolResult")
-            }
-            StepEvent::TextDelta { .. } => Some("TextDelta"),
-            StepEvent::ToolCallDelta { .. } => Some("ToolCallDelta"),
-            StepEvent::StreamResponseFinish { .. } => Some("StreamResponseFinish"),
-            _ => None,
-        };
-
-        if let Some(tag) = tag {
-            self.breadcrumbs
-                .lock()
-                .expect("breadcrumbs")
-                .push(Breadcrumb {
-                    tag,
-                    turn: ctx.turn(),
-                });
-        }
-        Flow::cont()
+impl<M: CompletionModel> AgentHook<M> for EventTap {
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionAction {
+        self.record(ctx, "CompletionCall");
+        rig::agent::CompletionAction::continue_run()
+    }
+    async fn on_completion_response(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::CompletionResponseEvent<'_, M>,
+    ) -> rig::agent::ObserveAction {
+        self.record(ctx, "CompletionResponse");
+        rig::agent::ObserveAction::continue_run()
+    }
+    async fn on_model_turn_finished(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::ModelTurnFinishedEvent<'_>,
+    ) -> rig::agent::ObserveAction {
+        self.record(ctx, "ModelTurnFinished");
+        rig::agent::ObserveAction::continue_run()
+    }
+    async fn on_invalid_tool_call(
+        &self,
+        ctx: &HookContext,
+        _event: &rig::agent::InvalidToolCallContext,
+    ) -> rig::agent::InvalidToolCallAction {
+        self.record(ctx, "InvalidToolCall");
+        rig::agent::InvalidToolCallAction::continue_run()
+    }
+    async fn on_tool_call(
+        &self,
+        ctx: &HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        self.call_ids
+            .lock()
+            .expect("call_ids")
+            .push(event.internal_call_id.to_string());
+        ctx.scratchpad()
+            .update(|tally: &mut ToolCallTally| tally.0 += 1);
+        self.record(ctx, "ToolCall");
+        rig::agent::ToolCallAction::run()
+    }
+    async fn on_tool_result(
+        &self,
+        ctx: &HookContext,
+        event: rig::agent::ToolResultEvent<'_>,
+    ) -> rig::agent::ToolResultAction {
+        self.result_ids
+            .lock()
+            .expect("result_ids")
+            .push(event.internal_call_id.to_string());
+        self.record(ctx, "ToolResult");
+        rig::agent::ToolResultAction::keep()
+    }
+    async fn on_text_delta(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::TextDeltaEvent<'_>,
+    ) -> rig::agent::ObserveAction {
+        self.record(ctx, "TextDelta");
+        rig::agent::ObserveAction::continue_run()
+    }
+    async fn on_tool_call_delta(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::ToolCallDeltaEvent<'_>,
+    ) -> rig::agent::ObserveAction {
+        self.record(ctx, "ToolCallDelta");
+        rig::agent::ObserveAction::continue_run()
+    }
+    async fn on_stream_response_finish(
+        &self,
+        ctx: &HookContext,
+        _event: rig::agent::StreamResponseFinishEvent<'_, M>,
+    ) -> rig::agent::ObserveAction {
+        self.record(ctx, "StreamResponseFinish");
+        rig::agent::ObserveAction::continue_run()
     }
 }
 
@@ -231,8 +280,12 @@ impl ScratchpadReader {
 }
 
 impl<M: CompletionModel> AgentHook<M> for ScratchpadReader {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if matches!(event, StepEvent::ModelTurnFinished { .. }) {
+    async fn on_model_turn_finished(
+        &self,
+        ctx: &HookContext,
+        event: rig::agent::ModelTurnFinishedEvent<'_>,
+    ) -> rig::agent::ObserveAction {
+        if matches!(event, rig::agent::ModelTurnFinishedEvent { .. }) {
             let tally = ctx
                 .scratchpad()
                 .get::<ToolCallTally>()
@@ -240,7 +293,7 @@ impl<M: CompletionModel> AgentHook<M> for ScratchpadReader {
                 .unwrap_or(0);
             self.tallies.lock().expect("tallies").push(tally);
         }
-        Flow::cont()
+        rig::agent::ObserveAction::continue_run()
     }
 }
 
@@ -255,11 +308,15 @@ impl<M: CompletionModel> AgentHook<M> for ScratchpadReader {
 pub(crate) struct ApplyPatch(pub(crate) RequestPatch);
 
 impl<M: CompletionModel> AgentHook<M> for ApplyPatch {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) {
-            Flow::patch_request(self.0.clone())
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionAction {
+        if matches!(event, rig::agent::CompletionCallEvent { .. }) {
+            rig::agent::CompletionAction::patch(self.0.clone())
         } else {
-            Flow::cont()
+            rig::agent::CompletionAction::continue_run()
         }
     }
 }
@@ -272,11 +329,15 @@ impl<M: CompletionModel> AgentHook<M> for ApplyPatch {
 pub(crate) struct FirstTurnPatch(pub(crate) RequestPatch);
 
 impl<M: CompletionModel> AgentHook<M> for FirstTurnPatch {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) && ctx.turn() == 1 {
-            Flow::patch_request(self.0.clone())
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionAction {
+        if matches!(event, rig::agent::CompletionCallEvent { .. }) && ctx.turn() == 1 {
+            rig::agent::CompletionAction::patch(self.0.clone())
         } else {
-            Flow::cont()
+            rig::agent::CompletionAction::continue_run()
         }
     }
 }
@@ -300,18 +361,18 @@ pub(crate) struct SetArg {
 }
 
 impl<M: CompletionModel> AgentHook<M> for SetArg {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::ToolCall {
-            tool_name, args, ..
-        } = event
-            && tool_name == self.tool
-        {
+    async fn on_tool_call(
+        &self,
+        _ctx: &HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        if event.tool_name == self.tool {
             let mut parsed: serde_json::Value =
-                serde_json::from_str(args).unwrap_or_else(|_| json!({}));
+                serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
             parsed[self.key] = self.value.clone();
-            return Flow::rewrite_args(parsed);
+            return rig::agent::ToolCallAction::rewrite(parsed);
         }
-        Flow::cont()
+        rig::agent::ToolCallAction::run()
     }
 }
 
@@ -337,20 +398,22 @@ pub(crate) struct RewriteToolResult {
 }
 
 impl<M: CompletionModel> AgentHook<M> for RewriteToolResult {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::ToolResult {
-            tool_name, result, ..
-        } = event
-            && tool_name == self.tool
-        {
+    async fn on_tool_result(
+        &self,
+        _ctx: &HookContext,
+        event: rig::agent::ToolResultEvent<'_>,
+    ) -> rig::agent::ToolResultAction {
+        if event.tool_name == self.tool {
             let new = match &self.rewrite {
                 ResultRewrite::Replace(marker) => (*marker).to_string(),
-                ResultRewrite::Wrap { prefix, suffix } => format!("{prefix}{result}{suffix}"),
-                ResultRewrite::Truncate(n) => result.chars().take(*n).collect(),
+                ResultRewrite::Wrap { prefix, suffix } => {
+                    format!("{prefix}{}{suffix}", event.result)
+                }
+                ResultRewrite::Truncate(n) => event.result.chars().take(*n).collect(),
             };
-            return Flow::rewrite_result(new);
+            return rig::agent::ToolResultAction::rewrite(new);
         }
-        Flow::cont()
+        rig::agent::ToolResultAction::keep()
     }
 }
 
@@ -362,12 +425,14 @@ pub(crate) struct TerminateOnResult {
 }
 
 impl<M: CompletionModel> AgentHook<M> for TerminateOnResult {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::ToolResult { tool_name, .. } = event
-            && tool_name == self.tool
-        {
-            return Flow::terminate(self.reason);
+    async fn on_tool_result(
+        &self,
+        _ctx: &HookContext,
+        event: rig::agent::ToolResultEvent<'_>,
+    ) -> rig::agent::ToolResultAction {
+        if event.tool_name == self.tool {
+            return rig::agent::ToolResultAction::stop(self.reason);
         }
-        Flow::cont()
+        rig::agent::ToolResultAction::keep()
     }
 }

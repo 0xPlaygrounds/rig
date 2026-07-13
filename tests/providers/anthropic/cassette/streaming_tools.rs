@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, EmptyArgs, MathError,
+    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, EmptyArgs,
     STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract, TWO_TOOL_STREAM_PREAMBLE,
     TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive, assert_mentions_expected_number,
     collect_stream_final_response, collect_stream_observation,
@@ -201,7 +201,6 @@ struct OutOfOrderAlphaSignal(OutOfOrderSignalOrder);
 
 impl Tool for OutOfOrderAlphaSignal {
     const NAME: &'static str = AlphaSignal::NAME;
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -213,7 +212,11 @@ impl Tool for OutOfOrderAlphaSignal {
         AlphaSignal.parameters()
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
@@ -224,7 +227,6 @@ struct OutOfOrderBetaSignal(OutOfOrderSignalOrder);
 
 impl Tool for OutOfOrderBetaSignal {
     const NAME: &'static str = BetaSignal::NAME;
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -236,7 +238,11 @@ impl Tool for OutOfOrderBetaSignal {
         BetaSignal.parameters()
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }

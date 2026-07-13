@@ -152,39 +152,38 @@ Use `WasmCompatSend` and `WasmCompatSync` bounds.
 
 ## Agent Hook Changes
 
-Agent hooks are per-run lifecycle observers and steerers: a single
-`AgentHook<M>::on_event(&HookContext, StepEvent) -> Flow` method, composed in
-registration order via `HookStack`. Every `on_event` receives a run-scoped
-`HookContext` (run id, turn, streaming flag, agent name, shared `Scratchpad`).
+Agent hooks are per-run lifecycle observers and steerers. `AgentHook<M>` exposes
+event-specific lifecycle methods, each receiving a run-scoped `HookContext`
+(run id, turn, streaming flag, agent name, shared `Scratchpad`) and returning an
+event-specific action. Invalid event/action combinations must remain
+unrepresentable by the public types.
 
-How a `HookStack` combines several hooks' `Flow` results depends on the event —
-this is the central contract:
+How a `HookStack` combines actions depends on the lifecycle method — this is the
+central contract:
 
-- **`CompletionCall` — accumulate & merge.** Every hook runs; each hook's
-  `Flow::PatchRequest(RequestPatch)` is merged in registration order into one
-  effective patch (a mergeable patch does **not** short-circuit later hooks).
-  `Flow::Terminate` stops the stack; any unsupported flow fails closed.
-- **`ToolCall` / `ToolResult` — chain.** Every hook runs; a
-  `Flow::RewriteArgs` / `Flow::RewriteResult` is threaded into the next hook's
-  event so rewrites compose. `Flow::Skip` / `Flow::Terminate` are terminal.
-- **Every other event — first non-`Continue` wins** (observe-only / recovery
-  events: `CompletionResponse`, `ModelTurnFinished`, `InvalidToolCall`, the
-  streamed deltas).
+- **Completion calls — accumulate and merge.** Every hook runs; each
+  `CompletionAction::Patch(RequestPatch)` is merged in registration order into
+  one effective patch. A mergeable patch does **not** short-circuit later hooks;
+  `CompletionAction::Stop` does.
+- **Tool calls/results — chain.** Every hook runs; a
+  `ToolCallAction::Rewrite` or `ToolResultAction::Rewrite` is threaded into the
+  next hook's event so rewrites compose. Skip and stop actions are terminal.
+- **Every other lifecycle — first non-default action wins.** This covers
+  completion responses, finished model turns, invalid tool calls, and streamed
+  deltas.
 
-Register observe-only hooks (telemetry) before steering hooks, since
-`Flow::Terminate` short-circuits the stack. A `HookStack` pushed as a hook into
-another stack composes correctly (it returns its own net flow).
+Register observe-only hooks (telemetry) before steering hooks because stop
+actions short-circuit the stack. A `HookStack` pushed into another stack must
+compose correctly, including preserving an inner argument rewrite when a later
+inner hook skips or stops.
 
-When modifying hook behavior, preserve the intended control flow. `Flow` is
-**fail-closed** — an action an event cannot honor terminates the run rather than
-silently proceeding:
+Preserve the event-specific action vocabulary:
 
-- `Flow::Continue` (observe only)
-- `Flow::Terminate`
-- `Flow::PatchRequest` (completion call only; per-turn, non-sticky, mergeable)
-- `Flow::RewriteArgs` (tool call only) / `Flow::RewriteResult` (tool result only)
-- `Flow::Skip` (tool call / invalid tool call only)
-- `Flow::Fail` / `Flow::Retry` / `Flow::Repair` (invalid tool call only)
+- `CompletionAction`: continue, patch, or stop;
+- `ObserveAction`: continue or stop;
+- `ToolCallAction`: run, rewrite, skip, or stop;
+- `ToolResultAction`: keep, rewrite, or stop;
+- `InvalidToolCallAction`: continue/fail, retry, repair, skip, or stop.
 
 `RequestPatch` is per-turn and non-sticky (it never mutates the agent baseline);
 its per-field merge rules (append `extra_context`, shallow-merge

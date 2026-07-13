@@ -23,10 +23,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::{AgentHook, Flow, StepEvent};
+use rig::agent::AgentHook;
 use rig::completion::{CompletionModel, ToolDefinition};
 use rig::tool::server::ToolServerHandle;
-use rig::tool::{Tool, ToolEmbedding};
+use rig::tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -59,10 +59,6 @@ pub(crate) struct OperationArgs {
     pub(crate) y: i64,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-pub(crate) struct MathError;
-
 fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: name.to_string(),
@@ -86,7 +82,6 @@ pub(crate) struct CountingAdd {
 
 impl Tool for CountingAdd {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -98,7 +93,11 @@ impl Tool for CountingAdd {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         self.counter.bump();
         Ok(args.x + args.y)
     }
@@ -112,7 +111,6 @@ pub(crate) struct CountingSubtract {
 
 impl Tool for CountingSubtract {
     const NAME: &'static str = "subtract";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -124,7 +122,11 @@ impl Tool for CountingSubtract {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         self.counter.bump();
         Ok(args.x - args.y)
     }
@@ -144,7 +146,6 @@ pub(crate) const PING_OUTPUT: &str = "pong-crimson-7423";
 
 impl Tool for CountingPing {
     const NAME: &'static str = "ping";
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -160,7 +161,11 @@ impl Tool for CountingPing {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         self.counter.bump();
         Ok(PING_OUTPUT.to_string())
     }
@@ -170,10 +175,6 @@ impl Tool for CountingPing {
 pub(crate) struct CodewordArgs {
     pub(crate) team: String,
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub(crate) struct CodewordError(pub(crate) String);
 
 pub(crate) const CODEWORD_GUIDANCE: &str =
     "the red team was disbanded; look up the codeword for the \"blue\" team instead";
@@ -188,7 +189,6 @@ pub(crate) struct CodewordLookup {
 
 impl Tool for CodewordLookup {
     const NAME: &'static str = "lookup_codeword";
-    type Error = CodewordError;
     type Args = CodewordArgs;
     type Output = String;
 
@@ -206,11 +206,18 @@ impl Tool for CodewordLookup {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         self.counter.bump();
         match args.team.as_str() {
             "blue" => Ok(BLUE_CODEWORD.to_string()),
-            _ => Err(CodewordError(CODEWORD_GUIDANCE.to_string())),
+            _ => {
+                Err(ToolExecutionError::other(CODEWORD_GUIDANCE)
+                    .with_model_feedback(CODEWORD_GUIDANCE))
+            }
         }
     }
 }
@@ -219,7 +226,7 @@ impl Tool for CodewordLookup {
 pub(crate) struct StrictRegisterArgs {
     /// Deliberately stricter than the advertised schema: the wire schema
     /// declares `seats` as a string, so the model's arguments fail to
-    /// deserialize and surface a `ToolError::JsonError` to the model.
+    /// deserialize and surface an invalid-argument execution error to the model.
     pub(crate) seats: u64,
 }
 
@@ -231,7 +238,6 @@ pub(crate) struct StrictRegister {
 
 impl Tool for StrictRegister {
     const NAME: &'static str = "register_guests";
-    type Error = MathError;
     type Args = StrictRegisterArgs;
     type Output = String;
 
@@ -252,7 +258,11 @@ impl Tool for StrictRegister {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         self.counter.bump();
         Ok(format!("registered {} guests", args.seats))
     }
@@ -267,7 +277,6 @@ pub(crate) struct MottoTool;
 
 impl Tool for MottoTool {
     const NAME: &'static str = "fetch_motto";
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -279,7 +288,11 @@ impl Tool for MottoTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         Ok(MOTTO_OUTPUT.to_string())
     }
 }
@@ -307,7 +320,6 @@ impl ConfigTool {
 
 impl Tool for ConfigTool {
     const NAME: &'static str = "fetch_config";
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = ConfigOutput;
 
@@ -319,7 +331,11 @@ impl Tool for ConfigTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         Ok(ConfigOutput {
             service: "cassette-lab".to_string(),
             max_retries: 3,
@@ -334,7 +350,6 @@ pub(crate) struct BadgeImageTool;
 
 impl Tool for BadgeImageTool {
     const NAME: &'static str = "fetch_badge_image";
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -346,7 +361,11 @@ impl Tool for BadgeImageTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, ToolExecutionError> {
         Ok(json!({
             "type": "image",
             "data": RED_PIXEL_PNG_BASE64,
@@ -383,31 +402,31 @@ impl<M> AgentHook<M> for ToolEventRecorder
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::ToolCall {
-                tool_name, args, ..
-            } => {
-                self.calls
-                    .lock()
-                    .expect("calls lock should not be poisoned")
-                    .push((tool_name.to_string(), args.to_string()));
-                Flow::cont()
-            }
-            StepEvent::ToolResult {
-                tool_name,
-                args,
-                result,
-                ..
-            } => {
-                self.results
-                    .lock()
-                    .expect("results lock should not be poisoned")
-                    .push((tool_name.to_string(), args.to_string(), result.to_string()));
-                Flow::cont()
-            }
-            _ => Flow::cont(),
-        }
+    async fn on_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        self.calls
+            .lock()
+            .expect("calls lock should not be poisoned")
+            .push((event.tool_name.to_string(), event.args.to_string()));
+        rig::agent::ToolCallAction::run()
+    }
+    async fn on_tool_result(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolResultEvent<'_>,
+    ) -> rig::agent::ToolResultAction {
+        self.results
+            .lock()
+            .expect("results lock should not be poisoned")
+            .push((
+                event.tool_name.to_string(),
+                event.args.to_string(),
+                event.result.to_string(),
+            ));
+        rig::agent::ToolResultAction::keep()
     }
 }
 
@@ -422,16 +441,15 @@ impl<M> AgentHook<M> for SkipToolHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::ToolCall { tool_name, .. } => {
-                if tool_name == self.tool_name {
-                    Flow::skip(self.reason)
-                } else {
-                    Flow::cont()
-                }
-            }
-            _ => Flow::cont(),
+    async fn on_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        if event.tool_name == self.tool_name {
+            rig::agent::ToolCallAction::skip(self.reason)
+        } else {
+            rig::agent::ToolCallAction::run()
         }
     }
 }
@@ -447,16 +465,15 @@ impl<M> AgentHook<M> for TerminateOnToolHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::ToolCall { tool_name, .. } => {
-                if tool_name == self.tool_name {
-                    Flow::terminate(self.reason)
-                } else {
-                    Flow::cont()
-                }
-            }
-            _ => Flow::cont(),
+    async fn on_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        if event.tool_name == self.tool_name {
+            rig::agent::ToolCallAction::stop(self.reason)
+        } else {
+            rig::agent::ToolCallAction::run()
         }
     }
 }
@@ -473,19 +490,18 @@ impl<M> AgentHook<M> for RemoveToolBeforeExecutionHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::ToolCall { tool_name, .. } => {
-                if tool_name == self.tool_name {
-                    self.handle
-                        .remove_tool(self.tool_name)
-                        .await
-                        .expect("tool removal should succeed");
-                }
-                Flow::cont()
-            }
-            _ => Flow::cont(),
+    async fn on_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallEvent<'_>,
+    ) -> rig::agent::ToolCallAction {
+        if event.tool_name == self.tool_name {
+            self.handle
+                .remove_tool(self.tool_name)
+                .await
+                .expect("tool removal should succeed");
         }
+        rig::agent::ToolCallAction::run()
     }
 }
 
@@ -503,7 +519,6 @@ macro_rules! embeddable_operation {
 
         impl Tool for $name {
             const NAME: &'static str = $tool_name;
-            type Error = MathError;
             type Args = OperationArgs;
             type Output = i64;
 
@@ -515,7 +530,11 @@ macro_rules! embeddable_operation {
                 operation_definition(Self::NAME, $description).parameters
             }
 
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            async fn call(
+                &self,
+                _context: &mut ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, ToolExecutionError> {
                 self.counter.bump();
                 let op: fn(i64, i64) -> i64 = $op;
                 Ok(op(args.x, args.y))

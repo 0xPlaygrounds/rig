@@ -21,10 +21,6 @@ struct CalculatorArgs {
     expression: String,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("calculator error: {0}")]
-struct CalculatorError(String);
-
 struct Calculator {
     call_count: Arc<AtomicUsize>,
 }
@@ -37,7 +33,6 @@ impl Calculator {
 
 impl Tool for Calculator {
     const NAME: &'static str = "calculator";
-    type Error = CalculatorError;
     type Args = CalculatorArgs;
     type Output = f64;
 
@@ -58,9 +53,15 @@ impl Tool for Calculator {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
-        evaluate_expression(&args.expression).map_err(CalculatorError)
+        evaluate_expression(&args.expression).map_err(|error| {
+            rig::tool::ToolExecutionError::invalid_args(format!("calculator error: {error}"))
+        })
     }
 }
 
@@ -189,10 +190,6 @@ struct DatabaseLookupArgs {
     query: Query,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("database lookup error")]
-struct DatabaseLookupError;
-
 struct DatabaseLookup {
     call_count: Arc<AtomicUsize>,
 }
@@ -205,7 +202,6 @@ impl DatabaseLookup {
 
 impl Tool for DatabaseLookup {
     const NAME: &'static str = "database_lookup";
-    type Error = DatabaseLookupError;
     type Args = DatabaseLookupArgs;
     type Output = String;
 
@@ -226,7 +222,11 @@ impl Tool for DatabaseLookup {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
 
         let value = match args.query {

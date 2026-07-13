@@ -14,7 +14,6 @@ use serde_json::json;
 
 use super::super::agent_run_support::tool_result_texts;
 use super::super::support::with_gemini_cassette;
-use super::super::tools_support::MathError;
 use crate::support::assert_nonempty_response;
 
 #[derive(Deserialize, Serialize)]
@@ -33,7 +32,6 @@ struct PlanTrip;
 
 impl Tool for PlanTrip {
     const NAME: &'static str = "plan_trip";
-    type Error = MathError;
     type Args = TripArgs;
     type Output = String;
 
@@ -72,7 +70,11 @@ impl Tool for PlanTrip {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(format!(
             "itinerary booked: {} travellers to {} by {} via {}",
             args.travellers,
@@ -95,7 +97,6 @@ struct EchoArgs {
 
 impl Tool for LegacyEcho {
     const NAME: &'static str = "echo";
-    type Error = MathError;
     type Args = EchoArgs;
     type Output = String;
 
@@ -113,7 +114,11 @@ impl Tool for LegacyEcho {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(format!("legacy:{}", args.text))
     }
 }
@@ -123,7 +128,6 @@ struct ModernEcho;
 
 impl Tool for ModernEcho {
     const NAME: &'static str = "echo";
-    type Error = MathError;
     type Args = EchoArgs;
     type Output = String;
 
@@ -141,7 +145,11 @@ impl Tool for ModernEcho {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(format!("modern:{}", args.text))
     }
 }
@@ -242,15 +250,15 @@ mod derive_macro {
         x: i64,
         y: i64,
         operation: String,
-    ) -> Result<i64, rig::tool::ToolError> {
+    ) -> Result<i64, rig::tool::ToolExecutionError> {
         match operation.as_str() {
             "add" => Ok(x + y),
             "subtract" => Ok(x - y),
             "multiply" => Ok(x * y),
             "divide" => Ok(x / y),
-            _ => Err(rig::tool::ToolError::ToolCallError(
-                format!("Unknown operation: {operation}").into(),
-            )),
+            _ => Err(rig::tool::ToolExecutionError::invalid_args(format!(
+                "Unknown operation: {operation}"
+            ))),
         }
     }
 

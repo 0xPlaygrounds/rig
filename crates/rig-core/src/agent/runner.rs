@@ -36,7 +36,9 @@ use tracing::{Instrument, info_span, span::Id};
 use super::{
     completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
     hook::{
-        AgentHook, Flow, HookContext, HookStack, InvalidToolCallHookAction, RequestPatch, StepEvent,
+        AgentHook, CompletionAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
+        HookStack, ModelTurnFinishedEvent, ObserveAction, RequestPatch, ToolCallAction,
+        ToolCallEvent, ToolResultAction, ToolResultEvent,
     },
     prompt_request::{
         PromptResponse,
@@ -55,7 +57,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::{ToolCallExtensions, ToolExecutionResult, ToolOutcome, server::ToolServerHandle},
+    tool::{ToolContext, ToolDispatchResult, ToolExecutionView, server::ToolServerHandle},
 };
 
 use super::UNKNOWN_AGENT_NAME;
@@ -94,163 +96,6 @@ macro_rules! build_chat_span {
 }
 pub(crate) use build_chat_span;
 
-/// Human-readable name of a [`Flow`] variant, for fail-closed diagnostics.
-fn flow_name(flow: &Flow) -> &'static str {
-    match flow {
-        Flow::Continue => "Continue",
-        Flow::Terminate { .. } => "Terminate",
-        Flow::Skip { .. } => "Skip",
-        Flow::RewriteArgs { .. } => "RewriteArgs",
-        Flow::RewriteResult { .. } => "RewriteResult",
-        Flow::PatchRequest { .. } => "PatchRequest",
-        Flow::Fail => "Fail",
-        Flow::Retry { .. } => "Retry",
-        Flow::Repair { .. } => "Repair",
-    }
-}
-
-/// Resolve a hook's [`Flow`] for an *observe-only* event — one that honors only
-/// [`Flow::Continue`] and [`Flow::Terminate`].
-///
-/// Returns `Some(reason)` when the run must terminate, `None` to proceed. This is
-/// **fail-closed and total**: any action other than `Continue`/`Terminate` is a
-/// hook misuse and terminates the run with a diagnostic rather than being
-/// silently dropped.
-pub(crate) fn observe_flow(flow: Flow) -> Option<String> {
-    match flow {
-        Flow::Continue => None,
-        Flow::Terminate { reason } => Some(reason),
-        other => Some(format!(
-            "hook returned `{}` for an observe-only event, which only honors \
-             Continue/Terminate — terminating the run (fail-closed)",
-            flow_name(&other)
-        )),
-    }
-}
-
-/// Decision for a [`StepEvent::ToolCall`] event.
-pub(crate) enum ToolCallDecision {
-    /// Execute the tool as normal.
-    Proceed,
-    /// Execute the tool with these rewritten arguments instead of the ones the
-    /// model emitted.
-    ProceedWith(serde_json::Value),
-    /// Skip execution and return `reason` to the model as the tool result.
-    Skip(String),
-    /// Terminate the run.
-    Terminate(String),
-}
-
-/// Resolve a hook's [`Flow`] for a [`StepEvent::ToolCall`] event (honors
-/// `Continue`/`RewriteArgs`/`Skip`/`Terminate`). **Fail-closed**: any other
-/// action (e.g. `Fail`/`Retry`/`Repair`) never executes the tool — it
-/// terminates the run.
-pub(crate) fn flow_into_tool_call(flow: Flow) -> ToolCallDecision {
-    match flow {
-        Flow::Continue => ToolCallDecision::Proceed,
-        Flow::RewriteArgs { args } => ToolCallDecision::ProceedWith(args),
-        Flow::Skip { reason } => ToolCallDecision::Skip(reason),
-        Flow::Terminate { reason } => ToolCallDecision::Terminate(reason),
-        other => ToolCallDecision::Terminate(format!(
-            "hook returned `{}` for a tool-call event, which only honors \
-             Continue/RewriteArgs/Skip/Terminate — terminating the run (fail-closed) \
-             rather than executing the tool",
-            flow_name(&other)
-        )),
-    }
-}
-
-/// Decision for a [`StepEvent::ToolResult`] event.
-pub(crate) enum ToolResultDecision {
-    /// Deliver the tool's actual output to the model unchanged.
-    Keep,
-    /// Deliver this string to the model in place of the tool's actual output.
-    Replace(String),
-    /// Terminate the run.
-    Terminate(String),
-}
-
-/// Resolve a hook's [`Flow`] for a [`StepEvent::ToolResult`] event (honors
-/// `Continue`/`RewriteResult`/`Terminate`). **Fail-closed**: any other action
-/// terminates the run rather than silently delivering the tool's output.
-pub(crate) fn flow_into_tool_result(flow: Flow) -> ToolResultDecision {
-    match flow {
-        Flow::Continue => ToolResultDecision::Keep,
-        Flow::RewriteResult { result } => ToolResultDecision::Replace(result),
-        Flow::Terminate { reason } => ToolResultDecision::Terminate(reason),
-        other => ToolResultDecision::Terminate(format!(
-            "hook returned `{}` for a tool-result event, which only honors \
-             Continue/RewriteResult/Terminate — terminating the run (fail-closed)",
-            flow_name(&other)
-        )),
-    }
-}
-
-/// Decision for a [`StepEvent::CompletionCall`] event.
-pub(crate) enum CompletionCallDecision {
-    /// Build and send the request as configured.
-    Proceed,
-    /// Build and send the request with this per-turn patch applied (the merged
-    /// patch from every hook that contributed one).
-    Patch(RequestPatch),
-    /// Terminate the run.
-    Terminate(String),
-}
-
-/// Resolve a hook's [`Flow`] for a [`StepEvent::CompletionCall`] event (honors
-/// `Continue`/`PatchRequest`/`Terminate`). **Fail-closed**: any other action
-/// terminates the run rather than silently sending the request. Across a
-/// [`HookStack`] the `flow` is already the merged patch of every hook.
-pub(crate) fn flow_into_completion_call(flow: Flow) -> CompletionCallDecision {
-    match flow {
-        Flow::Continue => CompletionCallDecision::Proceed,
-        Flow::PatchRequest { patch } => CompletionCallDecision::Patch(patch),
-        Flow::Terminate { reason } => CompletionCallDecision::Terminate(reason),
-        other => CompletionCallDecision::Terminate(format!(
-            "hook returned `{}` for a completion-call event, which only honors \
-             Continue/PatchRequest/Terminate — terminating the run (fail-closed)",
-            flow_name(&other)
-        )),
-    }
-}
-
-/// Decision for a [`StepEvent::InvalidToolCall`] event.
-pub(crate) enum InvalidDecision {
-    /// Terminate the run.
-    Terminate(String),
-    /// Recover via the given [`AgentRun`] action.
-    Action(InvalidToolCallHookAction),
-}
-
-/// Resolve a hook's [`Flow`] for a [`StepEvent::InvalidToolCall`] event. All
-/// variants are meaningful here; `Continue` preserves the documented fail-fast
-/// default.
-pub(crate) fn flow_into_invalid(flow: Flow) -> InvalidDecision {
-    match flow {
-        Flow::Terminate { reason } => InvalidDecision::Terminate(reason),
-        Flow::Retry { feedback } => {
-            InvalidDecision::Action(InvalidToolCallHookAction::retry(feedback))
-        }
-        Flow::Repair { tool_name } => {
-            InvalidDecision::Action(InvalidToolCallHookAction::repair(tool_name))
-        }
-        Flow::Skip { reason } => InvalidDecision::Action(InvalidToolCallHookAction::skip(reason)),
-        // Continue and Fail both preserve fail-fast for invalid calls.
-        Flow::Continue | Flow::Fail => InvalidDecision::Action(InvalidToolCallHookAction::fail()),
-        // `RewriteArgs`/`RewriteResult`/`PatchRequest` steer a *valid* call;
-        // they cannot repair an unknown or disallowed one (use `Repair` to
-        // rewrite the name), so they are fail-closed here.
-        other @ (Flow::RewriteArgs { .. }
-        | Flow::RewriteResult { .. }
-        | Flow::PatchRequest { .. }) => InvalidDecision::Terminate(format!(
-            "hook returned `{}` for an invalid tool-call event, which only \
-                 honors Fail/Retry/Repair/Skip/Terminate — terminating the run \
-                 (fail-closed)",
-            flow_name(&other)
-        )),
-    }
-}
-
 /// A hook-aware driver over [`AgentRun`].
 ///
 /// Construct one from an [`Agent`] with [`Agent::runner`], attach hooks with
@@ -278,11 +123,11 @@ where
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
     pub(crate) tool_server_handle: ToolServerHandle,
-    /// Per-call runtime extensions made available to every tool executed during
-    /// this run via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions).
-    /// Empty by default; set with the [`tool_extensions`](Self::tool_extensions())
+    /// Per-call runtime context made available to every tool executed during
+    /// this run via [`Tool::call`](crate::tool::Tool::call).
+    /// Empty by default; set with the [`tool_context`](Self::tool_context())
     /// builder.
-    pub(crate) tool_extensions: ToolCallExtensions,
+    pub(crate) tool_context: ToolContext,
     pub(crate) dynamic_context: DynamicContextStore,
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
@@ -313,7 +158,7 @@ where
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
             tool_server_handle: agent.tool_server_handle.clone(),
-            tool_extensions: ToolCallExtensions::new(),
+            tool_context: ToolContext::new(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
@@ -328,8 +173,8 @@ where
     /// Append a hook to the stack (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
     /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, and only observe-only/recovery
-    /// events use first-non-[`Flow::Continue`]-wins). See the
+    /// `ToolCall`/`ToolResult` rewrites chain, and observe-only/recovery events
+    /// use the first non-default action). See the
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
@@ -352,14 +197,14 @@ where
         self
     }
 
-    /// Set the per-call runtime [`ToolCallExtensions`] for this run.
+    /// Set the per-call runtime [`ToolContext`] for this run.
     ///
-    /// The extensions are threaded to every tool the agent executes, so tools
+    /// The context is threaded to every tool the agent executes, so tools
     /// can read caller-provided values (auth tokens, session IDs, conversation
-    /// state, …) via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions)
-    /// without the model ever seeing them. Replaces any extensions already set.
-    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
-        self.tool_extensions = extensions;
+    /// state, …) via [`Tool::call`](crate::tool::Tool::call)
+    /// without the model ever seeing them. Replaces any context already set.
+    pub fn tool_context(mut self, context: ToolContext) -> Self {
+        self.tool_context = context;
         self
     }
 
@@ -503,15 +348,12 @@ pub(crate) enum CompletionCallOutcome {
     /// Proceed, optionally applying a per-turn request patch (the merged patch
     /// from every hook that contributed one).
     Proceed(Option<RequestPatch>),
-    /// Terminate the run with this reason.
-    Terminate(String),
+    /// Stop the run with this reason.
+    Stop(String),
 }
 
-/// Fire the `CompletionCall` hook for a turn and resolve its [`Flow`]
-/// (fail-closed). Shared by the blocking and streaming drivers so this steering
-/// event fires identically on both; each driver surfaces `Terminate` in its own
-/// medium (a returned `Err` vs. a yielded error item). Across a [`HookStack`]
-/// the resolved flow is the merged patch of every contributing hook.
+/// Fire the completion-call hook for a turn. Shared by both drivers so
+/// request steering has identical streaming and non-streaming behavior.
 pub(crate) async fn resolve_completion_call<M>(
     hooks: &HookStack<M>,
     ctx: &HookContext,
@@ -522,21 +364,20 @@ pub(crate) async fn resolve_completion_call<M>(
 where
     M: CompletionModel,
 {
-    match flow_into_completion_call(
-        hooks
-            .on_event(
-                ctx,
-                StepEvent::CompletionCall {
-                    prompt,
-                    history,
-                    turn,
-                },
-            )
-            .await,
-    ) {
-        CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
-        CompletionCallDecision::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
-        CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
+    match hooks
+        .on_completion_call(
+            ctx,
+            CompletionCallEvent {
+                prompt,
+                history,
+                turn,
+            },
+        )
+        .await
+    {
+        CompletionAction::Stop(reason) => CompletionCallOutcome::Stop(reason),
+        CompletionAction::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
+        CompletionAction::Continue => CompletionCallOutcome::Proceed(None),
     }
 }
 
@@ -562,13 +403,13 @@ pub(crate) async fn append_run_messages(
 /// Whether (and how) a tool call executed, for [`run_single_tool`].
 pub(crate) enum ToolExecution {
     /// The tool's body ran. Carries the **effective** tool call — the model's
-    /// call with any [`Flow::RewriteArgs`](crate::agent::Flow::RewriteArgs) hook
+    /// call with any [`ToolCallAction::Rewrite`](crate::agent::ToolCallAction::Rewrite) hook
     /// rewrite applied — so the driver can surface it in the
     /// [`ToolExecutionStart`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionStart)
     /// event (what actually ran, not the model's original arguments). Boxed to
     /// keep this enum small (a `ToolCall` is large next to the empty `Skipped`).
     Executed(Box<ToolCall>),
-    /// A `ToolCall` hook returned [`Flow::Skip`](crate::agent::Flow::Skip): the
+    /// A `ToolCall` hook returned [`ToolCallAction::Skip`]: the
     /// body did not run, so no execution-start is surfaced — but the skip result
     /// is still delivered to the model (and surfaced as a `ToolResult`).
     Skipped,
@@ -596,7 +437,7 @@ pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
     ctx: &HookContext,
     tool_server: &ToolServerHandle,
-    tool_extensions: &ToolCallExtensions,
+    tool_context: &ToolContext,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
@@ -605,7 +446,7 @@ where
     M: CompletionModel,
 {
     let tool_name = &tool_call.function.name;
-    // `mut` so a `Flow::RewriteArgs` hook can rewrite the arguments the tool
+    // `mut` so a `ToolCallAction::Rewrite` hook can rewrite the arguments the tool
     // runs with (the model's emitted arguments are otherwise used verbatim).
     let mut args = json_utils::value_to_json_string(&tool_call.function.arguments);
 
@@ -615,20 +456,22 @@ where
     tool_span.record("gen_ai.tool.call.arguments", &args);
 
     // Resolve the `ToolCall` hook chain. A proceeding chain carries any
-    // `Flow::RewriteArgs` in the flow itself (→ `ProceedWith`); a chain that a
-    // later hook short-circuits with `Skip`/`Terminate` salvages the accumulated
+    // `ToolCallAction::Rewrite` in the flow itself (→ `ProceedWith`); a chain that a
+    // later hook short-circuits with `Skip`/`Stop` salvages the accumulated
     // rewrite into `salvaged_rewrite` so it is *not* lost — the rewritten args
     // must still be reported on the skipped `ToolResult` and in tracing rather
     // than leaking the model's original args (see [`HookStack::resolve_tool_call`]).
-    let (flow, salvaged_rewrite) = hooks
-        .resolve_tool_call(
-            ctx,
+    let (action, salvaged_rewrite) = AgentHook::resolve_tool_call(
+        hooks,
+        ctx,
+        ToolCallEvent {
             tool_name,
-            tool_call.call_id.as_deref(),
+            tool_call_id: tool_call.call_id.as_deref(),
             internal_call_id,
-            &args,
-        )
-        .await;
+            args: &args,
+        },
+    )
+    .await;
 
     // Apply a salvaged rewrite (short-circuit path only) so `args` — what the
     // `ToolResult` reports — and the span reflect the effective arguments.
@@ -642,28 +485,28 @@ where
     }
 
     // On `Skip` the body does not run and the structured outcome is `Skipped`;
-    // otherwise the tool executes into a structured `ToolExecutionResult`.
+    // otherwise the tool executes into a structured `ToolDispatchResult`.
     // `effective_args` is what the tool actually ran with (the model's, a hook's
-    // `RewriteArgs` replacement, or a salvaged rewrite) — surfaced in the
+    // `ToolCallAction::Rewrite` replacement, or a salvaged rewrite) — surfaced in the
     // execution-start event so a redaction rewrite does not leak. Unused for a skip.
-    let mut skipped: Option<ToolExecutionResult> = None;
-    let effective_args: serde_json::Value = match flow_into_tool_call(flow) {
-        ToolCallDecision::Terminate(reason) => {
+    let mut skipped: Option<ToolDispatchResult> = None;
+    let effective_args: serde_json::Value = match action {
+        ToolCallAction::Stop(reason) => {
             return Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
                 reason,
             ));
         }
-        ToolCallDecision::Skip(reason) => {
+        ToolCallAction::Skip(reason) => {
             tracing::info!(tool_name = tool_name, reason = reason, "Tool call rejected");
             // Synthetic rejection: `Skipped` outcome, message delivered verbatim.
             // Still fires the `ToolResult` hook so a policy observes the skip.
-            skipped = Some(ToolExecutionResult::skipped(reason));
+            skipped = Some(ToolDispatchResult::skipped(reason, tool_context.clone()));
             // A skip runs nothing; its effective args are the salvaged rewrite
             // (if any) so tracing/history stay consistent, though they go unused.
             salvaged_rewrite.unwrap_or_else(|| tool_call.function.arguments.clone())
         }
-        ToolCallDecision::ProceedWith(replacement) => {
+        ToolCallAction::Rewrite(replacement) => {
             // Proceeding rewrite: re-record the span so the trace, and the
             // downstream `ToolResult` event, reflect what the tool actually
             // received rather than what the model emitted.
@@ -675,20 +518,25 @@ where
             );
             replacement
         }
-        ToolCallDecision::Proceed => tool_call.function.arguments.clone(),
+        ToolCallAction::Run => tool_call.function.arguments.clone(),
     };
 
     // Resolve the structured execution result and how the call surfaced. A skip
     // produces no execution-start event; a real execution carries the effective
-    // tool call (the model's call with any `RewriteArgs` applied).
+    // tool call (the model's call with any `ToolCallAction::Rewrite` applied).
     let (exec, execution) = match skipped {
         Some(exec) => (exec, ToolExecution::Skipped),
         None => {
             let mut effective_tool_call = tool_call.clone();
             effective_tool_call.function.arguments = effective_args;
-            let exec = tool_server
-                .call_tool_structured(tool_name, &args, tool_extensions)
-                .await;
+            let mut context = tool_context.clone();
+            let exec = match tool_server
+                .execute_tool(tool_name, &args, &mut context)
+                .await
+            {
+                Ok(output) => ToolDispatchResult::success(output, context),
+                Err(error) => ToolDispatchResult::failed(error, context),
+            };
             (exec, ToolExecution::Executed(Box::new(effective_tool_call)))
         }
     };
@@ -698,32 +546,30 @@ where
 
     // The tool's raw output/outcome are deliberately NOT recorded on the span
     // yet: a `ToolResult` hook may redact or terminate first. Recording is
-    // deferred until after the hook runs — the redacted replacement on `Replace`,
-    // the raw output on `Keep`, and nothing on `Terminate` — so a redaction
+    // deferred until after the hook runs — the redacted replacement on `Rewrite`,
+    // the raw output on `Keep`, and nothing on `Stop` — so a redaction
     // guardrail never leaks the original (raw output or error message) via the
     // trace. (OpenAI Agents applies tool-output guardrails before tracing /
     // tool-end / model-visible output for the same reason.) The hook still
     // observes the tool's actual output via `result` and the structured
-    // classification via `outcome` / `extensions`.
-    match flow_into_tool_result(
-        hooks
-            .on_event(
-                ctx,
-                StepEvent::ToolResult {
-                    tool_name,
-                    tool_call_id: tool_call.call_id.as_deref(),
-                    internal_call_id,
-                    // The first result hook observes the tool's actual output,
-                    // before any `RewriteResult` replacement is applied below.
-                    args: &args,
-                    result: &exec.model_output,
-                    outcome: &exec.outcome,
-                    extensions: &exec.extensions,
-                },
-            )
-            .await,
-    ) {
-        ToolResultDecision::Terminate(reason) => {
+    // classification and result metadata via the `ToolContext`.
+    let execution_view = exec.view();
+    match hooks
+        .on_tool_result(
+            ctx,
+            ToolResultEvent {
+                tool_name,
+                tool_call_id: tool_call.call_id.as_deref(),
+                internal_call_id,
+                args: &args,
+                result: &exec.model_output,
+                execution: execution_view,
+                context: &exec.context,
+            },
+        )
+        .await
+    {
+        ToolResultAction::Stop(reason) => {
             // Do not record or log the raw output/outcome: the model never sees it
             // (the run is terminating) and a result hook may have terminated to
             // prevent exactly that leak.
@@ -733,7 +579,7 @@ where
                 reason,
             ))
         }
-        ToolResultDecision::Replace(replacement) => {
+        ToolResultAction::Rewrite(replacement) => {
             // The hook replaced the model-visible result. Record the outcome and
             // the replacement (the raw output was never recorded on the span
             // before the hook ran) and log only that a rewrite happened — never
@@ -741,7 +587,7 @@ where
             // original via the trace or the log. The replacement is hook-supplied
             // content, so it is delivered verbatim (like a `Skip` reason via
             // [`tool_result_message`]) rather than re-parsed as tool output.
-            record_tool_outcome(&tool_span, &exec.outcome);
+            record_tool_outcome(&tool_span, execution_view);
             tool_span.record("gen_ai.tool.call.result", &replacement);
             tracing::info!("tool {tool_name} with args {args}; result rewritten by a hook");
             Ok(ToolCallOutcome {
@@ -753,10 +599,10 @@ where
                 execution,
             })
         }
-        ToolResultDecision::Keep => {
+        ToolResultAction::Keep => {
             // No redaction requested: now that the hook has run without replacing
             // the output, record the outcome and the tool's real result.
-            record_tool_outcome(&tool_span, &exec.outcome);
+            record_tool_outcome(&tool_span, execution_view);
             tool_span.record("gen_ai.tool.call.result", &exec.model_output);
             if synthetic {
                 tracing::info!(
@@ -766,7 +612,7 @@ where
             } else {
                 tracing::info!(
                     "executed tool {tool_name} with args {args}. outcome: {}; result: {}",
-                    exec.outcome.as_str(),
+                    execution_view.as_str(),
                     exec.model_output
                 );
             }
@@ -788,15 +634,15 @@ where
     }
 }
 
-/// Record the structured tool [`ToolOutcome`] onto the `execute_tool` span. Kept
+/// Record the structured tool [`ToolExecutionView`] onto the `execute_tool` span. Kept
 /// separate from `gen_ai.tool.call.result` so it can be recorded (post-hook,
 /// alongside the model-visible result) without being part of the raw-output
 /// redaction surface — the outcome kind is a classification, not sensitive
 /// output.
-fn record_tool_outcome(span: &tracing::Span, outcome: &ToolOutcome) {
-    span.record("gen_ai.tool.call.outcome", outcome.as_str());
-    if let ToolOutcome::Error(failure) = outcome {
-        span.record("gen_ai.tool.error.type", failure.kind.as_str());
+fn record_tool_outcome(span: &tracing::Span, execution: ToolExecutionView<'_>) {
+    span.record("gen_ai.tool.call.outcome", execution.as_str());
+    if let ToolExecutionView::Error(error) = execution {
+        span.record("gen_ai.tool.error.type", error.kind().as_str());
     }
 }
 
@@ -908,27 +754,14 @@ where
             loop {
                 match outcome {
                     ModelTurnOutcome::NeedsResolution(context) => {
-                        let flow = runner
-                            .hooks
-                            .on_event(hook_ctx, StepEvent::InvalidToolCall(&context))
-                            .await;
-                        match flow_into_invalid(flow) {
-                            InvalidDecision::Terminate(reason) => {
-                                yield Err(StreamingError::Prompt(Box::new(
-                                    run.cancel_error(reason),
-                                )));
+                        let action = runner.hooks.on_invalid_tool_call(hook_ctx, &context).await;
+                        outcome = match run.resolve_invalid_tool_call(action) {
+                            Ok(outcome) => outcome,
+                            Err(err) => {
+                                yield Err(Box::new(err).into());
                                 return;
                             }
-                            InvalidDecision::Action(action) => {
-                                outcome = match run.resolve_invalid_tool_call(action) {
-                                    Ok(outcome) => outcome,
-                                    Err(err) => {
-                                        yield Err(Box::new(err).into());
-                                        return;
-                                    }
-                                };
-                            }
-                        }
+                        };
                     }
                     ModelTurnOutcome::TurnRetried => break,
                     ModelTurnOutcome::Continue {
@@ -938,28 +771,26 @@ where
                             // The medium-specific raw response event fires first,
                             // then the normalized per-turn event. Both are
                             // observe-only and suppressed for recovered turns.
-                            if let Some(reason) = observe_flow(
-                                runner
-                                    .hooks
-                                    .on_event(hook_ctx, StepEvent::CompletionResponse {
-                                        prompt: &current_prompt,
-                                        response: &resp,
-                                    })
-                                    .await,
-                            ) {
+                            if let ObserveAction::Stop(reason) = runner
+                                .hooks
+                                .on_completion_response(hook_ctx, CompletionResponseEvent {
+                                    prompt: &current_prompt,
+                                    response: &resp,
+                                })
+                                .await
+                            {
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
-                            if let Some(reason) = observe_flow(
-                                runner
-                                    .hooks
-                                    .on_event(hook_ctx, StepEvent::ModelTurnFinished {
-                                        turn: hook_ctx.turn(),
-                                        content: &resp.choice,
-                                        usage: resp.usage,
-                                    })
-                                    .await,
-                            ) {
+                            if let ObserveAction::Stop(reason) = runner
+                                .hooks
+                                .on_model_turn_finished(hook_ctx, ModelTurnFinishedEvent {
+                                    turn: hook_ctx.turn(),
+                                    content: &resp.choice,
+                                    usage: resp.usage,
+                                })
+                                .await
+                            {
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
@@ -1078,7 +909,6 @@ where
         })
     }
 }
-
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -1091,7 +921,10 @@ mod tests {
 
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{
-        AgentHook, Flow, HookContext, RequestPatch, StepEvent, StepEventKind,
+        AgentHook, CompletionAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
+        InvalidToolCallAction, ModelTurnFinishedEvent, ObserveAction, RequestPatch, StepEventKind,
+        StreamResponseFinishEvent, TextDeltaEvent, ToolCallAction, ToolCallDeltaEvent,
+        ToolCallEvent, ToolResultAction, ToolResultEvent,
     };
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
@@ -1100,9 +933,9 @@ mod tests {
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-        MockSubtractTool, MockToolError, MockTurn,
+        MockSubtractTool, MockTurn,
     };
-    use crate::tool::Tool;
+    use crate::tool::{Tool, ToolContext, ToolExecutionError};
 
     /// Records the kind of every hook event (and every tool-result payload) so a
     /// run() and a stream() of the same scenario can be compared.
@@ -1151,15 +984,116 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for RecordingHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            self.events.lock().expect("events lock").push(event.kind());
-            if let StepEvent::ToolResult { result, .. } = event {
-                self.tool_results
-                    .lock()
-                    .expect("results lock")
-                    .push(result.to_string());
-            }
-            Flow::cont()
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::CompletionCall);
+            CompletionAction::Continue
+        }
+
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionResponseEvent<'_, M>,
+        ) -> ObserveAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::CompletionResponse);
+            ObserveAction::Continue
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            _event: ModelTurnFinishedEvent<'_>,
+        ) -> ObserveAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::ModelTurnFinished);
+            ObserveAction::Continue
+        }
+
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &crate::agent::InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::InvalidToolCall);
+            InvalidToolCallAction::Continue
+        }
+
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::ToolCall);
+            ToolCallAction::Run
+        }
+
+        async fn on_tool_result(
+            &self,
+            _ctx: &HookContext,
+            event: ToolResultEvent<'_>,
+        ) -> ToolResultAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::ToolResult);
+            self.tool_results
+                .lock()
+                .expect("results lock")
+                .push(event.result.to_string());
+            ToolResultAction::Keep
+        }
+
+        async fn on_text_delta(
+            &self,
+            _ctx: &HookContext,
+            _event: TextDeltaEvent<'_>,
+        ) -> ObserveAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::TextDelta);
+            ObserveAction::Continue
+        }
+
+        async fn on_tool_call_delta(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolCallDeltaEvent<'_>,
+        ) -> ObserveAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::ToolCallDelta);
+            ObserveAction::Continue
+        }
+
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            _event: StreamResponseFinishEvent<'_, M>,
+        ) -> ObserveAction {
+            self.events
+                .lock()
+                .expect("events lock")
+                .push(StepEventKind::StreamResponseFinish);
+            ObserveAction::Continue
         }
     }
 
@@ -1338,8 +1272,8 @@ mod tests {
         );
     }
 
-    /// Structured tool-execution results reach `StepEvent::ToolResult` as machine
-    /// metadata (outcome + extensions), on both the blocking and streaming paths,
+    /// Structured tool-execution results reach `ToolResultEvent` as machine
+    /// metadata (`execution` + `context`), on both blocking and streaming paths,
     /// so hooks can steer on a classified failure without parsing the result
     /// string.
     mod structured_tool_results {
@@ -1348,13 +1282,16 @@ mod tests {
         use futures::StreamExt;
         use serde_json::json;
 
-        use crate::agent::{AgentBuilder, AgentHook, Flow, HookContext, HookStack, StepEvent};
+        use crate::agent::{
+            AgentBuilder, AgentHook, HookContext, HookStack, ToolCallAction, ToolCallEvent,
+            ToolResultAction, ToolResultEvent,
+        };
         use crate::completion::CompletionModel;
         use crate::test_utils::{
             MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool,
             MockHandledFailureTool, MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
         };
-        use crate::tool::{ToolFailureKind, ToolOutcome};
+        use crate::tool::{ToolExecutionErrorKind, ToolExecutionView};
 
         /// Records, for every `ToolResult` event, a compact outcome label and the
         /// model-visible result string — the machine metadata a policy reads.
@@ -1375,31 +1312,34 @@ mod tests {
         }
 
         /// A compact string label for an outcome, e.g. `error:timeout`.
-        fn outcome_label(outcome: &ToolOutcome) -> String {
-            match outcome {
-                ToolOutcome::Success => "success".to_string(),
-                ToolOutcome::Error(failure) => format!("error:{}", failure.kind.as_str()),
-                ToolOutcome::Skipped => "skipped".to_string(),
-                ToolOutcome::Denied => "denied".to_string(),
+        fn outcome_label(execution: ToolExecutionView<'_>) -> String {
+            match execution {
+                ToolExecutionView::Success => "success".to_string(),
+                ToolExecutionView::Error(error)
+                    if error.kind() == ToolExecutionErrorKind::Denied =>
+                {
+                    "denied".to_string()
+                }
+                ToolExecutionView::Error(error) => format!("error:{}", error.kind().as_str()),
+                ToolExecutionView::Skipped => "skipped".to_string(),
             }
         }
 
         impl<M: CompletionModel> AgentHook<M> for OutcomeHook {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::ToolResult {
-                    result, outcome, ..
-                } = event
-                {
-                    self.outcomes
-                        .lock()
-                        .expect("outcomes")
-                        .push(outcome_label(outcome));
-                    self.results
-                        .lock()
-                        .expect("results")
-                        .push(result.to_string());
-                }
-                Flow::cont()
+            async fn on_tool_result(
+                &self,
+                _ctx: &HookContext,
+                event: ToolResultEvent<'_>,
+            ) -> ToolResultAction {
+                self.outcomes
+                    .lock()
+                    .expect("outcomes")
+                    .push(outcome_label(event.execution));
+                self.results
+                    .lock()
+                    .expect("results")
+                    .push(event.result.to_string());
+                ToolResultAction::Keep
             }
         }
 
@@ -1427,13 +1367,13 @@ mod tests {
             ])
         }
 
-        // (1) A `Timeout` failure reaches `StepEvent::ToolResult` as structured
+        // (1) A `Timeout` failure reaches `ToolResultEvent` as structured
         // metadata (not just a string), with the model-visible feedback intact.
         #[tokio::test]
         async fn timeout_failure_surfaces_structured_outcome() {
             let hook = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
-                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .tool(MockFailingTool::new(ToolExecutionErrorKind::Timeout))
                 .add_hook(hook.clone())
                 .build()
                 .runner("go")
@@ -1456,19 +1396,24 @@ mod tests {
 
             struct TimeoutTerminator;
             impl<M: CompletionModel> AgentHook<M> for TimeoutTerminator {
-                async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolResult { outcome, .. } = event
-                        && outcome.is_error_kind(ToolFailureKind::Timeout)
+                async fn on_tool_result(
+                    &self,
+                    ctx: &HookContext,
+                    event: ToolResultEvent<'_>,
+                ) -> ToolResultAction {
+                    if event
+                        .execution
+                        .is_error_kind(ToolExecutionErrorKind::Timeout)
                     {
                         let count = ctx.scratchpad().update(|c: &mut TimeoutCount| {
                             c.0 += 1;
                             c.0
                         });
                         if count >= 2 {
-                            return Flow::terminate("aborting after repeated tool timeouts");
+                            return ToolResultAction::stop("aborting after repeated tool timeouts");
                         }
                     }
-                    Flow::cont()
+                    ToolResultAction::Keep
                 }
             }
 
@@ -1478,7 +1423,7 @@ mod tests {
                 MockTurn::tool_call("tc2", "flaky_tool", json!({})),
                 MockTurn::text("unreachable"),
             ]))
-            .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+            .tool(MockFailingTool::new(ToolExecutionErrorKind::Timeout))
             // Observer first so it records both timeouts before the terminator fires.
             .add_hook(observer.clone())
             .add_hook(TimeoutTerminator)
@@ -1510,18 +1455,20 @@ mod tests {
 
             struct StatusProbe(Arc<Mutex<Option<u16>>>);
             impl<M: CompletionModel> AgentHook<M> for StatusProbe {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolResult { outcome, .. } = event
-                        && let ToolOutcome::Error(failure) = outcome
-                    {
-                        *self.0.lock().expect("status") = failure.http_status;
+                async fn on_tool_result(
+                    &self,
+                    _ctx: &HookContext,
+                    event: ToolResultEvent<'_>,
+                ) -> ToolResultAction {
+                    if let ToolExecutionView::Error(error) = event.execution {
+                        *self.0.lock().expect("status") = error.http_status();
                     }
-                    Flow::cont()
+                    ToolResultAction::Keep
                 }
             }
 
             AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
-                .tool(MockFailingTool::new(ToolFailureKind::NotFound))
+                .tool(MockFailingTool::new(ToolExecutionErrorKind::NotFound))
                 .add_hook(hook.clone())
                 .add_hook(StatusProbe(status.clone()))
                 .build()
@@ -1539,7 +1486,7 @@ mod tests {
             );
         }
 
-        // (4) A tool that returns a handled failure via `ToolReturn` shows the
+        // (4) A tool that returns a handled failure via `ToolExecutionError` shows the
         // model useful output while the outcome is a classified error.
         #[tokio::test]
         async fn handled_failure_delivers_model_output_and_error_outcome() {
@@ -1562,24 +1509,24 @@ mod tests {
             );
         }
 
-        // (7) `Flow::Skip` on the tool-call produces a structured `Skipped`
+        // (7) `ToolCallAction::Skip` on the tool-call produces a structured `Skipped`
         // outcome that the result hook observes.
         #[tokio::test]
         async fn flow_skip_produces_skipped_outcome() {
             struct SkipHook;
             impl<M: CompletionModel> AgentHook<M> for SkipHook {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolCall { .. } = event {
-                        Flow::skip("not executed (denied by policy); do not retry")
-                    } else {
-                        Flow::cont()
-                    }
+                async fn on_tool_call(
+                    &self,
+                    _ctx: &HookContext,
+                    _event: ToolCallEvent<'_>,
+                ) -> ToolCallAction {
+                    ToolCallAction::skip("not executed (denied by policy); do not retry")
                 }
             }
 
             let observer = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
-                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .tool(MockFailingTool::new(ToolExecutionErrorKind::Timeout))
                 .add_hook(SkipHook)
                 .add_hook(observer.clone())
                 .build()
@@ -1596,8 +1543,8 @@ mod tests {
             );
         }
 
-        // A *tool-authored* denial (`ToolReturn::denied`) surfaces as a `Denied`
-        // outcome — distinct from a hook `Flow::Skip`, which is `Skipped`. This
+        // A *tool-authored* denial (`ToolExecutionError::denied`) surfaces as a `Denied`
+        // outcome — distinct from a hook `ToolCallAction::Skip`, which is `Skipped`. This
         // pins the documented `Skipped` vs `Denied` split: `Denied` comes only
         // from the tool, never from a hook skip.
         #[tokio::test]
@@ -1621,7 +1568,7 @@ mod tests {
             );
         }
 
-        // A `RewriteArgs` hook followed by a `Skip` hook: the tool must not run,
+        // A `ToolCallAction::Rewrite` hook followed by `Skip`: the tool must not run,
         // the `ToolResult` reports the *rewritten* args (not the model's
         // original), and the outcome is `Skipped` — the rewrite (e.g. a
         // redaction) is not lost when a later hook short-circuits. Verified on
@@ -1631,23 +1578,23 @@ mod tests {
             // Rewrites the tool args, replacing whatever the model emitted.
             struct RewriteHook;
             impl<M: CompletionModel> AgentHook<M> for RewriteHook {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolCall { .. } = event {
-                        Flow::rewrite_args(json!({ "x": 41, "y": 1 }))
-                    } else {
-                        Flow::cont()
-                    }
+                async fn on_tool_call(
+                    &self,
+                    _ctx: &HookContext,
+                    _event: ToolCallEvent<'_>,
+                ) -> ToolCallAction {
+                    ToolCallAction::rewrite(json!({ "x": 41, "y": 1 }))
                 }
             }
             // Skips *after* the rewrite (registered second).
             struct SkipHook;
             impl<M: CompletionModel> AgentHook<M> for SkipHook {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolCall { .. } = event {
-                        Flow::skip("denied after rewrite")
-                    } else {
-                        Flow::cont()
-                    }
+                async fn on_tool_call(
+                    &self,
+                    _ctx: &HookContext,
+                    _event: ToolCallEvent<'_>,
+                ) -> ToolCallAction {
+                    ToolCallAction::skip("denied after rewrite")
                 }
             }
             // Records the args + outcome seen on the `ToolResult` event.
@@ -1657,12 +1604,14 @@ mod tests {
                 outcome: Arc<Mutex<Option<String>>>,
             }
             impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolResult { args, outcome, .. } = event {
-                        *self.args.lock().expect("args") = Some(args.to_string());
-                        *self.outcome.lock().expect("outcome") = Some(outcome_label(outcome));
-                    }
-                    Flow::cont()
+                async fn on_tool_result(
+                    &self,
+                    _ctx: &HookContext,
+                    event: ToolResultEvent<'_>,
+                ) -> ToolResultAction {
+                    *self.args.lock().expect("args") = Some(event.args.to_string());
+                    *self.outcome.lock().expect("outcome") = Some(outcome_label(event.execution));
+                    ToolResultAction::Keep
                 }
             }
 
@@ -1734,22 +1683,22 @@ mod tests {
         async fn nested_hook_stack_rewrite_then_skip_reports_rewritten_args() {
             struct RewriteHook;
             impl<M: CompletionModel> AgentHook<M> for RewriteHook {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolCall { .. } = event {
-                        Flow::rewrite_args(json!({ "x": 41, "y": 1 }))
-                    } else {
-                        Flow::cont()
-                    }
+                async fn on_tool_call(
+                    &self,
+                    _ctx: &HookContext,
+                    _event: ToolCallEvent<'_>,
+                ) -> ToolCallAction {
+                    ToolCallAction::rewrite(json!({ "x": 41, "y": 1 }))
                 }
             }
             struct SkipHook;
             impl<M: CompletionModel> AgentHook<M> for SkipHook {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolCall { .. } = event {
-                        Flow::skip("denied after nested rewrite")
-                    } else {
-                        Flow::cont()
-                    }
+                async fn on_tool_call(
+                    &self,
+                    _ctx: &HookContext,
+                    _event: ToolCallEvent<'_>,
+                ) -> ToolCallAction {
+                    ToolCallAction::skip("denied after nested rewrite")
                 }
             }
             #[derive(Clone, Default)]
@@ -1758,12 +1707,14 @@ mod tests {
                 outcome: Arc<Mutex<Option<String>>>,
             }
             impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolResult { args, outcome, .. } = event {
-                        *self.args.lock().expect("args") = Some(args.to_string());
-                        *self.outcome.lock().expect("outcome") = Some(outcome_label(outcome));
-                    }
-                    Flow::cont()
+                async fn on_tool_result(
+                    &self,
+                    _ctx: &HookContext,
+                    event: ToolResultEvent<'_>,
+                ) -> ToolResultAction {
+                    *self.args.lock().expect("args") = Some(event.args.to_string());
+                    *self.outcome.lock().expect("outcome") = Some(outcome_label(event.execution));
+                    ToolResultAction::Keep
                 }
             }
 
@@ -1846,10 +1797,10 @@ mod tests {
             assert_eq!(hook.outcomes(), vec!["error:invalid_args".to_string()]);
         }
 
-        // Result extensions a tool attaches reach the hook but never appear in the
+        // Result metadata a tool attaches through `ToolContext` reaches the hook but never appears in the
         // model-visible output.
         #[tokio::test]
-        async fn success_extensions_reach_hook_but_not_model() {
+        async fn success_metadata_reaches_hook_but_not_model() {
             let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
             let model_output: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
@@ -1858,16 +1809,18 @@ mod tests {
                 model_output: Arc<Mutex<Option<String>>>,
             }
             impl<M: CompletionModel> AgentHook<M> for ExtProbe {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolResult {
-                        result, extensions, ..
-                    } = event
-                    {
-                        *self.seen.lock().expect("seen") =
-                            extensions.get::<MockRequestId>().map(|id| id.0.clone());
-                        *self.model_output.lock().expect("model_output") = Some(result.to_string());
-                    }
-                    Flow::cont()
+                async fn on_tool_result(
+                    &self,
+                    _ctx: &HookContext,
+                    event: ToolResultEvent<'_>,
+                ) -> ToolResultAction {
+                    *self.seen.lock().expect("seen") = event
+                        .context
+                        .result::<MockRequestId>()
+                        .map(|id| id.0.clone());
+                    *self.model_output.lock().expect("model_output") =
+                        Some(event.result.to_string());
+                    ToolResultAction::Keep
                 }
             }
 
@@ -1897,29 +1850,29 @@ mod tests {
             assert_eq!(output, "done");
             assert!(
                 !output.contains("req-7"),
-                "result extensions must never leak into the model-visible output"
+                "result metadata must never leak into the model-visible output"
             );
         }
 
-        // (6) A `RewriteResult` hook redacts the model-visible text, but a later
+        // (6) A `ToolResultAction::Rewrite` hook redacts model-visible text, but a later
         // policy hook still sees the tool's *raw* structured outcome — a rewrite
         // changes only what the model sees, not the classification.
         #[tokio::test]
         async fn rewrite_result_does_not_mask_the_structured_outcome() {
             struct Redact;
             impl<M: CompletionModel> AgentHook<M> for Redact {
-                async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                    if let StepEvent::ToolResult { .. } = event {
-                        Flow::rewrite_result("[REDACTED]")
-                    } else {
-                        Flow::cont()
-                    }
+                async fn on_tool_result(
+                    &self,
+                    _ctx: &HookContext,
+                    _event: ToolResultEvent<'_>,
+                ) -> ToolResultAction {
+                    ToolResultAction::rewrite("[REDACTED]")
                 }
             }
 
             let observer = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
-                .tool(MockFailingTool::new(ToolFailureKind::NotFound))
+                .tool(MockFailingTool::new(ToolExecutionErrorKind::NotFound))
                 // Observer AFTER the redactor: it still sees the true outcome, and
                 // the chained (redacted) model-visible result.
                 .add_hook(Redact)
@@ -1941,7 +1894,7 @@ mod tests {
         async fn streaming_and_blocking_outcomes_match() {
             let blocking = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
-                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .tool(MockFailingTool::new(ToolExecutionErrorKind::Timeout))
                 .add_hook(blocking.clone())
                 .build()
                 .runner("go")
@@ -1952,7 +1905,7 @@ mod tests {
 
             let streaming = OutcomeHook::default();
             let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("flaky_tool"))
-                .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+                .tool(MockFailingTool::new(ToolExecutionErrorKind::Timeout))
                 .add_hook(streaming.clone())
                 .build()
                 .runner("go")
@@ -1994,7 +1947,7 @@ mod tests {
                 MockTurn::text("done"),
             ]))
             .tool(MockAddTool)
-            .tool(MockFailingTool::new(ToolFailureKind::Timeout))
+            .tool(MockFailingTool::new(ToolExecutionErrorKind::Timeout))
             .add_hook(observer.clone())
             .build()
             .runner("go")
@@ -2325,7 +2278,6 @@ mod tests {
         struct SecretTool;
         impl crate::tool::Tool for SecretTool {
             const NAME: &'static str = "leak";
-            type Error = crate::test_utils::MockToolError;
             type Args = serde_json::Value;
             type Output = String;
             fn description(&self) -> String {
@@ -2335,7 +2287,11 @@ mod tests {
             fn parameters(&self) -> serde_json::Value {
                 serde_json::json!({ "type": "object", "properties": {} })
             }
-            async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            async fn call(
+                &self,
+                _context: &mut crate::tool::ToolContext,
+                _args: Self::Args,
+            ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
                 Ok("SUPER_SECRET_TOKEN_42".to_string())
             }
         }
@@ -2343,16 +2299,12 @@ mod tests {
         /// Redacts every tool result before the model sees it.
         struct RedactResultHook;
         impl<M: crate::completion::CompletionModel> crate::agent::AgentHook<M> for RedactResultHook {
-            async fn on_event(
+            async fn on_tool_result(
                 &self,
                 _ctx: &crate::agent::HookContext,
-                event: crate::agent::StepEvent<'_, M>,
-            ) -> crate::agent::Flow {
-                if let crate::agent::StepEvent::ToolResult { .. } = event {
-                    crate::agent::Flow::rewrite_result("[REDACTED]")
-                } else {
-                    crate::agent::Flow::cont()
-                }
+                _event: crate::agent::ToolResultEvent<'_>,
+            ) -> crate::agent::ToolResultAction {
+                crate::agent::ToolResultAction::rewrite("[REDACTED]")
             }
         }
 
@@ -2541,7 +2493,6 @@ mod tests {
 
     impl Tool for OutOfOrderTool {
         const NAME: &'static str = "add";
-        type Error = MockToolError;
         type Args = MockOperationArgs;
         type Output = i32;
 
@@ -2553,7 +2504,11 @@ mod tests {
             MockAddTool.parameters()
         }
 
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             let nth = self.order.fetch_add(1, SeqCst);
             if nth == 0 {
                 // First call: cannot finish until a later call releases us.
@@ -2907,17 +2862,20 @@ mod tests {
         sibling_started: Arc<tokio::sync::Notify>,
     }
     impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingStartedHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolResult { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(1)
+        async fn on_tool_result(
+            &self,
+            _ctx: &HookContext,
+            event: ToolResultEvent<'_>,
+        ) -> ToolResultAction {
+            if serde_json::from_str::<serde_json::Value>(event.args)
+                .ok()
+                .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                == Some(1)
             {
                 self.sibling_started.notified().await;
-                return Flow::terminate("stop after a tool result");
+                return ToolResultAction::stop("stop after a tool result");
             }
-            Flow::cont()
+            ToolResultAction::Keep
         }
     }
 
@@ -2937,7 +2895,6 @@ mod tests {
 
     impl Tool for DrainProbeTool {
         const NAME: &'static str = "add";
-        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
 
@@ -2949,7 +2906,11 @@ mod tests {
             MockAddTool.parameters()
         }
 
-        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             self.started.fetch_add(1, SeqCst);
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(2) {
                 // Signal that the slow sibling has started, then stay pending so
@@ -3041,7 +3002,7 @@ mod tests {
         );
     }
 
-    /// A `Flow::Terminate` from the `ToolCall` event with a reason keyed by the
+    /// A an event-specific stop action from the `ToolCall` event with a reason keyed by the
     /// call's `x` arg, forcing the `x == 2` call (tc2) to terminate *before* the
     /// `x == 1` call (tc1): tc2 opens the gate after terminating, tc1 awaits it
     /// first. So completion order (tc2) differs from call order (tc1).
@@ -3050,28 +3011,25 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for OrderedTerminateHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { args, .. } = event {
-                let x = serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64));
-                match x {
-                    Some(2) => {
-                        self.gate.notify_one();
-                        return Flow::Terminate {
-                            reason: "terminated-by-tc2".to_string(),
-                        };
-                    }
-                    Some(1) => {
-                        self.gate.notified().await;
-                        return Flow::Terminate {
-                            reason: "terminated-by-tc1".to_string(),
-                        };
-                    }
-                    _ => {}
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            let x = serde_json::from_str::<serde_json::Value>(event.args)
+                .ok()
+                .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64));
+            match x {
+                Some(2) => {
+                    self.gate.notify_one();
+                    ToolCallAction::stop("terminated-by-tc2")
                 }
+                Some(1) => {
+                    self.gate.notified().await;
+                    ToolCallAction::stop("terminated-by-tc1")
+                }
+                _ => ToolCallAction::Run,
             }
-            Flow::cont()
         }
     }
 
@@ -3168,18 +3126,20 @@ mod tests {
     /// (`x == 1`), letting any later tool through.
     struct TerminateOnFirstToolHook;
     impl<M: CompletionModel> AgentHook<M> for TerminateOnFirstToolHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(1)
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            if serde_json::from_str::<serde_json::Value>(event.args)
+                .ok()
+                .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                == Some(1)
             {
-                return Flow::Terminate {
-                    reason: "stop".to_string(),
-                };
+                ToolCallAction::stop("stop")
+            } else {
+                ToolCallAction::Run
             }
-            Flow::cont()
         }
     }
 
@@ -3252,7 +3212,6 @@ mod tests {
 
     impl Tool for RecordingArgsTool {
         const NAME: &'static str = "add";
-        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
 
@@ -3264,7 +3223,11 @@ mod tests {
             MockAddTool.parameters()
         }
 
-        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             let x = args.get("x").and_then(serde_json::Value::as_i64);
             if let Some(x) = x {
                 self.called.lock().expect("called").push(x);
@@ -3307,17 +3270,21 @@ mod tests {
         sibling_started: Arc<tokio::sync::Notify>,
     }
     impl<M: CompletionModel> AgentHook<M> for TerminateOnArgZeroAfterSiblingHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(0)
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            if serde_json::from_str::<serde_json::Value>(event.args)
+                .ok()
+                .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                == Some(0)
             {
                 self.sibling_started.notified().await;
-                return Flow::terminate("stop");
+                ToolCallAction::stop("stop")
+            } else {
+                ToolCallAction::Run
             }
-            Flow::cont()
         }
     }
 
@@ -3395,7 +3362,6 @@ mod tests {
     }
     impl Tool for SignalOnRunTool {
         const NAME: &'static str = "add";
-        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
         fn description(&self) -> String {
@@ -3405,7 +3371,11 @@ mod tests {
         fn parameters(&self) -> serde_json::Value {
             MockAddTool.parameters()
         }
-        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(1) {
                 self.a_ran.fetch_add(1, SeqCst);
                 self.a_done.notify_one();
@@ -3421,17 +3391,21 @@ mod tests {
         a_done: Arc<tokio::sync::Notify>,
     }
     impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingDoneHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(2)
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            if serde_json::from_str::<serde_json::Value>(event.args)
+                .ok()
+                .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                == Some(2)
             {
                 self.a_done.notified().await;
-                return Flow::terminate("stop");
+                ToolCallAction::stop("stop")
+            } else {
+                ToolCallAction::Run
             }
-            Flow::cont()
         }
     }
 
@@ -3513,7 +3487,7 @@ mod tests {
 
     /// The model tool-call event carries the model's **original** arguments; the
     /// execution-start event carries the **effective** (hook-rewritten) arguments
-    /// — so a `RewriteArgs` rewrite (e.g. a redaction) is reflected in what
+    /// — so a `ToolCallAction::Rewrite` (e.g. a redaction) is reflected in what
     /// actually ran, not leaked as the original.
     #[tokio::test]
     async fn stream_tool_execution_start_carries_effective_rewritten_args() {
@@ -3562,19 +3536,19 @@ mod tests {
         );
     }
 
-    /// A `ToolCall` hook `Flow::Skip` surfaces the skip result as a `ToolResult`
+    /// A `ToolCall` hook `ToolCallAction::Skip` surfaces the skip result as a `ToolResult`
     /// (the model sees it, and it is committed to history) but produces **no**
     /// `ToolExecutionStart` — nothing actually ran.
     #[tokio::test]
     async fn stream_hook_skip_surfaces_result_without_execution_start() {
         struct SkipHook;
         impl<M: CompletionModel> AgentHook<M> for SkipHook {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::ToolCall { .. } = event {
-                    Flow::skip("blocked by policy")
-                } else {
-                    Flow::cont()
-                }
+            async fn on_tool_call(
+                &self,
+                _ctx: &HookContext,
+                _event: ToolCallEvent<'_>,
+            ) -> ToolCallAction {
+                ToolCallAction::skip("blocked by policy")
             }
         }
 
@@ -3641,12 +3615,12 @@ mod tests {
     async fn required_with_empty_active_tools_errors_locally_without_provider_call() {
         struct EmptyActiveToolsHook;
         impl<M: CompletionModel> AgentHook<M> for EmptyActiveToolsHook {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::CompletionCall { .. } = event {
-                    Flow::patch_request(RequestPatch::new().active_tools(Vec::<String>::new()))
-                } else {
-                    Flow::cont()
-                }
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                _event: CompletionCallEvent<'_>,
+            ) -> CompletionAction {
+                CompletionAction::patch(RequestPatch::new().active_tools(Vec::<String>::new()))
             }
         }
 
@@ -3683,12 +3657,12 @@ mod tests {
     async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call() {
         struct FilterToAddHook;
         impl<M: CompletionModel> AgentHook<M> for FilterToAddHook {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::CompletionCall { .. } = event {
-                    Flow::patch_request(RequestPatch::new().active_tools(["add"]))
-                } else {
-                    Flow::cont()
-                }
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                _event: CompletionCallEvent<'_>,
+            ) -> CompletionAction {
+                CompletionAction::patch(RequestPatch::new().active_tools(["add"]))
             }
         }
 
@@ -3755,7 +3729,6 @@ mod tests {
 
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
-        type Error = MockToolError;
         type Args = MockOperationArgs;
         type Output = i32;
 
@@ -3767,56 +3740,14 @@ mod tests {
             MockAddTool.parameters()
         }
 
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             self.calls.fetch_add(1, SeqCst);
             Ok(0)
         }
-    }
-
-    struct FailOnToolCallHook;
-    impl<M: CompletionModel> AgentHook<M> for FailOnToolCallHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { .. } = event {
-                // Fail is illegal for a ToolCall event: the runner must be
-                // fail-CLOSED and never execute the tool.
-                Flow::fail()
-            } else {
-                Flow::cont()
-            }
-        }
-    }
-
-    /// A hook returning `Flow::Fail` for a tool call (an action that is not
-    /// honored for that event) terminates the run fail-closed — the tool never
-    /// executes.
-    #[tokio::test]
-    async fn tool_call_fail_is_fail_closed() {
-        let calls = Arc::new(AtomicU32::new(0));
-        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
-            "tc1",
-            "add",
-            json!({"x": 1, "y": 2}),
-        )]);
-        let agent = AgentBuilder::new(model)
-            .tool(CountingAddTool {
-                calls: calls.clone(),
-            })
-            .build();
-
-        let err = agent
-            .runner("add")
-            .max_turns(2)
-            .add_hook(FailOnToolCallHook)
-            .run()
-            .await
-            .expect_err("fail-closed: the run must error rather than execute the tool");
-
-        assert!(matches!(err, PromptError::PromptCancelled { .. }));
-        assert_eq!(
-            calls.load(SeqCst),
-            0,
-            "tool must not execute when a hook returns Fail for a tool call"
-        );
     }
 
     #[derive(Clone, Default)]
@@ -3826,16 +3757,22 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for ToolOnlyHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            match event.kind() {
-                StepEventKind::TextDelta => {
-                    self.text_delta_calls.fetch_add(1, SeqCst);
-                }
-                _ => {
-                    self.other_calls.fetch_add(1, SeqCst);
-                }
-            }
-            Flow::cont()
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionAction {
+            self.other_calls.fetch_add(1, SeqCst);
+            CompletionAction::Continue
+        }
+
+        async fn on_text_delta(
+            &self,
+            _ctx: &HookContext,
+            _event: TextDeltaEvent<'_>,
+        ) -> ObserveAction {
+            self.text_delta_calls.fetch_add(1, SeqCst);
+            ObserveAction::Continue
         }
 
         fn observes(&self, kind: StepEventKind) -> bool {
@@ -3878,16 +3815,56 @@ mod tests {
     struct TerminateOn(StepEventKind);
 
     impl<M: CompletionModel> AgentHook<M> for TerminateOn {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if event.kind() == self.0 {
-                Flow::terminate("stop here")
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionAction {
+            if self.0 == StepEventKind::CompletionCall {
+                CompletionAction::stop("stop here")
             } else {
-                Flow::cont()
+                CompletionAction::Continue
+            }
+        }
+
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionResponseEvent<'_, M>,
+        ) -> ObserveAction {
+            if self.0 == StepEventKind::CompletionResponse {
+                ObserveAction::stop("stop here")
+            } else {
+                ObserveAction::Continue
+            }
+        }
+
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            if self.0 == StepEventKind::ToolCall {
+                ToolCallAction::stop("stop here")
+            } else {
+                ToolCallAction::Run
+            }
+        }
+
+        async fn on_tool_result(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolResultEvent<'_>,
+        ) -> ToolResultAction {
+            if self.0 == StepEventKind::ToolResult {
+                ToolResultAction::stop("stop here")
+            } else {
+                ToolResultAction::Keep
             }
         }
     }
 
-    /// `Flow::Terminate` cancels the blocking run from *every* shared driver
+    /// an event-specific stop action cancels the blocking run from *every* shared driver
     /// event (model call, model response, tool call, tool result) — none is a
     /// silent no-op.
     #[tokio::test]
@@ -4002,12 +3979,12 @@ mod tests {
     struct RepairInvalidToHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for RepairInvalidToHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::InvalidToolCall(_) = event {
-                Flow::repair(self.0)
-            } else {
-                Flow::cont()
-            }
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &crate::agent::InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            InvalidToolCallAction::repair(self.0)
         }
     }
 
@@ -4358,12 +4335,12 @@ mod tests {
     struct SkipInvalidHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for SkipInvalidHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::InvalidToolCall(_) = event {
-                Flow::skip(self.0)
-            } else {
-                Flow::cont()
-            }
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &crate::agent::InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            InvalidToolCallAction::skip(self.0)
         }
     }
 
@@ -4601,16 +4578,16 @@ mod tests {
     struct SkipToolCallHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for SkipToolCallHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { .. } = event {
-                Flow::skip(self.0)
-            } else {
-                Flow::cont()
-            }
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            ToolCallAction::skip(self.0)
         }
     }
 
-    /// A hook that skips a *valid* tool call (`Flow::Skip` on `ToolCall`, the
+    /// A hook that skips a *valid* tool call (`ToolCallAction::Skip` on `ToolCall`, the
     /// honored-action path — distinct from skipping an *invalid* call) recovers
     /// identically under `run()` and `stream()`: the synthetic skip result enters
     /// the history verbatim without executing the tool, and both drivers reach the
@@ -4694,56 +4671,37 @@ mod tests {
         );
     }
 
-    /// A hook that rewrites a valid tool call's arguments (`Flow::RewriteArgs` on
+    /// A hook that rewrites a valid tool call's arguments (`ToolCallAction::Rewrite` on
     /// `ToolCall`) so the tool executes with the replacement instead of what the
     /// model emitted.
     struct RewriteToolArgsHook(serde_json::Value);
 
     impl<M: CompletionModel> AgentHook<M> for RewriteToolArgsHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolCall { .. } = event {
-                Flow::rewrite_args(self.0.clone())
-            } else {
-                Flow::cont()
-            }
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            ToolCallAction::rewrite(self.0.clone())
         }
     }
 
-    /// `Flow::RewriteArgs` resolves to a `ProceedWith` tool-call decision that
+    /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
     /// carries the replacement arguments, and is named for fail-closed
     /// diagnostics.
     #[test]
-    fn rewrite_args_resolves_to_proceed_with_for_tool_call() {
+    fn rewrite_args_constructs_tool_call_action() {
         let args = json!({"x": 1, "y": 2});
-        match super::flow_into_tool_call(Flow::rewrite_args(args.clone())) {
-            super::ToolCallDecision::ProceedWith(replacement) => assert_eq!(replacement, args),
-            _ => panic!("RewriteArgs should resolve to ProceedWith for a tool call"),
-        }
         assert_eq!(
-            super::flow_name(&Flow::rewrite_args(json!({}))),
-            "RewriteArgs"
+            ToolCallAction::rewrite(args.clone()),
+            ToolCallAction::Rewrite(args.clone()),
         );
-        // The typed convenience builds the same variant as the value constructor.
         assert_eq!(
-            Flow::try_rewrite_args(&json!({"x": 1, "y": 2})).expect("serializes"),
-            Flow::rewrite_args(json!({"x": 1, "y": 2})),
+            ToolCallAction::try_rewrite(&args).expect("serializes"),
+            ToolCallAction::Rewrite(args),
         );
     }
-
-    /// `RewriteArgs` is only honored by `ToolCall`; every other event is
-    /// fail-closed and terminates the run rather than silently proceeding.
-    #[test]
-    fn rewrite_args_is_fail_closed_off_the_tool_call_event() {
-        // Invalid tool calls only honor Fail/Retry/Repair/Skip/Terminate.
-        assert!(matches!(
-            super::flow_into_invalid(Flow::rewrite_args(json!({}))),
-            super::InvalidDecision::Terminate(_)
-        ));
-        // Observe-only events only honor Continue/Terminate.
-        assert!(super::observe_flow(Flow::rewrite_args(json!({}))).is_some());
-    }
-
-    /// A hook that rewrites a *valid* tool call's arguments (`Flow::RewriteArgs`
+    /// A hook that rewrites a *valid* tool call's arguments (`ToolCallAction::Rewrite`
     /// on `ToolCall`) is honored identically under `run()` and `stream()`: the
     /// tool executes with the replacement, so both drivers observe the same
     /// rewritten tool result and reach the same output, tool-result content and
@@ -4810,56 +4768,31 @@ mod tests {
         assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
     }
 
-    /// A hook that rewrites a tool's result (`Flow::RewriteResult` on
+    /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
     /// `ToolResult`) so the model sees the replacement instead of the tool's
     /// actual output.
     struct RewriteToolResultHook(&'static str);
 
     impl<M: CompletionModel> AgentHook<M> for RewriteToolResultHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ToolResult { .. } = event {
-                Flow::rewrite_result(self.0)
-            } else {
-                Flow::cont()
-            }
+        async fn on_tool_result(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolResultEvent<'_>,
+        ) -> ToolResultAction {
+            ToolResultAction::rewrite(self.0)
         }
     }
 
-    /// `Flow::RewriteResult` resolves to a `Replace` tool-result decision carrying
+    /// `ToolResultAction::Rewrite` carries
     /// the replacement, and is named for fail-closed diagnostics.
     #[test]
-    fn rewrite_result_resolves_to_replace_for_tool_result() {
-        match super::flow_into_tool_result(Flow::rewrite_result("redacted")) {
-            super::ToolResultDecision::Replace(result) => assert_eq!(result, "redacted"),
-            _ => panic!("RewriteResult should resolve to Replace for a tool result"),
-        }
+    fn rewrite_result_constructs_tool_result_action() {
         assert_eq!(
-            super::flow_name(&Flow::rewrite_result("x")),
-            "RewriteResult"
+            ToolResultAction::rewrite("redacted"),
+            ToolResultAction::Rewrite("redacted".to_string()),
         );
     }
-
-    /// `RewriteResult` is only honored by `ToolResult`, and the tool-result event
-    /// only honors `RewriteResult` (not `RewriteArgs`) — both directions are
-    /// fail-closed.
-    #[test]
-    fn rewrite_result_is_fail_closed_off_the_tool_result_event() {
-        // Invalid tool calls don't honor RewriteResult.
-        assert!(matches!(
-            super::flow_into_invalid(Flow::rewrite_result("x")),
-            super::InvalidDecision::Terminate(_)
-        ));
-        // Observe-only events (CompletionResponse, deltas, ...) don't honor it.
-        assert!(super::observe_flow(Flow::rewrite_result("x")).is_some());
-        // The tool-RESULT event rejects RewriteArgs (the pre-tool action),
-        // mirroring how the tool-CALL event rejects RewriteResult.
-        assert!(matches!(
-            super::flow_into_tool_result(Flow::rewrite_args(json!({}))),
-            super::ToolResultDecision::Terminate(_)
-        ));
-    }
-
-    /// A hook that rewrites a tool's result (`Flow::RewriteResult` on
+    /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
     /// `ToolResult`) is honored identically under `run()` and `stream()`: the
     /// model-visible history carries the replacement while the `ToolResult` event
     /// still observed the tool's actual output, and both drivers reach the same
@@ -4942,7 +4875,7 @@ mod tests {
         );
     }
 
-    /// A `RewriteResult` replacement is delivered to the model verbatim, not
+    /// A `ToolResultAction::Rewrite` replacement is delivered to the model verbatim, not
     /// re-parsed as structured/multimodal tool output. A JSON-shaped replacement
     /// (here, an image payload that `tool_result_output` would turn into an image
     /// content block for *real* tool output) reaches history as literal text —
@@ -4975,75 +4908,45 @@ mod tests {
         );
     }
 
-    /// A hook that patches the model request for the turn (`Flow::PatchRequest`
+    /// A hook that patches the model request for the turn (`CompletionAction::Patch`
     /// on `CompletionCall`): forces tool_choice + temperature, narrows the
     /// advertised tools to an allow-list, and injects a passthrough param.
     struct PatchRequestHook;
 
     impl<M: CompletionModel> AgentHook<M> for PatchRequestHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::CompletionCall { .. } = event {
-                Flow::patch_request(
-                    RequestPatch::new()
-                        .preamble(OVERRIDE_PREAMBLE)
-                        .temperature(0.25)
-                        .max_tokens(OVERRIDE_MAX_TOKENS)
-                        .tool_choice(ToolChoice::Required)
-                        .active_tools(["add"])
-                        .additional_params(json!({"injected": true})),
-                )
-            } else {
-                Flow::cont()
-            }
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionAction {
+            CompletionAction::patch(
+                RequestPatch::new()
+                    .preamble(OVERRIDE_PREAMBLE)
+                    .temperature(0.25)
+                    .max_tokens(OVERRIDE_MAX_TOKENS)
+                    .tool_choice(ToolChoice::Required)
+                    .active_tools(["add"])
+                    .additional_params(json!({"injected": true})),
+            )
         }
     }
 
     const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
     const OVERRIDE_MAX_TOKENS: u64 = 512;
 
-    /// `Flow::PatchRequest` resolves to a `Patch` completion-call decision
+    /// `CompletionAction::Patch` resolves to a `Patch` completion-call decision
     /// carrying the patch, and is named for fail-closed diagnostics.
     #[test]
-    fn patch_request_resolves_to_patch_for_completion_call() {
+    fn patch_request_constructs_completion_action() {
         let patch = RequestPatch::new()
             .temperature(0.25)
             .tool_choice(ToolChoice::Required);
-        match super::flow_into_completion_call(Flow::patch_request(patch.clone())) {
-            super::CompletionCallDecision::Patch(got) => assert_eq!(got, patch),
-            _ => panic!("PatchRequest should resolve to Patch for a completion call"),
-        }
         assert_eq!(
-            super::flow_name(&Flow::patch_request(RequestPatch::new())),
-            "PatchRequest"
+            CompletionAction::patch(patch.clone()),
+            CompletionAction::Patch(patch),
         );
     }
-
-    /// `PatchRequest` is only honored by `CompletionCall`; every other event is
-    /// fail-closed, and `CompletionCall` only honors Continue/PatchRequest/Terminate.
-    #[test]
-    fn patch_request_is_fail_closed_off_the_completion_call_event() {
-        let patch = || Flow::patch_request(RequestPatch::new());
-        assert!(matches!(
-            super::flow_into_invalid(patch()),
-            super::InvalidDecision::Terminate(_)
-        ));
-        assert!(matches!(
-            super::flow_into_tool_call(patch()),
-            super::ToolCallDecision::Terminate(_)
-        ));
-        assert!(matches!(
-            super::flow_into_tool_result(patch()),
-            super::ToolResultDecision::Terminate(_)
-        ));
-        assert!(super::observe_flow(patch()).is_some());
-        // The completion-call event rejects an action it can't honor (e.g. Skip).
-        assert!(matches!(
-            super::flow_into_completion_call(Flow::skip("x")),
-            super::CompletionCallDecision::Terminate(_)
-        ));
-    }
-
-    /// A `Flow::PatchRequest` hook patches the request for the turn identically
+    /// A `CompletionAction::Patch` hook patches the request for the turn identically
     /// under `run()` and `stream()`: the captured completion request shows the
     /// overridden temperature/tool_choice, the merged additional_params, and the
     /// tool set narrowed to the allow-list — on both drivers.
@@ -5150,12 +5053,12 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for ExtraContextHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::CompletionCall { .. } = event {
-                Flow::patch_request(RequestPatch::new().context(hook_doc(self.id, self.text)))
-            } else {
-                Flow::cont()
-            }
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionAction {
+            CompletionAction::patch(RequestPatch::new().context(hook_doc(self.id, self.text)))
         }
     }
 
@@ -5164,15 +5067,18 @@ mod tests {
     struct ExtraContextTurnOneHook;
 
     impl<M: CompletionModel> AgentHook<M> for ExtraContextTurnOneHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::CompletionCall { turn, .. } = event
-                && turn == 1
-            {
-                return Flow::patch_request(
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            event: CompletionCallEvent<'_>,
+        ) -> CompletionAction {
+            if event.turn == 1 {
+                CompletionAction::patch(
                     RequestPatch::new().context(hook_doc("turn-one", "only turn 1")),
-                );
+                )
+            } else {
+                CompletionAction::Continue
             }
-            Flow::cont()
         }
     }
 
@@ -5325,12 +5231,12 @@ mod tests {
 
         struct HistoryOverrideHook;
         impl<M: CompletionModel> AgentHook<M> for HistoryOverrideHook {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::CompletionCall { .. } = event {
-                    Flow::patch_request(RequestPatch::new().history([Message::user(SENTINEL)]))
-                } else {
-                    Flow::cont()
-                }
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                _event: CompletionCallEvent<'_>,
+            ) -> CompletionAction {
+                CompletionAction::patch(RequestPatch::new().history([Message::user(SENTINEL)]))
             }
         }
 
@@ -5445,11 +5351,14 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for CaptureFirstTurnContent {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ModelTurnFinished { turn, content, .. } = event
-                && turn == 1
-            {
-                let kinds = content
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinishedEvent<'_>,
+        ) -> ObserveAction {
+            if event.turn == 1 {
+                let kinds = event
+                    .content
                     .iter()
                     .map(|c| match c {
                         AssistantContent::Reasoning(_) => "reasoning",
@@ -5460,7 +5369,7 @@ mod tests {
                     .collect();
                 *self.kinds.lock().expect("kinds") = Some(kinds);
             }
-            Flow::cont()
+            ObserveAction::Continue
         }
     }
 
@@ -5503,7 +5412,7 @@ mod tests {
         );
     }
 
-    /// `RewriteArgs` and `RewriteResult` chain across hooks: a later hook observes
+    /// `ToolCallAction::Rewrite` and `ToolResultAction::Rewrite` chain across hooks: a later hook observes
     /// (and further rewrites) the value produced by earlier hooks.
     #[tokio::test]
     async fn chained_rewrites_compose_across_hooks() {
@@ -5513,27 +5422,27 @@ mod tests {
             value: i64,
         }
         impl<M: CompletionModel> AgentHook<M> for SetArg {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::ToolCall { args, .. } = event {
-                    let mut parsed: serde_json::Value =
-                        serde_json::from_str(args).unwrap_or_else(|_| json!({}));
-                    parsed[self.key] = json!(self.value);
-                    Flow::rewrite_args(parsed)
-                } else {
-                    Flow::cont()
-                }
+            async fn on_tool_call(
+                &self,
+                _ctx: &HookContext,
+                event: ToolCallEvent<'_>,
+            ) -> ToolCallAction {
+                let mut parsed: serde_json::Value =
+                    serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
+                parsed[self.key] = json!(self.value);
+                ToolCallAction::rewrite(parsed)
             }
         }
 
         /// Wraps the tool result in `label(...)`.
         struct WrapResult(&'static str);
         impl<M: CompletionModel> AgentHook<M> for WrapResult {
-            async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-                if let StepEvent::ToolResult { result, .. } = event {
-                    Flow::rewrite_result(format!("{}({})", self.0, result))
-                } else {
-                    Flow::cont()
-                }
+            async fn on_tool_result(
+                &self,
+                _ctx: &HookContext,
+                event: ToolResultEvent<'_>,
+            ) -> ToolResultAction {
+                ToolResultAction::rewrite(format!("{}({})", self.0, event.result))
             }
         }
 
@@ -5611,7 +5520,6 @@ mod tests {
 
     impl Tool for FinalResultTool {
         const NAME: &'static str = "final_result";
-        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -5623,7 +5531,11 @@ mod tests {
             json!({ "type": "object", "properties": {} })
         }
 
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             Ok("real final_result output".to_string())
         }
     }
@@ -5633,12 +5545,12 @@ mod tests {
     struct ActiveToolsAddOnly;
 
     impl<M: CompletionModel> AgentHook<M> for ActiveToolsAddOnly {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::CompletionCall { .. } = event {
-                Flow::patch_request(RequestPatch::new().active_tools(["add"]))
-            } else {
-                Flow::cont()
-            }
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionAction {
+            CompletionAction::patch(RequestPatch::new().active_tools(["add"]))
         }
     }
 
@@ -5712,15 +5624,17 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for CaptureOutputToolInModelTurn {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if let StepEvent::ModelTurnFinished { content, .. } = event
-                && content.iter().any(|c| {
-                    matches!(c, AssistantContent::ToolCall(tc) if tc.function.name == "final_result")
-                })
-            {
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinishedEvent<'_>,
+        ) -> ObserveAction {
+            if event.content.iter().any(|c| {
+                matches!(c, AssistantContent::ToolCall(tc) if tc.function.name == "final_result")
+            }) {
                 *self.saw_output_tool_call.lock().expect("lock") = true;
             }
-            Flow::cont()
+            ObserveAction::Continue
         }
     }
 
@@ -5826,8 +5740,8 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // Human-in-the-loop (HITL): one hook gates each tool call behind a human
-    // decision, mapping approve/deny/edit/abort onto the existing Flow actions
-    // (cont / skip / rewrite_args / terminate). The runnable interactive
+    // decision, mapping approve/deny/edit/abort onto the existing event-specific actions
+    // (run / skip / rewrite / stop). The runnable interactive
     // version lives in `examples/agent_with_human_in_the_loop`.
     // -----------------------------------------------------------------------
 
@@ -5844,7 +5758,7 @@ mod tests {
     }
 
     /// Simulates a human reviewer by popping a scripted decision per `ToolCall`
-    /// and mapping it to the matching `Flow`. A real reviewer would `.await`
+    /// and mapping it to the matching event-specific action. A real reviewer would `.await`
     /// interactive input here (the hook is async) rather than read a queue.
     #[derive(Clone)]
     struct HumanApprovalHook {
@@ -5867,26 +5781,24 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for HumanApprovalHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            let StepEvent::ToolCall {
-                tool_name, args, ..
-            } = event
-            else {
-                return Flow::cont();
-            };
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
             self.reviewed
                 .lock()
                 .unwrap()
-                .push(format!("{tool_name}({args})"));
+                .push(format!("{}({})", event.tool_name, event.args));
             let decision = self.decisions.lock().unwrap().pop_front();
             match decision {
-                Some(Decision::Approve) => Flow::cont(),
-                Some(Decision::Deny(reason)) => Flow::skip(reason),
-                Some(Decision::Edit(args)) => Flow::rewrite_args(args),
-                Some(Decision::Abort(reason)) => Flow::terminate(reason),
+                Some(Decision::Approve) => ToolCallAction::Run,
+                Some(Decision::Deny(reason)) => ToolCallAction::skip(reason),
+                Some(Decision::Edit(args)) => ToolCallAction::rewrite(args),
+                Some(Decision::Abort(reason)) => ToolCallAction::stop(reason),
                 // Fail closed if the script is exhausted (it shouldn't be) — deny
                 // rather than silently approve, matching the example's contract.
-                None => Flow::skip("denied: no scripted decision (fail-closed)"),
+                None => ToolCallAction::skip("denied: no scripted decision (fail-closed)"),
             }
         }
     }
@@ -6026,7 +5938,7 @@ mod tests {
         );
     }
 
-    /// A HITL hook that aborts a tool call (`Decision::Abort` -> `Flow::terminate`)
+    /// A HITL hook that aborts a tool call (`Decision::Abort` -> a stop action)
     /// stops the run and surfaces the reason as a `PromptCancelled` error — on both
     /// the blocking and streaming drivers.
     #[tokio::test]
@@ -6114,10 +6026,12 @@ mod tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for PolicyHook {
-        async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            let StepEvent::ToolCall { tool_name, .. } = event else {
-                return Flow::cont();
-            };
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            let tool_name = event.tool_name;
             let cached = self.cache.lock().unwrap().get(tool_name).copied();
             let approved = match cached {
                 Some(decision) => decision, // sticky: reuse without re-evaluating
@@ -6132,9 +6046,9 @@ mod tests {
                 }
             };
             if approved {
-                Flow::cont()
+                ToolCallAction::Run
             } else {
-                Flow::skip(format!("denied by policy: `{tool_name}` not allowed"))
+                ToolCallAction::skip(format!("denied by policy: `{tool_name}` not allowed"))
             }
         }
     }

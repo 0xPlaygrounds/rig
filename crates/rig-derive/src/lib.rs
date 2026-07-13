@@ -276,6 +276,22 @@ fn is_option_type(ty: &Type) -> bool {
     false
 }
 
+/// Whether a function parameter is the optional author-facing tool context.
+fn is_tool_context_type(ty: &Type) -> bool {
+    let Type::Reference(reference) = ty else {
+        return false;
+    };
+    let Type::Path(path) = reference.elem.as_ref() else {
+        return false;
+    };
+    reference.mutability.is_some()
+        && path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "ToolContext")
+}
+
 fn result_type_tokens(
     return_type: &ReturnType,
 ) -> syn::Result<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
@@ -347,7 +363,7 @@ fn result_type_tokens(
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool]
-/// fn add(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+/// fn add(a: i32, b: i32) -> Result<i32, rig::tool::ToolExecutionError> {
 ///     Ok(a + b)
 /// }
 /// ```
@@ -357,14 +373,34 @@ fn result_type_tokens(
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(description = "Perform basic arithmetic operations")]
-/// fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolError> {
+/// fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolExecutionError> {
 ///     match operation.as_str() {
 ///         "add" => Ok(x + y),
 ///         "subtract" => Ok(x - y),
 ///         "multiply" => Ok(x * y),
 ///         "divide" => Ok(x / y),
-///         _ => Err(rig::tool::ToolError::ToolCallError("Unknown operation".into())),
+///         _ => Err(rig::tool::ToolExecutionError::invalid_args("Unknown operation")),
 ///     }
+/// }
+/// ```
+///
+/// With typed runtime context that is excluded from the model-visible schema:
+/// ```text
+/// use rig::tool::{ToolContext, ToolExecutionError};
+/// use rig_derive::rig_tool;
+///
+/// #[derive(Clone)]
+/// struct TenantId(String);
+///
+/// #[rig_tool]
+/// fn scoped_lookup(
+///     context: &mut ToolContext,
+///     query: String,
+/// ) -> Result<String, ToolExecutionError> {
+///     let tenant = context.get::<TenantId>().ok_or_else(|| {
+///         ToolExecutionError::permission_denied("missing tenant context")
+///     })?;
+///     Ok(format!("{}:{query}", tenant.0))
 /// }
 /// ```
 ///
@@ -376,7 +412,7 @@ fn result_type_tokens(
 /// // or `_`, may contain ASCII letters, digits, `_`, or `-`, and be at most
 /// // 64 characters long.
 /// #[rig_tool(name = "search-docs", description = "Search the documentation")]
-/// fn search_docs_impl(query: String) -> Result<String, rig::tool::ToolError> {
+/// fn search_docs_impl(query: String) -> Result<String, rig::tool::ToolExecutionError> {
 ///     Ok(format!("Searching docs for {query}"))
 /// }
 /// ```
@@ -392,12 +428,12 @@ fn result_type_tokens(
 ///         operation = "The operation to perform (uppercase, lowercase, reverse)"
 ///     )
 /// )]
-/// fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
+/// fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolExecutionError> {
 ///     match operation.as_str() {
 ///         "uppercase" => Ok(text.to_uppercase()),
 ///         "lowercase" => Ok(text.to_lowercase()),
 ///         "reverse" => Ok(text.chars().rev().collect()),
-///         _ => Err(rig::tool::ToolError::ToolCallError("Unknown operation".into())),
+///         _ => Err(rig::tool::ToolExecutionError::invalid_args("Unknown operation")),
 ///     }
 /// }
 /// ```
@@ -445,17 +481,33 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         },
     };
 
-    // Extract parameter names, doc comments, and build struct field tokens
+    // Extract parameter names, doc comments, and build struct field tokens.
+    // An optional first `&mut ToolContext` parameter is runtime-only and must
+    // never appear in the model-visible argument schema.
     let mut param_names = Vec::new();
     let mut field_tokens = Vec::new();
+    let mut accepts_context = false;
 
-    for arg in input_fn.sig.inputs.iter() {
+    for (index, arg) in input_fn.sig.inputs.iter().enumerate() {
         if let syn::FnArg::Typed(pat_type) = arg
             && let syn::Pat::Ident(param_ident) = &*pat_type.pat
         {
             let param_name = &param_ident.ident;
             let param_name_str = param_name.to_string();
             let ty = &pat_type.ty;
+
+            if is_tool_context_type(ty) {
+                if index != 0 || accepts_context {
+                    return syn::Error::new_spanned(
+                        pat_type,
+                        "&mut ToolContext must be the first parameter",
+                    )
+                    .into_compile_error()
+                    .into();
+                }
+                accepts_context = true;
+                continue;
+            }
 
             // Determine the description for this field:
             // explicit params() > parameter doc comment > default
@@ -496,23 +548,39 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
+    let rig_core = rig_core_path();
 
-    // Generate the call implementation based on whether the function is async
+    let context_arg = accepts_context.then(|| quote! { context, });
+
+    // Generate the call implementation based on whether the function is async.
+    // The author function must use the canonical execution envelope directly;
+    // wrapping it here would erase its classification and concrete source.
     let call_impl = if is_async {
         quote! {
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                #fn_name(#(args.#param_names,)*).await
+            async fn call(
+                &self,
+                context: &mut #rig_core::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
+                let result: Result<#output_type, #error_type> =
+                    #fn_name(#context_arg #(args.#param_names,)*).await;
+                result
             }
         }
     } else {
         quote! {
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                #fn_name(#(args.#param_names,)*)
+            async fn call(
+                &self,
+                context: &mut #rig_core::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
+                let result: Result<#output_type, #error_type> =
+                    #fn_name(#context_arg #(args.#param_names,)*);
+                result
             }
         }
     };
 
-    let rig_core = rig_core_path();
     let schemars_crate = format!("{}::schemars", rig_core.to_string().replace(' ', ""));
     let expanded = quote! {
         #[derive(serde::Deserialize, #rig_core::schemars::JsonSchema)]
@@ -531,7 +599,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             type Args = #params_struct_name;
             type Output = #output_type;
-            type Error = #error_type;
 
             fn name(&self) -> String {
                 #tool_name.to_string()

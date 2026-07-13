@@ -120,8 +120,11 @@ pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
 pub use hook::{
-    AgentHook, Flow, HookContext, HookStack, InvalidToolCallContext, InvalidToolCallHookAction,
-    RequestPatch, RunId, Scratchpad, StepEvent, StepEventKind,
+    AgentHook, CompletionAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
+    HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelTurnFinishedEvent,
+    ObserveAction, RequestPatch, RunId, Scratchpad, StepEventKind, StreamResponseFinishEvent,
+    TextDeltaEvent, ToolCallAction, ToolCallDeltaEvent, ToolCallEvent, ToolResultAction,
+    ToolResultEvent,
 };
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,

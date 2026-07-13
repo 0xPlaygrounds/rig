@@ -25,7 +25,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_with_default_max_turns` | Demonstrates extending the default agent loop budget for tool-heavy prompts. |
 | `agent_with_durable_approval` | Demonstrates **durable** HITL: the hand-driven `AgentRun` is serialized while tool calls are pending and resumed from JSON (as another process would), so approval can happen out-of-process / later. |
 | `agent_with_echochambers` | See source. |
-| `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve/deny/edit/abort, mapped onto `Flow` (`cont`/`skip`/`rewrite_args`/`terminate`). |
+| `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve, deny, edit, or abort with `ToolCallAction::{Run, Skip, Rewrite, Stop}`. |
 | `agent_with_loaders` | Demonstrates loading real example files into agent context. |
 | `agent_with_memory_streaming` | Demonstrates Rig-managed conversation memory with streaming. |
 | `agent_with_memory` | Demonstrates Rig-managed conversation memory with an in-memory backend. |
@@ -66,7 +66,6 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `rmcp_example` | An example of how you can use `rmcp` with Rig to create an MCP friendly agent. |
 | `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |
 | `transcription` | See source. |
-| `tool_result_outcomes` | Demonstrates structured disk (`Other`/`EIO`) and network (`Network`/`ENETUNREACH`) tool failures, a run-scoped scratchpad ledger, and ordered recorder/policy hooks that terminate fatal failures while returning recoverable feedback to the model. Run `cargo run -p tool_result_outcomes -- --help` for credential-free usage. |
 | `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embeddings. |
 | `vector_search_ollama` | Demonstrates vector search against a local Ollama embedding model. |
 | `vector_search` | Demonstrates embedding documents and querying an in-memory vector index with OpenAI. |

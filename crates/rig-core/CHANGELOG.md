@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(tool, agent)* [**breaking**] Replace parallel tool execution/result/metadata APIs with one `Tool::call(&mut ToolContext, args)` contract, `ToolExecutionError`, private erased dispatch behind `DynamicTool`, and one structured dispatch method on each runtime surface. Hooks now use event-specific lifecycle methods and action types, making invalid event/action combinations unrepresentable. ([#2126](https://github.com/0xPlaygrounds/rig/issues/2126))
 - *(core)* [**breaking**] Mark `PromptError`, `StructuredOutputError`, `ToolError`, `ToolSetError`, and `VectorStoreError` as non-exhaustive, requiring downstream match expressions to include a wildcard arm. Conversation memory load failures now surface as the typed `PromptError::MemoryError` variant instead of `CompletionError::RequestError`.
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.39.0...rig-core-v0.40.0) - 2026-07-10

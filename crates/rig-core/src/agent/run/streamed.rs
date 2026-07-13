@@ -670,7 +670,7 @@ impl StreamedTurnAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::hook::InvalidToolCallHookAction;
+    use crate::agent::hook::InvalidToolCallAction;
     use crate::agent::run::{AgentRun, AgentRunStep};
     use crate::completion::PromptError;
     use crate::message::{Text, ToolResultContent, UserContent};
@@ -945,7 +945,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::retry("use add instead"),
+                InvalidToolCallAction::retry("use add instead"),
             )
             .expect("retry should be accepted");
         assert!(matches!(
@@ -985,7 +985,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::retry("use add instead"),
+                InvalidToolCallAction::retry("use add instead"),
             )
             .expect("retry resolution should be accepted");
         assert!(matches!(
@@ -1024,7 +1024,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::skip("not available"),
+                InvalidToolCallAction::skip("not available"),
             )
             .expect("skip should be accepted");
         let StreamedResolution::TurnAbandoned {
@@ -1055,7 +1055,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::repair("add"),
+                InvalidToolCallAction::repair("add"),
             )
             .expect("repair should be accepted");
         assert!(matches!(

@@ -934,7 +934,11 @@ impl ToolResultContent {
                 let mut results: Vec<ToolResultContent> = Vec::new();
 
                 if let Some(response) = json.get("response") {
-                    results.push(ToolResultContent::Text(Text::new(response.to_string())));
+                    let text = response
+                        .as_str()
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| response.to_string());
+                    results.push(ToolResultContent::Text(Text::new(text)));
                 }
 
                 if let Some(parts) = json.get("parts").and_then(|p| p.as_array()) {
