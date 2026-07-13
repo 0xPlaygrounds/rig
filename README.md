@@ -20,7 +20,6 @@
 &nbsp;
 <a href="https://github.com/0xPlaygrounds/rig"><img src="https://img.shields.io/github/stars/0xPlaygrounds/rig?style=social" alt="stars - rig" /></a>
 <br>
-
 <br>
 </p>
 &nbsp;
