@@ -1,4 +1,4 @@
-//! Demonstrates registering boxed tools on an agent.
+//! Demonstrates registering typed tools on an agent.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
@@ -6,7 +6,7 @@ use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolDyn};
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
@@ -17,16 +17,11 @@ struct OperationArgs {
     y: i32,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-struct MathError;
-
 #[derive(Deserialize, Serialize)]
 struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -45,7 +40,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x + args.y)
     }
 }
@@ -55,7 +54,6 @@ struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -74,13 +72,13 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x - args.y)
     }
-}
-
-fn boxed_tools() -> Vec<Box<dyn ToolDyn>> {
-    vec![Box::new(Add), Box::new(Subtract)]
 }
 
 #[tokio::main]
@@ -91,7 +89,8 @@ async fn main() -> Result<()> {
             "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",
         )
-        .tools(boxed_tools())
+        .tool(Add)
+        .tool(Subtract)
         .max_tokens(1024)
         .default_max_turns(2)
         .build();

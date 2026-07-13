@@ -22,7 +22,7 @@ fn add_doc(
     a: i32,
     /// Second number
     b: i32,
-) -> Result<i32, rig_core::tool::ToolError> {
+) -> Result<i32, std::io::Error> {
     Ok(a + b)
 }
 
@@ -50,7 +50,7 @@ async fn test_param_doc_comments() {
 fn search_override(
     /// This param doc should be ignored
     query: String,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, std::io::Error> {
     Ok(query)
 }
 
@@ -71,7 +71,7 @@ fn search_optional(
     query: String,
     /// Maximum results
     limit: Option<i32>,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, std::io::Error> {
     Ok(format!("{query} limit={limit:?}"))
 }
 
@@ -121,7 +121,7 @@ fn numeric_types(
     int_val: i32,
     /// A float
     float_val: f64,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, std::io::Error> {
     Ok(format!("{int_val} {float_val}"))
 }
 
@@ -140,7 +140,7 @@ async fn test_integer_vs_number() {
 fn sum_vec(
     /// Numbers to sum
     numbers: Vec<i64>,
-) -> Result<i64, rig_core::tool::ToolError> {
+) -> Result<i64, std::io::Error> {
     Ok(numbers.iter().sum())
 }
 
@@ -156,7 +156,7 @@ async fn test_vec_param() {
 
 /// Return constant
 #[rig_tool]
-fn no_params() -> Result<i32, rig_core::tool::ToolError> {
+fn no_params() -> Result<i32, std::io::Error> {
     Ok(42)
 }
 
@@ -179,7 +179,7 @@ async fn test_no_params() {
 fn toggle(
     /// Whether to enable
     enabled: bool,
-) -> Result<bool, rig_core::tool::ToolError> {
+) -> Result<bool, std::io::Error> {
     Ok(!enabled)
 }
 
@@ -193,7 +193,7 @@ async fn test_bool_param() {
 // --- Default description fallback ---
 
 #[rig_tool]
-fn no_docs(x: i32) -> Result<i32, rig_core::tool::ToolError> {
+fn no_docs(x: i32) -> Result<i32, std::io::Error> {
     Ok(x)
 }
 
@@ -241,7 +241,7 @@ pub enum SortOrder {
 fn sort_items(
     /// Sort direction
     order: SortOrder,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, std::io::Error> {
     Ok(format!("{order:?}"))
 }
 
@@ -263,7 +263,7 @@ async fn test_enum_param() {
 fn store_metadata(
     /// Key-value pairs
     metadata: HashMap<String, String>,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, std::io::Error> {
     Ok(format!("{metadata:?}"))
 }
 
@@ -294,7 +294,7 @@ fn find_nearby(
     location: Coordinates,
     /// Search radius in km
     radius: f64,
-) -> Result<Vec<String>, rig_core::tool::ToolError> {
+) -> Result<Vec<String>, std::io::Error> {
     Ok(vec![format!(
         "{},{} r={radius}",
         location.lat, location.lng
@@ -335,7 +335,7 @@ async fn test_nested_struct_param() {
 async fn fetch_url(
     /// The URL to fetch
     url: String,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, std::io::Error> {
     Ok(format!("fetched: {url}"))
 }
 
@@ -350,9 +350,12 @@ async fn test_async_tool_with_docs() {
 
     // Verify it actually works (async call)
     let result = FetchUrl
-        .call(FetchUrlParameters {
-            url: "https://example.com".to_string(),
-        })
+        .call(
+            &mut rig_core::tool::ToolContext::new(),
+            FetchUrlParameters {
+                url: "https://example.com".to_string(),
+            },
+        )
         .await
         .unwrap();
     assert_eq!(result, serde_json::json!("fetched: https://example.com"));

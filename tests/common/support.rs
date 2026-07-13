@@ -118,16 +118,11 @@ pub(crate) struct OperationArgs {
 #[derive(Deserialize)]
 pub(crate) struct EmptyArgs {}
 
-#[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-pub(crate) struct MathError;
-
 #[derive(Deserialize, Serialize)]
 pub(crate) struct Adder;
 
 impl Tool for Adder {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -142,7 +137,11 @@ impl Tool for Adder {
             .expect("adder schema should deserialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x + args.y)
     }
 }
@@ -152,7 +151,6 @@ pub(crate) struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -167,7 +165,11 @@ impl Tool for Subtract {
             .expect("subtract schema should deserialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x - args.y)
     }
 }
@@ -177,7 +179,6 @@ pub(crate) struct AlphaSignal;
 
 impl Tool for AlphaSignal {
     const NAME: &'static str = "lookup_harbor_label";
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -193,7 +194,11 @@ impl Tool for AlphaSignal {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
 }
@@ -203,7 +208,6 @@ pub(crate) struct BetaSignal;
 
 impl Tool for BetaSignal {
     const NAME: &'static str = "lookup_orchard_label";
-    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -219,7 +223,11 @@ impl Tool for BetaSignal {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }
 }

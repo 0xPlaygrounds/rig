@@ -4,9 +4,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{
-        Tool, ToolCallExtensions, ToolDyn, ToolExecutionResult, ToolFailure, ToolSet, ToolSetError,
-    },
+    tool::{Tool, ToolContext, ToolExecution, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
@@ -88,6 +86,14 @@ impl ToolServer {
         self
     }
 
+    /// Add a runtime-defined static tool. Re-registering an existing name
+    /// replaces the implementation and keeps its position.
+    pub fn dynamic_tool(mut self, tool: crate::tool::DynamicTool) -> Self {
+        let toolname = self.toolset.add_dynamic_tool(tool);
+        push_unique_name(&mut self.static_tool_names, toolname);
+        self
+    }
+
     /// Add an MCP tool (from `rmcp`) to the agent, bounded by
     /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
@@ -150,11 +156,24 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
-    /// Register a new static tool. Re-registering an existing name replaces
-    /// the implementation (last wins) and keeps its position.
-    pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
+    /// Register a typed static tool.
+    pub async fn add_tool<T>(&self, tool: T) -> Result<(), ToolServerError>
+    where
+        T: Tool + 'static,
+    {
         let mut state = self.0.write().await;
-        let toolname = state.toolset.add_tool_boxed(Box::new(tool));
+        let toolname = state.toolset.add_tool(tool);
+        push_unique_name(&mut state.static_tool_names, toolname);
+        Ok(())
+    }
+
+    /// Register a runtime-defined tool.
+    pub async fn add_dynamic_tool(
+        &self,
+        tool: crate::tool::DynamicTool,
+    ) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        let toolname = state.toolset.add_dynamic_tool(tool);
         push_unique_name(&mut state.static_tool_names, toolname);
         Ok(())
     }
@@ -181,80 +200,35 @@ impl ToolServerHandle {
         Ok(())
     }
 
-    /// Look up and execute a tool by name.
+    /// Execute a tool through the canonical structured dispatch path.
     ///
-    /// The tool handle is cloned under a brief read lock so that
-    /// long-running tool executions never block writers.
-    pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
-        self.call_tool_with_extensions(tool_name, args, &ToolCallExtensions::EMPTY)
-            .await
-    }
-
-    /// Look up and execute a tool by name with per-call runtime extensions.
-    ///
-    /// The extensions are threaded through to [`Tool::call_with_extensions`],
-    /// allowing tools to access caller-provided values (auth tokens, session
-    /// IDs, etc.). The tool handle is cloned under a brief read lock so that
-    /// long-running tool executions never block writers.
-    pub async fn call_tool_with_extensions(
+    /// The registration is cloned under a short read lock; execution never
+    /// blocks writers. Missing tools are represented by a classified execution
+    /// error in the returned view.
+    pub async fn execute(
         &self,
         tool_name: &str,
         args: &str,
-        extensions: &ToolCallExtensions,
-    ) -> Result<String, ToolServerError> {
+        context: ToolContext,
+    ) -> ToolExecution {
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
         };
-
         match tool {
             Some(tool) => {
-                tracing::debug!(target: "rig",
-                    "Calling tool {tool_name} with args:\n{}",
-                    serde_json::to_string_pretty(&args).unwrap_or_default()
+                tracing::debug!(
+                    target: "rig",
+                    tool_name,
+                    "executing tool through structured dispatch"
                 );
-                tool.call_with_extensions(args.to_string(), extensions)
-                    .await
-                    .map_err(|e| ToolSetError::ToolCallError(e).into())
+                tool.execute(args.to_string(), context).await
             }
-            None => Err(ToolServerError::ToolsetError(
-                ToolSetError::ToolNotFoundError(tool_name.to_string()),
-            )),
-        }
-    }
-
-    /// Look up and execute a tool by name, returning the structured
-    /// [`ToolExecutionResult`] (model output + [`ToolOutcome`](crate::tool::ToolOutcome)
-    /// + result extensions).
-    ///
-    /// The structured counterpart of [`call_tool_with_extensions`](Self::call_tool_with_extensions),
-    /// and the path the agent loop drives so hooks, tracing, and policies observe
-    /// the structured outcome. A missing tool resolves to a
-    /// [`NotFound`](crate::tool::ToolFailureKind::NotFound) outcome rather than a
-    /// `Result::Err`. The tool handle is cloned under a brief read lock so that
-    /// long-running tool executions never block writers.
-    pub async fn call_tool_structured(
-        &self,
-        tool_name: &str,
-        args: &str,
-        extensions: &ToolCallExtensions,
-    ) -> ToolExecutionResult {
-        let tool = {
-            let state = self.0.read().await;
-            state.toolset.get(tool_name).cloned()
-        };
-
-        match tool {
-            Some(tool) => {
-                tracing::debug!(target: "rig",
-                    "Calling tool {tool_name} with args:\n{}",
-                    serde_json::to_string_pretty(&args).unwrap_or_default()
-                );
-                tool.call_structured(args.to_string(), extensions).await
-            }
-            None => ToolExecutionResult::failed(
-                format!("tool `{tool_name}` not found"),
-                ToolFailure::not_found(format!("no tool named `{tool_name}` is registered")),
+            None => ToolExecution::failed(
+                crate::tool::ToolExecutionError::not_found(format!(
+                    "no tool named `{tool_name}` is registered"
+                )),
+                context,
             ),
         }
     }
@@ -384,13 +358,20 @@ mod tests {
         time::Duration,
     };
 
+    use serde_json::json;
+
     use crate::{
         test_utils::{
             BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockControlledTool,
-            MockSubtractTool, MockToolError, MockToolIndex,
+            MockSubtractTool, MockToolIndex,
         },
-        tool::{Tool, ToolEmbedding, ToolSet, server::ToolServer},
+        tool::{
+            DynamicTool, Tool, ToolContext, ToolEmbedding, ToolErrorKind, ToolExecutionError,
+            ToolSet,
+        },
     };
+
+    use super::ToolServer;
 
     struct ChangingNameTool {
         calls: AtomicUsize,
@@ -406,27 +387,30 @@ mod tests {
 
     impl Tool for ChangingNameTool {
         const NAME: &'static str = "unused";
-        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = String;
 
         fn name(&self) -> String {
             match self.calls.fetch_add(1, Ordering::SeqCst) {
-                0 => "registered_changing".to_string(),
-                _ => "changed_after_registration".to_string(),
+                0 => "registered_changing".into(),
+                _ => "changed_after_registration".into(),
             }
         }
 
         fn description(&self) -> String {
-            "changes name after registration".to_string()
+            "changes name after registration".into()
         }
 
         fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({"type": "object", "properties": {}})
+            json!({"type":"object", "properties":{}})
         }
 
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            Ok("ok".to_string())
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            Ok("ok".into())
         }
     }
 
@@ -440,7 +424,7 @@ mod tests {
         type State = ();
 
         fn embedding_docs(&self) -> Vec<String> {
-            vec!["changing dynamic tool".to_string()]
+            vec!["changing dynamic tool".into()]
         }
 
         fn context(&self) -> Self::Context {}
@@ -451,422 +435,260 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_toolserver() {
-        let server = ToolServer::new();
-
-        let handle = server.run();
-
+    async fn registration_execution_and_removal_share_one_handle() {
+        let handle = ToolServer::new().run();
         handle.add_tool(MockAddTool).await.unwrap();
-        let res = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
 
-        assert_eq!(res.len(), 1);
-
-        let json_args_as_string =
-            serde_json::to_string(&serde_json::json!({"x": 2, "y": 5})).unwrap();
-        let res = handle.call_tool("add", &json_args_as_string).await.unwrap();
-        assert_eq!(res, "7");
+        let execution = handle
+            .execute("add", r#"{"x":2,"y":5}"#, ToolContext::new())
+            .await;
+        assert_eq!(execution.model_output(), "7");
+        assert!(execution.status().is_success());
 
         handle.remove_tool("add").await.unwrap();
-        let res = handle.get_tool_defs(None).await.unwrap();
-
-        assert_eq!(res.len(), 0);
+        assert!(handle.get_tool_defs(None).await.unwrap().is_empty());
+        let missing = handle.execute("add", "{}", ToolContext::new()).await;
+        assert!(missing.status().is_error_kind(ToolErrorKind::NotFound));
     }
 
     #[tokio::test]
-    pub async fn test_toolserver_append_toolset_matches_add_tool() {
-        let mut via_add_tool = {
-            let handle = ToolServer::new().run();
-            handle.add_tool(MockAddTool).await.unwrap();
-            handle.add_tool(MockSubtractTool).await.unwrap();
-            handle.get_tool_defs(None).await.unwrap()
-        };
-        via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
+    async fn append_toolset_matches_individual_registration() {
+        let individual = ToolServer::new().run();
+        individual.add_tool(MockAddTool).await.unwrap();
+        individual.add_tool(MockSubtractTool).await.unwrap();
 
-        let mut via_append_toolset = {
-            let handle = ToolServer::new().run();
-            let mut toolset = ToolSet::default();
-            toolset.add_tool(MockAddTool);
-            toolset.add_tool(MockSubtractTool);
-            handle.append_toolset(toolset).await.unwrap();
-            handle.get_tool_defs(None).await.unwrap()
-        };
-        via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
+        let appended = ToolServer::new().run();
+        let mut set = ToolSet::default();
+        set.add_tool(MockAddTool);
+        set.add_tool(MockSubtractTool);
+        appended.append_toolset(set).await.unwrap();
 
-        assert_eq!(via_add_tool.len(), via_append_toolset.len());
-        assert!(
-            via_add_tool
-                .iter()
-                .zip(via_append_toolset.iter())
-                .all(|(a, b)| a.name == b.name),
-            "append_toolset must surface the same LLM-visible tools as add_tool",
+        let individual_names = individual
+            .get_tool_defs(None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|definition| definition.name)
+            .collect::<Vec<_>>();
+        let appended_names = appended
+            .get_tool_defs(None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|definition| definition.name)
+            .collect::<Vec<_>>();
+        assert_eq!(appended_names, individual_names);
+    }
+
+    #[tokio::test]
+    async fn registered_key_is_source_of_truth() {
+        let built = ToolServer::new().tool(ChangingNameTool::new()).run();
+        assert_eq!(
+            built.get_tool_defs(None).await.unwrap()[0].name,
+            "registered_changing"
+        );
+
+        let added = ToolServer::new().run();
+        added.add_tool(ChangingNameTool::new()).await.unwrap();
+        assert_eq!(
+            added.get_tool_defs(None).await.unwrap()[0].name,
+            "registered_changing"
         );
     }
 
     #[tokio::test]
-    pub async fn builder_tool_uses_registered_key_for_static_names() {
-        let handle = ToolServer::new().tool(ChangingNameTool::new()).run();
-
-        let defs = handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, "registered_changing");
-    }
-
-    #[tokio::test]
-    pub async fn handle_add_tool_uses_registered_key_for_static_names() {
-        let handle = ToolServer::new().run();
-        handle.add_tool(ChangingNameTool::new()).await.unwrap();
-
-        let defs = handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, "registered_changing");
-    }
-
-    #[tokio::test]
-    pub async fn dynamic_retrieval_resolves_registered_key() {
-        let toolset = ToolSet::builder()
+    async fn dynamic_retrieval_resolves_registered_key() {
+        let set = ToolSet::builder()
             .dynamic_tool(ChangingNameTool::new())
             .build();
         let handle = ToolServer::new()
-            .dynamic_tools(1, MockToolIndex::new(["registered_changing"]), toolset)
+            .dynamic_tools(1, MockToolIndex::new(["registered_changing"]), set)
             .run();
 
-        let defs = handle
-            .get_tool_defs(Some("use the changing tool".to_string()))
+        let definitions = handle
+            .get_tool_defs(Some("use changing tool".into()))
             .await
             .unwrap();
-        assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, "registered_changing");
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, "registered_changing");
     }
 
     #[tokio::test]
-    pub async fn get_tool_defs_preserves_static_registration_order() {
+    async fn definitions_preserve_order_and_dedupe_replacements() {
         let handle = ToolServer::new().run();
         handle.add_tool(MockSubtractTool).await.unwrap();
         handle.add_tool(MockAddTool).await.unwrap();
+        handle.add_tool(MockSubtractTool).await.unwrap();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let definitions = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(
-            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
-            vec!["subtract", "add"]
+            definitions
+                .iter()
+                .map(|definition| definition.name.as_str())
+                .collect::<Vec<_>>(),
+            ["subtract", "add"]
         );
     }
 
     #[tokio::test]
-    pub async fn get_tool_defs_dedupes_dynamic_and_static_overlap() {
-        // One shared toolset backs both lists, so a dynamically retrieved
-        // name that is also static must yield a single definition.
+    async fn dynamic_and_static_overlap_is_advertised_once() {
         let handle = ToolServer::new()
             .tool(MockAddTool)
             .dynamic_tools(1, MockToolIndex::new(["add"]), ToolSet::default())
             .run();
-
-        let defs = handle
-            .get_tool_defs(Some("add two numbers".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(
-            defs.len(),
-            1,
-            "dynamic/static name overlap must not produce duplicate declarations: {:?}",
-            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
-        );
-        assert_eq!(defs[0].name, "add");
+        let definitions = handle.get_tool_defs(Some("add".into())).await.unwrap();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, "add");
     }
 
     #[tokio::test]
-    pub async fn duplicate_registration_advertises_one_definition() {
-        let handle = ToolServer::new().tool(MockAddTool).run();
-        handle.add_tool(MockAddTool).await.unwrap();
-
-        let mut toolset = ToolSet::default();
-        toolset.add_tool(MockAddTool);
-        handle.append_toolset(toolset).await.unwrap();
-
-        let defs = handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(
-            defs.len(),
-            1,
-            "re-registering a name must not advertise duplicate declarations"
-        );
-        assert_eq!(defs[0].name, "add");
+    async fn missing_dynamic_implementation_is_ignored() {
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .dynamic_tools(1, MockToolIndex::new(["missing"]), ToolSet::default())
+            .run();
+        let definitions = handle.get_tool_defs(Some("query".into())).await.unwrap();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, "add");
     }
 
     #[tokio::test]
-    pub async fn test_toolserver_dynamic_tools() {
-        // Create a toolset with both tools
-        let mut toolset = ToolSet::default();
-        toolset.add_tool(MockAddTool);
-        toolset.add_tool(MockSubtractTool);
+    async fn concurrent_tool_executions_do_not_serialize() {
+        let calls = 3;
+        let barrier = Arc::new(tokio::sync::Barrier::new(calls));
+        let handle = ToolServer::new()
+            .tool(MockBarrierTool::new(Arc::clone(&barrier)))
+            .run();
+        let futures = (0..calls)
+            .map(|_| handle.execute("barrier_tool", "{}", ToolContext::new()))
+            .collect::<Vec<_>>();
 
-        // Create a mock index that will return "subtract" as the dynamic tool
-        let mock_index = MockToolIndex::new(["subtract"]);
-
-        // Build server with static tool "add" and dynamic tools from the mock index
-        let server = ToolServer::new().tool(MockAddTool).dynamic_tools(
-            1,
-            mock_index,
-            ToolSet::from_tools(vec![MockSubtractTool]),
-        );
-
-        let handle = server.run();
-
-        // Test with None prompt - should only return static tools
-        let res = handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0].name, "add");
-
-        // Test with Some prompt - should return both static and dynamic tools
-        let res = handle
-            .get_tool_defs(Some("calculate difference".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(res.len(), 2);
-
-        // Check that both tools are present (order may vary)
-        let tool_names: Vec<&str> = res.iter().map(|t| t.name.as_str()).collect();
-        assert!(tool_names.contains(&"add"));
-        assert!(tool_names.contains(&"subtract"));
-    }
-
-    #[tokio::test]
-    pub async fn test_toolserver_dynamic_tools_missing_implementation() {
-        // Create a mock index that returns a tool ID that doesn't exist in the toolset
-        let mock_index = MockToolIndex::new(["nonexistent_tool"]);
-
-        // Build server with only static tool, but dynamic index references missing tool
-        let server =
-            ToolServer::new()
-                .tool(MockAddTool)
-                .dynamic_tools(1, mock_index, ToolSet::default());
-
-        let handle = server.run();
-
-        // Test with Some prompt - should only return static tool since dynamic tool is missing
-        let res = handle
-            .get_tool_defs(Some("some query".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0].name, "add");
-    }
-
-    #[tokio::test]
-    pub async fn test_toolserver_concurrent_tool_execution() {
-        let num_calls = 3;
-        let barrier = Arc::new(tokio::sync::Barrier::new(num_calls));
-
-        let server = ToolServer::new().tool(MockBarrierTool::new(barrier.clone()));
-        let handle = server.run();
-
-        // Make concurrent calls
-        let futures: Vec<_> = (0..num_calls)
-            .map(|_| handle.call_tool("barrier_tool", "{}"))
-            .collect();
-
-        // If execution is sequential, the first call will block at the barrier forever.
-        // We use a 1-second timeout to fail fast instead of hanging the test runner.
-        let result =
-            tokio::time::timeout(Duration::from_secs(1), futures::future::join_all(futures)).await;
-
+        let executions =
+            tokio::time::timeout(Duration::from_secs(1), futures::future::join_all(futures))
+                .await
+                .expect("tool calls were serialized");
         assert!(
-            result.is_ok(),
-            "Tool execution deadlocked! Tools are executing sequentially instead of concurrently."
+            executions
+                .iter()
+                .all(|execution| execution.status().is_success())
         );
-
-        // All calls should succeed
-        for res in result.unwrap() {
-            assert!(res.is_ok(), "Tool call failed: {:?}", res);
-            assert_eq!(res.unwrap(), "done");
-        }
     }
 
     #[tokio::test]
-    pub async fn test_toolserver_write_while_tool_running() {
+    async fn execution_does_not_hold_read_lock() {
         let started = Arc::new(tokio::sync::Notify::new());
         let allow_finish = Arc::new(tokio::sync::Notify::new());
+        let handle = ToolServer::new()
+            .tool(MockControlledTool::new(
+                Arc::clone(&started),
+                Arc::clone(&allow_finish),
+            ))
+            .run();
 
-        // Build server with the controlled tool that waits at a barrier during execution
-        let tool = MockControlledTool::new(started.clone(), allow_finish.clone());
-
-        let server = ToolServer::new().tool(tool);
-        let handle = server.run();
-
-        // Start tool call in background
-        let handle_clone = handle.clone();
-        let call_task =
-            tokio::spawn(async move { handle_clone.call_tool("controlled", "{}").await });
-
-        // Wait until we are strictly inside `call()`
+        let executing = {
+            let handle = handle.clone();
+            tokio::spawn(
+                async move { handle.execute("controlled", "{}", ToolContext::new()).await },
+            )
+        };
         started.notified().await;
-
-        // Try to write to the state (add a tool) while the tool call is mid-execution.
-        // If the read lock is incorrectly held across tool execution, this will deadlock.
-        let add_result =
-            tokio::time::timeout(Duration::from_secs(1), handle.add_tool(MockAddTool)).await;
-
-        assert!(
-            add_result.is_ok(),
-            "Writing to ToolServer deadlocked! The read lock is being held across tool execution."
-        );
-        assert!(add_result.unwrap().is_ok());
-
-        // Allow the background tool to finish and clean up
+        tokio::time::timeout(Duration::from_secs(1), handle.add_tool(MockAddTool))
+            .await
+            .expect("writer blocked behind executing tool")
+            .unwrap();
         allow_finish.notify_one();
-        let call_result = call_task.await.unwrap();
-        assert_eq!(call_result.unwrap(), "42");
+        assert_eq!(executing.await.unwrap().model_output(), "42");
     }
 
     #[tokio::test]
-    pub async fn test_toolserver_parallel_dynamic_tool_fetching() {
-        // We expect exactly 2 parallel searches to hit the barrier at the same time
+    async fn dynamic_indexes_are_queried_in_parallel() {
         let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let mut set = ToolSet::default();
+        set.add_tool(MockAddTool);
+        set.add_tool(MockSubtractTool);
+        let handle = ToolServer::new()
+            .dynamic_tools(
+                1,
+                BarrierMockToolIndex::new(Arc::clone(&barrier), "add"),
+                ToolSet::default(),
+            )
+            .dynamic_tools(
+                1,
+                BarrierMockToolIndex::new(Arc::clone(&barrier), "subtract"),
+                set,
+            )
+            .run();
 
-        let index1 = BarrierMockToolIndex::new(barrier.clone(), "add");
-        let index2 = BarrierMockToolIndex::new(barrier.clone(), "subtract");
-
-        // Put both tools in the toolset so they resolve correctly
-        let mut toolset = ToolSet::default();
-        toolset.add_tool(MockAddTool);
-        toolset.add_tool(MockSubtractTool);
-
-        let server = ToolServer::new()
-            .dynamic_tools(1, index1, ToolSet::default())
-            .dynamic_tools(1, index2, toolset);
-
-        let handle = server.run();
-
-        // This will trigger a search across both indices.
-        // If fetched sequentially, the first index will wait at the barrier forever.
-        let get_defs = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            handle.get_tool_defs(Some("do math".to_string())),
+        let definitions = tokio::time::timeout(
+            Duration::from_secs(1),
+            handle.get_tool_defs(Some("math".into())),
         )
-        .await;
-
-        assert!(
-            get_defs.is_ok(),
-            "Dynamic tools were fetched sequentially! The first query deadlocked waiting for the second query to start."
-        );
-
-        let defs = get_defs.unwrap().unwrap();
-        assert_eq!(defs.len(), 2);
-
-        let tool_names: Vec<&str> = defs.iter().map(|t| t.name.as_str()).collect();
-        assert!(tool_names.contains(&"add"));
-        assert!(tool_names.contains(&"subtract"));
+        .await
+        .expect("dynamic indexes were queried sequentially")
+        .unwrap();
+        assert_eq!(definitions.len(), 2);
     }
 
-    // --- call_with_extensions tests ---
+    #[tokio::test]
+    async fn context_reaches_tool_and_metadata_returns() {
+        #[derive(Clone)]
+        struct Session(&'static str);
+        #[derive(Clone, Debug, PartialEq)]
+        struct RequestId(&'static str);
 
-    #[derive(Clone)]
-    struct SessionId(String);
-
-    #[derive(serde::Deserialize, serde::Serialize)]
-    struct ExtensionsReader;
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("context reader error")]
-    struct ExtensionsReaderError;
-
-    impl crate::tool::Tool for ExtensionsReader {
-        const NAME: &'static str = "context_reader";
-        type Error = ExtensionsReaderError;
-        type Args = serde_json::Value;
-        type Output = String;
-
-        fn description(&self) -> String {
-            "Reads SessionId from context".to_string()
-        }
-
-        fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({"type": "object", "properties": {}})
-        }
-
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            Ok("no context".to_string())
-        }
-
-        async fn call_with_extensions(
-            &self,
-            _args: Self::Args,
-            extensions: &crate::tool::ToolCallExtensions,
-        ) -> Result<Self::Output, Self::Error> {
-            match extensions.get::<SessionId>() {
-                Some(session) => Ok(format!("session:{}", session.0)),
-                None => Ok("no session".to_string()),
+        struct ContextTool;
+        impl Tool for ContextTool {
+            const NAME: &'static str = "context";
+            type Args = ();
+            type Output = String;
+            fn description(&self) -> String {
+                "context tool".into()
+            }
+            fn parameters(&self) -> serde_json::Value {
+                json!({"type":"null"})
+            }
+            async fn call(
+                &self,
+                context: &mut ToolContext,
+                _args: Self::Args,
+            ) -> Result<Self::Output, ToolExecutionError> {
+                let session = context
+                    .require::<Session>()
+                    .map_err(|error| ToolExecutionError::permission_denied(error.to_string()))?
+                    .0;
+                context.insert_metadata(RequestId("request-9"));
+                Ok(session.into())
             }
         }
+
+        let handle = ToolServer::new().tool(ContextTool).run();
+        let mut context = ToolContext::new();
+        context.insert(Session("session-9"));
+        let execution = handle.execute("context", "null", context).await;
+        assert_eq!(execution.model_output(), "session-9");
+        assert_eq!(
+            execution.metadata::<RequestId>(),
+            Some(&RequestId("request-9"))
+        );
     }
 
     #[tokio::test]
-    async fn test_call_tool_with_extensions_reaches_tool() {
-        let server = ToolServer::new().tool(ExtensionsReader);
-        let handle = server.run();
-
-        let mut extensions = crate::tool::ToolCallExtensions::new();
-        extensions.insert(SessionId("abc-123".to_string()));
-
-        let result = handle
-            .call_tool_with_extensions("context_reader", "{}", &extensions)
-            .await
-            .unwrap();
-
-        assert_eq!(result, "session:abc-123");
-    }
-
-    #[tokio::test]
-    async fn test_call_tool_without_extensions_uses_default() {
-        let server = ToolServer::new().tool(ExtensionsReader);
-        let handle = server.run();
-
-        let result = handle.call_tool("context_reader", "{}").await.unwrap();
-        assert_eq!(result, "no session");
-    }
-
-    #[tokio::test]
-    async fn test_tool_ignoring_extensions_still_works() {
-        let server = ToolServer::new().tool(MockAddTool);
-        let handle = server.run();
-
-        let mut extensions = crate::tool::ToolCallExtensions::new();
-        extensions.insert(SessionId("ignored".to_string()));
-
-        let args = serde_json::to_string(&serde_json::json!({"x": 3, "y": 7})).unwrap();
-        let result = handle
-            .call_tool_with_extensions("add", &args, &extensions)
-            .await
-            .unwrap();
-
-        assert_eq!(result, "10");
-    }
-
-    #[tokio::test]
-    async fn call_tool_structured_returns_success_for_a_known_tool() {
-        use crate::tool::{ToolCallExtensions, ToolOutcome};
-
-        let handle = ToolServer::new().tool(MockAddTool).run();
-        let args = serde_json::to_string(&serde_json::json!({"x": 2, "y": 5})).unwrap();
-        let result = handle
-            .call_tool_structured("add", &args, &ToolCallExtensions::EMPTY)
-            .await;
-
-        assert!(matches!(result.outcome, ToolOutcome::Success));
-        assert_eq!(result.model_output, "7");
-    }
-
-    #[tokio::test]
-    async fn call_tool_structured_classifies_a_missing_tool_as_not_found() {
-        use crate::tool::{ToolCallExtensions, ToolFailureKind, ToolOutcome};
-
-        let handle = ToolServer::new().tool(MockAddTool).run();
-        let result = handle
-            .call_tool_structured("does_not_exist", "{}", &ToolCallExtensions::EMPTY)
-            .await;
-
-        match result.outcome {
-            ToolOutcome::Error(failure) => assert_eq!(failure.kind, ToolFailureKind::NotFound),
-            other => panic!("expected a NotFound error outcome, got {other:?}"),
+    async fn runtime_defined_tool_registers_on_builder_and_handle() {
+        fn dynamic(name: &'static str) -> DynamicTool {
+            DynamicTool::new(
+                name,
+                "runtime",
+                json!({"type":"object"}),
+                |_context, _args| Box::pin(async { Ok(json!("ok")) }),
+            )
         }
-        assert!(result.model_output.contains("does_not_exist"));
+
+        let built = ToolServer::new().dynamic_tool(dynamic("built")).run();
+        assert_eq!(built.get_tool_defs(None).await.unwrap()[0].name, "built");
+
+        let added = ToolServer::new().run();
+        added.add_dynamic_tool(dynamic("added")).await.unwrap();
+        assert_eq!(added.get_tool_defs(None).await.unwrap()[0].name, "added");
     }
 }

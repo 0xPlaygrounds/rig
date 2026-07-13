@@ -16,23 +16,21 @@ fn calculator(
     y: i32,
     /// The operation to perform
     operation: String,
-) -> Result<i32, rig_core::tool::ToolError> {
+) -> Result<i32, std::io::Error> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),
         "multiply" => Ok(x * y),
         "divide" => {
             if y == 0 {
-                Err(rig_core::tool::ToolError::ToolCallError(
-                    "Division by zero".into(),
-                ))
+                Err(std::io::Error::other("Division by zero"))
             } else {
                 Ok(x / y)
             }
         }
-        _ => Err(rig_core::tool::ToolError::ToolCallError(
-            format!("Unknown operation: {operation}").into(),
-        )),
+        _ => Err(std::io::Error::other(format!(
+            "Unknown operation: {operation}"
+        ))),
     }
 }
 

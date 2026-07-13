@@ -24,10 +24,6 @@ pub(crate) struct OperationArgs {
     y: i64,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-pub(crate) struct MathError;
-
 fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: name.to_string(),
@@ -47,7 +43,6 @@ pub(crate) struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -59,7 +54,11 @@ impl Tool for Add {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x + args.y)
     }
 }
@@ -68,7 +67,6 @@ pub(crate) struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -80,7 +78,11 @@ impl Tool for Subtract {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x - args.y)
     }
 }
@@ -91,7 +93,6 @@ pub(crate) struct Sum;
 
 impl Tool for Sum {
     const NAME: &'static str = "sum";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -103,7 +104,11 @@ impl Tool for Sum {
         operation_definition(Self::NAME, "Add x and y together (alias of add)").parameters
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(args.x + args.y)
     }
 }

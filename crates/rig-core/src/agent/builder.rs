@@ -8,7 +8,7 @@ use crate::{
     memory::ConversationMemory,
     message::ToolChoice,
     tool::{
-        Tool, ToolDyn, ToolSet,
+        DynamicTool, Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
@@ -382,9 +382,9 @@ where
     ///
     /// This is useful when you need to dynamically add static tools to the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
-        let static_tools = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<M, WithBuilderTools> {
+        let static_tools = tools.iter().map(|tool| tool.name().to_string()).collect();
+        let tools = ToolSet::from_dynamic_tools(tools);
 
         AgentBuilder {
             name: self.name,
@@ -616,9 +616,9 @@ where
     }
 
     /// Add a vector of boxed static tools to the agent.
-    pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
-        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(mut self, tools: Vec<DynamicTool>) -> Self {
+        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name().to_string()).collect();
+        let tools = ToolSet::from_dynamic_tools(tools);
         self.tool_state.tools.add_tools(tools);
         self.tool_state.static_tools.extend(toolnames);
         self
@@ -733,13 +733,12 @@ mod tests {
 
     /// The builder's shared MCP helper threads the configured timeout (default,
     /// explicit, or `None`/disabled) onto every built tool, and the threaded
-    /// timeout actually bounds a hanging call. This covers the plumbing behind
-    /// `rmcp_tool[s]` / `rmcp_tool[s]_with_timeout` (see issue #1914).
+    /// timeout actually bounds a hanging call.
     #[cfg(feature = "rmcp")]
     #[tokio::test]
     async fn build_rmcp_tools_threads_timeout_into_built_tools() {
-        use crate::tool::ToolDyn;
         use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
+        use crate::tool::{Tool as RigTool, ToolContext};
         use rmcp::model::{
             CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
             ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
@@ -757,6 +756,7 @@ mod tests {
                     .with_protocol_version(ProtocolVersion::LATEST)
                     .with_server_info(Implementation::new("builder-timeout-test", "0.1.0"))
             }
+
             async fn call_tool(
                 &self,
                 _request: CallToolRequestParams,
@@ -786,8 +786,6 @@ mod tests {
             .expect("client connect");
         let peer = client.peer().clone();
 
-        // The configured timeout (default, explicit, or disabled) is threaded
-        // onto each built tool.
         let built_default = build_rmcp_tools(
             vec![tool("a")],
             peer.clone(),
@@ -797,7 +795,6 @@ mod tests {
         let built_none = build_rmcp_tools(vec![tool("b")], peer.clone(), None);
         assert_eq!(built_none[0].1.timeout(), None);
 
-        // ...and the threaded timeout actually bounds a hanging call.
         let built = build_rmcp_tools(
             vec![tool("hang_forever")],
             peer,
@@ -805,8 +802,12 @@ mod tests {
         );
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].0, "hang_forever");
-        let timed =
-            tokio::time::timeout(Duration::from_secs(5), built[0].1.call("{}".to_string())).await;
+        let mut context = ToolContext::new();
+        let timed = tokio::time::timeout(
+            Duration::from_secs(5),
+            RigTool::call(&built[0].1, &mut context, serde_json::json!({})),
+        )
+        .await;
         let err = timed
             .expect("built tool hung past the safety timeout")
             .expect_err("call should time out");

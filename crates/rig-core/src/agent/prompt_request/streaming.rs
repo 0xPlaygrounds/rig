@@ -2,7 +2,8 @@ use crate::{
     OneOrMany,
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
-        AgentHook, HookContext, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind,
+        AgentHook, HookContext, HookEvent, HookStack, InvalidToolCallHookAction, ModelTurnFinished,
+        StreamResponseFinish, TextDelta, ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -10,14 +11,14 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, InvalidDecision, ToolExecution, acquire_agent_span,
-        append_run_messages, build_chat_span, flow_into_invalid, new_execute_tool_span,
-        observe_flow, resolve_completion_call, run_single_tool,
+        AgentRunner, CompletionCallOutcome, InvalidDecision, ToolRunState, acquire_agent_span,
+        action_into_invalid, append_run_messages, build_chat_span, new_execute_tool_span,
+        observe_action, resolve_completion_call, run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::ToolCallExtensions,
+    tool::ToolContext,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt, stream};
@@ -49,7 +50,7 @@ pub enum MultiTurnStreamItem<R> {
     /// text/reasoning deltas, tool-call deltas, and, when the model turn is
     /// committed, the complete [`StreamedAssistantContent::ToolCall`] for each
     /// tool call Rig routes to execution. Such a call is reported here whether or
-    /// not the tool body ultimately runs (a hook `Flow::Skip` still reports it);
+    /// not the tool body ultimately runs (a hook `ToolCallAction::Skip` still reports it);
     /// it is **not** an execution-lifecycle event (see
     /// [`ToolExecutionStart`](Self::ToolExecutionStart)).
     ///
@@ -64,7 +65,7 @@ pub enum MultiTurnStreamItem<R> {
     /// Rig **executed** a tool call. Surfaced only for a tool whose body actually
     /// ran (it passed its `ToolCall` hook checks) — never for a model tool call
     /// that was dropped by a sibling's termination, skipped by a hook
-    /// (`Flow::Skip`), or resolved by invalid-tool-call recovery. The tool batch
+    /// (`ToolCallAction::Skip`), or resolved by invalid-tool-call recovery. The tool batch
     /// commits and surfaces **atomically at every `tool_concurrency`** (including
     /// the sequential default): this event is surfaced together with its
     /// `ToolResult` once the whole batch has settled successfully, so a run that
@@ -73,7 +74,7 @@ pub enum MultiTurnStreamItem<R> {
     /// via `internal_call_id`.
     ToolExecutionStart {
         /// The tool call as **executed**: the model's call with any
-        /// [`Flow::RewriteArgs`](crate::agent::Flow::RewriteArgs) hook rewrite
+        /// [`ToolCallAction::Rewrite`](crate::agent::ToolCallAction::Rewrite) hook rewrite
         /// applied (so a redaction rewrite is reflected here, not leaked). The
         /// model's *original* call is reported via
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
@@ -450,7 +451,7 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     match err {
         StreamingError::Completion(err) => PromptError::CompletionError(err),
         StreamingError::Prompt(err) => *err,
-        StreamingError::Tool(err) => PromptError::ToolError(err),
+        StreamingError::Tool(err) => PromptError::ToolSetError(err),
     }
 }
 
@@ -746,7 +747,7 @@ where
                     &runner.hooks,
                     hook_ctx,
                     &runner.tool_server_handle,
-                    &runner.tool_extensions,
+                    &runner.tool_context,
                     &tool_call,
                     &internal_call_id,
                     &full_history_for_errors,
@@ -756,8 +757,8 @@ where
                 match outcome {
                     Ok(outcome) => {
                         let surface = match outcome.execution {
-                            ToolExecution::Executed(effective) => ToolSurface::Executed(effective),
-                            ToolExecution::Skipped => ToolSurface::Skipped,
+                            ToolRunState::Executed(effective) => ToolSurface::Executed(effective),
+                            ToolRunState::Skipped => ToolSurface::Skipped,
                         };
                         if let Some(slot) = collected.get_mut(index) {
                             *slot = Some(CollectedToolResult {
@@ -785,7 +786,7 @@ where
                     let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
                     let hooks = &runner.hooks;
                     let tool_server_handle = &runner.tool_server_handle;
-                    let tool_extensions = &runner.tool_extensions;
+                    let tool_context = &runner.tool_context;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
                     async move {
@@ -807,7 +808,7 @@ where
                             hooks,
                             hook_ctx,
                             tool_server_handle,
-                            tool_extensions,
+                            tool_context,
                             &tool_call,
                             &internal_call_id,
                             full_history_for_errors,
@@ -815,10 +816,10 @@ where
                         .await;
                         let mapped = outcome.map(|o| {
                             let surface = match o.execution {
-                                ToolExecution::Executed(effective) => {
+                                ToolRunState::Executed(effective) => {
                                     ToolSurface::Executed(effective)
                                 }
-                                ToolExecution::Skipped => ToolSurface::Skipped,
+                                ToolRunState::Skipped => ToolSurface::Skipped,
                             };
                             CollectedToolResult {
                                 content: o.content,
@@ -953,8 +954,8 @@ impl StreamingTurnSource {
             last_message_id: None,
             agent_name,
             created_agent_span,
-            observes_text_delta: hooks.observes(StepEventKind::TextDelta),
-            observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
+            observes_text_delta: hooks.observes(HookEvent::TextDelta),
+            observes_tool_call_delta: hooks.observes(HookEvent::ToolCallDelta),
             has_hooks: !hooks.is_empty(),
         }
     }
@@ -1065,10 +1066,10 @@ where
                             if self.observes_text_delta
                                 && let Some(StreamedAssistantContent::Text(text)) =
                                     item_slot.as_ref()
-                                && let Some(reason) = observe_flow(
+                                && let Some(reason) = observe_action(
                                     runner
                                         .hooks
-                                        .on_event(hook_ctx, StepEvent::TextDelta {
+                                        .on_text_delta(hook_ctx, TextDelta {
                                             delta: &text.text,
                                             aggregated: assembler.aggregated_text(),
                                         })
@@ -1094,10 +1095,10 @@ where
                                     ToolCallDeltaContent::Name(name) => (Some(name.as_str()), ""),
                                     ToolCallDeltaContent::Delta(delta) => (None, delta.as_str()),
                                 };
-                                if let Some(reason) = observe_flow(
+                                if let Some(reason) = observe_action(
                                     runner
                                         .hooks
-                                        .on_event(hook_ctx, StepEvent::ToolCallDelta {
+                                        .on_tool_call_delta(hook_ctx, ToolCallDelta {
                                             tool_call_id: &id,
                                             internal_call_id: &internal_call_id,
                                             tool_name: delta_name,
@@ -1135,10 +1136,10 @@ where
                                     item_slot.as_ref()
                             {
                                 if !turn_recovered
-                                    && let Some(reason) = observe_flow(
+                                    && let Some(reason) = observe_action(
                                         runner
                                             .hooks
-                                            .on_event(hook_ctx, StepEvent::StreamResponseFinish {
+                                            .on_stream_response_finish(hook_ctx, StreamResponseFinish {
                                                 prompt: &current_prompt,
                                                 response: final_resp,
                                             })
@@ -1163,10 +1164,10 @@ where
                             let action = if self.has_hooks {
                                 let context =
                                     run.streamed_invalid_tool_call_context(&partial, &invalid);
-                                match flow_into_invalid(
+                                match action_into_invalid(
                                     runner
                                         .hooks
-                                        .on_event(hook_ctx, StepEvent::InvalidToolCall(&context))
+                                        .on_invalid_tool_call(hook_ctx, &context)
                                         .await,
                                 ) {
                                     InvalidDecision::Action(action) => action,
@@ -1292,10 +1293,10 @@ where
             // fire no `StreamResponseFinish`. Suppressed for recovered turns,
             // mirroring the blocking surface's `Continue` arm.
             if !turn_recovered
-                && let Some(reason) = observe_flow(
+                && let Some(reason) = observe_action(
                     runner
                         .hooks
-                        .on_event(hook_ctx, StepEvent::ModelTurnFinished {
+                        .on_model_turn_finished(hook_ctx, ModelTurnFinished {
                             turn: hook_ctx.turn(),
                             content: &canonical_choice,
                             usage: last_usage,
@@ -1495,7 +1496,10 @@ pub async fn stream_to_stdout<R>(
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{AgentHook, Flow, HookContext, InvalidToolCallContext, StepEvent};
+    use crate::agent::hook::{
+        AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, ObserveAction,
+        StreamResponseFinish, TextDelta, ToolCall as HookToolCall, ToolCallAction, ToolCallDelta,
+    };
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
@@ -1509,10 +1513,9 @@ mod tests {
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
-        MockExtensionsProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, MockToolError,
-        SessionId,
+        MockContextProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, SessionId,
     };
-    use crate::tool::{Tool, ToolCallExtensions};
+    use crate::tool::{Tool, ToolContext, ToolExecutionError};
     use futures::{StreamExt, TryStreamExt};
     use serde::Deserialize;
     use std::collections::HashMap;
@@ -1891,23 +1894,18 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_event(
+        async fn on_tool_call_delta(&self, _: &HookContext, _: ToolCallDelta<'_>) -> ObserveAction {
+            panic!("unknown tool call delta should fail before delta hooks run")
+        }
+        async fn on_tool_call(&self, _: &HookContext, _: HookToolCall<'_>) -> ToolCallAction {
+            panic!("unknown tool call should fail before tool hooks run")
+        }
+        async fn on_stream_response_finish(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::ToolCallDelta { .. } => {
-                    panic!("unknown tool call delta should fail before delta hooks run")
-                }
-                StepEvent::ToolCall { .. } => {
-                    panic!("unknown tool call should fail before tool hooks run")
-                }
-                StepEvent::StreamResponseFinish { .. } => {
-                    panic!("unknown tool call should fail before stream finish hooks run")
-                }
-                _ => Flow::cont(),
-            }
+            _: &HookContext,
+            _: StreamResponseFinish<'_, MockCompletionModel>,
+        ) -> ObserveAction {
+            panic!("unknown tool call should fail before stream finish hooks run")
         }
     }
 
@@ -1950,7 +1948,6 @@ mod tests {
 
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
-        type Error = MockToolError;
         type Args = CountingOperationArgs;
         type Output = i32;
 
@@ -1962,7 +1959,11 @@ mod tests {
             arithmetic_tool_definition(Self::NAME, "Add x and y together").parameters
         }
 
-        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(args.x + args.y)
         }
@@ -1970,7 +1971,6 @@ mod tests {
 
     impl Tool for CountingSubtractTool {
         const NAME: &'static str = "subtract";
-        type Error = MockToolError;
         type Args = CountingOperationArgs;
         type Output = i32;
 
@@ -1982,7 +1982,11 @@ mod tests {
             arithmetic_tool_definition(Self::NAME, "Subtract y from x").parameters
         }
 
-        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(args.x - args.y)
         }
@@ -2461,17 +2465,12 @@ mod tests {
     struct TerminateOnStreamFinish;
 
     impl AgentHook<MockCompletionModel> for TerminateOnStreamFinish {
-        async fn on_event(
+        async fn on_stream_response_finish(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::StreamResponseFinish { .. } => {
-                    Flow::terminate("stop after completion call")
-                }
-                _ => Flow::cont(),
-            }
+            _: &HookContext,
+            _: StreamResponseFinish<'_, MockCompletionModel>,
+        ) -> ObserveAction {
+            ObserveAction::stop("stop after completion call")
         }
     }
 
@@ -2481,18 +2480,13 @@ mod tests {
     struct RepairDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    assert_eq!(context.tool_name, "default_api");
-                    Flow::repair("add")
-                }
-                _ => Flow::cont(),
-            }
+            _: &HookContext,
+            context: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            assert_eq!(context.tool_name, "default_api");
+            InvalidToolCallAction::repair("add")
         }
     }
 
@@ -2500,21 +2494,16 @@ mod tests {
     struct RetryDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    assert_eq!(context.tool_name, "default_api");
-                    if let Some(args) = context.args.as_deref() {
-                        assert!(!args.is_empty());
-                    }
-                    Flow::retry("Use the add tool instead")
-                }
-                _ => Flow::cont(),
+            _: &HookContext,
+            context: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            assert_eq!(context.tool_name, "default_api");
+            if let Some(args) = context.args.as_deref() {
+                assert!(!args.is_empty());
             }
+            InvalidToolCallAction::retry("Use the add tool instead")
         }
     }
 
@@ -2522,18 +2511,13 @@ mod tests {
     struct SkipDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    assert_eq!(context.tool_name, "default_api");
-                    Flow::skip("default_api was skipped")
-                }
-                _ => Flow::cont(),
-            }
+            _: &HookContext,
+            context: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            assert_eq!(context.tool_name, "default_api");
+            InvalidToolCallAction::skip("default_api was skipped")
         }
     }
 
@@ -2552,21 +2536,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    self.contexts
-                        .lock()
-                        .expect("invalid tool context records mutex was poisoned")
-                        .push(context.clone());
-                    Flow::fail()
-                }
-                _ => Flow::cont(),
-            }
+            _: &HookContext,
+            context: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            self.contexts
+                .lock()
+                .expect("invalid tool context records mutex was poisoned")
+                .push(context.clone());
+            InvalidToolCallAction::fail()
         }
     }
 
@@ -2585,32 +2564,21 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingToolCallDeltaHook {
-        async fn on_event(
+        async fn on_tool_call_delta(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::ToolCallDelta {
-                    tool_call_id,
-                    internal_call_id,
-                    tool_name,
-                    delta,
-                } => {
-                    let record = (
-                        tool_call_id.to_string(),
-                        internal_call_id.to_string(),
-                        tool_name.map(str::to_string),
-                        delta.to_string(),
-                    );
-                    self.deltas
-                        .lock()
-                        .expect("tool call delta hook records mutex was poisoned")
-                        .push(record);
-                    Flow::cont()
-                }
-                _ => Flow::cont(),
-            }
+            _: &HookContext,
+            event: ToolCallDelta<'_>,
+        ) -> ObserveAction {
+            self.deltas
+                .lock()
+                .expect("tool call delta hook records mutex was poisoned")
+                .push((
+                    event.tool_call_id.to_string(),
+                    event.internal_call_id.to_string(),
+                    event.tool_name.map(str::to_string),
+                    event.delta.to_string(),
+                ));
+            ObserveAction::cont()
         }
     }
 
@@ -2629,22 +2597,12 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextDeltaHook {
-        async fn on_event(
-            &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::TextDelta { delta, aggregated } => {
-                    let record = (delta.to_string(), aggregated.to_string());
-                    self.deltas
-                        .lock()
-                        .expect("text delta hook records mutex was poisoned")
-                        .push(record);
-                    Flow::cont()
-                }
-                _ => Flow::cont(),
-            }
+        async fn on_text_delta(&self, _: &HookContext, event: TextDelta<'_>) -> ObserveAction {
+            self.deltas
+                .lock()
+                .expect("text delta hook records mutex was poisoned")
+                .push((event.delta.to_string(), event.aggregated.to_string()));
+            ObserveAction::cont()
         }
     }
 
@@ -2654,18 +2612,21 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
-        async fn on_event(
+        async fn on_text_delta(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                event @ StepEvent::TextDelta { .. } => self.text.on_event(_ctx, event).await,
-                event @ StepEvent::InvalidToolCall(_) => {
-                    SkipDefaultApiHook.on_event(_ctx, event).await
-                }
-                _ => Flow::cont(),
-            }
+            context: &HookContext,
+            event: TextDelta<'_>,
+        ) -> ObserveAction {
+            self.text.on_text_delta(context, event).await
+        }
+        async fn on_invalid_tool_call(
+            &self,
+            context: &HookContext,
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            SkipDefaultApiHook
+                .on_invalid_tool_call(context, event)
+                .await
         }
     }
 
@@ -2675,18 +2636,21 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
-        async fn on_event(
+        async fn on_text_delta(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                event @ StepEvent::TextDelta { .. } => self.text.on_event(_ctx, event).await,
-                event @ StepEvent::InvalidToolCall(_) => {
-                    RetryDefaultApiHook.on_event(_ctx, event).await
-                }
-                _ => Flow::cont(),
-            }
+            context: &HookContext,
+            event: TextDelta<'_>,
+        ) -> ObserveAction {
+            self.text.on_text_delta(context, event).await
+        }
+        async fn on_invalid_tool_call(
+            &self,
+            context: &HookContext,
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            RetryDefaultApiHook
+                .on_invalid_tool_call(context, event)
+                .await
         }
     }
 
@@ -2696,18 +2660,21 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
-        async fn on_event(
+        async fn on_tool_call_delta(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(_ctx, event).await,
-                event @ StepEvent::InvalidToolCall(_) => {
-                    RetryDefaultApiHook.on_event(_ctx, event).await
-                }
-                _ => Flow::cont(),
-            }
+            context: &HookContext,
+            event: ToolCallDelta<'_>,
+        ) -> ObserveAction {
+            self.delta.on_tool_call_delta(context, event).await
+        }
+        async fn on_invalid_tool_call(
+            &self,
+            context: &HookContext,
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            RetryDefaultApiHook
+                .on_invalid_tool_call(context, event)
+                .await
         }
     }
 
@@ -2717,18 +2684,21 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
-        async fn on_event(
+        async fn on_tool_call_delta(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(_ctx, event).await,
-                event @ StepEvent::InvalidToolCall(_) => {
-                    SkipDefaultApiHook.on_event(_ctx, event).await
-                }
-                _ => Flow::cont(),
-            }
+            context: &HookContext,
+            event: ToolCallDelta<'_>,
+        ) -> ObserveAction {
+            self.delta.on_tool_call_delta(context, event).await
+        }
+        async fn on_invalid_tool_call(
+            &self,
+            context: &HookContext,
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            SkipDefaultApiHook
+                .on_invalid_tool_call(context, event)
+                .await
         }
     }
 
@@ -2747,32 +2717,21 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
-        async fn on_event(
+        async fn on_tool_call_delta(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::ToolCallDelta {
-                    tool_call_id,
-                    internal_call_id,
-                    tool_name,
-                    delta,
-                } => {
-                    let record = (
-                        tool_call_id.to_string(),
-                        internal_call_id.to_string(),
-                        tool_name.map(str::to_string),
-                        delta.to_string(),
-                    );
-                    self.deltas
-                        .lock()
-                        .expect("tool call delta hook records mutex was poisoned")
-                        .push(record);
-                    Flow::terminate("stop on tool call delta")
-                }
-                _ => Flow::cont(),
-            }
+            _: &HookContext,
+            event: ToolCallDelta<'_>,
+        ) -> ObserveAction {
+            self.deltas
+                .lock()
+                .expect("tool call delta hook records mutex was poisoned")
+                .push((
+                    event.tool_call_id.to_string(),
+                    event.internal_call_id.to_string(),
+                    event.tool_name.map(str::to_string),
+                    event.delta.to_string(),
+                ));
+            ObserveAction::stop("stop on tool call delta")
         }
     }
 
@@ -2888,10 +2847,10 @@ mod tests {
             .expect("streamed tools must run concurrently, not deadlock at the barrier");
     }
 
-    /// The streaming driver threads the per-call `ToolCallExtensions` to executed
+    /// The streaming driver threads the per-call `ToolContext` to executed
     /// tools, exactly like the blocking path.
     #[tokio::test]
-    async fn tool_extensions_reach_tool_through_streaming_loop() {
+    async fn tool_context_reach_tool_through_streaming_loop() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::tool_call("tool_call_1", "context_probe", serde_json::json!({}))
@@ -2903,16 +2862,16 @@ mod tests {
                 MockStreamEvent::final_response_with_total_tokens(6),
             ],
         ]);
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
         let empty_history: &[Message] = &[];
 
-        let mut extensions = ToolCallExtensions::new();
-        extensions.insert(SessionId("xyz-789".to_string()));
+        let mut context = ToolContext::new();
+        context.insert(SessionId("xyz-789".to_string()));
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .tool_extensions(extensions)
+            .tool_context(context)
             .history(empty_history)
             .max_turns(3)
             .await;
@@ -2928,8 +2887,8 @@ mod tests {
         assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
     }
 
-    /// Streaming counterpart of the blocking empty-extensions default: with no
-    /// `.tool_extensions(..)`, the tool still runs with empty extensions
+    /// Streaming counterpart of the blocking empty-context default: with no
+    /// `.tool_context(..)`, the tool still runs with an empty context
     /// (observing `no-session`), not a stale value.
     #[tokio::test]
     async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
@@ -2944,7 +2903,7 @@ mod tests {
                 MockStreamEvent::final_response_with_total_tokens(6),
             ],
         ]);
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
         let empty_history: &[Message] = &[];
 

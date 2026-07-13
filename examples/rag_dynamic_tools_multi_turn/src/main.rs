@@ -18,10 +18,6 @@ struct OperationArgs {
 
 #[derive(Debug, thiserror::Error)]
 #[error("Math error")]
-struct MathError;
-
-#[derive(Debug, thiserror::Error)]
-#[error("Math error")]
 struct InitError;
 
 #[derive(Deserialize, Serialize)]
@@ -29,8 +25,6 @@ struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -54,7 +48,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         let result = args.x + args.y;
         Ok(result)
     }
@@ -81,8 +79,6 @@ struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -106,7 +102,11 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         let result = args.x - args.y;
         Ok(result)
     }

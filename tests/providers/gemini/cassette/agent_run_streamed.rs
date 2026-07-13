@@ -11,7 +11,8 @@ use rig::agent::run::{
     StreamedTurnEvent,
 };
 use rig::agent::{
-    AgentHook, Flow, InvalidToolCallHookAction, MultiTurnStreamItem, StepEvent, StreamingError,
+    AgentHook, HookContext, HookToolCall, InvalidToolCallHookAction, MultiTurnStreamItem,
+    StreamingError, ToolCallAction,
 };
 use rig::client::CompletionClient;
 use rig::completion::{GetTokenUsage, PromptError, Usage};
@@ -518,17 +519,8 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 struct CancelOnToolCall;
 
 impl AgentHook<gemini::completion::CompletionModel> for CancelOnToolCall {
-    async fn on_event(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: StepEvent<'_, gemini::completion::CompletionModel>,
-    ) -> Flow {
-        match event {
-            StepEvent::ToolCall { .. } => Flow::Terminate {
-                reason: "cancelled by test hook".to_string(),
-            },
-            _ => Flow::cont(),
-        }
+    async fn on_tool_call(&self, _ctx: &HookContext, _event: HookToolCall<'_>) -> ToolCallAction {
+        ToolCallAction::stop("cancelled by test hook")
     }
 }
 

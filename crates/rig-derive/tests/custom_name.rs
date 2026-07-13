@@ -10,12 +10,12 @@ use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 #[rig_tool(name = "search-docs")]
-fn search_docs_impl() -> Result<String, rig_core::tool::ToolError> {
+fn search_docs_impl() -> Result<String, std::io::Error> {
     Ok("ok".to_string())
 }
 
 #[rig_tool]
-fn fallback_name_tool() -> Result<String, rig_core::tool::ToolError> {
+fn fallback_name_tool() -> Result<String, std::io::Error> {
     Ok("fallback".to_string())
 }
 

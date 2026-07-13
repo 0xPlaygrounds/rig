@@ -347,7 +347,7 @@ fn result_type_tokens(
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool]
-/// fn add(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+/// fn add(a: i32, b: i32) -> Result<i32, std::io::Error> {
 ///     Ok(a + b)
 /// }
 /// ```
@@ -357,13 +357,13 @@ fn result_type_tokens(
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(description = "Perform basic arithmetic operations")]
-/// fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolError> {
+/// fn calculator(x: i32, y: i32, operation: String) -> Result<i32, std::io::Error> {
 ///     match operation.as_str() {
 ///         "add" => Ok(x + y),
 ///         "subtract" => Ok(x - y),
 ///         "multiply" => Ok(x * y),
 ///         "divide" => Ok(x / y),
-///         _ => Err(rig::tool::ToolError::ToolCallError("Unknown operation".into())),
+///         _ => Err(std::io::Error::other("Unknown operation")),
 ///     }
 /// }
 /// ```
@@ -376,7 +376,7 @@ fn result_type_tokens(
 /// // or `_`, may contain ASCII letters, digits, `_`, or `-`, and be at most
 /// // 64 characters long.
 /// #[rig_tool(name = "search-docs", description = "Search the documentation")]
-/// fn search_docs_impl(query: String) -> Result<String, rig::tool::ToolError> {
+/// fn search_docs_impl(query: String) -> Result<String, std::io::Error> {
 ///     Ok(format!("Searching docs for {query}"))
 /// }
 /// ```
@@ -392,12 +392,12 @@ fn result_type_tokens(
 ///         operation = "The operation to perform (uppercase, lowercase, reverse)"
 ///     )
 /// )]
-/// fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
+/// fn string_processor(text: String, operation: String) -> Result<String, std::io::Error> {
 ///     match operation.as_str() {
 ///         "uppercase" => Ok(text.to_uppercase()),
 ///         "lowercase" => Ok(text.to_lowercase()),
 ///         "reverse" => Ok(text.chars().rev().collect()),
-///         _ => Err(rig::tool::ToolError::ToolCallError("Unknown operation".into())),
+///         _ => Err(std::io::Error::other("Unknown operation")),
 ///     }
 /// }
 /// ```
@@ -427,7 +427,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // Extract return type and get Output and Error types from Result<T, E>
     let return_type = &input_fn.sig.output;
-    let (output_type, error_type) = match result_type_tokens(return_type) {
+    let (output_type, _error_type) = match result_type_tokens(return_type) {
         Ok(types) => types,
         Err(error) => return error.into_compile_error().into(),
     };
@@ -497,22 +497,41 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
+    let rig_core = rig_core_path();
+
     // Generate the call implementation based on whether the function is async
     let call_impl = if is_async {
         quote! {
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                #fn_name(#(args.#param_names,)*).await
+            async fn call(
+                &self,
+                _context: &mut #rig_core::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
+                #fn_name(#(args.#param_names,)*).await.map_err(|error| {
+                    #rig_core::tool::ToolExecutionError::from_source(
+                        #rig_core::tool::ToolErrorKind::Other,
+                        error,
+                    )
+                })
             }
         }
     } else {
         quote! {
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                #fn_name(#(args.#param_names,)*)
+            async fn call(
+                &self,
+                _context: &mut #rig_core::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
+                #fn_name(#(args.#param_names,)*).map_err(|error| {
+                    #rig_core::tool::ToolExecutionError::from_source(
+                        #rig_core::tool::ToolErrorKind::Other,
+                        error,
+                    )
+                })
             }
         }
     };
 
-    let rig_core = rig_core_path();
     let schemars_crate = format!("{}::schemars", rig_core.to_string().replace(' ', ""));
     let expanded = quote! {
         #[derive(serde::Deserialize, #rig_core::schemars::JsonSchema)]
@@ -531,7 +550,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             type Args = #params_struct_name;
             type Output = #output_type;
-            type Error = #error_type;
 
             fn name(&self) -> String {
                 #tool_name.to_string()

@@ -1,7 +1,7 @@
 use crate::{
     agent::Agent,
-    completion::{CompletionModel, Prompt, PromptError},
-    tool::{Tool, ToolCallExtensions},
+    completion::{CompletionModel, Prompt},
+    tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -15,8 +15,6 @@ pub struct AgentToolArgs {
 
 impl<M: CompletionModel + 'static> Tool for Agent<M> {
     const NAME: &'static str = "agent_tool";
-
-    type Error = PromptError;
     type Args = AgentToolArgs;
     type Output = String;
 
@@ -39,22 +37,15 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
         json!(schema_for!(AgentToolArgs))
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        self.prompt(args.prompt).await
-    }
-
-    /// Propagate the caller's [`ToolCallExtensions`] into the sub-agent run, so the
-    /// inner agent's own tools observe them too (sub-agent delegation / A2A
-    /// chains). Without this, a sub-agent invoked as a tool would start with
-    /// empty extensions.
-    async fn call_with_extensions(
+    async fn call(
         &self,
+        context: &mut ToolContext,
         args: Self::Args,
-        extensions: &ToolCallExtensions,
-    ) -> Result<Self::Output, Self::Error> {
+    ) -> Result<Self::Output, ToolExecutionError> {
         self.prompt(args.prompt)
-            .tool_extensions(extensions.clone())
+            .tool_context(context.clone())
             .await
+            .map_err(|error| ToolExecutionError::from_source(ToolErrorKind::Other, error))
     }
 
     fn name(&self) -> String {
@@ -66,14 +57,14 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::test_utils::{MockCompletionModel, MockExtensionsProbeTool, MockTurn, SessionId};
+    use crate::test_utils::{MockCompletionModel, MockContextProbeTool, MockTurn, SessionId};
 
-    /// A `ToolCallExtensions` set on the outer run propagates into a sub-agent
+    /// A `ToolContext` set on the outer run propagates into a sub-agent
     /// invoked as a tool, so the inner agent's own tools observe it.
     #[tokio::test]
     async fn context_propagates_into_sub_agent() {
         // Inner agent: calls a context-probing tool, then answers.
-        let probe = MockExtensionsProbeTool::default();
+        let probe = MockContextProbeTool::default();
         let inner_model = MockCompletionModel::new([
             MockTurn::tool_call("c1", "context_probe", json!({})),
             MockTurn::text("inner done"),
@@ -91,12 +82,12 @@ mod tests {
         ]);
         let outer = AgentBuilder::new(outer_model).tool(inner).build();
 
-        let mut extensions = ToolCallExtensions::new();
-        extensions.insert(SessionId("abc-123".to_string()));
+        let mut context = ToolContext::new();
+        context.insert(SessionId("abc-123".to_string()));
 
         let out = outer
             .prompt("start")
-            .tool_extensions(extensions)
+            .tool_context(context)
             .max_turns(5)
             .await
             .expect("run succeeds");

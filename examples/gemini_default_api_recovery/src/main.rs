@@ -6,8 +6,8 @@
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, Flow, HookContext, InvalidToolCallContext, MultiTurnStreamItem, PromptResponse,
-    StepEvent, StreamingResult,
+    AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
+    PromptResponse, StreamingResult,
 };
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
@@ -94,16 +94,11 @@ impl ExecutorResponse {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("JavaScript tool error")]
-struct JavaScriptToolError;
-
 #[derive(Clone)]
 struct JavaScript;
 
 impl Tool for JavaScript {
     const NAME: &'static str = "JavaScript";
-    type Error = JavaScriptToolError;
     type Args = JavaScriptProgram;
     type Output = ExecutorResponse;
 
@@ -115,7 +110,11 @@ impl Tool for JavaScript {
         schema_for!(JavaScriptProgram).to_value()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(ExecutorResponse::ok(json!({
             "id": "collection-canary-id",
             "title": "Canary Collection",
@@ -149,21 +148,18 @@ impl<M> AgentHook<M> for DefaultApiRepairHook
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::InvalidToolCall(context) => {
-                let context: &InvalidToolCallContext = context;
-                if let Ok(mut invalid_tool_names) = self.invalid_tool_names.lock() {
-                    invalid_tool_names.push(context.tool_name.clone());
-                }
-
-                if context.tool_name == "default_api" {
-                    Flow::repair(JavaScript::NAME)
-                } else {
-                    Flow::fail()
-                }
-            }
-            _ => Flow::cont(),
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        context: &InvalidToolCallContext,
+    ) -> InvalidToolCallAction {
+        if let Ok(mut invalid_tool_names) = self.invalid_tool_names.lock() {
+            invalid_tool_names.push(context.tool_name.clone());
+        }
+        if context.tool_name == "default_api" {
+            InvalidToolCallAction::repair(JavaScript::NAME)
+        } else {
+            InvalidToolCallAction::fail()
         }
     }
 }

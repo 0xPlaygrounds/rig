@@ -43,10 +43,6 @@ use std::collections::BTreeSet;
 // One read-only tool and one side-effecting tool worth gating.
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, thiserror::Error)]
-#[error("tool failed: {0}")]
-struct ToolError(String);
-
 #[derive(Deserialize)]
 struct BalanceArgs {
     account: String,
@@ -56,7 +52,6 @@ struct GetBalance;
 
 impl Tool for GetBalance {
     const NAME: &'static str = "get_balance";
-    type Error = ToolError;
     type Args = BalanceArgs;
     type Output = String;
 
@@ -72,7 +67,11 @@ impl Tool for GetBalance {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         println!("   💰 [get_balance] -> {}", args.account);
         Ok(format!("account {} balance: $1000", args.account))
     }
@@ -88,7 +87,6 @@ struct TransferFunds;
 
 impl Tool for TransferFunds {
     const NAME: &'static str = "transfer_funds";
-    type Error = ToolError;
     type Args = TransferArgs;
     type Output = String;
 
@@ -107,7 +105,11 @@ impl Tool for TransferFunds {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         // A real implementation would move money here.
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))
@@ -218,7 +220,12 @@ async fn main() -> Result<()> {
                         .as_deref()
                     {
                         Some("a") | Some("approve") => {
-                            let output = agent.tool_server_handle.call_tool(&name, &args).await?;
+                            let output = agent
+                                .tool_server_handle
+                                .execute(&name, &args, rig::tool::ToolContext::new())
+                                .await
+                                .model_output()
+                                .to_string();
                             results.push(UserContent::tool_result(
                                 id,
                                 ToolResultContent::from_tool_output(output),
@@ -233,8 +240,14 @@ async fn main() -> Result<()> {
                                 Some(Ok(value)) => {
                                     let output = agent
                                         .tool_server_handle
-                                        .call_tool(&name, &value.to_string())
-                                        .await?;
+                                        .execute(
+                                            &name,
+                                            &value.to_string(),
+                                            rig::tool::ToolContext::new(),
+                                        )
+                                        .await
+                                        .model_output()
+                                        .to_string();
                                     results.push(UserContent::tool_result(
                                         id,
                                         ToolResultContent::from_tool_output(output),

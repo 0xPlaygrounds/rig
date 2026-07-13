@@ -155,9 +155,9 @@ pub enum PromptError {
     #[error("MemoryError: {0}")]
     MemoryError(#[from] crate::memory::MemoryError),
 
-    /// There was an error while using a tool
-    #[error("ToolCallError: {0}")]
-    ToolError(#[from] ToolSetError),
+    /// There was an error while resolving a tool set.
+    #[error("ToolSetError: {0}")]
+    ToolSetError(#[from] ToolSetError),
 
     /// There was an issue while executing a tool on a tool server
     #[error("ToolServerError: {0}")]

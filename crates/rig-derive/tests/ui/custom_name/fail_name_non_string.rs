@@ -3,7 +3,7 @@
 use rig_derive::rig_tool;
 
 #[rig_tool(name = 123)]
-fn invalid_name_value() -> Result<String, rig_core::tool::ToolError> {
+fn invalid_name_value() -> Result<String, std::io::Error> {
     Ok("ok".to_string())
 }
 

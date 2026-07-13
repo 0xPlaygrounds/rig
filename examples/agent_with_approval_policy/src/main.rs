@@ -4,10 +4,10 @@
 //! SDK's `needsApproval(({input}) => ...)`, and LangGraph's `interrupt_on`
 //! predicates: a person encodes the policy once, and the agent runs within it.
 //!
-//! The [`ApprovalPolicy`] hook fires on [`StepEvent::ToolCall`] and returns:
-//! - [`Flow::cont`] to allow a tool that is on the safe allow-list, or a guarded
-//!   tool whose arguments satisfy the rule;
-//! - [`Flow::skip`] to **deny** otherwise — the denial reason is fed back to the
+//! The [`ApprovalPolicy`] hook handles tool calls and returns:
+//! - [`ToolCallAction::run`] to allow a tool that is on the safe allow-list, or
+//!   a guarded tool whose arguments satisfy the rule;
+//! - [`ToolCallAction::skip`] to **deny** otherwise — the denial reason is fed back to the
 //!   model as the tool result, so it can adjust (e.g. transfer a smaller amount
 //!   or ask the user) rather than the run simply failing.
 //!
@@ -20,17 +20,13 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
+use rig::agent::{AgentHook, HookContext, HookToolCall, ToolCallAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
-
-#[derive(Debug, thiserror::Error)]
-#[error("tool failed: {0}")]
-struct ToolError(String);
 
 #[derive(Deserialize)]
 struct SearchArgs {
@@ -41,7 +37,6 @@ struct SearchWeb;
 
 impl Tool for SearchWeb {
     const NAME: &'static str = "search_web";
-    type Error = ToolError;
     type Args = SearchArgs;
     type Output = String;
 
@@ -57,7 +52,11 @@ impl Tool for SearchWeb {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         println!("   🔎 [search_web] -> {}", args.query);
         Ok(format!("top result for '{}': $1000 is plenty.", args.query))
     }
@@ -73,7 +72,6 @@ struct TransferFunds;
 
 impl Tool for TransferFunds {
     const NAME: &'static str = "transfer_funds";
-    type Error = ToolError;
     type Args = TransferArgs;
     type Output = String;
 
@@ -92,7 +90,11 @@ impl Tool for TransferFunds {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))
     }
@@ -111,17 +113,13 @@ struct ApprovalPolicy {
 }
 
 impl<M: CompletionModel> AgentHook<M> for ApprovalPolicy {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        let StepEvent::ToolCall {
-            tool_name, args, ..
-        } = event
-        else {
-            return Flow::cont();
-        };
+    async fn on_tool_call(&self, _ctx: &HookContext, event: HookToolCall<'_>) -> ToolCallAction {
+        let tool_name = event.tool_name;
+        let args = event.args;
 
         if self.auto_approve.contains(tool_name) {
             println!("[policy] auto-approve `{tool_name}` (safe)");
-            return Flow::cont();
+            return ToolCallAction::run();
         }
 
         if tool_name == TransferFunds::NAME {
@@ -134,26 +132,28 @@ impl<M: CompletionModel> AgentHook<M> for ApprovalPolicy {
                         "[policy] approve transfer ${a} (<= ${})",
                         self.max_auto_transfer
                     );
-                    Flow::cont()
+                    ToolCallAction::run()
                 }
                 Some(a) => {
                     println!(
                         "[policy] DENY transfer ${a} (over ${})",
                         self.max_auto_transfer
                     );
-                    Flow::skip(format!(
+                    ToolCallAction::skip(format!(
                         "denied by policy: transfers over ${} require human approval; \
                          ${a} exceeds the limit",
                         self.max_auto_transfer
                     ))
                 }
-                None => Flow::skip("denied by policy: could not read the transfer amount"),
+                None => {
+                    ToolCallAction::skip("denied by policy: could not read the transfer amount")
+                }
             };
         }
 
         // Fail closed: anything not explicitly allowed is denied.
         println!("[policy] DENY `{tool_name}` (not on the approved list)");
-        Flow::skip(format!(
+        ToolCallAction::skip(format!(
             "denied by policy: `{tool_name}` is not on the approved tool list"
         ))
     }

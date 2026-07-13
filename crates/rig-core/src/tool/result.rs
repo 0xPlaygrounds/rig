@@ -1,866 +1,461 @@
-//! Structured tool-execution results.
-//!
-//! Rig separates three things a tool execution produces, so hooks, tracing,
-//! telemetry, and policies never have to parse the model-visible string to
-//! reason about what happened:
-//!
-//! 1. **model-visible output** — the text the LLM receives ([`ToolExecutionResult::model_output`]);
-//! 2. **a structured outcome** — success, a classified failure, skipped, or
-//!    denied ([`ToolOutcome`]);
-//! 3. **type-erased extensions** — provider/application metadata that is *never*
-//!    sent to the model ([`ToolResultExtensions`](crate::tool::ToolResultExtensions)).
-//!
-//! A tool author returns a [`ToolReturn`] to attach an outcome or extensions to a
-//! successful output; the [`Tool::classify_error`](crate::tool::Tool::classify_error)
-//! hook maps a tool's own error type to a [`ToolFailure`] without string parsing.
-//! The dynamic tool boundary ([`ToolDyn`](crate::tool::ToolDyn)) carries the
-//! resulting [`ToolExecutionResult`] all the way through to the
-//! [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event.
+//! Canonical structured tool execution errors and runtime results.
 
-use crate::tool::ToolResultExtensions;
-use serde::Serialize;
+use std::sync::Arc;
 
-/// How a tool execution failed, as a closed set of standard kinds.
-///
-/// A hook, policy, or telemetry pipeline matches on this to make control-flow
-/// decisions (e.g. "terminate after repeated timeouts, but keep going on a 404")
-/// without parsing the model-visible error string.
+use crate::tool::ToolContext;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+
+#[cfg(not(target_family = "wasm"))]
+type ErrorSource = dyn std::error::Error + Send + Sync + 'static;
+#[cfg(target_family = "wasm")]
+type ErrorSource = dyn std::error::Error + 'static;
+
+/// Normalized classification for a [`ToolExecutionError`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum ToolFailureKind {
-    /// The arguments could not be parsed or were rejected as invalid.
+pub enum ToolErrorKind {
+    /// Arguments could not be decoded or validated.
     InvalidArgs,
-    /// The tool did not complete within its allotted time.
+    /// Execution exceeded its deadline.
     Timeout,
-    /// The tool call was cancelled (e.g. by an abort signal or a dropped future).
+    /// Execution was cancelled after it started.
     Cancelled,
-    /// The requested resource was not found (e.g. an HTTP 404).
+    /// The requested tool or resource does not exist.
     NotFound,
-    /// The caller was not permitted to perform the action (e.g. an HTTP 401/403).
+    /// Execution was prohibited by authorization policy.
     PermissionDenied,
-    /// The tool was rate limited (e.g. an HTTP 429).
+    /// A provider rejected the call because of a rate limit.
     RateLimited,
-    /// The upstream provider/service returned an error (e.g. an HTTP 5xx).
+    /// An upstream provider failed outside transport handling.
     Provider,
-    /// A network/transport failure occurred before a response was received.
+    /// The transport or network failed.
     Network,
-    /// Any failure that does not fit a more specific kind.
+    /// The tool ran and explicitly refused the requested operation.
+    Refused,
+    /// A failure that does not fit a normalized category.
     Other,
 }
 
-impl ToolFailureKind {
-    /// A stable, machine-friendly identifier for the kind, suitable for tracing
-    /// spans, metrics labels, and structured logs.
+impl ToolErrorKind {
+    /// Stable telemetry spelling for this classification.
     pub const fn as_str(self) -> &'static str {
         match self {
-            ToolFailureKind::InvalidArgs => "invalid_args",
-            ToolFailureKind::Timeout => "timeout",
-            ToolFailureKind::Cancelled => "cancelled",
-            ToolFailureKind::NotFound => "not_found",
-            ToolFailureKind::PermissionDenied => "permission_denied",
-            ToolFailureKind::RateLimited => "rate_limited",
-            ToolFailureKind::Provider => "provider",
-            ToolFailureKind::Network => "network",
-            ToolFailureKind::Other => "other",
+            Self::InvalidArgs => "invalid_args",
+            Self::Timeout => "timeout",
+            Self::Cancelled => "cancelled",
+            Self::NotFound => "not_found",
+            Self::PermissionDenied => "permission_denied",
+            Self::RateLimited => "rate_limited",
+            Self::Provider => "provider",
+            Self::Network => "network",
+            Self::Refused => "refused",
+            Self::Other => "other",
         }
     }
 
-    /// A sensible default for whether a failure of this kind is worth retrying,
-    /// used by the per-kind constructors on [`ToolFailure`]. Transient kinds
-    /// (timeout, rate-limited, network) default to retryable; kinds that will
-    /// fail again identically (invalid args, not found, permission denied,
-    /// cancelled) default to not retryable; ambiguous kinds default to unknown.
     const fn default_retryable(self) -> Option<bool> {
         match self {
-            ToolFailureKind::Timeout | ToolFailureKind::RateLimited | ToolFailureKind::Network => {
-                Some(true)
-            }
-            ToolFailureKind::InvalidArgs
-            | ToolFailureKind::NotFound
-            | ToolFailureKind::PermissionDenied
-            | ToolFailureKind::Cancelled => Some(false),
-            ToolFailureKind::Provider | ToolFailureKind::Other => None,
+            Self::Timeout | Self::RateLimited | Self::Network => Some(true),
+            Self::InvalidArgs
+            | Self::Cancelled
+            | Self::NotFound
+            | Self::PermissionDenied
+            | Self::Refused => Some(false),
+            Self::Provider | Self::Other => None,
         }
     }
 }
 
-impl std::fmt::Display for ToolFailureKind {
+impl std::fmt::Display for ToolErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-/// A structured, model-independent description of a tool execution failure.
+/// The single public error envelope for tool execution.
 ///
-/// This is the "machine-visible" half of a failed tool call. The model-visible
-/// text lives separately on [`ToolExecutionResult::model_output`]; this carries
-/// the classification a hook or policy acts on. Build one with the per-kind
-/// constructors (which pre-fill a sensible [`retryable`](Self::retryable) default)
-/// and refine it with the builder setters:
-///
-/// ```
-/// use rig_core::tool::{ToolFailure, ToolFailureKind};
-///
-/// let failure = ToolFailure::not_found("user 42 does not exist")
-///     .with_http_status(404)
-///     .with_code("USER_NOT_FOUND");
-/// assert_eq!(failure.kind, ToolFailureKind::NotFound);
-/// assert_eq!(failure.retryable, Some(false));
-/// assert_eq!(failure.http_status, Some(404));
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// It combines normalized machine-readable classification with an
+/// operator-facing message, optional model-specific feedback, retry and HTTP
+/// hints, and an optional concrete source. Sources remain downcastable through
+/// [`downcast_source_ref`](Self::downcast_source_ref) without exposing a second
+/// public source wrapper type.
+#[derive(Clone)]
 #[non_exhaustive]
-pub struct ToolFailure {
-    /// The standard classification of the failure.
-    pub kind: ToolFailureKind,
-    /// A human-readable description of what went wrong. This is *not*
-    /// automatically shown to the model — it is metadata for logs and policies.
+pub struct ToolExecutionError {
+    /// Normalized failure classification.
+    pub kind: ToolErrorKind,
+    /// Operator-facing diagnostic message.
     pub message: String,
-    /// Whether retrying the call could plausibly succeed. `None` means unknown.
+    /// Optional feedback rendered to the model instead of `message`.
+    pub model_feedback: Option<String>,
+    /// Whether retrying the operation can reasonably succeed.
     pub retryable: Option<bool>,
-    /// An optional machine-readable error code (e.g. a provider error code).
+    /// Provider- or application-defined machine-readable code.
     pub code: Option<String>,
-    /// An optional HTTP status code, when the failure originated from an HTTP call.
+    /// Associated HTTP status, when applicable.
     pub http_status: Option<u16>,
+    source: Option<Arc<ErrorSource>>,
 }
 
-impl ToolFailure {
-    /// Construct a failure of the given `kind` with `message`. `retryable`,
-    /// `code`, and `http_status` start unset — use the builder setters or a
-    /// per-kind constructor to fill them.
-    pub fn new(kind: ToolFailureKind, message: impl Into<String>) -> Self {
+impl std::fmt::Debug for ToolExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolExecutionError")
+            .field("kind", &self.kind)
+            .field("message", &self.message)
+            .field("model_feedback", &self.model_feedback)
+            .field("retryable", &self.retryable)
+            .field("code", &self.code)
+            .field("http_status", &self.http_status)
+            .field("has_source", &self.source.is_some())
+            .finish()
+    }
+}
+
+impl ToolExecutionError {
+    /// Create an error and apply the classification's default retryability.
+    pub fn new(kind: ToolErrorKind, message: impl Into<String>) -> Self {
         Self {
             kind,
             message: message.into(),
-            retryable: None,
+            model_feedback: None,
+            retryable: kind.default_retryable(),
             code: None,
             http_status: None,
+            source: None,
         }
     }
 
-    /// Construct a failure of `kind` with `message` and the kind's default
-    /// [`retryable`](Self::retryable) hint. The per-kind constructors delegate here.
-    pub(crate) fn of_kind(kind: ToolFailureKind, message: impl Into<String>) -> Self {
-        Self {
-            retryable: kind.default_retryable(),
-            ..Self::new(kind, message)
-        }
-    }
-
-    /// An [`InvalidArgs`](ToolFailureKind::InvalidArgs) failure.
+    /// Invalid-argument error.
     pub fn invalid_args(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::InvalidArgs, message)
+        Self::new(ToolErrorKind::InvalidArgs, message)
     }
 
-    /// A [`Timeout`](ToolFailureKind::Timeout) failure.
+    /// Timeout error.
     pub fn timeout(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::Timeout, message)
+        Self::new(ToolErrorKind::Timeout, message)
     }
 
-    /// A [`Cancelled`](ToolFailureKind::Cancelled) failure.
+    /// Cancellation error.
     pub fn cancelled(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::Cancelled, message)
+        Self::new(ToolErrorKind::Cancelled, message)
     }
 
-    /// A [`NotFound`](ToolFailureKind::NotFound) failure.
+    /// Missing-tool or missing-resource error.
     pub fn not_found(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::NotFound, message)
+        Self::new(ToolErrorKind::NotFound, message)
     }
 
-    /// A [`PermissionDenied`](ToolFailureKind::PermissionDenied) failure.
+    /// Permission error.
     pub fn permission_denied(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::PermissionDenied, message)
+        Self::new(ToolErrorKind::PermissionDenied, message)
     }
 
-    /// A [`RateLimited`](ToolFailureKind::RateLimited) failure.
+    /// Rate-limit error.
     pub fn rate_limited(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::RateLimited, message)
+        Self::new(ToolErrorKind::RateLimited, message)
     }
 
-    /// A [`Provider`](ToolFailureKind::Provider) failure.
+    /// Upstream-provider error.
     pub fn provider(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::Provider, message)
+        Self::new(ToolErrorKind::Provider, message)
     }
 
-    /// A [`Network`](ToolFailureKind::Network) failure.
+    /// Network or transport error.
     pub fn network(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::Network, message)
+        Self::new(ToolErrorKind::Network, message)
     }
 
-    /// An [`Other`](ToolFailureKind::Other) failure — the catch-all.
+    /// Tool-authored refusal. This is distinct from a framework skip, where the
+    /// tool body never runs.
+    pub fn refused(message: impl Into<String>) -> Self {
+        Self::new(ToolErrorKind::Refused, message)
+    }
+
+    /// Unclassified error.
     pub fn other(message: impl Into<String>) -> Self {
-        Self::of_kind(ToolFailureKind::Other, message)
+        Self::new(ToolErrorKind::Other, message)
     }
 
-    /// Set whether the failure is retryable.
+    /// Build an error around a concrete downcastable source.
+    pub fn from_source<E>(kind: ToolErrorKind, source: E) -> Self
+    where
+        E: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        let message = source.to_string();
+        Self::new(kind, message).with_source(source)
+    }
+
+    /// Override the text rendered to the model while retaining `message` for
+    /// operators.
+    pub fn with_model_feedback(mut self, feedback: impl Into<String>) -> Self {
+        self.model_feedback = Some(feedback.into());
+        self
+    }
+
+    /// Override the retryability hint.
     pub fn with_retryable(mut self, retryable: bool) -> Self {
         self.retryable = Some(retryable);
         self
     }
 
-    /// Set a machine-readable error code.
+    /// Attach a provider- or application-defined code.
     pub fn with_code(mut self, code: impl Into<String>) -> Self {
         self.code = Some(code.into());
         self
     }
 
-    /// Set the originating HTTP status code.
+    /// Attach an HTTP status.
     pub fn with_http_status(mut self, status: u16) -> Self {
         self.http_status = Some(status);
         self
     }
+
+    /// Attach a concrete source that can later be downcast.
+    pub fn with_source<E>(mut self, source: E) -> Self
+    where
+        E: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.source = Some(Arc::new(source));
+        self
+    }
+
+    /// Downcast the concrete source by type.
+    pub fn downcast_source_ref<E>(&self) -> Option<&E>
+    where
+        E: std::error::Error + 'static,
+    {
+        self.source
+            .as_deref()
+            .and_then(|source| source.downcast_ref::<E>())
+    }
+
+    /// Text rendered as the model-visible tool result.
+    pub fn model_message(&self) -> &str {
+        self.model_feedback.as_deref().unwrap_or(&self.message)
+    }
 }
 
-impl std::fmt::Display for ToolFailure {
+impl std::fmt::Display for ToolExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.kind, self.message)
     }
 }
 
-impl std::error::Error for ToolFailure {}
-
-/// The structured outcome of a tool call: what happened, independent of the
-/// model-visible text.
-///
-/// This is Rig's answer to "was that a success or an error?" without inspecting
-/// the result string. It mirrors Pydantic AI's `outcome: 'success' | 'failed' |
-/// 'denied'` and the Vercel AI SDK's `tool-result` vs `tool-error` distinction.
-///
-/// # `Skipped` vs `Denied`
-///
-/// Both mean the tool body did not run, but they come from opposite sides — the
-/// framework vs. the tool — and are not synonyms:
-///
-/// - [`Skipped`](Self::Skipped) is produced **by the framework** when a
-///   [`ToolCall`](crate::agent::StepEvent::ToolCall) hook returns
-///   [`Flow::Skip`](crate::agent::Flow::Skip). **Approval-policy denials use
-///   `Flow::Skip`, so they surface as `Skipped`, not `Denied`** — there is no
-///   `Flow::Deny`. A policy that wants to distinguish its denials from other
-///   skips can key off the skip reason it supplied, or attach its own metadata.
-/// - [`Denied`](Self::Denied) is authored **by the tool**, via
-///   [`ToolReturn::denied`] / [`ToolExecutionResult::denied`] — the tool ran its
-///   own check and refused the call (e.g. an internal authorization check). This
-///   is the tool-side counterpart to a hook skip: **tools express refusal as
-///   `Denied`, not `Skipped`** (there is no tool-authored skip constructor).
-///
-/// So [`is_skipped`](Self::is_skipped) means "a hook skipped the call" and
-/// [`is_denied`](Self::is_denied) means "the tool refused it" — unambiguously,
-/// because the split is enforced by the type system: a tool authors a
-/// [`ToolReturnOutcome`], which has no `Skipped` variant, and the observed
-/// `Skipped` outcome can be produced only inside the crate (the framework). A
-/// tool cannot construct a return or a [`ToolExecutionResult`] that claims to
-/// have been skipped.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ToolOutcome {
-    /// The tool ran and produced output normally.
-    Success,
-    /// The tool failed. Carries the structured [`ToolFailure`]; the model still
-    /// receives [`ToolExecutionResult::model_output`] as feedback.
-    Error(ToolFailure),
-    /// The tool body did not run because a
-    /// [`ToolCall`](crate::agent::StepEvent::ToolCall) hook returned
-    /// [`Flow::Skip`](crate::agent::Flow::Skip). This is a **framework** outcome
-    /// and includes approval-policy denials, which are expressed as `Flow::Skip`
-    /// (see the [type-level note](ToolOutcome#skipped-vs-denied)).
-    Skipped,
-    /// A **tool** declared the call denied by returning [`ToolReturn::denied`] /
-    /// [`ToolExecutionResult::denied`] — it ran its own check and refused. This is
-    /// **not** produced by a hook `Flow::Skip` (those are
-    /// [`Skipped`](Self::Skipped)); it is the tool-side counterpart to a skip (see
-    /// the [type-level note](ToolOutcome#skipped-vs-denied)).
-    Denied,
+impl std::error::Error for ToolExecutionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn std::error::Error + 'static))
+    }
 }
 
-impl ToolOutcome {
-    /// A stable, machine-friendly identifier for the outcome, for tracing/metrics.
+/// Framework-observed status of one tool invocation.
+///
+/// Tool authors return ordinary `Result<Output, ToolExecutionError>` and do not
+/// construct this type. [`Skipped`](Self::Skipped) is framework-only and means
+/// the tool body did not run; a tool-authored refusal is
+/// [`Error`](Self::Error) with [`ToolErrorKind::Refused`].
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum ToolExecutionStatus {
+    /// The tool returned and its output was rendered successfully.
+    Success,
+    /// The tool or dispatch boundary failed.
+    Error(ToolExecutionError),
+    /// A pre-execution hook skipped the call, so the tool body did not run.
+    Skipped,
+}
+
+impl ToolExecutionStatus {
+    /// Stable telemetry spelling for the status.
     pub const fn as_str(&self) -> &'static str {
         match self {
-            ToolOutcome::Success => "success",
-            ToolOutcome::Error(_) => "error",
-            ToolOutcome::Skipped => "skipped",
-            ToolOutcome::Denied => "denied",
+            Self::Success => "success",
+            Self::Error(error) if matches!(error.kind, ToolErrorKind::Refused) => "refused",
+            Self::Error(_) => "error",
+            Self::Skipped => "skipped",
         }
     }
 
-    /// Whether the tool ran successfully.
+    /// Whether execution succeeded.
     pub const fn is_success(&self) -> bool {
-        matches!(self, ToolOutcome::Success)
+        matches!(self, Self::Success)
     }
 
-    /// Whether the tool failed.
+    /// Whether execution failed, including a tool refusal.
     pub const fn is_error(&self) -> bool {
-        matches!(self, ToolOutcome::Error(_))
+        matches!(self, Self::Error(_))
     }
 
-    /// Whether a hook skipped the call (`Flow::Skip`) before execution — a
-    /// **framework** outcome that includes approval-policy denials (see the
-    /// [type-level note](ToolOutcome#skipped-vs-denied)).
+    /// Whether the framework skipped the call before execution.
     pub const fn is_skipped(&self) -> bool {
-        matches!(self, ToolOutcome::Skipped)
+        matches!(self, Self::Skipped)
     }
 
-    /// Whether a **tool** refused the call (via [`ToolReturn::denied`]). Hook /
-    /// approval-policy `Flow::Skip` denials are [`Skipped`](Self::Skipped), not
-    /// `Denied` (see the [type-level note](ToolOutcome#skipped-vs-denied)).
-    pub const fn is_denied(&self) -> bool {
-        matches!(self, ToolOutcome::Denied)
+    /// Whether the tool ran and refused the operation.
+    pub fn is_refused(&self) -> bool {
+        matches!(self, Self::Error(error) if error.kind == ToolErrorKind::Refused)
     }
 
-    /// The [`ToolFailure`] if this is an [`Error`](ToolOutcome::Error), else `None`.
-    pub const fn failure(&self) -> Option<&ToolFailure> {
+    /// Structured error, if execution failed.
+    pub fn error(&self) -> Option<&ToolExecutionError> {
         match self {
-            ToolOutcome::Error(failure) => Some(failure),
-            _ => None,
+            Self::Error(error) => Some(error),
+            Self::Success | Self::Skipped => None,
         }
     }
 
-    /// The [`ToolFailureKind`] if this is an [`Error`](ToolOutcome::Error), else `None`.
-    pub const fn error_kind(&self) -> Option<ToolFailureKind> {
-        match self {
-            ToolOutcome::Error(failure) => Some(failure.kind),
-            _ => None,
-        }
+    /// Normalized error kind, if execution failed.
+    pub fn error_kind(&self) -> Option<ToolErrorKind> {
+        self.error().map(|error| error.kind)
     }
 
-    /// Whether this is an [`Error`](ToolOutcome::Error) of exactly `kind`.
-    ///
-    /// The predicate a hook uses to react to a specific failure class:
-    ///
-    /// ```
-    /// use rig_core::tool::{ToolFailure, ToolFailureKind, ToolOutcome};
-    ///
-    /// let outcome = ToolOutcome::Error(ToolFailure::timeout("slow upstream"));
-    /// assert!(outcome.is_error_kind(ToolFailureKind::Timeout));
-    /// assert!(!outcome.is_error_kind(ToolFailureKind::NotFound));
-    /// ```
-    pub fn is_error_kind(&self, kind: ToolFailureKind) -> bool {
+    /// Whether execution failed with `kind`.
+    pub fn is_error_kind(&self, kind: ToolErrorKind) -> bool {
         self.error_kind() == Some(kind)
     }
 }
 
-/// The outcome a *tool* declares for a call it executed.
+/// The one structured result returned by the tool runtime and observed by hooks.
 ///
-/// A strict subset of [`ToolOutcome`]: a tool that ran can report
-/// [`Success`](Self::Success), a handled [`Error`](Self::Error), or a
-/// [`Denied`](Self::Denied) refusal — but it **cannot** be
-/// [`Skipped`](ToolOutcome::Skipped). A skip is a *framework* decision made
-/// before the tool runs (a [`ToolCall`](crate::agent::StepEvent::ToolCall) hook
-/// returning [`Flow::Skip`](crate::agent::Flow::Skip)), so it has no
-/// tool-authored representation. Because [`ToolReturn`] carries this type — not
-/// [`ToolOutcome`] — it is *impossible* to construct a tool return (or a
-/// tool-built [`ToolExecutionResult`]) that claims to have been skipped while
-/// having actually run. Converts into the observed [`ToolOutcome`] via [`From`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ToolReturnOutcome {
-    /// The tool ran and produced output normally. Maps to [`ToolOutcome::Success`].
-    Success,
-    /// The tool ran and failed; carries the structured [`ToolFailure`]. The model
-    /// still receives the return's output as feedback. Maps to [`ToolOutcome::Error`].
-    Error(ToolFailure),
-    /// The tool ran its own check and refused the call (e.g. an internal
-    /// authorization check). Maps to [`ToolOutcome::Denied`].
-    Denied,
-}
-
-impl ToolReturnOutcome {
-    /// A stable, machine-friendly identifier, matching the [`ToolOutcome`] this
-    /// maps to (`"success"` / `"error"` / `"denied"`).
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            ToolReturnOutcome::Success => "success",
-            ToolReturnOutcome::Error(_) => "error",
-            ToolReturnOutcome::Denied => "denied",
-        }
-    }
-
-    /// The [`ToolFailure`] if this is an [`Error`](Self::Error), else `None`.
-    pub const fn failure(&self) -> Option<&ToolFailure> {
-        match self {
-            ToolReturnOutcome::Error(failure) => Some(failure),
-            _ => None,
-        }
-    }
-}
-
-impl From<ToolReturnOutcome> for ToolOutcome {
-    fn from(outcome: ToolReturnOutcome) -> Self {
-        match outcome {
-            ToolReturnOutcome::Success => ToolOutcome::Success,
-            ToolReturnOutcome::Error(failure) => ToolOutcome::Error(failure),
-            ToolReturnOutcome::Denied => ToolOutcome::Denied,
-        }
-    }
-}
-
-/// The full structured result of a single tool execution.
-///
-/// This is what the dynamic tool boundary ([`ToolDyn`](crate::tool::ToolDyn))
-/// produces and what flows through to the
-/// [`StepEvent::ToolResult`](crate::agent::StepEvent::ToolResult) hook event. It
-/// keeps the three concerns separate:
-///
-/// - [`model_output`](Self::model_output()): the text delivered to the model;
-/// - [`outcome`](Self::outcome()): the structured [`ToolOutcome`];
-/// - [`extensions`](Self::extensions()): metadata never sent to the model.
-///
-/// Tool authors rarely build this directly — they return a [`ToolReturn`] and the
-/// boundary assembles it. In a manual [`ToolDyn`](crate::tool::ToolDyn)
-/// implementation construct one with [`success`](Self::success) /
-/// [`failed`](Self::failed) / [`denied`](Self::denied); read it back with the
-/// [`model_output`](Self::model_output()) / [`outcome`](Self::outcome()) /
-/// [`extensions`](Self::extensions()) accessors.
-///
-/// The fields are crate-private on purpose: [`Skipped`](ToolOutcome::Skipped) is a
-/// framework-only outcome (a hook [`Flow::Skip`](crate::agent::Flow::Skip)), and
-/// there is no public constructor or setter that yields it — a tool that ran was
-/// not skipped. See the [`ToolOutcome` note](ToolOutcome#skipped-vs-denied).
+/// `model_output` preserves Rig's existing rendering rules: strings remain
+/// verbatim and structured or multimodal values are JSON-encoded. Result
+/// metadata stays in the associated [`ToolContext`] and is never rendered.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct ToolExecutionResult {
+pub struct ToolExecution {
     pub(crate) model_output: String,
-    pub(crate) outcome: ToolOutcome,
-    pub(crate) extensions: ToolResultExtensions,
+    pub(crate) status: ToolExecutionStatus,
+    pub(crate) context: ToolContext,
 }
 
-impl ToolExecutionResult {
-    /// Construct a result with the given model output and outcome, and no
-    /// extensions.
-    ///
-    /// Crate-internal because `outcome` is the full [`ToolOutcome`], including the
-    /// framework-only [`Skipped`](ToolOutcome::Skipped). Tool authors use
-    /// [`success`](Self::success) / [`failed`](Self::failed) /
-    /// [`denied`](Self::denied), which cannot produce `Skipped`.
-    pub(crate) fn new(model_output: impl Into<String>, outcome: ToolOutcome) -> Self {
+impl ToolExecution {
+    pub(crate) fn success(model_output: String, context: ToolContext) -> Self {
         Self {
-            model_output: model_output.into(),
-            outcome,
-            extensions: ToolResultExtensions::new(),
+            model_output,
+            status: ToolExecutionStatus::Success,
+            context,
         }
     }
 
-    /// A successful result whose model output is `model_output` verbatim.
-    pub fn success(model_output: impl Into<String>) -> Self {
-        Self::new(model_output, ToolOutcome::Success)
+    pub(crate) fn failed(error: ToolExecutionError, context: ToolContext) -> Self {
+        let model_output = error.model_message().to_string();
+        Self {
+            model_output,
+            status: ToolExecutionStatus::Error(error),
+            context,
+        }
     }
 
-    /// A failed result: `model_output` is the model-visible feedback, `failure`
-    /// the structured classification.
-    pub fn failed(model_output: impl Into<String>, failure: ToolFailure) -> Self {
-        Self::new(model_output, ToolOutcome::Error(failure))
+    pub(crate) fn skipped(reason: impl Into<String>, context: ToolContext) -> Self {
+        Self {
+            model_output: reason.into(),
+            status: ToolExecutionStatus::Skipped,
+            context,
+        }
     }
 
-    /// A [`Skipped`](ToolOutcome::Skipped) result (the body did not run).
-    ///
-    /// Framework-internal: `Skipped` is produced only when a `ToolCall` hook
-    /// returns [`Flow::Skip`](crate::agent::Flow::Skip). A tool author expresses
-    /// refusal with [`denied`](Self::denied) instead — see the
-    /// [`ToolOutcome` note](ToolOutcome#skipped-vs-denied).
-    pub(crate) fn skipped(model_output: impl Into<String>) -> Self {
-        Self::new(model_output, ToolOutcome::Skipped)
-    }
-
-    /// A [`Denied`](ToolOutcome::Denied) result: the tool refused the call (the
-    /// body did not run to completion). The tool-authored counterpart to a hook
-    /// [`Flow::Skip`](crate::agent::Flow::Skip); see the
-    /// [`ToolOutcome` note](ToolOutcome#skipped-vs-denied).
-    pub fn denied(model_output: impl Into<String>) -> Self {
-        Self::new(model_output, ToolOutcome::Denied)
-    }
-
-    /// Attach result extensions, replacing any already set.
-    pub fn with_extensions(mut self, extensions: ToolResultExtensions) -> Self {
-        self.extensions = extensions;
-        self
-    }
-
-    /// Insert a single value into the result extensions, returning the updated
-    /// result. The single-value counterpart to [`with_extensions`](Self::with_extensions),
-    /// mirroring [`ToolReturn::with_extension`] for manual
-    /// [`ToolDyn`](crate::tool::ToolDyn) implementations.
-    pub fn with_extension<
-        E: Clone + crate::wasm_compat::WasmCompatSend + crate::wasm_compat::WasmCompatSync + 'static,
-    >(
-        mut self,
-        extension: E,
-    ) -> Self {
-        self.extensions.insert(extension);
-        self
-    }
-
-    /// The text delivered to the model as the tool result. Present even for a
-    /// failure, so the model gets useful feedback (a handled error message).
+    /// Output delivered to the model unless a result hook rewrites it.
     pub fn model_output(&self) -> &str {
         &self.model_output
     }
 
-    /// The structured [`ToolOutcome`] of the call.
-    pub fn outcome(&self) -> &ToolOutcome {
-        &self.outcome
+    /// Structured execution status.
+    pub fn status(&self) -> &ToolExecutionStatus {
+        &self.status
     }
 
-    /// Metadata attached by the tool, surfaced to hooks/tracing but never sent
-    /// to the model.
-    pub fn extensions(&self) -> &ToolResultExtensions {
-        &self.extensions
-    }
-}
-
-/// A tool's return value carrying an optional structured outcome and metadata.
-///
-/// The ergonomic path for a tool author who wants more than a plain success. A
-/// tool's [`call`](crate::tool::Tool::call) still returns a bare
-/// `T: Serialize` for the common case; override
-/// [`Tool::call_structured`](crate::tool::Tool::call_structured) to return a
-/// `ToolReturn<T>` instead when you need to:
-///
-/// - attach [`extensions`](Self::extensions) (provider/application metadata) to a
-///   success;
-/// - report a *handled failure* that still shows structured output to the model
-///   ([`failed`](Self::failed));
-/// - mark the call [`denied`](Self::denied) — the tool ran its own check and
-///   refused (the tool-side counterpart to a hook `Flow::Skip`; there is no
-///   tool-authored *skipped* — that outcome is the framework's, see
-///   [`ToolOutcome`]).
-///
-/// The [`output`](Self::output) is serialized to the model exactly as a normal
-/// tool output would be (a `String` output stays verbatim; anything else becomes
-/// JSON), so switching a tool from `T` to `ToolReturn<T>` never changes what the
-/// model sees for the success case.
-///
-/// # Example
-/// ```
-/// use rig_core::tool::{ToolFailure, ToolReturn};
-///
-/// #[derive(Clone, Debug, PartialEq)]
-/// struct RequestId(String);
-///
-/// // A success that also records the upstream request id for telemetry.
-/// let ok: ToolReturn<String> =
-///     ToolReturn::success("42 results".to_string()).with_extension(RequestId("req-9".into()));
-///
-/// // A handled failure that still gives the model a structured message.
-/// let err: ToolReturn<String> =
-///     ToolReturn::failed("no such city".to_string(), ToolFailure::not_found("city=atlantis"));
-/// ```
-#[derive(Debug, Clone)]
-pub struct ToolReturn<T> {
-    /// The value serialized as the model-visible tool output.
-    pub output: T,
-    /// The structured outcome the tool declares. A [`ToolReturnOutcome`] (not a
-    /// [`ToolOutcome`]), so it can never be the framework-only
-    /// [`Skipped`](ToolOutcome::Skipped). Defaults to
-    /// [`ToolReturnOutcome::Success`].
-    pub outcome: ToolReturnOutcome,
-    /// Metadata surfaced to hooks/tracing but never sent to the model.
-    pub extensions: ToolResultExtensions,
-}
-
-impl<T> ToolReturn<T> {
-    /// A plain successful return wrapping `output`, with no extra metadata. This
-    /// is what the default [`Tool::call_structured`](crate::tool::Tool::call_structured)
-    /// produces from a bare [`Tool::call`](crate::tool::Tool::call) output.
-    pub fn success(output: T) -> Self {
-        Self {
-            output,
-            outcome: ToolReturnOutcome::Success,
-            extensions: ToolResultExtensions::new(),
-        }
+    /// Read typed result metadata attached by the tool.
+    pub fn metadata<T>(&self) -> Option<&T>
+    where
+        T: WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.context.metadata::<T>()
     }
 
-    /// A return wrapping `output` with an explicit [`ToolReturnOutcome`].
-    pub fn new(output: T, outcome: ToolReturnOutcome) -> Self {
-        Self {
-            output,
-            outcome,
-            extensions: ToolResultExtensions::new(),
-        }
-    }
-
-    /// A handled-failure return: `output` is still serialized to the model as
-    /// feedback, but the outcome is [`ToolReturnOutcome::Error`] carrying `failure`.
-    pub fn failed(output: T, failure: ToolFailure) -> Self {
-        Self::new(output, ToolReturnOutcome::Error(failure))
-    }
-
-    /// A [`denied`](ToolReturnOutcome::Denied) return: the tool ran its own check
-    /// and refused (the model still sees `output`). The tool-side counterpart to
-    /// a hook [`Flow::Skip`](crate::agent::Flow::Skip); there is no tool-authored
-    /// *skipped* — `Skipped` is a framework outcome (see
-    /// [`ToolReturnOutcome`](ToolReturnOutcome)).
-    pub fn denied(output: T) -> Self {
-        Self::new(output, ToolReturnOutcome::Denied)
-    }
-
-    /// Replace the outcome.
-    pub fn with_outcome(mut self, outcome: ToolReturnOutcome) -> Self {
-        self.outcome = outcome;
-        self
-    }
-
-    /// Replace the extensions wholesale.
-    pub fn with_extensions(mut self, extensions: ToolResultExtensions) -> Self {
-        self.extensions = extensions;
-        self
-    }
-
-    /// Insert a single value into the extensions, returning the updated return.
-    pub fn with_extension<
-        E: Clone + crate::wasm_compat::WasmCompatSend + crate::wasm_compat::WasmCompatSync + 'static,
-    >(
-        mut self,
-        extension: E,
-    ) -> Self {
-        self.extensions.insert(extension);
-        self
+    /// Access the invocation context, including inbound values and result
+    /// metadata. The context itself is never sent to the model.
+    pub fn context(&self) -> &ToolContext {
+        &self.context
     }
 }
 
-impl<T: Serialize> ToolReturn<T> {
-    /// Serialize `output` to the model-visible string and assemble a
-    /// [`ToolExecutionResult`], preserving the declared outcome and extensions.
-    ///
-    /// A `String` output is delivered verbatim; anything else is JSON-encoded —
-    /// the same shaping a bare tool output receives.
-    ///
-    /// If serialization fails, the tool's [`extensions`](Self::extensions) and its
-    /// declared *classification* are still preserved — a serialization failure is
-    /// a rendering problem, independent of whether the tool succeeded, failed, or
-    /// [`denied`](ToolReturnOutcome::Denied) the call — and only the `model_output`
-    /// falls back to a string explaining the error. The one exception is a declared
-    /// [`Success`](ToolReturnOutcome::Success): a success whose output cannot be
-    /// rendered *is* an internal fault, so it becomes an
-    /// [`Other`](ToolFailureKind::Other) failure.
-    pub(crate) fn into_execution_result(self) -> ToolExecutionResult {
-        let ToolReturn {
-            output,
-            outcome,
-            extensions,
-        } = self;
-        match super::serialize_tool_output(&output) {
-            Ok(model_output) => ToolExecutionResult {
-                model_output,
-                outcome: outcome.into(),
-                extensions,
-            },
-            Err(err) => {
-                let outcome = match outcome {
-                    // A success we cannot render is an internal serialization fault.
-                    ToolReturnOutcome::Success => {
-                        ToolOutcome::Error(ToolFailure::other(err.to_string()))
-                    }
-                    // A declared failure/denial keeps its classification.
-                    other => other.into(),
-                };
-                ToolExecutionResult {
-                    model_output: format!("failed to serialize tool output: {err}"),
-                    outcome,
-                    extensions,
-                }
-            }
-        }
-    }
-}
-
-// The structured result crosses `.await` points and is the output of the
-// `WasmBoxedFuture` returned by `ToolDyn::call_structured`, so on native targets
-// it must stay `Send + Sync`. This fails to compile if a future change (e.g. a
-// non-`Send` field on `ToolResultExtensions`) drops the property.
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<ToolExecutionResult>();
-    assert_send_sync::<ToolOutcome>();
-    assert_send_sync::<ToolFailure>();
+    assert_send_sync::<ToolExecution>();
+    assert_send_sync::<ToolExecutionError>();
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[derive(Debug, thiserror::Error)]
+    #[error("concrete source")]
+    struct ConcreteSource;
+
     #[test]
-    fn per_kind_constructors_prefill_retryable() {
-        assert_eq!(ToolFailure::timeout("t").retryable, Some(true));
-        assert_eq!(ToolFailure::rate_limited("r").retryable, Some(true));
-        assert_eq!(ToolFailure::network("n").retryable, Some(true));
-        assert_eq!(ToolFailure::not_found("nf").retryable, Some(false));
-        assert_eq!(ToolFailure::permission_denied("p").retryable, Some(false));
-        assert_eq!(ToolFailure::invalid_args("i").retryable, Some(false));
-        assert_eq!(ToolFailure::cancelled("c").retryable, Some(false));
-        assert_eq!(ToolFailure::provider("p").retryable, None);
-        assert_eq!(ToolFailure::other("o").retryable, None);
-        // `new` leaves it unset regardless of kind.
-        assert_eq!(
-            ToolFailure::new(ToolFailureKind::Timeout, "t").retryable,
-            None
-        );
+    fn constructors_set_normalized_retryability() {
+        assert_eq!(ToolExecutionError::timeout("t").retryable, Some(true));
+        assert_eq!(ToolExecutionError::rate_limited("r").retryable, Some(true));
+        assert_eq!(ToolExecutionError::network("n").retryable, Some(true));
+        assert_eq!(ToolExecutionError::not_found("n").retryable, Some(false));
+        assert_eq!(ToolExecutionError::invalid_args("i").retryable, Some(false));
+        assert_eq!(ToolExecutionError::refused("r").retryable, Some(false));
+        assert_eq!(ToolExecutionError::provider("p").retryable, None);
+        assert_eq!(ToolExecutionError::other("o").retryable, None);
     }
 
     #[test]
-    fn failure_builders_compose() {
-        let failure = ToolFailure::rate_limited("slow down")
-            .with_http_status(429)
-            .with_code("RATE_LIMIT")
-            .with_retryable(false);
-        assert_eq!(failure.kind, ToolFailureKind::RateLimited);
-        assert_eq!(failure.http_status, Some(429));
-        assert_eq!(failure.code.as_deref(), Some("RATE_LIMIT"));
-        assert_eq!(failure.retryable, Some(false));
-        assert_eq!(failure.to_string(), "rate_limited: slow down");
+    fn envelope_preserves_feedback_hints_and_concrete_source() {
+        let error = ToolExecutionError::from_source(ToolErrorKind::Timeout, ConcreteSource)
+            .with_model_feedback("try later")
+            .with_retryable(false)
+            .with_code("UPSTREAM_TIMEOUT")
+            .with_http_status(504);
+
+        assert_eq!(error.kind, ToolErrorKind::Timeout);
+        assert_eq!(error.message, "concrete source");
+        assert_eq!(error.model_message(), "try later");
+        assert_eq!(error.retryable, Some(false));
+        assert_eq!(error.code.as_deref(), Some("UPSTREAM_TIMEOUT"));
+        assert_eq!(error.http_status, Some(504));
+        assert!(error.downcast_source_ref::<ConcreteSource>().is_some());
+        assert!(std::error::Error::source(&error).is_some());
     }
 
     #[test]
-    fn outcome_predicates() {
-        let ok = ToolOutcome::Success;
-        assert!(ok.is_success());
-        assert!(!ok.is_error());
-        assert_eq!(ok.error_kind(), None);
-        assert_eq!(ok.as_str(), "success");
+    fn status_distinguishes_skip_from_tool_refusal() {
+        let skipped = ToolExecutionStatus::Skipped;
+        let refused = ToolExecutionStatus::Error(ToolExecutionError::refused("no"));
 
-        let err = ToolOutcome::Error(ToolFailure::not_found("x"));
-        assert!(err.is_error());
-        assert!(err.is_error_kind(ToolFailureKind::NotFound));
-        assert!(!err.is_error_kind(ToolFailureKind::Timeout));
-        assert_eq!(err.error_kind(), Some(ToolFailureKind::NotFound));
-        assert_eq!(
-            err.failure().map(|f| f.kind),
-            Some(ToolFailureKind::NotFound)
-        );
-        assert_eq!(err.as_str(), "error");
-
-        assert!(ToolOutcome::Skipped.is_skipped());
-        assert!(ToolOutcome::Denied.is_denied());
+        assert!(skipped.is_skipped());
+        assert!(!skipped.is_refused());
+        assert!(refused.is_refused());
+        assert!(!refused.is_skipped());
+        assert_eq!(skipped.as_str(), "skipped");
+        assert_eq!(refused.as_str(), "refused");
     }
 
     #[test]
-    fn tool_return_success_serializes_verbatim_string() {
-        let result = ToolReturn::success("hello\nworld".to_string()).into_execution_result();
-        assert_eq!(result.model_output, "hello\nworld");
-        assert!(result.outcome.is_success());
-    }
-
-    #[test]
-    fn tool_return_object_serializes_as_json_and_keeps_outcome() {
-        let result = ToolReturn::failed(
-            serde_json::json!({ "status": "missing", "id": 7 }),
-            ToolFailure::not_found("id 7"),
-        )
-        .into_execution_result();
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&result.model_output).unwrap(),
-            serde_json::json!({ "status": "missing", "id": 7 })
-        );
-        assert!(result.outcome.is_error_kind(ToolFailureKind::NotFound));
-    }
-
-    #[test]
-    fn tool_return_extensions_flow_into_execution_result() {
+    fn execution_keeps_model_feedback_and_metadata() {
         #[derive(Clone, Debug, PartialEq)]
-        struct ReqId(String);
+        struct RequestId(&'static str);
 
-        let result = ToolReturn::success(1u32)
-            .with_extension(ReqId("abc".into()))
-            .into_execution_result();
-        assert_eq!(result.extensions.get::<ReqId>(), Some(&ReqId("abc".into())));
-    }
+        let mut context = ToolContext::new();
+        context.insert_metadata(RequestId("request-7"));
+        let execution = ToolExecution::failed(
+            ToolExecutionError::provider("operator detail")
+                .with_model_feedback("please try another tool"),
+            context,
+        );
 
-    #[test]
-    fn tool_return_outcome_maps_to_observed_outcome() {
-        // The tool-authorable set is exactly { Success, Error, Denied } — there is
-        // no `ToolReturnOutcome::Skipped` variant, so a tool return can never
-        // claim it was skipped (that guarantee is enforced at compile time; there
-        // is nothing to test at runtime). Each authorable outcome maps to its
-        // observed `ToolOutcome`:
+        assert_eq!(execution.model_output(), "please try another tool");
+        assert!(execution.status().is_error_kind(ToolErrorKind::Provider));
         assert_eq!(
-            ToolOutcome::from(ToolReturnOutcome::Success),
-            ToolOutcome::Success
-        );
-        assert_eq!(
-            ToolOutcome::from(ToolReturnOutcome::Denied),
-            ToolOutcome::Denied
-        );
-        let failure = ToolFailure::not_found("x");
-        assert_eq!(
-            ToolOutcome::from(ToolReturnOutcome::Error(failure.clone())),
-            ToolOutcome::Error(failure)
-        );
-
-        assert_eq!(ToolReturnOutcome::Success.as_str(), "success");
-        assert_eq!(ToolReturnOutcome::Denied.as_str(), "denied");
-        assert_eq!(
-            ToolReturnOutcome::Error(ToolFailure::timeout("t")).as_str(),
-            "error"
-        );
-        assert_eq!(
-            ToolReturnOutcome::Error(ToolFailure::timeout("t"))
-                .failure()
-                .map(|f| f.kind),
-            Some(ToolFailureKind::Timeout)
-        );
-        assert_eq!(ToolReturnOutcome::Denied.failure(), None);
-    }
-
-    #[test]
-    fn tool_return_denied_surfaces_as_denied_observed_outcome() {
-        let result = ToolReturn::denied("refused".to_string()).into_execution_result();
-        assert_eq!(*result.outcome(), ToolOutcome::Denied);
-        assert_eq!(result.model_output(), "refused");
-        assert!(result.outcome().is_denied());
-        assert!(!result.outcome().is_skipped());
-    }
-
-    #[test]
-    fn serialize_failure_preserves_declared_outcome_and_extensions() {
-        // An output whose `Serialize` impl always errors, so `into_execution_result`
-        // hits the fallback path.
-        struct Unserializable;
-        impl serde::Serialize for Unserializable {
-            fn serialize<S: serde::Serializer>(&self, _s: S) -> Result<S::Ok, S::Error> {
-                Err(serde::ser::Error::custom("cannot serialize"))
-            }
-        }
-
-        #[derive(Clone, Debug, PartialEq)]
-        struct ReqId(String);
-
-        // A declared *handled failure* keeps its classification and extensions;
-        // only `model_output` falls back to the serialization-error string. It must
-        // NOT be silently reclassified to `Error(Other)`.
-        let failed = ToolReturn::failed(Unserializable, ToolFailure::rate_limited("slow"))
-            .with_extension(ReqId("req-1".into()))
-            .into_execution_result();
-        assert!(
-            failed.outcome().is_error_kind(ToolFailureKind::RateLimited),
-            "declared failure classification must survive serialize failure; got {:?}",
-            failed.outcome()
-        );
-        assert_eq!(
-            failed.outcome().failure().and_then(|f| f.retryable),
-            Some(true),
-            "the declared failure's retryable hint must survive"
-        );
-        assert_eq!(
-            failed.extensions().get::<ReqId>(),
-            Some(&ReqId("req-1".into())),
-            "extensions must survive serialize failure"
-        );
-        assert!(failed.model_output().contains("failed to serialize"));
-
-        // A declared *denial* is preserved (not turned into an error).
-        let denied = ToolReturn::denied(Unserializable).into_execution_result();
-        assert!(
-            denied.outcome().is_denied(),
-            "declared denial must survive serialize failure; got {:?}",
-            denied.outcome()
-        );
-
-        // A declared *success* that cannot be rendered IS an internal fault.
-        let ok = ToolReturn::success(Unserializable).into_execution_result();
-        assert!(
-            ok.outcome().is_error_kind(ToolFailureKind::Other),
-            "a success whose output cannot serialize becomes Other; got {:?}",
-            ok.outcome()
+            execution.metadata::<RequestId>(),
+            Some(&RequestId("request-7"))
         );
     }
 }

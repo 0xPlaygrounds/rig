@@ -4,7 +4,7 @@ use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
     agent::{Agent, AgentBuilder},
-    completion::{Chat, CompletionModel, Message, PromptError},
+    completion::{Chat, CompletionModel, Message},
     providers::openai::Client as OpenAIClient,
     tool::Tool,
 };
@@ -25,7 +25,6 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     const NAME: &'static str = "translator";
 
     type Args = TranslatorArgs;
-    type Error = PromptError;
     type Output = String;
 
     fn description(&self) -> String {
@@ -46,14 +45,21 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         let mut empty_history = Vec::<Message>::new();
         match self.0.chat(&args.prompt, &mut empty_history).await {
             Ok(response) => {
                 println!("Translated prompt: {response}");
                 Ok(response)
             }
-            Err(e) => Err(e),
+            Err(error) => Err(rig::tool::ToolExecutionError::from_source(
+                rig::tool::ToolErrorKind::Other,
+                error,
+            )),
         }
     }
 }
