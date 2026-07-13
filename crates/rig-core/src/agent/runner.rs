@@ -5714,11 +5714,10 @@ mod tests {
     /// the synthetic structured-output tool is advertised under a unique name.
     #[tokio::test]
     async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
-        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
-            "output",
-            "final_result_1",
-            json!({ "answer": "done" }),
-        )]);
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("real", "final_result", json!({})),
+            MockTurn::tool_call("output", "final_result_1", json!({ "answer": "done" })),
+        ]);
         let probe = model.clone();
         let response = AgentBuilder::new(model)
             .tool(FinalResultTool)
@@ -5729,11 +5728,15 @@ mod tests {
             .max_turns(2)
             .run()
             .await
-            .expect("the uniquely named output tool should finalize the run");
+            .expect("the real tool should dispatch before the unique output tool finalizes");
 
         assert!(response.output.contains("done"));
         let requests = probe.requests();
-        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests.len(),
+            2,
+            "real-tool dispatch must continue to a second model turn"
+        );
         let tool_names = requests[0]
             .tools
             .iter()
@@ -5747,6 +5750,24 @@ mod tests {
                 "the first request should advertise `{expected}` exactly once: {tool_names:?}"
             );
         }
+
+        assert!(
+            requests[1].chat_history.iter().any(|message| matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "real"
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    crate::message::ToolResultContent::Text(text)
+                                        if text.text == "real final_result output"
+                                ))
+                    ))
+            )),
+            "the real `final_result` call must execute normally and its result must reach the follow-up request"
+        );
     }
 
     /// Once Tool output mode has committed a name, a real tool registered under

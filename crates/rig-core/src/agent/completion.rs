@@ -468,8 +468,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         return Err(CompletionError::RequestError(
             format!(
                 "real tool `{name}` conflicts with the structured-output tool reserved for this \
-                 run; rename or remove the real tool, or start a new run so Rig can reserve a \
-                 different output-tool name"
+                 run; rename or remove the real tool, exclude it with `active_tools`, or make it \
+                 visible before starting a new run so Rig can reserve a different output-tool name"
             )
             .into(),
         ));
