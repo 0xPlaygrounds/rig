@@ -1087,6 +1087,7 @@ mod tests {
     };
 
     use futures::StreamExt;
+    use serde::Deserialize;
     use serde_json::json;
 
     use crate::agent::AgentBuilder;
@@ -1095,14 +1096,21 @@ mod tests {
     };
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
-    use crate::completion::{CompletionModel, Message, Prompt, PromptError};
+    use crate::completion::{CompletionError, CompletionModel, Message, Prompt, PromptError};
     use crate::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction, UserContent};
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
         MockSubtractTool, MockToolError, MockTurn,
     };
-    use crate::tool::Tool;
+    use crate::tool::{
+        Tool, ToolSet,
+        server::{ToolServer, ToolServerHandle},
+    };
+    use crate::vector_store::{
+        VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+    };
+    use crate::wasm_compat::WasmCompatSend;
 
     /// Records the kind of every hook event (and every tool-result payload) so a
     /// run() and a stream() of the same scenario can be compared.
@@ -5626,6 +5634,375 @@ mod tests {
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
             Ok("real final_result output".to_string())
         }
+    }
+
+    /// Returns no retrieved tool on the first search, then the colliding real
+    /// `final_result` tool on later searches.
+    #[derive(Default)]
+    struct LateFinalResultIndex {
+        searches: AtomicU32,
+    }
+
+    impl VectorStoreIndex for LateFinalResultIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            if self.searches.fetch_add(1, SeqCst) == 0 {
+                Ok(Vec::new())
+            } else {
+                Ok(vec![(1.0, "final_result".to_string())])
+            }
+        }
+    }
+
+    /// Registers a real `final_result` tool after the first model turn, once the
+    /// run has already reserved that name for structured output. An optional
+    /// second-turn patch lets tests exercise filtering and tool-choice changes
+    /// without changing the collision source.
+    #[derive(Clone)]
+    struct RegisterLateFinalResultTool {
+        handle: ToolServerHandle,
+        second_turn_patch: Option<RequestPatch>,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for RegisterLateFinalResultTool {
+        async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
+            if ctx.turn() == 1 && matches!(event, StepEvent::ModelTurnFinished { .. }) {
+                self.handle
+                    .add_tool(FinalResultTool)
+                    .await
+                    .expect("register late final_result tool");
+            }
+
+            if ctx.turn() == 2
+                && matches!(event, StepEvent::CompletionCall { .. })
+                && let Some(patch) = &self.second_turn_patch
+            {
+                return Flow::patch_request(patch.clone());
+            }
+
+            Flow::cont()
+        }
+    }
+
+    fn assert_structured_output_collision_error(message: &str) {
+        assert!(
+            message.contains("final_result"),
+            "error should name the conflicting tool: {message}"
+        );
+        assert!(
+            message.contains("structured-output") && message.contains("reserved"),
+            "error should explain the structured-output reservation: {message}"
+        );
+        assert!(
+            message.contains("rename or remove"),
+            "error should provide an actionable resolution: {message}"
+        );
+    }
+
+    /// An initially effective real `final_result` keeps normal dispatch while
+    /// the synthetic structured-output tool is advertised under a unique name.
+    #[tokio::test]
+    async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("real", "final_result", json!({})),
+            MockTurn::tool_call("output", "final_result_1", json!({ "answer": "done" })),
+        ]);
+        let probe = model.clone();
+        let response = AgentBuilder::new(model)
+            .tool(FinalResultTool)
+            .output_schema::<Answer>()
+            .output_mode(OutputMode::Tool)
+            .build()
+            .runner("go")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("the real tool should dispatch before the unique output tool finalizes");
+
+        assert!(response.output.contains("done"));
+        let requests = probe.requests();
+        assert_eq!(
+            requests.len(),
+            2,
+            "real-tool dispatch must continue to a second model turn"
+        );
+        let tool_names = requests[0]
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(tool_names.len(), 2);
+        for expected in ["final_result", "final_result_1"] {
+            assert_eq!(
+                tool_names.iter().filter(|name| **name == expected).count(),
+                1,
+                "the first request should advertise `{expected}` exactly once: {tool_names:?}"
+            );
+        }
+
+        assert!(
+            requests[1].chat_history.iter().any(|message| matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "real"
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    crate::message::ToolResultContent::Text(text)
+                                        if text.text == "real final_result output"
+                                ))
+                    ))
+            )),
+            "the real `final_result` call must execute normally and its result must reach the follow-up request"
+        );
+    }
+
+    /// Once Tool output mode has committed a name, a real tool registered under
+    /// that name must fail the next request locally for every tool-choice shape.
+    /// Otherwise the provider receives duplicate definitions and the real call
+    /// is intercepted as final output.
+    #[tokio::test]
+    async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choices() {
+        let cases = [
+            ("inherited", None),
+            (
+                "required",
+                Some(RequestPatch::new().tool_choice(ToolChoice::Required)),
+            ),
+            (
+                "none",
+                Some(RequestPatch::new().tool_choice(ToolChoice::None)),
+            ),
+            (
+                "specific",
+                Some(RequestPatch::new().tool_choice(ToolChoice::Specific {
+                    function_names: vec!["final_result".to_string()],
+                })),
+            ),
+        ];
+
+        for (case, second_turn_patch) in cases {
+            let handle = ToolServer::new().tool(MockAddTool).run();
+            let model = MockCompletionModel::from_turns([
+                MockTurn::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
+                MockTurn::tool_call(
+                    "shadowed",
+                    "final_result",
+                    json!({ "answer": "wrongly finalized" }),
+                ),
+            ]);
+            let probe = model.clone();
+            let err = AgentBuilder::new(model)
+                .tool_server_handle(handle.clone())
+                .output_schema::<Answer>()
+                .output_mode(OutputMode::Tool)
+                .add_hook(RegisterLateFinalResultTool {
+                    handle,
+                    second_turn_patch,
+                })
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .unwrap_err();
+
+            assert!(
+                matches!(
+                    &err,
+                    PromptError::CompletionError(CompletionError::RequestError(_))
+                ),
+                "{case}: expected a local completion request error, got {err:?}"
+            );
+            assert_eq!(
+                probe.request_count(),
+                1,
+                "{case}: the colliding second request must not reach the provider"
+            );
+            assert_structured_output_collision_error(&err.to_string());
+        }
+    }
+
+    /// The streaming surface uses the same pre-provider collision check as the
+    /// blocking surface and terminates without starting a second model stream.
+    #[tokio::test]
+    async fn late_output_tool_collision_fails_before_streaming_provider() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::tool_call(
+                    "shadowed",
+                    "final_result",
+                    json!({ "answer": "wrongly finalized" }),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let probe = model.clone();
+        let mut stream = AgentBuilder::new(model)
+            .tool_server_handle(handle.clone())
+            .output_schema::<Answer>()
+            .output_mode(OutputMode::Tool)
+            .add_hook(RegisterLateFinalResultTool {
+                handle,
+                second_turn_patch: None,
+            })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .stream()
+            .await;
+
+        let mut collisions = Vec::new();
+        let mut saw_final_response = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Err(err) => collisions.push(err),
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
+                Ok(_) => {}
+            }
+        }
+        assert_eq!(
+            collisions.len(),
+            1,
+            "the stream should terminate with exactly one collision error"
+        );
+        assert!(
+            !saw_final_response,
+            "a collision error must terminate the stream without a final response"
+        );
+        let err = collisions.pop().expect("one collision error was asserted");
+
+        assert!(
+            matches!(
+                &err,
+                StreamingError::Completion(CompletionError::RequestError(_))
+            ),
+            "expected a local streaming completion request error, got {err:?}"
+        );
+        assert_eq!(
+            probe.request_count(),
+            1,
+            "the colliding second stream must not reach the provider"
+        );
+        assert_structured_output_collision_error(&err.to_string());
+    }
+
+    /// A late colliding tool is harmless while `active_tools` filters it out,
+    /// but the run must fail as soon as the non-sticky filter lifts and the real
+    /// tool becomes effective again.
+    #[tokio::test]
+    async fn late_output_tool_collision_is_checked_after_active_tools_filtering() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
+            MockTurn::tool_call("add-2", "add", json!({ "x": 3, "y": 4 })),
+            MockTurn::tool_call(
+                "shadowed",
+                "final_result",
+                json!({ "answer": "wrongly finalized" }),
+            ),
+        ]);
+        let probe = model.clone();
+        let err = AgentBuilder::new(model)
+            .tool_server_handle(handle.clone())
+            .output_schema::<Answer>()
+            .output_mode(OutputMode::Tool)
+            .add_hook(RegisterLateFinalResultTool {
+                handle,
+                second_turn_patch: Some(RequestPatch::new().active_tools(["add"])),
+            })
+            .build()
+            .runner("go")
+            .max_turns(4)
+            .run()
+            .await
+            .expect_err("the exposed third-turn collision should fail locally");
+
+        assert_eq!(
+            probe.request_count(),
+            2,
+            "the filtered second turn may run, but the exposed third turn may not"
+        );
+        let requests = probe.requests();
+        let second_turn_names = requests[1]
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(second_turn_names.len(), 2);
+        for expected in ["add", "final_result"] {
+            assert_eq!(
+                second_turn_names
+                    .iter()
+                    .filter(|name| **name == expected)
+                    .count(),
+                1,
+                "the second request should advertise `{expected}` exactly once: \
+                 {second_turn_names:?}"
+            );
+        }
+        assert_structured_output_collision_error(&err.to_string());
+    }
+
+    /// Dynamic retrieval shares the same effective per-turn collision check as
+    /// mutable registration: a name absent on turn one may not shadow the
+    /// already-reserved output tool when retrieval selects it on turn two.
+    #[tokio::test]
+    async fn retrieved_output_tool_collision_fails_before_provider_request() {
+        let mut retrieved_tools = ToolSet::default();
+        retrieved_tools.add_tool(FinalResultTool);
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .dynamic_tools(1, LateFinalResultIndex::default(), retrieved_tools)
+            .run();
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
+            MockTurn::tool_call(
+                "shadowed",
+                "final_result",
+                json!({ "answer": "wrongly finalized" }),
+            ),
+        ]);
+        let probe = model.clone();
+        let err = AgentBuilder::new(model)
+            .tool_server_handle(handle)
+            .output_schema::<Answer>()
+            .output_mode(OutputMode::Tool)
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .run()
+            .await
+            .expect_err("the retrieved second-turn collision should fail locally");
+
+        assert!(matches!(
+            &err,
+            PromptError::CompletionError(CompletionError::RequestError(_))
+        ));
+        assert_eq!(
+            probe.request_count(),
+            1,
+            "the colliding retrieved tool must prevent the second provider request"
+        );
+        assert_structured_output_collision_error(&err.to_string());
     }
 
     /// Narrows the advertised tools to `add` for the turn, filtering out the real
