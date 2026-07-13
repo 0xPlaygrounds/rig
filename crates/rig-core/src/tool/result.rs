@@ -16,7 +16,8 @@ pub enum ToolErrorKind {
     Cancelled,
     /// The requested tool or resource was not found.
     NotFound,
-    /// The tool refused the operation or authorization failed.
+    /// An authorization or permission check failed. Intentional tool refusals
+    /// use this normalized kind with a separate refusal disposition.
     PermissionDenied,
     /// A rate limit was reached.
     RateLimited,
@@ -73,6 +74,7 @@ pub struct ToolExecutionError {
     retryable: Option<bool>,
     code: Option<String>,
     http_status: Option<u16>,
+    refusal: bool,
     #[cfg(not(target_family = "wasm"))]
     source: Option<Arc<dyn Error + Send + Sync + 'static>>,
     #[cfg(target_family = "wasm")]
@@ -89,6 +91,7 @@ impl ToolExecutionError {
             retryable: kind.default_retryable(),
             code: None,
             http_status: None,
+            refusal: false,
             source: None,
         }
     }
@@ -113,9 +116,23 @@ impl ToolExecutionError {
         Self::new(ToolErrorKind::NotFound, message)
     }
 
-    /// Tool refusal or authorization failure.
+    /// An authorization or permission failure.
+    ///
+    /// This is an ordinary execution error. Use [`Self::refused`] when the tool
+    /// intentionally declines the operation so hooks and telemetry can preserve
+    /// the refusal as a distinct disposition.
     pub fn permission_denied(message: impl Into<String>) -> Self {
         Self::new(ToolErrorKind::PermissionDenied, message)
+    }
+
+    /// An intentional, tool-authored refusal.
+    ///
+    /// Refusals use the normalized [`ToolErrorKind::PermissionDenied`] kind but
+    /// remain distinct from permission failures in [`ToolResult`].
+    pub fn refused(message: impl Into<String>) -> Self {
+        let mut error = Self::new(ToolErrorKind::PermissionDenied, message);
+        error.refusal = true;
+        error
     }
 
     /// Rate limit.
@@ -239,6 +256,11 @@ impl ToolExecutionError {
         self.http_status
     }
 
+    /// Whether the tool intentionally refused the operation.
+    pub const fn is_refusal(&self) -> bool {
+        self.refusal
+    }
+
     /// Downcast the concrete source to `E`.
     pub fn downcast_ref<E>(&self) -> Option<&E>
     where
@@ -271,6 +293,7 @@ impl std::fmt::Debug for ToolExecutionError {
             .field("retryable", &self.retryable)
             .field("code", &self.code)
             .field("http_status", &self.http_status)
+            .field("refusal", &self.refusal)
             .field("source", &self.source.as_ref().map(|_| "<redacted>"))
             .finish()
     }
@@ -287,12 +310,13 @@ impl Error for ToolExecutionError {
 /// The single structured execution view used by dispatch, hooks, and telemetry.
 ///
 /// Tools never construct this type: their ordinary `Result` is converted at the
-/// crate-private erased boundary. Framework skips are represented separately
-/// from failures, so a policy skip cannot be confused with a tool refusal.
+/// crate-private erased boundary. Framework skips, tool-authored refusals, and
+/// execution errors remain distinct without exposing another outcome hierarchy.
 #[derive(Clone, Debug)]
 pub struct ToolResult {
     model_output: String,
     error: Option<ToolExecutionError>,
+    refusal: Option<ToolExecutionError>,
     skipped: bool,
 }
 
@@ -301,14 +325,22 @@ impl ToolResult {
         Self {
             model_output: model_output.into(),
             error: None,
+            refusal: None,
             skipped: false,
         }
     }
 
     pub(crate) fn failed(error: ToolExecutionError) -> Self {
+        let model_output = error.model_feedback().to_string();
+        let (error, refusal) = if error.is_refusal() {
+            (None, Some(error))
+        } else {
+            (Some(error), None)
+        };
         Self {
-            model_output: error.model_feedback().to_string(),
-            error: Some(error),
+            model_output,
+            error,
+            refusal,
             skipped: false,
         }
     }
@@ -317,6 +349,7 @@ impl ToolResult {
         Self {
             model_output: reason.into(),
             error: None,
+            refusal: None,
             skipped: true,
         }
     }
@@ -327,16 +360,28 @@ impl ToolResult {
     }
 
     /// Structured execution error, if execution failed.
+    ///
+    /// Intentional refusals are available through [`Self::refusal`] instead.
     pub fn error(&self) -> Option<&ToolExecutionError> {
         self.error.as_ref()
     }
 
+    /// Structured refusal details, if the tool intentionally declined the call.
+    ///
+    /// This is mutually exclusive with [`Self::error`].
+    pub fn refusal(&self) -> Option<&ToolExecutionError> {
+        self.refusal.as_ref()
+    }
+
     /// Whether the tool completed successfully.
     pub fn is_success(&self) -> bool {
-        self.error.is_none() && !self.skipped
+        self.error.is_none() && self.refusal.is_none() && !self.skipped
     }
 
     /// Whether execution failed.
+    ///
+    /// An intentional refusal is not an execution error; inspect
+    /// [`Self::is_refused`] instead.
     pub fn is_error(&self) -> bool {
         self.error.is_some()
     }
@@ -348,12 +393,13 @@ impl ToolResult {
 
     /// Whether a tool refused execution.
     pub fn is_refused(&self) -> bool {
-        self.error
-            .as_ref()
-            .is_some_and(|error| error.kind == ToolErrorKind::PermissionDenied)
+        self.refusal.is_some()
     }
 
     /// Whether this is an error of exactly `kind`.
+    ///
+    /// A refusal does not match, even though its envelope uses the normalized
+    /// [`ToolErrorKind::PermissionDenied`] kind.
     pub fn is_error_kind(&self, kind: ToolErrorKind) -> bool {
         self.error.as_ref().is_some_and(|error| error.kind == kind)
     }
@@ -361,6 +407,8 @@ impl ToolResult {
     pub(crate) fn status_name(&self) -> &'static str {
         if self.skipped {
             "skipped"
+        } else if self.refusal.is_some() {
+            "denied"
         } else if self.error.is_some() {
             "error"
         } else {
@@ -406,13 +454,26 @@ mod tests {
     }
 
     #[test]
-    fn skip_and_refusal_are_distinct() {
+    fn skip_refusal_and_permission_failure_are_distinct() {
         let skipped = ToolResult::skipped("policy");
-        let refused = ToolResult::failed(ToolExecutionError::permission_denied("tool refused"));
+        let refused = ToolResult::failed(ToolExecutionError::refused("tool refused"));
+        let permission_failure = ToolResult::failed(ToolExecutionError::permission_denied(
+            "authorization failed",
+        ));
         assert!(skipped.is_skipped());
         assert!(!skipped.is_refused());
         assert!(refused.is_refused());
         assert!(!refused.is_skipped());
+        assert!(!refused.is_error());
+        assert!(refused.error().is_none());
+        assert!(refused.refusal().is_some_and(|error| error.is_refusal()));
+        assert!(permission_failure.is_error());
+        assert!(!permission_failure.is_refused());
+        assert!(permission_failure.refusal().is_none());
+        assert!(permission_failure.is_error_kind(ToolErrorKind::PermissionDenied));
+        assert!(!refused.is_error_kind(ToolErrorKind::PermissionDenied));
+        assert_eq!(refused.status_name(), "denied");
+        assert_eq!(permission_failure.status_name(), "error");
     }
 }
 
@@ -468,16 +529,18 @@ mod migrated_tests {
         let success = ToolResult::success("ok");
         let failure = ToolResult::failed(ToolExecutionError::not_found("missing"));
         let skipped = ToolResult::skipped("policy");
-        let refused = ToolResult::failed(ToolExecutionError::permission_denied("denied"));
+        let refused = ToolResult::failed(ToolExecutionError::refused("denied"));
         assert!(success.is_success());
         assert!(failure.is_error());
         assert!(skipped.is_skipped());
         assert!(refused.is_refused());
+        assert!(!refused.is_error());
         assert!(!skipped.is_refused());
         assert!(!refused.is_skipped());
         assert_eq!(success.status_name(), "success");
         assert_eq!(failure.status_name(), "error");
         assert_eq!(skipped.status_name(), "skipped");
+        assert_eq!(refused.status_name(), "denied");
     }
 
     #[test]
@@ -492,5 +555,15 @@ mod migrated_tests {
         let wrapped = ToolExecutionError::from_error(Boom);
         assert_eq!(wrapped.kind(), ToolErrorKind::Other);
         assert!(wrapped.is::<Boom>());
+    }
+
+    #[test]
+    fn from_error_preserves_refusal_disposition() {
+        let refused = ToolExecutionError::from_error(
+            ToolExecutionError::refused("declined").with_code("POLICY"),
+        );
+        assert!(refused.is_refusal());
+        assert_eq!(refused.kind(), ToolErrorKind::PermissionDenied);
+        assert_eq!(refused.code(), Some("POLICY"));
     }
 }

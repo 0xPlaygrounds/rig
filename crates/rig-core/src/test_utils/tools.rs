@@ -584,7 +584,7 @@ impl Tool for MockDeniedTool {
         _context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        Err(ToolExecutionError::permission_denied(
+        Err(ToolExecutionError::refused(
             "access to this resource is not permitted",
         ))
     }

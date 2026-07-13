@@ -4,6 +4,7 @@
 //! event can honor. Request patches merge, tool argument/result rewrites chain,
 //! and stop actions short-circuit in registration order.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{future::Future, sync::Arc};
 
@@ -102,6 +103,88 @@ impl std::fmt::Debug for Scratchpad {
     }
 }
 
+type ToolCallRewriteFrameMap = HashMap<String, Vec<Option<serde_json::Value>>>;
+
+// A nested `HookStack` can terminate after rewriting arguments, but the public
+// action only carries the terminal reason. Resolution frames transfer that
+// rewrite across the private erased-hook boundary. Call IDs keep concurrently
+// executing tool chains isolated, and the frame stack supports arbitrary nesting.
+#[derive(Default)]
+struct ToolCallRewriteFrames {
+    inner: std::sync::Mutex<ToolCallRewriteFrameMap>,
+}
+
+impl ToolCallRewriteFrames {
+    fn lock(&self) -> std::sync::MutexGuard<'_, ToolCallRewriteFrameMap> {
+        self.inner.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn begin(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
+        self.lock()
+            .entry(internal_call_id.to_owned())
+            .or_default()
+            .push(None);
+        ToolCallResolutionFrame {
+            frames: self,
+            internal_call_id: internal_call_id.to_owned(),
+            active: true,
+        }
+    }
+
+    fn record(&self, internal_call_id: &str, rewrite: serde_json::Value) {
+        if let Some(frame) = self
+            .lock()
+            .get_mut(internal_call_id)
+            .and_then(|frames| frames.last_mut())
+        {
+            *frame = Some(rewrite);
+        }
+    }
+
+    fn finish(&self, internal_call_id: &str) -> Option<serde_json::Value> {
+        let mut frames = self.lock();
+        let (rewrite, remove_entry) = frames
+            .get_mut(internal_call_id)
+            .map(|frames| {
+                let rewrite = frames.pop().flatten();
+                (rewrite, frames.is_empty())
+            })
+            .unwrap_or((None, false));
+        if remove_entry {
+            frames.remove(internal_call_id);
+        }
+        rewrite
+    }
+}
+
+impl std::fmt::Debug for ToolCallRewriteFrames {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolCallRewriteFrames")
+            .finish_non_exhaustive()
+    }
+}
+
+struct ToolCallResolutionFrame<'a> {
+    frames: &'a ToolCallRewriteFrames,
+    internal_call_id: String,
+    active: bool,
+}
+
+impl ToolCallResolutionFrame<'_> {
+    fn finish(mut self) -> Option<serde_json::Value> {
+        self.active = false;
+        self.frames.finish(&self.internal_call_id)
+    }
+}
+
+impl Drop for ToolCallResolutionFrame<'_> {
+    fn drop(&mut self) {
+        if self.active {
+            self.frames.finish(&self.internal_call_id);
+        }
+    }
+}
+
 /// Run-scoped context supplied to hooks.
 #[derive(Debug)]
 pub struct HookContext {
@@ -110,6 +193,7 @@ pub struct HookContext {
     is_streaming: bool,
     agent_name: Option<String>,
     scratchpad: Scratchpad,
+    tool_call_rewrite_frames: ToolCallRewriteFrames,
 }
 
 impl HookContext {
@@ -120,6 +204,7 @@ impl HookContext {
             is_streaming,
             agent_name,
             scratchpad: Scratchpad::default(),
+            tool_call_rewrite_frames: ToolCallRewriteFrames::default(),
         }
     }
 
@@ -150,6 +235,15 @@ impl HookContext {
     /// Shared run scratchpad.
     pub fn scratchpad(&self) -> &Scratchpad {
         &self.scratchpad
+    }
+
+    fn begin_tool_call_resolution(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
+        self.tool_call_rewrite_frames.begin(internal_call_id)
+    }
+
+    fn record_tool_call_rewrite(&self, internal_call_id: &str, rewrite: serde_json::Value) {
+        self.tool_call_rewrite_frames
+            .record(internal_call_id, rewrite);
     }
 }
 
@@ -636,15 +730,6 @@ where
         async { ObservationAction::Continue }
     }
 
-    #[doc(hidden)]
-    fn resolve_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: ToolCall<'_>,
-    ) -> impl Future<Output = (ToolCallAction, Option<serde_json::Value>)> + WasmCompatSend {
-        async move { (self.on_tool_call(ctx, event).await, None) }
-    }
-
     /// Observation interest hint, primarily for high-frequency deltas.
     fn observes(&self, _kind: StepEventKind) -> bool {
         true
@@ -780,7 +865,13 @@ where
     where
         M: 'a,
     {
-        Box::pin(self.resolve_tool_call(ctx, event))
+        Box::pin(async move {
+            // Only `on_tool_call` is public dispatch. A nested `HookStack`
+            // records terminal-path rewrite state into this private frame.
+            let frame = ctx.begin_tool_call_resolution(event.internal_call_id);
+            let action = self.on_tool_call(ctx, event).await;
+            (action, frame.finish())
+        })
     }
     fn tool_result<'a>(
         &'a self,
@@ -870,6 +961,36 @@ impl<M: CompletionModel> HookStack<M> {
     pub fn len(&self) -> usize {
         self.hooks.len()
     }
+
+    /// Resolve the hook chain while retaining a rewrite accumulated before a
+    /// terminal action so the runner can report the effective arguments.
+    pub(crate) async fn resolve_tool_call(
+        &self,
+        ctx: &HookContext,
+        event: ToolCall<'_>,
+    ) -> (ToolCallAction, Option<serde_json::Value>) {
+        let mut effective = None;
+        for hook in &self.hooks {
+            let rewritten = effective.as_ref().map(json_utils::value_to_json_string);
+            let current = ToolCall {
+                args: rewritten.as_deref().unwrap_or(event.args),
+                ..event
+            };
+            let (action, salvaged) = hook.tool_call(ctx, current).await;
+            if let Some(value) = salvaged {
+                effective = Some(value);
+            }
+            match action {
+                ToolCallAction::Run => {}
+                ToolCallAction::Rewrite(value) => effective = Some(value),
+                other => return (other, effective),
+            }
+        }
+        match effective {
+            Some(value) => (ToolCallAction::Rewrite(value), None),
+            None => (ToolCallAction::Run, None),
+        }
+    }
 }
 
 async fn first_stop<I>(futures: I) -> ObservationAction
@@ -948,35 +1069,15 @@ impl<M: CompletionModel> AgentHook<M> for HookStack<M> {
         }
         InvalidToolCallAction::Fail
     }
-    async fn resolve_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: ToolCall<'_>,
-    ) -> (ToolCallAction, Option<serde_json::Value>) {
-        let mut effective = None;
-        for hook in &self.hooks {
-            let rewritten = effective.as_ref().map(json_utils::value_to_json_string);
-            let current = ToolCall {
-                args: rewritten.as_deref().unwrap_or(event.args),
-                ..event
-            };
-            let (action, salvaged) = hook.tool_call(ctx, current).await;
-            if let Some(value) = salvaged {
-                effective = Some(value);
-            }
-            match action {
-                ToolCallAction::Run => {}
-                ToolCallAction::Rewrite(value) => effective = Some(value),
-                other => return (other, effective),
-            }
-        }
-        match effective {
-            Some(value) => (ToolCallAction::Rewrite(value), None),
-            None => (ToolCallAction::Run, None),
-        }
-    }
     async fn on_tool_call(&self, ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-        self.resolve_tool_call(ctx, event).await.0
+        let internal_call_id = event.internal_call_id;
+        let (action, salvaged) = self.resolve_tool_call(ctx, event).await;
+        // This is a no-op for direct calls. Under private erased dispatch it
+        // returns a nested stack's terminal-path rewrite to its parent stack.
+        if let Some(rewrite) = salvaged {
+            ctx.record_tool_call_rewrite(internal_call_id, rewrite);
+        }
+        action
     }
     async fn on_tool_result(
         &self,
@@ -1665,8 +1766,45 @@ mod migrated_tests {
             ToolCallAction::run()
         }
     }
+
+    struct OnToolCallOnly(Arc<AtomicUsize>);
+    impl AgentHook<M> for OnToolCallOnly {
+        async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            ToolCallAction::skip("called")
+        }
+    }
+
+    struct YieldingRewriteFromCallId;
+    impl AgentHook<M> for YieldingRewriteFromCallId {
+        async fn on_tool_call(&self, _: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
+            tokio::task::yield_now().await;
+            ToolCallAction::rewrite(json!({"call_id": event.internal_call_id}))
+        }
+    }
+
+    struct YieldingSkip;
+    impl AgentHook<M> for YieldingSkip {
+        async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
+            tokio::task::yield_now().await;
+            ToolCallAction::skip("denied")
+        }
+    }
+
     async fn resolve(stack: &HookStack<M>) -> (ToolCallAction, Option<Value>) {
         stack.resolve_tool_call(&ctx(), tool_call_event()).await
+    }
+
+    #[tokio::test]
+    async fn erased_dispatch_uses_the_public_on_tool_call_method() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let stack = HookStack::<M>::with(OnToolCallOnly(calls.clone()));
+
+        let (action, salvaged) = resolve(&stack).await;
+
+        assert_eq!(action, ToolCallAction::skip("called"));
+        assert_eq!(salvaged, None);
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]
@@ -1691,6 +1829,57 @@ mod migrated_tests {
         let (action, salvaged) = resolve(&outer).await;
         assert!(matches!(action, ToolCallAction::Stop(_)));
         assert_eq!(salvaged, Some(json!({"x":41})));
+    }
+
+    #[tokio::test]
+    async fn deeply_nested_terminal_action_preserves_the_last_rewrite() {
+        let mut inner = HookStack::<M>::new();
+        inner.push(RewriteHook(json!({"x":3})));
+        inner.push(SkipHook);
+
+        let mut middle = HookStack::<M>::new();
+        middle.push(RewriteHook(json!({"x":2})));
+        middle.push(inner);
+
+        let mut outer = HookStack::<M>::new();
+        outer.push(RewriteHook(json!({"x":1})));
+        outer.push(middle);
+
+        let (action, salvaged) = resolve(&outer).await;
+
+        assert_eq!(action, ToolCallAction::skip("denied"));
+        assert_eq!(salvaged, Some(json!({"x":3})));
+    }
+
+    #[tokio::test]
+    async fn concurrent_nested_resolutions_keep_rewrites_isolated_by_call() {
+        let mut inner = HookStack::<M>::new();
+        inner.push(YieldingRewriteFromCallId);
+        inner.push(YieldingSkip);
+        let outer = HookStack::<M>::with(inner);
+        let context = ctx();
+
+        let first = outer.resolve_tool_call(
+            &context,
+            ToolCall {
+                internal_call_id: "first",
+                ..tool_call_event()
+            },
+        );
+        let second = outer.resolve_tool_call(
+            &context,
+            ToolCall {
+                internal_call_id: "second",
+                ..tool_call_event()
+            },
+        );
+        let ((first_action, first_rewrite), (second_action, second_rewrite)) =
+            tokio::join!(first, second);
+
+        assert_eq!(first_action, ToolCallAction::skip("denied"));
+        assert_eq!(first_rewrite, Some(json!({"call_id": "first"})));
+        assert_eq!(second_action, ToolCallAction::skip("denied"));
+        assert_eq!(second_rewrite, Some(json!({"call_id": "second"})));
     }
 
     #[tokio::test]

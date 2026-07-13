@@ -1,4 +1,4 @@
-//! Demonstrates registering boxed tools on an agent.
+//! Demonstrates registering runtime-defined tools on an agent.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 

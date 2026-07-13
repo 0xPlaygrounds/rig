@@ -1695,7 +1695,7 @@ mod migrated_tests {
             );
         }
 
-        // A *tool-authored* denial (a permission-denied `Result`) surfaces as a `Denied`
+        // A *tool-authored* refusal surfaces as a `Denied`
         // outcome — distinct from a hook `ToolCallAction::Skip`, which is `Skipped`. This
         // pins the documented `Skipped` vs `Denied` split: `Denied` comes only
         // from the tool, never from a hook skip.
@@ -1718,6 +1718,23 @@ mod migrated_tests {
                 vec!["access to this resource is not permitted".to_string()],
                 "the model still receives the tool's denial message"
             );
+        }
+
+        #[tokio::test]
+        async fn permission_denied_failure_is_not_a_tool_refusal() {
+            let hook = OutcomeHook::default();
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+                .tool(MockFailingTool::new(ToolErrorKind::PermissionDenied))
+                .add_hook(hook.clone())
+                .build()
+                .runner("go")
+                .max_turns(3)
+                .run()
+                .await
+                .expect("a permission failure is model-visible feedback, not fatal");
+
+            assert_eq!(hook.outcomes(), vec!["error:permission_denied".to_string()]);
+            assert_eq!(hook.results(), vec!["mock tool call failed".to_string()]);
         }
 
         // A `RewriteArgs` hook followed by a `Skip` hook: the tool must not run,

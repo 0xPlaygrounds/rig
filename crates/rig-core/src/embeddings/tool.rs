@@ -89,7 +89,7 @@ impl ToolSchema {
     where
         T: ToolEmbedding + 'static,
     {
-        Self::from_tool(T::NAME, tool)
+        Self::from_tool(tool.name(), tool)
     }
 
     /// Convert a tool to a schema using an explicit registered name.
@@ -106,5 +106,66 @@ impl ToolSchema {
             context: tool.serialized_context().map_err(EmbedError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::Infallible;
+
+    use super::ToolSchema;
+    use crate::tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError};
+
+    struct RuntimeNamedTool;
+
+    impl Tool for RuntimeNamedTool {
+        const NAME: &'static str = "static_name";
+
+        type Args = ();
+        type Output = ();
+
+        fn name(&self) -> String {
+            "runtime_name".to_string()
+        }
+
+        fn description(&self) -> String {
+            "A tool with a runtime-defined name".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            Ok(())
+        }
+    }
+
+    impl ToolEmbedding for RuntimeNamedTool {
+        type InitError = Infallible;
+        type Context = ();
+        type State = ();
+
+        fn embedding_docs(&self) -> Vec<String> {
+            vec!["runtime-named tool".to_string()]
+        }
+
+        fn context(&self) -> Self::Context {}
+
+        fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
+            Ok(Self)
+        }
+    }
+
+    #[test]
+    fn try_from_uses_runtime_tool_name() {
+        let schema = ToolSchema::try_from(&RuntimeNamedTool).unwrap();
+
+        assert_eq!(schema.name, "runtime_name");
+        assert_ne!(schema.name, RuntimeNamedTool::NAME);
     }
 }

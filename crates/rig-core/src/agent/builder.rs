@@ -381,9 +381,9 @@ where
         }
     }
 
-    /// Add a vector of boxed static tools to the agent.
+    /// Add a vector of runtime-defined tools to the agent.
     ///
-    /// This is useful when you need to dynamically add static tools to the agent.
+    /// This is useful when tool definitions and callbacks are constructed at runtime.
     /// Transitions the builder to the `WithBuilderTools` state.
     pub fn tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<M, WithBuilderTools> {
         let static_tools = tools.iter().map(|tool| tool.name().to_string()).collect();
@@ -627,7 +627,7 @@ where
         self
     }
 
-    /// Add a vector of boxed static tools to the agent.
+    /// Add a vector of runtime-defined tools to the agent.
     pub fn tools(mut self, tools: Vec<DynamicTool>) -> Self {
         let toolnames: Vec<String> = tools.iter().map(|tool| tool.name().to_string()).collect();
         let tools = ToolSet::from_dynamic_tools(tools);
