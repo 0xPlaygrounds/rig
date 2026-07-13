@@ -393,9 +393,9 @@ mod tests {
         use crate::image_generation::ImageGenerationModel as _;
         use crate::test_utils::RecordingHttpClient;
 
-        // 200 OK whose body deserializes to `ApiResponse::Err` (Gemini `ApiErrorResponse`
-        // requires a top-level `message` field; the absence of `candidates`/`response_id`
-        // prevents it from matching the success `GenerateContentResponse` variant).
+        // 200 OK whose body deserializes to `ApiResponse::Err`. The error variant
+        // must be tried first because all identifying fields in
+        // `GenerateContentResponse` can be omitted.
         let body =
             r#"{"message":"boom","error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client = RecordingHttpClient::new(body); // 200 OK

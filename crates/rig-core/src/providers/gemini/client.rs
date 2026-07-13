@@ -233,8 +233,10 @@ pub struct ApiErrorResponse {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ApiResponse<T> {
-    Ok(T),
+    // Untagged variants are tried in order, and some Gemini success responses
+    // contain only defaulted or optional fields that also accept error objects.
     Err(ApiErrorResponse),
+    Ok(T),
 }
 
 // ================================================================
