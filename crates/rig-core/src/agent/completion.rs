@@ -457,17 +457,22 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     });
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a
-    // real tool with that name is added mid-run (e.g. via dynamic/RAG tools).
-    // The output-tool intercept matches by name, so surface the conflict — a
-    // call to the real tool would otherwise finalize the run (see #1928, #3).
+    // real tool with that name becomes effective later (for example through a
+    // shared tool server, retrieval, or an MCP refresh). The output-tool
+    // intercept matches by name, so fail before provider I/O: advertising both
+    // definitions would make a call to the real tool finalize the run instead
+    // of reaching normal dispatch.
     if let Some(name) = &output_tool_name
         && executable_tool_names.contains(name)
     {
-        tracing::warn!(
-            output_tool = %name,
-            "a real tool now shares the synthetic output-tool name; a call to it \
-             will finalize the run instead of being dispatched"
-        );
+        return Err(CompletionError::RequestError(
+            format!(
+                "real tool `{name}` conflicts with the structured-output tool reserved for this \
+                 run; rename or remove the real tool, or start a new run so Rig can reserve a \
+                 different output-tool name"
+            )
+            .into(),
+        ));
     }
 
     // In committed Tool mode the run can only finalize by calling the synthetic
