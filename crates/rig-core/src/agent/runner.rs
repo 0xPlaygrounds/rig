@@ -456,7 +456,7 @@ where
     tool_span.record("gen_ai.tool.call.arguments", &args);
 
     // Resolve the `ToolCall` hook chain. A proceeding chain carries any
-    // `ToolCallAction::Rewrite` in the flow itself (→ `ProceedWith`); a chain that a
+    // `ToolCallAction::Rewrite` in the action itself; a chain that a
     // later hook short-circuits with `Skip`/`Stop` salvages the accumulated
     // rewrite into `salvaged_rewrite` so it is *not* lost — the rewritten args
     // must still be reported on the skipped `ToolResult` and in tracing rather
@@ -4686,7 +4686,7 @@ mod tests {
         }
     }
 
-    /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
+    /// `ToolCallAction::Rewrite` carries replacement arguments that
     /// carries the replacement arguments, and is named for fail-closed
     /// diagnostics.
     #[test]
