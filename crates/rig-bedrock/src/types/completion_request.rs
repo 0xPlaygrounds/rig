@@ -279,6 +279,7 @@ mod tests {
                     "type": "object",
                     "properties": {}
                 }),
+                output_schema: None,
             }],
             ..minimal_request()
         };
@@ -312,6 +313,7 @@ mod tests {
                     "type": "object",
                     "properties": {}
                 }),
+                output_schema: None,
             }],
             ..minimal_request()
         };
@@ -345,6 +347,7 @@ mod tests {
                     "type": "object",
                     "properties": {}
                 }),
+                output_schema: None,
             }],
             ..minimal_request()
         };
@@ -372,6 +375,7 @@ mod tests {
                     "type": "object",
                     "properties": {}
                 }),
+                output_schema: None,
             }],
             ..minimal_request()
         };
@@ -405,6 +409,7 @@ mod tests {
                     "type": "object",
                     "properties": {}
                 }),
+                output_schema: None,
             }],
             ..minimal_request()
         };
@@ -432,6 +437,7 @@ mod tests {
                     "type": "object",
                     "properties": {}
                 }),
+                output_schema: None,
             }],
             ..minimal_request()
         };
@@ -477,6 +483,7 @@ mod tests {
                     },
                     "required": ["location"]
                 }),
+                output_schema: None,
             }],
             ..minimal_request()
         };

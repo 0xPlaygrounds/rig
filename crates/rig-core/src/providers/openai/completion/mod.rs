@@ -1143,6 +1143,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
 
+        let raw_finish_reason = choice.finish_reason.clone();
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -1203,11 +1204,20 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
+        let finish_reason = Some(match raw_finish_reason.as_str() {
+            "stop" => completion::FinishReason::Stop,
+            "length" => completion::FinishReason::Length,
+            "content_filter" => completion::FinishReason::ContentFilter,
+            "tool_calls" | "function_call" => completion::FinishReason::ToolCalls,
+            reason => completion::FinishReason::Other(reason.to_owned()),
+        });
+
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason,
         })
     }
 }
@@ -1586,7 +1596,7 @@ pub struct CompletionRequest {
     pub model: String,
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<ToolDefinition>,
+    pub tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1764,6 +1774,14 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
+        let mut additional_params = additional_params;
+        let provider_tools = additional_params
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+            .and_then(|object| object.remove("tools"))
+            .and_then(|tools| tools.as_array().cloned())
+            .unwrap_or_default();
+
         let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
 
@@ -1802,16 +1820,18 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let (tools, tool_choice) = if supports_tools {
             let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
-            let tools: Vec<ToolDefinition> = tools
+            let mut tools: Vec<serde_json::Value> = tools
                 .into_iter()
                 .map(|tool| {
                     let def = ToolDefinition::from(tool);
-                    if strict_tools { def.with_strict() } else { def }
+                    let def = if strict_tools { def.with_strict() } else { def };
+                    serde_json::to_value(def).map_err(CompletionError::JsonError)
                 })
-                .collect();
+                .collect::<Result<_, _>>()?;
+            tools.extend(provider_tools);
             (tools, tool_choice)
         } else {
-            if !tools.is_empty() {
+            if !tools.is_empty() || !provider_tools.is_empty() {
                 tracing::warn!("Tool use is not supported by this provider; tools will be ignored");
             }
             if tool_choice.is_some() {
@@ -2612,6 +2632,7 @@ mod tests {
                     },
                     "required": ["city"]
                 }),
+                output_schema: None,
             }],
             temperature: None,
             max_tokens: None,
@@ -2682,6 +2703,7 @@ mod tests {
                     },
                     "required": ["city"]
                 }),
+                output_schema: None,
             }],
             temperature: None,
             max_tokens: None,

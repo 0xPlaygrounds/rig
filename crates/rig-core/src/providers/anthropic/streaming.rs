@@ -196,6 +196,7 @@ struct ThinkingState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
+    pub stop_reason: Option<String>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
@@ -211,6 +212,16 @@ impl GetTokenUsage for StreamingCompletionResponse {
             + usage.output_tokens;
 
         usage
+    }
+
+    fn finish_reason(&self) -> Option<crate::completion::FinishReason> {
+        self.stop_reason.as_deref().map(|reason| match reason {
+            "end_turn" | "stop_sequence" | "pause_turn" => crate::completion::FinishReason::Stop,
+            "max_tokens" => crate::completion::FinishReason::Length,
+            "tool_use" => crate::completion::FinishReason::ToolCalls,
+            "refusal" => crate::completion::FinishReason::ContentFilter,
+            other => crate::completion::FinishReason::Other(other.to_owned()),
+        })
     }
 }
 
@@ -280,6 +291,7 @@ where
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut final_stop_reason = None;
 
             let mut text_content = String::new();
 
@@ -300,6 +312,7 @@ where
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
                                         if delta.stop_reason.is_some() {
+                                            final_stop_reason = delta.stop_reason.clone();
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
@@ -351,7 +364,8 @@ where
             sse_stream.close();
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                stop_reason: final_stop_reason,
             }))
         }.instrument(span));
 
@@ -590,6 +604,7 @@ mod tests {
                 name: "rig_tool".to_string(),
                 description: "Rig tool".to_string(),
                 parameters: json!({"type": "object", "properties": {}}),
+                output_schema: None,
             }],
             &mut additional_params,
         )
@@ -743,6 +758,7 @@ mod tests {
                     "type": "object",
                     "properties": { "x": { "type": "integer" } }
                 }),
+                output_schema: None,
             }],
             temperature: None,
             max_tokens: Some(64),
@@ -816,6 +832,7 @@ mod tests {
                 name: "rig_tool".to_string(),
                 description: "Rig tool".to_string(),
                 parameters: json!({"type": "object", "properties": {}}),
+                output_schema: None,
             }],
             &mut additional_params,
         )
@@ -1563,6 +1580,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                stop_reason: None,
             }));
         };
 
@@ -1708,6 +1726,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                stop_reason: None,
             }));
         };
 

@@ -2,7 +2,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::OneOrMany;
-use rig_core::completion::{CompletionError, CompletionResponse, Usage};
+use rig_core::completion::{CompletionError, CompletionResponse, FinishReason, Usage};
 use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
@@ -137,11 +137,22 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
             })
             .unwrap_or_default();
 
+        let finish_reason = Some(match candidate.finish_reason.clone() {
+            vertexai::model::candidate::FinishReason::Stop => FinishReason::Stop,
+            vertexai::model::candidate::FinishReason::MaxTokens => FinishReason::Length,
+            vertexai::model::candidate::FinishReason::Safety
+            | vertexai::model::candidate::FinishReason::Blocklist
+            | vertexai::model::candidate::FinishReason::ProhibitedContent
+            | vertexai::model::candidate::FinishReason::Spii => FinishReason::ContentFilter,
+            other => FinishReason::Other(format!("{other:?}")),
+        });
+
         Ok(CompletionResponse {
             choice,
             usage,
             raw_response: value,
             message_id: None,
+            finish_reason,
         })
     }
 }

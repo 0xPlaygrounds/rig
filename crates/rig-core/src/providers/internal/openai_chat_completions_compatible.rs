@@ -43,8 +43,23 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
+    Stop,
+    Length,
+    ContentFilter,
     ToolCalls,
     Other,
+}
+
+impl CompatibleFinishReason {
+    fn normalized(self) -> Option<crate::completion::FinishReason> {
+        match self {
+            Self::Stop => Some(crate::completion::FinishReason::Stop),
+            Self::Length => Some(crate::completion::FinishReason::Length),
+            Self::ContentFilter => Some(crate::completion::FinishReason::ContentFilter),
+            Self::ToolCalls => Some(crate::completion::FinishReason::ToolCalls),
+            Self::Other => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -162,7 +177,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        finish_reason: Option<crate::completion::FinishReason>,
+    ) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -231,6 +250,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut terminal_reason = None;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -351,6 +371,10 @@ where
                         yield Ok(RawStreamingChoice::Message(content));
                     }
 
+                    if let Some(reason) = choice.finish_reason.normalized() {
+                        terminal_reason = Some(reason);
+                    }
+
                     if choice.finish_reason == CompatibleFinishReason::ToolCalls {
                         for tool_call in take_finalized_tool_calls(
                             &mut tool_calls,
@@ -387,7 +411,7 @@ where
         let final_usage = final_usage.unwrap_or_default();
         record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(final_usage, terminal_reason),
         ));
     }
     .instrument(instrument_span);

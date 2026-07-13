@@ -583,6 +583,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
 
+        let raw_finish_reason = choice.finish_reason.clone();
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -728,11 +729,20 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             })
             .unwrap_or_default();
 
+        let finish_reason = raw_finish_reason.map(|reason| match reason.as_str() {
+            "stop" => completion::FinishReason::Stop,
+            "length" => completion::FinishReason::Length,
+            "content_filter" => completion::FinishReason::ContentFilter,
+            "tool_calls" | "function_call" => completion::FinishReason::ToolCalls,
+            other => completion::FinishReason::Other(other.to_owned()),
+        });
+
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason,
         })
     }
 }
@@ -1377,15 +1387,16 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             .map(crate::providers::openai::completion::ToolChoice::try_from)
             .transpose()?;
 
-        let tools: Vec<crate::providers::openai::completion::ToolDefinition> = req
+        let mut tools: Vec<serde_json::Value> = req
             .tools
             .clone()
             .into_iter()
             .map(|tool| {
                 let def = crate::providers::openai::completion::ToolDefinition::from(tool);
-                if strict_tools { def.with_strict() } else { def }
+                let def = if strict_tools { def.with_strict() } else { def };
+                serde_json::to_value(def).map_err(CompletionError::JsonError)
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
 
         let additional_params = if let Some(schema) = req.output_schema {
             let name = schema
@@ -1413,6 +1424,15 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         } else {
             req.additional_params
         };
+
+        let mut additional_params = additional_params;
+        let provider_tools = additional_params
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+            .and_then(|object| object.remove("tools"))
+            .and_then(|tools| tools.as_array().cloned())
+            .unwrap_or_default();
+        tools.extend(provider_tools);
 
         Ok(Self {
             model,

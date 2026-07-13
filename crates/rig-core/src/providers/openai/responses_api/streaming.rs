@@ -573,6 +573,7 @@ pub(crate) async fn completion_response_from_sse_body(
             .or_else(|| message_id_from_response(&raw_response)),
         choice: stream.choice,
         raw_response,
+        finish_reason: None,
     })
 }
 

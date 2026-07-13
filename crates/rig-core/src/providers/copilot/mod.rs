@@ -691,6 +691,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason: None,
         })
     }
 }
@@ -873,6 +874,7 @@ where
                             usage: core.usage,
                             raw_response: CopilotCompletionResponse::Chat(Box::new(response)),
                             message_id: core.message_id,
+                            finish_reason: None,
                         })
                     }
                     ChatApiResponse::Err(err) => {
@@ -943,6 +945,7 @@ where
                     usage: core.usage,
                     raw_response: CopilotCompletionResponse::Responses(Box::new(response)),
                     message_id: core.message_id,
+                    finish_reason: None,
                 })
             } else {
                 let body = http_client::text(response).await?;
@@ -1594,10 +1597,14 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                 data.usage,
                 &data.choices,
                 |choice| CompatibleChoiceData {
-                    finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
-                        CompatibleFinishReason::ToolCalls
-                    } else {
-                        CompatibleFinishReason::Other
+                    finish_reason: match choice.finish_reason.as_ref() {
+                        Some(ChatFinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
+                        Some(ChatFinishReason::Stop) => CompatibleFinishReason::Stop,
+                        Some(ChatFinishReason::ContentFilter) => {
+                            CompatibleFinishReason::ContentFilter
+                        }
+                        Some(ChatFinishReason::Length) => CompatibleFinishReason::Length,
+                        Some(ChatFinishReason::Other(_)) | None => CompatibleFinishReason::Other,
                     },
                     text: choice.delta.content.clone(),
                     reasoning: choice.delta.reasoning_content.clone(),
@@ -1610,9 +1617,14 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        finish_reason: Option<crate::completion::FinishReason>,
+    ) -> Self::FinalResponse {
         CopilotStreamingResponse::Chat(openai::completion::streaming::StreamingCompletionResponse {
             usage,
+            finish_reason,
         })
     }
 

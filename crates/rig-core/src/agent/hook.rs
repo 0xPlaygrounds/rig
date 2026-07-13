@@ -140,6 +140,7 @@
 //! }
 //! ```
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -291,6 +292,60 @@ impl std::fmt::Debug for Scratchpad {
     }
 }
 
+#[derive(Clone, Default)]
+struct CallScratchpads(HashMap<String, Scratchpad>);
+
+/// Typed scratchpad isolated to one internal tool-call identity.
+#[derive(Clone, Debug)]
+pub struct CallScratchpad(Scratchpad);
+
+impl CallScratchpad {
+    /// Insert a typed value, returning the previous value.
+    pub fn insert<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(
+        &self,
+        value: T,
+    ) -> Option<T> {
+        self.0.insert(value)
+    }
+
+    /// Clone a typed value from this call's state.
+    pub fn get<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(&self) -> Option<T> {
+        self.0.get::<T>()
+    }
+
+    /// Atomically update a typed value, starting from `Default`.
+    pub fn update<T, R>(&self, f: impl FnOnce(&mut T) -> R) -> R
+    where
+        T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.0.update(f)
+    }
+
+    /// Remove a typed value from this call's state.
+    pub fn remove<T: Clone + WasmCompatSend + WasmCompatSync + 'static>(&self) -> Option<T> {
+        self.0.remove::<T>()
+    }
+}
+
+impl Scratchpad {
+    /// Obtain state isolated by `internal_call_id`.
+    ///
+    /// Concurrent tool calls receive independent type maps instead of racing on
+    /// a run-global "latest result" slot.
+    pub fn for_call(&self, internal_call_id: impl Into<String>) -> CallScratchpad {
+        let internal_call_id = internal_call_id.into();
+        let pad = self.update(|calls: &mut CallScratchpads| {
+            calls.0.entry(internal_call_id).or_default().clone()
+        });
+        CallScratchpad(pad)
+    }
+
+    /// Remove all state associated with a completed call.
+    pub fn remove_call(&self, internal_call_id: &str) -> bool {
+        self.update(|calls: &mut CallScratchpads| calls.0.remove(internal_call_id).is_some())
+    }
+}
+
 /// Run-scoped context passed by shared reference to every [`AgentHook::on_event`]
 /// call.
 ///
@@ -306,12 +361,12 @@ impl std::fmt::Debug for Scratchpad {
 /// hooks for different tools in a turn can run concurrently against this shared
 /// context — see the [`Scratchpad` concurrency note](Scratchpad#concurrency) for
 /// how to store run-scoped state safely under that concurrency.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HookContext {
-    run_id: RunId,
+    run_context: crate::agent::RunContext,
     // Interior-mutable so the driver can advance it each turn while hooks hold a
     // shared `&HookContext`; also the reason the context is `Sync`.
-    turn: AtomicUsize,
+    turn: Arc<AtomicUsize>,
     is_streaming: bool,
     agent_name: Option<String>,
     scratchpad: Scratchpad,
@@ -321,10 +376,14 @@ impl HookContext {
     /// Build a fresh run-scoped context. `is_streaming` records which surface is
     /// driving ([`run`](crate::agent::AgentRunner::run) vs.
     /// [`stream`](crate::agent::AgentRunner::stream)).
-    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
+    pub(crate) fn new(
+        run_context: crate::agent::RunContext,
+        is_streaming: bool,
+        agent_name: Option<String>,
+    ) -> Self {
         Self {
-            run_id: RunId::generate(),
-            turn: AtomicUsize::new(0),
+            run_context,
+            turn: Arc::new(AtomicUsize::new(0)),
             is_streaming,
             agent_name,
             scratchpad: Scratchpad::default(),
@@ -339,7 +398,12 @@ impl HookContext {
 
     /// The run's stable identifier.
     pub fn run_id(&self) -> &RunId {
-        &self.run_id
+        self.run_context.run_id()
+    }
+
+    /// Full run identity, conversation, cancellation, and deadline context.
+    pub fn run_context(&self) -> &crate::agent::RunContext {
+        &self.run_context
     }
 
     /// The current one-based model-call index (0 before the first turn).
@@ -1583,7 +1647,11 @@ mod tests {
     type M = MockCompletionModel;
 
     fn ctx() -> HookContext {
-        HookContext::new(false, Some("test-agent".to_string()))
+        HookContext::new(
+            crate::agent::RunContext::new(crate::agent::RunControlHandle::new(), None),
+            false,
+            Some("test-agent".to_string()),
+        )
     }
 
     /// Pushes its label when invoked and returns `Continue` or `Terminate`.
@@ -1986,7 +2054,11 @@ mod tests {
 
     #[test]
     fn hook_context_reports_identity_and_turn() {
-        let ctx = HookContext::new(true, Some("agent".to_string()));
+        let ctx = HookContext::new(
+            crate::agent::RunContext::new(crate::agent::RunControlHandle::new(), None),
+            true,
+            Some("agent".to_string()),
+        );
         assert!(ctx.is_streaming());
         assert_eq!(ctx.agent_name(), Some("agent"));
         assert_eq!(ctx.turn(), 0);

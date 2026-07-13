@@ -153,6 +153,7 @@ async fn tool_result_roundtrip() {
                     },
                     "required": ["x", "y"]
                 }),
+                output_schema: None,
             };
 
             let initial = model

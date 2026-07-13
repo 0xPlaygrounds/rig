@@ -256,6 +256,7 @@ async fn unicode_arguments_streaming() {
                         },
                         "required": ["message"]
                     }),
+                    output_schema: None,
                 })
                 .build();
 
@@ -326,6 +327,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                         },
                         "required": ["name"]
                     }),
+                    output_schema: None,
                 })
                 .build();
 

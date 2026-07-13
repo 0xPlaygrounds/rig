@@ -21,13 +21,17 @@
 //! richer outcomes/metadata via [`Tool::call_structured`] and [`ToolReturn`].
 
 pub mod builtin;
+pub mod code_mode;
 mod extensions;
+pub mod factory;
+pub mod operation;
 mod result;
 pub mod server;
 
 pub use extensions::{MissingExtension, ToolCallExtensions, ToolResultExtensions};
 pub use result::{
-    ToolExecutionResult, ToolFailure, ToolFailureKind, ToolOutcome, ToolReturn, ToolReturnOutcome,
+    ToolErrorReport, ToolExecutionResult, ToolFailure, ToolFailureKind, ToolOutcome, ToolOutput,
+    ToolReturn, ToolReturnOutcome,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -154,6 +158,11 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// JSON Schema for the tool arguments.
     fn parameters(&self) -> serde_json::Value;
 
+    /// Optional model-facing JSON Schema for the tool result.
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// The tool execution method.
     /// Both the arguments and return value are a String since these values are meant to
     /// be the output and input of LLM models (respectively)
@@ -210,6 +219,15 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// ```
     fn classify_error(&self, error: &Self::Error) -> ToolFailure {
         ToolFailure::other(error.to_string())
+    }
+
+    /// Classify an error and attach host-only metadata in one operation.
+    ///
+    /// The default preserves [`classify_error`](Self::classify_error) behavior.
+    /// Override this instead when policy hooks need typed metadata from failed
+    /// executions without reimplementing [`call_structured`](Self::call_structured).
+    fn classify_error_report(&self, error: &Self::Error) -> ToolErrorReport {
+        ToolErrorReport::new(self.classify_error(error))
     }
 
     /// Execute the tool, returning a structured [`ToolReturn`] instead of a bare
@@ -288,6 +306,11 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
 
     /// JSON Schema for the tool arguments.
     fn parameters(&self) -> serde_json::Value;
+
+    /// Optional model-facing JSON Schema for the tool result.
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
 
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
@@ -393,6 +416,7 @@ pub(crate) fn tool_definition_with_name(
         name: name.into(),
         description: tool.description(),
         parameters: tool.parameters(),
+        output_schema: tool.output_schema(),
     }
 }
 
@@ -407,6 +431,10 @@ impl<T: Tool> ToolDyn for T {
 
     fn parameters(&self) -> serde_json::Value {
         <Self as Tool>::parameters(self)
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        <Self as Tool>::output_schema(self)
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
@@ -453,8 +481,9 @@ impl<T: Tool> ToolDyn for T {
             match <Self as Tool>::call_structured(self, parsed, extensions).await {
                 Ok(tool_return) => tool_return.into_execution_result(),
                 Err(err) => {
-                    let failure = self.classify_error(&err);
-                    ToolExecutionResult::failed(err.to_string(), failure)
+                    let report = self.classify_error_report(&err);
+                    ToolExecutionResult::failed(err.to_string(), report.failure)
+                        .with_extensions(report.extensions)
                 }
             }
         })
@@ -558,7 +587,7 @@ pub enum ToolSetError {
 /// (definitions, documents, schemas) follows registration order and the tool
 /// list sent to providers is deterministic across processes. Re-registering an
 /// existing name replaces the implementation but keeps its original position.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ToolSet {
     pub(crate) tools: IndexMap<String, ToolType>,
 }

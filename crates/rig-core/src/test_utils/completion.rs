@@ -151,6 +151,7 @@ impl MockTurn {
             usage: response.usage,
             raw_response: MockResponse::with_usage(response.usage),
             message_id: response.message_id,
+            finish_reason: None,
         })
     }
 }

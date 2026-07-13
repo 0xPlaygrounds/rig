@@ -500,6 +500,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason: None,
         })
     }
 }

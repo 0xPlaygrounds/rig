@@ -258,6 +258,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason: None,
         })
     }
 }
@@ -3032,6 +3033,7 @@ mod tests {
                 "type": "object",
                 "properties": {}
             }),
+            output_schema: None,
         }
     }
 

@@ -35,6 +35,7 @@ use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
+    control::{RunContext, RunControlHandle, ToolCallContext},
     hook::{
         AgentHook, Flow, HookContext, HookStack, InvalidToolCallHookAction, RequestPatch, StepEvent,
     },
@@ -44,18 +45,23 @@ use super::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
             drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
         },
-        tool_result_message, tool_result_output,
+        tool_result_content, tool_result_message, tool_result_output,
     },
     run::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
     },
+    scoped_executor::{NestedDispatchDyn, ScopedToolExecutor},
 };
 use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError},
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::{ToolCallExtensions, ToolExecutionResult, ToolOutcome, server::ToolServerHandle},
+    tool::{
+        ToolCallExtensions, ToolExecutionResult, ToolOutcome, ToolOutput,
+        factory::RunToolsetFactory, server::ToolServerHandle,
+    },
+    wasm_compat::WasmBoxedFuture,
 };
 
 use super::UNKNOWN_AGENT_NAME;
@@ -291,6 +297,8 @@ where
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack<M>,
+    pub(crate) control: RunControlHandle,
+    pub(crate) toolset_factory: Option<Arc<dyn RunToolsetFactory>>,
 }
 
 impl<M> AgentRunner<M>
@@ -322,6 +330,8 @@ where
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
+            control: RunControlHandle::new(),
+            toolset_factory: None,
         }
     }
 
@@ -336,6 +346,28 @@ where
         H: AgentHook<M> + 'static,
     {
         self.hooks.push(hook);
+        self
+    }
+
+    /// Clone the host control handle before consuming this runner with
+    /// [`run`](Self::run) or [`stream`](Self::stream).
+    pub fn control_handle(&self) -> RunControlHandle {
+        self.control.clone()
+    }
+
+    /// Replace the generated control handle, useful when a host allocates run
+    /// identity and control before constructing the runner.
+    pub fn with_control(mut self, control: RunControlHandle) -> Self {
+        self.control = control;
+        self
+    }
+
+    /// Attach a factory whose toolset exists only for this run.
+    pub fn run_toolset_factory<F>(mut self, factory: F) -> Self
+    where
+        F: RunToolsetFactory + 'static,
+    {
+        self.toolset_factory = Some(Arc::new(factory));
         self
     }
 }
@@ -421,6 +453,45 @@ where
 
     pub(crate) fn agent_name_or_default(&self) -> &str {
         self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
+    }
+
+    pub(crate) fn tool_call_extensions(
+        &self,
+        hook_ctx: &HookContext,
+        tool_name: &str,
+        internal_call_id: &str,
+        provider_call_id: Option<&str>,
+    ) -> ToolCallExtensions
+    where
+        M: 'static,
+    {
+        let inherited_call = self.tool_extensions.get::<ToolCallContext>().cloned();
+        let run = RunContext::new(self.control.clone(), self.conversation_id.clone());
+        let mut extensions = self.tool_extensions.clone();
+        extensions.remove::<ScopedToolExecutor>();
+        extensions.insert(run.clone());
+        let call_context = ToolCallContext {
+            run,
+            internal_call_id: internal_call_id.to_owned(),
+            provider_call_id: provider_call_id.map(str::to_owned),
+            parent_internal_call_id: inherited_call
+                .as_ref()
+                .map(|call| call.internal_call_id.clone()),
+            depth: inherited_call.map_or(0, |call| call.depth.saturating_add(1)),
+        };
+        extensions.insert(call_context.clone());
+        let dispatcher: Arc<dyn NestedDispatchDyn> = Arc::new(HookAwareNestedDispatcher {
+            hooks: self.hooks.clone(),
+            hook_ctx: hook_ctx.clone(),
+            tool_server: self.tool_server_handle.clone(),
+        });
+        extensions.insert(ScopedToolExecutor::new(
+            dispatcher,
+            extensions.clone(),
+            call_context,
+            tool_name.to_owned(),
+        ));
+        extensions
     }
 
     /// Build the sans-IO [`AgentRun`] for this runner's configuration.
@@ -584,6 +655,104 @@ pub(crate) struct ToolCallOutcome {
     pub execution: ToolExecution,
 }
 
+struct HookAwareNestedDispatcher<M>
+where
+    M: CompletionModel,
+{
+    hooks: HookStack<M>,
+    hook_ctx: HookContext,
+    tool_server: ToolServerHandle,
+}
+
+impl<M> NestedDispatchDyn for HookAwareNestedDispatcher<M>
+where
+    M: CompletionModel + 'static,
+{
+    fn dispatch<'a>(
+        &'a self,
+        tool_name: &'a str,
+        args: &'a str,
+        extensions: &'a ToolCallExtensions,
+        call_context: &'a ToolCallContext,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        Box::pin(async move {
+            let flow = self
+                .hooks
+                .on_event(
+                    &self.hook_ctx,
+                    StepEvent::ToolCall {
+                        tool_name,
+                        tool_call_id: None,
+                        internal_call_id: &call_context.internal_call_id,
+                        args,
+                    },
+                )
+                .await;
+            let (effective_args, skipped) = match flow_into_tool_call(flow) {
+                ToolCallDecision::Proceed => (args.to_owned(), None),
+                ToolCallDecision::ProceedWith(replacement) => {
+                    (json_utils::value_to_json_string(&replacement), None)
+                }
+                ToolCallDecision::Skip(reason) => {
+                    (args.to_owned(), Some(ToolExecutionResult::skipped(reason)))
+                }
+                ToolCallDecision::Terminate(reason) => {
+                    return ToolExecutionResult::failed(
+                        reason.clone(),
+                        crate::tool::ToolFailure::cancelled(reason),
+                    );
+                }
+            };
+            let mut result = match skipped {
+                Some(result) => result,
+                None => {
+                    self.tool_server
+                        .call_tool_structured(tool_name, &effective_args, extensions)
+                        .await
+                }
+            };
+            match flow_into_tool_result(
+                self.hooks
+                    .on_event(
+                        &self.hook_ctx,
+                        StepEvent::ToolResult {
+                            tool_name,
+                            tool_call_id: None,
+                            internal_call_id: &call_context.internal_call_id,
+                            args: &effective_args,
+                            result: result.model_output(),
+                            outcome: result.outcome(),
+                            extensions: result.extensions(),
+                        },
+                    )
+                    .await,
+            ) {
+                ToolResultDecision::Keep => result,
+                ToolResultDecision::Replace(replacement) => {
+                    result.model_output = replacement.clone();
+                    result.output = ToolOutput::LegacyText(replacement);
+                    result
+                }
+                ToolResultDecision::Terminate(reason) => ToolExecutionResult::failed(
+                    reason.clone(),
+                    crate::tool::ToolFailure::cancelled(reason),
+                ),
+            }
+        })
+    }
+}
+
+struct CallScratchpadCleanup {
+    scratchpad: crate::agent::Scratchpad,
+    internal_call_id: String,
+}
+
+impl Drop for CallScratchpadCleanup {
+    fn drop(&mut self) {
+        self.scratchpad.remove_call(&self.internal_call_id);
+    }
+}
+
 /// Execute a single tool call, firing the `ToolCall` and `ToolResult` hooks and
 /// shaping the result. **Shared by the blocking and streaming drivers** so a
 /// tool call behaves identically in both: same hook events, same fail-closed
@@ -604,6 +773,10 @@ pub(crate) async fn run_single_tool<M>(
 where
     M: CompletionModel,
 {
+    let _call_scratchpad_cleanup = CallScratchpadCleanup {
+        scratchpad: ctx.scratchpad().clone(),
+        internal_call_id: internal_call_id.to_owned(),
+    };
     let tool_name = &tool_call.function.name;
     // `mut` so a `Flow::RewriteArgs` hook can rewrite the arguments the tool
     // runs with (the model's emitted arguments are otherwise used verbatim).
@@ -777,11 +950,16 @@ where
                     exec.model_output,
                 )
             } else {
-                tool_result_output(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    exec.model_output,
-                )
+                match exec.output {
+                    ToolOutput::LegacyText(output) => {
+                        tool_result_output(tool_call.id.clone(), tool_call.call_id.clone(), output)
+                    }
+                    ToolOutput::Content(content) => tool_result_content(
+                        tool_call.id.clone(),
+                        tool_call.call_id.clone(),
+                        content,
+                    ),
+                }
             };
             Ok(ToolCallOutcome { content, execution })
         }
@@ -859,7 +1037,7 @@ impl UnaryTurnSource {
 
 impl<M> TurnSource<M> for UnaryTurnSource
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     type Raw = M::Response;
 
@@ -1016,7 +1194,7 @@ where
 
 impl<M> AgentRunner<M>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
 {
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook

@@ -56,25 +56,38 @@ impl openai::completion::OpenAICompatibleProvider for GroqExt {
         request: &mut openai::completion::CompletionRequest,
     ) -> Result<(), CompletionError> {
         // Groq's provider-native tools (`browser_search`, `code_interpreter`,
-        // ...) arrive via `additional_params.tools`. Left in place they would
-        // clobber the function-tool array on serialization, so fold them into
-        // `compound_custom.enabled_tools` (deduplicated by tool type).
-        let Some(map) = request
+        // ...) share the generic request's single tools array with functions.
+        // Move only non-function rows into `compound_custom.enabled_tools`.
+        let mut native_tools = Vec::new();
+        request.tools.retain(|tool| {
+            let is_function = tool
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind == "function");
+            if !is_function {
+                native_tools.push(tool.clone());
+            }
+            is_function
+        });
+
+        let additional_params = request
             .additional_params
-            .as_mut()
-            .and_then(Value::as_object_mut)
-        else {
-            return Ok(());
-        };
-        let Some(raw_tools) = map.remove("tools") else {
-            return Ok(());
-        };
-        let native_tools = serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            CompletionError::RequestError(
-                format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
-            )
+            .get_or_insert_with(|| Value::Object(serde_json::Map::new()));
+        let map = additional_params.as_object_mut().ok_or_else(|| {
+            CompletionError::RequestError("Groq additional_params must be an object".into())
         })?;
-        apply_native_tools_to_additional_params(map, native_tools);
+        if let Some(raw_tools) = map.remove("tools") {
+            let mut legacy_tools =
+                serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+                    CompletionError::RequestError(
+                        format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
+                    )
+                })?;
+            native_tools.append(&mut legacy_tools);
+        }
+        if !native_tools.is_empty() {
+            apply_native_tools_to_additional_params(map, native_tools);
+        }
 
         Ok(())
     }
@@ -375,6 +388,7 @@ mod tests {
                 name: "choose_beta".to_string(),
                 description: "Choose beta".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+                output_schema: None,
             })
             .tool_choice(crate::message::ToolChoice::Specific {
                 function_names: vec!["choose_beta".to_string()],
@@ -427,6 +441,7 @@ mod tests {
                 name: "local_tool".to_string(),
                 description: "A local function tool".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+                output_schema: None,
             })
             .additional_params(serde_json::json!({
                 "tools": [{"type": "browser_search"}, {"type": "browser_search"}],

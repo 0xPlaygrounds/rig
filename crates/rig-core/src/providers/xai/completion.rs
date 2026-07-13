@@ -161,6 +161,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id,
+            finish_reason: None,
         })
     }
 }
@@ -372,6 +373,7 @@ mod tests {
                     "properties": {},
                     "required": []
                 }),
+                output_schema: None,
             })
             .tool(ToolDefinition {
                 name: "beta".to_string(),
@@ -381,6 +383,7 @@ mod tests {
                     "properties": {},
                     "required": []
                 }),
+                output_schema: None,
             })
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["beta".to_string()],

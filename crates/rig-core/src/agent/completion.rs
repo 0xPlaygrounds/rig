@@ -554,6 +554,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
                           schema."
                 .to_string(),
             parameters: schema.clone().to_value(),
+            output_schema: None,
         });
     }
 

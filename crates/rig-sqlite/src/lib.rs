@@ -1,11 +1,16 @@
-//! SQLite vector store integration for Rig.
+//! SQLite vector store and durable conversation-memory integration for Rig.
 //!
-//! This crate provides [`SqliteVectorStore`] and [`SqliteVectorIndex`] for
+//! This crate provides [`SqliteConversationMemory`] plus [`SqliteVectorStore`]
+//! and [`SqliteVectorIndex`] for
 //! storing embedded documents in SQLite with the `sqlite-vec` extension. Define
 //! document table schemas by implementing [`SqliteVectorStoreTable`].
 //!
 //! The root `rig` facade re-exports this crate as `rig::sqlite` when the
 //! `sqlite` feature is enabled.
+
+mod memory;
+
+pub use memory::SqliteConversationMemory;
 
 use rig_core::embeddings::{Embedding, EmbeddingModel};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};

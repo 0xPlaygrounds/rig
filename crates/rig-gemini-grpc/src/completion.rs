@@ -494,6 +494,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             usage,
             raw_response: response,
             message_id: None,
+            finish_reason: None,
         })
     }
 }
@@ -962,6 +963,7 @@ mod tests {
                 },
                 "required": ["city"]
             }),
+            output_schema: None,
         };
 
         let req = create_grpc_request(

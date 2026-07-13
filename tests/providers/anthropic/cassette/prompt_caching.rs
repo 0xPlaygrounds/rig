@@ -268,6 +268,7 @@ fn cache_probe_tools() -> Vec<ToolDefinition> {
                 },
                 "required": ["topic"]
             }),
+            output_schema: None,
         },
         ToolDefinition {
             name: "lookup_cache_fixture".to_string(),
@@ -285,6 +286,7 @@ fn cache_probe_tools() -> Vec<ToolDefinition> {
                 },
                 "required": ["fixture"]
             }),
+            output_schema: None,
         },
     ]
 }
@@ -307,6 +309,7 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                 },
                 "required": ["topic"]
             }),
+            output_schema: None,
         },
         ToolDefinition {
             name: "lookup_cache_fixture".to_string(),
@@ -324,6 +327,7 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                 },
                 "required": ["fixture"]
             }),
+            output_schema: None,
         },
     ]
 }

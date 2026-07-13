@@ -106,10 +106,13 @@
 //! ```
 mod builder;
 mod completion;
+pub mod control;
 pub mod hook;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
+pub mod scoped_executor;
+pub mod subagent;
 mod tool;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
@@ -119,9 +122,10 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
+pub use control::{RunContext, RunControlHandle, RunStatus, ToolCallContext};
 pub use hook::{
-    AgentHook, Flow, HookContext, HookStack, InvalidToolCallContext, InvalidToolCallHookAction,
-    RequestPatch, RunId, Scratchpad, StepEvent, StepEventKind,
+    AgentHook, CallScratchpad, Flow, HookContext, HookStack, InvalidToolCallContext,
+    InvalidToolCallHookAction, RequestPatch, RunId, Scratchpad, StepEvent, StepEventKind,
 };
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
@@ -129,5 +133,10 @@ pub use prompt_request::streaming::{
 pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
-pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
+pub use run::{
+    AgentCheckpoint, AgentRun, AgentRunStep, CheckpointError, ModelTurn, ModelTurnOutcome,
+    OutputMode, PendingToolCall,
+};
 pub use runner::AgentRunner;
+pub use scoped_executor::{ScopedExecutionPolicy, ScopedToolExecutor};
+pub use subagent::{Subagent, SubagentArgs, SubagentContextMode, SubagentError, SubagentHandoff};
