@@ -84,7 +84,7 @@ where
         match serde_json::from_str::<ApiResponse<GenerateContentResponse>>(&text)? {
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.message, "provider returned an error response");
+                tracing::warn!(message = %err.error.message, "provider returned an error response");
                 Err(ImageGenerationError::from_http_response(status, text))
             }
         }
@@ -358,6 +358,21 @@ mod tests {
         assert!(err.to_string().contains("did not include image data"));
     }
 
+    #[test]
+    fn api_response_parsing_keeps_blocked_prompt_as_success() {
+        let response: ApiResponse<GenerateContentResponse> = serde_json::from_value(json!({
+            "promptFeedback": {
+                "blockReason": "SAFETY"
+            }
+        }))
+        .expect("blocked prompt response should deserialize");
+
+        match response {
+            ApiResponse::Ok(response) => assert!(response.candidates.is_empty()),
+            ApiResponse::Err(err) => panic!("expected success envelope, got error: {err:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn image_generation_non_success_preserves_status_and_body() {
         use crate::client::image_generation::ImageGenerationClient;
@@ -393,11 +408,10 @@ mod tests {
         use crate::image_generation::ImageGenerationModel as _;
         use crate::test_utils::RecordingHttpClient;
 
-        // 200 OK whose body deserializes to `ApiResponse::Err`. The error variant
-        // must be tried first because all identifying fields in
+        // 200 OK carrying Gemini's standard nested error envelope. The error
+        // variant must be tried first because all identifying fields in
         // `GenerateContentResponse` can be omitted.
-        let body =
-            r#"{"message":"boom","error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client = RecordingHttpClient::new(body); // 200 OK
         let client = Client::builder()
             .api_key("test-key")

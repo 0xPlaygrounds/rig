@@ -226,6 +226,14 @@ impl<H> InteractionsClient<H> {
 /// Error response payload returned by Gemini.
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
+    /// Structured error details.
+    pub error: ApiError,
+}
+
+/// Error details returned in a Gemini API error response.
+#[derive(Debug, Deserialize)]
+pub struct ApiError {
+    /// Human-readable description of the error.
     pub message: String,
 }
 
@@ -233,8 +241,8 @@ pub struct ApiErrorResponse {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ApiResponse<T> {
-    // Untagged variants are tried in order, and some Gemini success responses
-    // contain only defaulted or optional fields that also accept error objects.
+    // Untagged variants are tried in order, and some Gemini success response
+    // types contain only defaulted or optional fields that accept error objects.
     Err(ApiErrorResponse),
     Ok(T),
 }
@@ -246,6 +254,45 @@ pub enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn api_response_detects_nested_error_before_permissive_success() {
+        #[derive(Debug, Deserialize)]
+        struct PermissiveResponse {
+            #[serde(default)]
+            candidates: Vec<serde_json::Value>,
+        }
+
+        let response: ApiResponse<PermissiveResponse> = serde_json::from_str(
+            r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#,
+        )
+        .expect("nested Gemini error should deserialize");
+
+        match response {
+            ApiResponse::Err(err) => assert_eq!(err.error.message, "boom"),
+            ApiResponse::Ok(response) => panic!(
+                "expected nested error, got success with {} candidates",
+                response.candidates.len()
+            ),
+        }
+    }
+
+    #[test]
+    fn api_response_allows_top_level_message_in_success() {
+        #[derive(Debug, Deserialize)]
+        struct MessageResponse {
+            message: String,
+        }
+
+        let response: ApiResponse<MessageResponse> =
+            serde_json::from_str(r#"{"message":"success"}"#)
+                .expect("success response should deserialize");
+
+        match response {
+            ApiResponse::Ok(response) => assert_eq!(response.message, "success"),
+            ApiResponse::Err(err) => panic!("expected success, got error: {err:?}"),
+        }
+    }
 
     #[test]
     fn test_client_initialization() {

@@ -115,11 +115,8 @@ where
         let status = response.status();
         let body = response.into_body().await?;
 
-        // A non-success status may carry an error body that does not match the
-        // `ApiResponse` shape (Gemini nests its error under `error`, with no
-        // top-level `message`), so preserve it verbatim before trying to
-        // deserialize the success envelope — otherwise it would surface as a
-        // `JsonError` and the provider_response_* helpers would lose it.
+        // Preserve non-success bodies before deserialization because providers
+        // may return empty, non-JSON, or otherwise unexpected error payloads.
         if !status.is_success() {
             return Err(EmbeddingError::from_http_response(
                 status,
@@ -145,7 +142,7 @@ where
                 Ok(docs)
             }
             ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.message, "provider returned an error response");
+                tracing::warn!(message = %err.error.message, "provider returned an error response");
                 Err(EmbeddingError::from_http_response(
                     status,
                     String::from_utf8_lossy(&body),
@@ -238,10 +235,8 @@ mod tests {
         use crate::embeddings::EmbeddingModel as _;
         use crate::test_utils::RecordingHttpClient;
 
-        // A realistic Gemini error body: the error is nested under `error` with no
-        // top-level `message`, so it does NOT match the `ApiResponse` envelope. The
-        // non-success status guard must preserve it verbatim (otherwise it would
-        // surface as a `JsonError`).
+        // The non-success status guard preserves the raw provider body without
+        // depending on its envelope shape.
         let body =
             r#"{"error":{"code":503,"message":"service unavailable","status":"UNAVAILABLE"}}"#;
         let http_client =
@@ -272,10 +267,8 @@ mod tests {
         use crate::embeddings::EmbeddingModel as _;
         use crate::test_utils::RecordingHttpClient;
 
-        // 200 OK whose body deserializes to `ApiResponse::Err` (requires a top-level
-        // `message`; absence of `embeddings` keeps it off the success variant).
-        let body =
-            r#"{"message":"boom","error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        // 200 OK carrying Gemini's standard nested error envelope.
+        let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client = RecordingHttpClient::new(body); // 200 OK
         let client = Client::builder()
             .api_key("test-key")
