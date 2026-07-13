@@ -81,13 +81,17 @@ impl std::fmt::Display for ToolErrorKind {
 
 /// One public envelope for every tool execution failure.
 ///
-/// It carries normalized policy fields, separate operator-facing and optional
-/// model-facing messages, and an optional concrete source that can be downcast.
+/// It carries normalized policy fields, separate operator-facing diagnostics
+/// and model-visible output, and an optional concrete source that can be
+/// downcast. The diagnostic message is also the model-visible output by default
+/// so argument and execution failures remain actionable. Use
+/// [`Self::redact_model_feedback`] when diagnostics contain secrets, or
+/// [`Self::with_model_output`] to provide a purpose-built presentation.
 #[derive(Clone)]
 pub struct ToolExecutionError {
     kind: ToolErrorKind,
     message: String,
-    model_feedback: Option<String>,
+    model_output: Box<ToolOutput>,
     retryable: Option<bool>,
     code: Option<String>,
     http_status: Option<u16>,
@@ -101,10 +105,11 @@ pub struct ToolExecutionError {
 impl ToolExecutionError {
     /// Construct an error with an explicit normalized kind.
     pub fn new(kind: ToolErrorKind, message: impl Into<String>) -> Self {
+        let message = message.into();
         Self {
             kind,
-            message: message.into(),
-            model_feedback: None,
+            model_output: Box::new(ToolOutput::text(message.clone())),
+            message,
             retryable: kind.default_retryable(),
             code: None,
             http_status: None,
@@ -205,12 +210,26 @@ impl ToolExecutionError {
         }
     }
 
-    /// Attach model-visible feedback.
-    ///
-    /// Without explicit feedback, Rig emits a stable kind-specific message so
-    /// operator diagnostics and concrete error sources cannot leak to a model.
+    /// Replace the model-visible output with literal text feedback.
     pub fn with_model_feedback(mut self, feedback: impl Into<String>) -> Self {
-        self.model_feedback = Some(feedback.into());
+        self.model_output = Box::new(ToolOutput::text(feedback));
+        self
+    }
+
+    /// Replace the model-visible output with canonical JSON or multimodal
+    /// content.
+    pub fn with_model_output(mut self, output: ToolOutput) -> Self {
+        self.model_output = Box::new(output);
+        self
+    }
+
+    /// Replace potentially sensitive diagnostics with stable, kind-specific
+    /// model feedback.
+    ///
+    /// Error messages are model-visible by default to keep failures actionable.
+    /// Call this explicitly when the operator diagnostic may contain secrets.
+    pub fn redact_model_feedback(mut self) -> Self {
+        self.model_output = Box::new(ToolOutput::text(self.kind.default_model_feedback()));
         self
     }
 
@@ -251,15 +270,17 @@ impl ToolExecutionError {
         &self.message
     }
 
-    /// Explicit model feedback, if configured.
+    /// Literal model feedback, when the presentation is exactly one plain text
+    /// block.
+    ///
+    /// Use [`Self::model_output`] for JSON or multimodal feedback.
     pub fn model_feedback(&self) -> Option<&str> {
-        self.model_feedback.as_deref()
+        self.model_output.as_text()
     }
 
-    pub(crate) fn model_presentation(&self) -> &str {
-        self.model_feedback
-            .as_deref()
-            .unwrap_or_else(|| self.kind.default_model_feedback())
+    /// Canonical model-visible presentation for this error.
+    pub fn model_output(&self) -> &ToolOutput {
+        &self.model_output
     }
 
     /// Retryability hint.
@@ -310,7 +331,7 @@ impl std::fmt::Debug for ToolExecutionError {
         f.debug_struct("ToolExecutionError")
             .field("kind", &self.kind)
             .field("message", &self.message)
-            .field("model_feedback", &self.model_feedback)
+            .field("model_output", &self.model_output)
             .field("retryable", &self.retryable)
             .field("code", &self.code)
             .field("http_status", &self.http_status)
@@ -328,79 +349,82 @@ impl Error for ToolExecutionError {
     }
 }
 
+/// Private mutually exclusive state behind [`ToolResult`].
+#[derive(Clone, Debug)]
+enum ToolDisposition {
+    Success(ToolOutput),
+    Error(ToolExecutionError),
+    Refused(ToolExecutionError),
+    Skipped(ToolOutput),
+}
+
 /// The single structured execution view used by dispatch, hooks, and telemetry.
 ///
-/// Tools never construct this type: their ordinary `Result` is converted at the
-/// crate-private erased boundary. Framework skips, tool-authored refusals, and
-/// execution errors remain distinct without exposing another outcome hierarchy.
+/// Each result has exactly one disposition. The tagged state is private so tool
+/// authors keep returning ordinary `Result` values while runtime callers use
+/// the stable query methods on this type.
 #[derive(Clone, Debug)]
 pub struct ToolResult {
-    output: ToolOutput,
-    error: Option<ToolExecutionError>,
-    refusal: Option<ToolExecutionError>,
-    skipped: bool,
+    disposition: ToolDisposition,
 }
 
 impl ToolResult {
     pub(crate) fn success(output: ToolOutput) -> Self {
         Self {
-            output,
-            error: None,
-            refusal: None,
-            skipped: false,
+            disposition: ToolDisposition::Success(output),
         }
     }
 
     pub(crate) fn failed(error: ToolExecutionError) -> Self {
-        let output = ToolOutput::text(error.model_presentation());
-        Self::failed_with_output(error, output)
-    }
-
-    pub(crate) fn failed_with_output(error: ToolExecutionError, output: ToolOutput) -> Self {
-        let (error, refusal) = if error.is_refusal() {
-            (None, Some(error))
+        let disposition = if error.is_refusal() {
+            ToolDisposition::Refused(error)
         } else {
-            (Some(error), None)
+            ToolDisposition::Error(error)
         };
-        Self {
-            output,
-            error,
-            refusal,
-            skipped: false,
-        }
+        Self { disposition }
     }
 
     pub(crate) fn skipped(reason: impl Into<String>) -> Self {
         Self {
-            output: ToolOutput::text(reason),
-            error: None,
-            refusal: None,
-            skipped: true,
+            disposition: ToolDisposition::Skipped(ToolOutput::text(reason)),
         }
     }
 
     /// Canonical model-visible output before any presentation-only hook rewrite.
     pub fn output(&self) -> &ToolOutput {
-        &self.output
+        match &self.disposition {
+            ToolDisposition::Success(output) | ToolDisposition::Skipped(output) => output,
+            ToolDisposition::Error(error) | ToolDisposition::Refused(error) => error.model_output(),
+        }
     }
 
     /// Structured execution error, if execution failed.
     ///
     /// Intentional refusals are available through [`Self::refusal`] instead.
     pub fn error(&self) -> Option<&ToolExecutionError> {
-        self.error.as_ref()
+        match &self.disposition {
+            ToolDisposition::Error(error) => Some(error),
+            ToolDisposition::Success(_)
+            | ToolDisposition::Refused(_)
+            | ToolDisposition::Skipped(_) => None,
+        }
     }
 
     /// Structured refusal details, if the tool intentionally declined the call.
     ///
     /// This is mutually exclusive with [`Self::error`].
     pub fn refusal(&self) -> Option<&ToolExecutionError> {
-        self.refusal.as_ref()
+        match &self.disposition {
+            ToolDisposition::Refused(error) => Some(error),
+            ToolDisposition::Success(_)
+            | ToolDisposition::Error(_)
+            | ToolDisposition::Skipped(_) => None,
+        }
     }
 
     /// Whether the tool completed successfully.
     pub fn is_success(&self) -> bool {
-        self.error.is_none() && self.refusal.is_none() && !self.skipped
+        matches!(&self.disposition, ToolDisposition::Success(_))
     }
 
     /// Whether execution failed.
@@ -408,17 +432,17 @@ impl ToolResult {
     /// An intentional refusal is not an execution error; inspect
     /// [`Self::is_refused`] instead.
     pub fn is_error(&self) -> bool {
-        self.error.is_some()
+        matches!(&self.disposition, ToolDisposition::Error(_))
     }
 
     /// Whether the framework skipped execution before the tool body ran.
-    pub const fn is_skipped(&self) -> bool {
-        self.skipped
+    pub fn is_skipped(&self) -> bool {
+        matches!(&self.disposition, ToolDisposition::Skipped(_))
     }
 
     /// Whether a tool refused execution.
     pub fn is_refused(&self) -> bool {
-        self.refusal.is_some()
+        matches!(&self.disposition, ToolDisposition::Refused(_))
     }
 
     /// Whether this is an error of exactly `kind`.
@@ -426,18 +450,15 @@ impl ToolResult {
     /// A refusal does not match, even though its envelope uses the normalized
     /// [`ToolErrorKind::PermissionDenied`] kind.
     pub fn is_error_kind(&self, kind: ToolErrorKind) -> bool {
-        self.error.as_ref().is_some_and(|error| error.kind == kind)
+        self.error().is_some_and(|error| error.kind == kind)
     }
 
     pub(crate) fn status_name(&self) -> &'static str {
-        if self.skipped {
-            "skipped"
-        } else if self.refusal.is_some() {
-            "denied"
-        } else if self.error.is_some() {
-            "error"
-        } else {
-            "success"
+        match &self.disposition {
+            ToolDisposition::Success(_) => "success",
+            ToolDisposition::Error(_) => "error",
+            ToolDisposition::Refused(_) => "denied",
+            ToolDisposition::Skipped(_) => "skipped",
         }
     }
 }
@@ -479,14 +500,47 @@ mod tests {
     }
 
     #[test]
-    fn operator_details_are_not_model_visible_without_explicit_feedback() {
-        let error = ToolExecutionError::provider("authorization header Bearer secret-token");
+    fn detailed_diagnostics_are_model_visible_by_default() {
+        let error = ToolExecutionError::provider("upstream rejected field `region`");
+        let result = ToolResult::failed(error.clone());
+
+        assert_eq!(error.message(), "upstream rejected field `region`");
+        assert_eq!(
+            error.model_feedback(),
+            Some("upstream rejected field `region`")
+        );
+        assert_eq!(
+            result.output().as_text(),
+            Some("upstream rejected field `region`")
+        );
+    }
+
+    #[test]
+    fn sensitive_diagnostics_can_be_explicitly_redacted() {
+        let error = ToolExecutionError::provider("authorization header Bearer secret-token")
+            .redact_model_feedback();
         let result = ToolResult::failed(error.clone());
 
         assert_eq!(error.message(), "authorization header Bearer secret-token");
-        assert_eq!(error.model_feedback(), None);
+        assert_eq!(error.model_feedback(), Some("the tool provider failed"));
         assert_eq!(result.output().as_text(), Some("the tool provider failed"));
         assert!(!result.output().render().contains("secret-token"));
+    }
+
+    #[test]
+    fn errors_can_expose_structured_model_output() {
+        let output = ToolOutput::json(serde_json::json!({
+            "error": "invalid region",
+            "allowed": ["us", "eu"]
+        }));
+        let result = ToolResult::failed(
+            ToolExecutionError::invalid_args("region was invalid")
+                .with_model_output(output.clone()),
+        );
+
+        assert_eq!(result.output(), &output);
+        assert_eq!(result.error().unwrap().model_output(), &output);
+        assert_eq!(result.error().unwrap().model_feedback(), None);
     }
 
     #[test]
@@ -591,6 +645,7 @@ mod migrated_tests {
         let wrapped = ToolExecutionError::from_error(Boom);
         assert_eq!(wrapped.kind(), ToolErrorKind::Other);
         assert!(wrapped.is::<Boom>());
+        assert_eq!(wrapped.model_feedback(), Some("boom"));
     }
 
     #[test]

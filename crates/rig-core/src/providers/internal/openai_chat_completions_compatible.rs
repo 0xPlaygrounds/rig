@@ -483,22 +483,16 @@ pub(crate) fn finalize_completed_streaming_tool_call(
     // `tool_use.input`) then emitted a string, which strict providers reject with
     // `tool_use.input: Input should be a valid dictionary`. Mirror
     // `finalize_pending_tool_call`: parse a string payload into the underlying
-    // object (empty string -> `{}`, unparseable -> `{}` rather than a bare string).
+    // JSON value (empty string -> `{}`, unparseable -> `{}` rather than a bare
+    // string). Valid scalar and array arguments are canonical JSON too and must
+    // not be changed only because this call was evicted before end-of-stream.
     match &tool_call.arguments {
         serde_json::Value::Null => {
             tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
         }
         serde_json::Value::String(arguments) => {
-            let parsed = json_utils::parse_tool_arguments(arguments)
+            tool_call.arguments = json_utils::parse_tool_arguments(arguments)
                 .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
-            // Guarantee an object even if the string parsed to valid-but-non-object
-            // JSON (a bare scalar/array would still trip the provider's
-            // `Input should be a valid dictionary` check).
-            tool_call.arguments = if parsed.is_object() {
-                parsed
-            } else {
-                serde_json::Value::Object(serde_json::Map::new())
-            };
         }
         _ => {}
     }
@@ -776,15 +770,39 @@ mod tests {
         ));
         assert_eq!(null.arguments, serde_json::json!({}));
 
-        // Valid-but-non-object JSON (a bare scalar) -> {} so the provider never
-        // sees a non-dict input.
-        let scalar = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+        // Unparseable JSON -> {} rather than leaking a partial wire fragment.
+        let malformed = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
             "c3".to_owned(),
             "ping".to_owned(),
-            serde_json::Value::String("5".to_owned()),
+            serde_json::Value::String("[1,".to_owned()),
         ));
-        assert!(scalar.arguments.is_object());
-        assert_eq!(scalar.arguments, serde_json::json!({}));
+        assert!(malformed.arguments.is_object());
+        assert_eq!(malformed.arguments, serde_json::json!({}));
+    }
+
+    #[test]
+    fn eviction_and_eof_preserve_the_same_valid_scalar_and_array_json() {
+        for (encoded, expected) in [
+            ("5", serde_json::json!(5)),
+            (r#""value""#, serde_json::json!("value")),
+            ("[1,2]", serde_json::json!([1, 2])),
+        ] {
+            let evicted = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+                "evicted".to_owned(),
+                "tool".to_owned(),
+                serde_json::Value::String(encoded.to_owned()),
+            ));
+            let eof = finalize_pending_tool_call(RawStreamingToolCall::new(
+                "eof".to_owned(),
+                "tool".to_owned(),
+                serde_json::Value::String(encoded.to_owned()),
+            ))
+            .expect("valid JSON must survive EOF finalization");
+
+            assert_eq!(evicted.arguments, expected, "eviction changed {encoded}");
+            assert_eq!(eof.arguments, expected, "EOF changed {encoded}");
+            assert_eq!(evicted.arguments, eof.arguments);
+        }
     }
 
     #[tokio::test]

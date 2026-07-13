@@ -5,6 +5,7 @@ use rig_derive::rig_tool;
 
 #[rig_tool(required(context))]
 fn context_in_required(
+    #[rig(context)]
     context: &mut ToolContext,
     query: String,
 ) -> Result<String, rig_core::tool::ToolExecutionError> {

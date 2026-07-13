@@ -1,8 +1,108 @@
 //! Tool authoring, registration, and canonical structured execution.
 //!
-//! A typed [`Tool`] implements one execution method. Rig erases it internally,
-//! executes it through one structured path, and exposes a single [`ToolResult`]
-//! view to hooks and runtime callers.
+//! A typed [`Tool`] implements one [`Tool::call`] method. Rig erases it
+//! internally, executes it through one structured path, and exposes a single
+//! [`ToolResult`] view to hooks and runtime callers. [`ToolContext`] is the sole
+//! path for typed inbound context and host-only result metadata.
+//!
+//! # Implementing a typed tool
+//!
+//! Ordinary serializable return values are converted to canonical model output
+//! without first passing through a string.
+//!
+//! ```
+//! use rig_core::tool::{Tool, ToolContext, ToolExecutionError};
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Deserialize)]
+//! struct AddArgs {
+//!     left: i64,
+//!     right: i64,
+//! }
+//!
+//! #[derive(Serialize)]
+//! struct Sum {
+//!     value: i64,
+//! }
+//!
+//! #[derive(Clone, Debug, PartialEq)]
+//! struct AuditRecord(i64);
+//!
+//! struct Add;
+//!
+//! impl Tool for Add {
+//!     const NAME: &'static str = "add";
+//!     type Args = AddArgs;
+//!     type Output = Sum;
+//!
+//!     fn description(&self) -> String {
+//!         "Add two integers".into()
+//!     }
+//!
+//!     fn parameters(&self) -> serde_json::Value {
+//!         serde_json::json!({
+//!             "type": "object",
+//!             "properties": {
+//!                 "left": { "type": "integer" },
+//!                 "right": { "type": "integer" }
+//!             },
+//!             "required": ["left", "right"]
+//!         })
+//!     }
+//!
+//!     async fn call(
+//!         &self,
+//!         context: &mut ToolContext,
+//!         args: Self::Args,
+//!     ) -> Result<Self::Output, ToolExecutionError> {
+//!         let value = args.left + args.right;
+//!         context.insert_result(AuditRecord(value));
+//!         Ok(Sum { value })
+//!     }
+//! }
+//! ```
+//!
+//! Return [`ToolOutput`] for explicit JSON or multimodal presentation. A
+//! [`ToolResultContent`](crate::message::ToolResultContent) or
+//! [`OneOrMany`](crate::OneOrMany) of content blocks can also be used directly
+//! as a typed tool output without being mistaken for ordinary JSON.
+//!
+//! ```
+//! use rig_core::{
+//!     message::{ImageMediaType, ToolResultContent},
+//!     tool::ToolOutput,
+//! };
+//!
+//! let output = ToolOutput::one(ToolResultContent::image_base64(
+//!     "iVBORw0KGgo=",
+//!     Some(ImageMediaType::PNG),
+//!     None,
+//! ));
+//! assert!(matches!(
+//!     output.as_content().first_ref(),
+//!     ToolResultContent::Image(_)
+//! ));
+//! ```
+//!
+//! [`ToolExecutionError`] keeps its detailed message model-visible by default
+//! so parse and validation failures tell the model how to recover. Use
+//! [`ToolExecutionError::redact_model_feedback`] for sensitive diagnostics or
+//! [`ToolExecutionError::with_model_output`] for structured error content.
+//!
+//! # Migration from the parallel tool APIs
+//!
+//! | Removed concept | Canonical replacement |
+//! | --- | --- |
+//! | Multiple typed `call*` methods | One [`Tool::call`] method |
+//! | Public dynamic dispatch traits | [`DynamicTool`] |
+//! | Parallel error and failure types | [`ToolExecutionError`] and [`ToolErrorKind`] |
+//! | Author-facing outcome enums | Ordinary `Result<T, ToolExecutionError>` |
+//! | Separate call/result extension maps | [`ToolContext`] |
+//! | Parallel string/structured dispatch | [`ToolSet::execute`] and [`server::ToolServerHandle::execute`] |
+//!
+//! Model-visible output remains typed throughout dispatch. Rendering to text is
+//! a terminal provider or telemetry concern; Rig does not reconstruct rich
+//! content by parsing a returned string.
 
 pub mod builtin;
 pub(crate) mod extensions;
@@ -29,7 +129,9 @@ use crate::{
 /// A typed LLM tool.
 ///
 /// Tool authors provide metadata and exactly one execution method. Runtime
-/// context and host-only result metadata share the [`ToolContext`] path.
+/// context and host-only result metadata share the [`ToolContext`] path. Rig's
+/// object-safe dispatch boundary is private; use [`DynamicTool`] when the tool
+/// name or callback is only known at runtime.
 pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// Unique registration and provider-facing name.
     const NAME: &'static str;
@@ -37,8 +139,11 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     type Args: for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync;
     /// Output convertible into Rig's canonical model presentation.
     ///
-    /// Every serializable value implements [`IntoToolOutput`] automatically;
-    /// use [`ToolOutput`] directly for explicit multimodal content.
+    /// Every owned serializable value implements [`IntoToolOutput`]
+    /// automatically. [`ToolResultContent`](crate::message::ToolResultContent)
+    /// and [`OneOrMany`](crate::OneOrMany) preserve rich content when returned
+    /// directly; use [`ToolOutput`] when constructing the presentation
+    /// explicitly.
     type Output: IntoToolOutput;
 
     /// Model-facing description.
@@ -584,7 +689,32 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
 
+    use crate::{
+        OneOrMany,
+        message::{ImageMediaType, ToolResultContent},
+    };
+
     use super::*;
+
+    fn rich_error_output(label: &str) -> ToolOutput {
+        ToolOutput::content(
+            OneOrMany::many([
+                ToolResultContent::text(label),
+                ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+            ])
+            .unwrap(),
+        )
+    }
+
+    fn assert_rich_error_output(result: &ToolResult, label: &str) {
+        let content = result.output().as_content();
+        assert_eq!(content.len(), 2);
+        assert!(matches!(
+            content.first_ref(),
+            ToolResultContent::Text(text) if text.text == label
+        ));
+        assert!(matches!(content.last_ref(), ToolResultContent::Image(_)));
+    }
 
     struct CloneTracked(Arc<AtomicUsize>);
 
@@ -638,13 +768,35 @@ mod tests {
         assert!(result.is_success());
         assert_eq!(
             result.output(),
-            &ToolOutput::Json(serde_json::json!({"value": 1}))
+            &ToolOutput::json(serde_json::json!({"value": 1}))
         );
         assert_eq!(context.get::<u32>(), Some(&7));
         assert_eq!(clones.load(Ordering::SeqCst), 1);
         assert_eq!(
             context.result::<String>().map(String::as_str),
             Some("result-metadata")
+        );
+    }
+
+    #[tokio::test]
+    async fn framework_argument_errors_remain_actionable_to_the_model() {
+        let mut set = ToolSet::default();
+        set.add_tool(Echo);
+
+        let result = set
+            .execute("echo", "{not json", &mut ToolContext::new())
+            .await;
+
+        assert!(result.is_error_kind(ToolErrorKind::InvalidArgs));
+        assert!(
+            result
+                .output()
+                .as_text()
+                .is_some_and(|message| message.starts_with("failed to parse tool arguments:"))
+        );
+        assert_eq!(
+            result.output().as_text(),
+            result.error().and_then(ToolExecutionError::model_feedback)
         );
     }
 
@@ -665,6 +817,128 @@ mod tests {
         let set = ToolSet::from_dynamic_tools(vec![tool]);
         let result = set.execute("dynamic", "{}", &mut ToolContext::new()).await;
         assert!(result.error().is_some_and(|error| error.is::<Boom>()));
+    }
+
+    struct DirectRichOutput;
+
+    impl Tool for DirectRichOutput {
+        const NAME: &'static str = "direct_rich_output";
+        type Args = serde_json::Value;
+        type Output = ToolResultContent;
+
+        fn description(&self) -> String {
+            "returns a direct rich-content value".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            Ok(ToolResultContent::image_base64(
+                "base64data==",
+                Some(ImageMediaType::PNG),
+                None,
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn direct_rich_typed_output_is_not_serialized_as_json() {
+        let mut set = ToolSet::default();
+        set.add_tool(DirectRichOutput);
+
+        let result = set
+            .execute(DirectRichOutput::NAME, "{}", &mut ToolContext::new())
+            .await;
+
+        assert!(result.is_success());
+        assert!(matches!(
+            result.output().as_content().first_ref(),
+            ToolResultContent::Image(_)
+        ));
+        assert_eq!(result.output().as_json(), None);
+    }
+
+    struct TypedRichError {
+        refuse: bool,
+    }
+
+    impl Tool for TypedRichError {
+        const NAME: &'static str = "typed_rich_error";
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "returns rich failure feedback".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            let error = if self.refuse {
+                ToolExecutionError::refused("typed refusal")
+            } else {
+                ToolExecutionError::provider("typed failure")
+            };
+            Err(error.with_model_output(rich_error_output("typed feedback")))
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_failures_and_refusals_preserve_rich_model_output() {
+        for refuse in [false, true] {
+            let mut set = ToolSet::default();
+            set.add_tool(TypedRichError { refuse });
+
+            let result = set
+                .execute(TypedRichError::NAME, "{}", &mut ToolContext::new())
+                .await;
+
+            assert_eq!(result.is_refused(), refuse);
+            assert_eq!(result.is_error(), !refuse);
+            assert_rich_error_output(&result, "typed feedback");
+        }
+    }
+
+    #[tokio::test]
+    async fn dynamic_failures_and_refusals_preserve_rich_model_output() {
+        for refuse in [false, true] {
+            let tool = DynamicTool::new(
+                "dynamic_rich_error",
+                "returns rich failure feedback",
+                serde_json::json!({"type": "object"}),
+                move |_context, _args| {
+                    Box::pin(async move {
+                        let error = if refuse {
+                            ToolExecutionError::refused("dynamic refusal")
+                        } else {
+                            ToolExecutionError::provider("dynamic failure")
+                        };
+                        Err(error.with_model_output(rich_error_output("dynamic feedback")))
+                    })
+                },
+            );
+            let set = ToolSet::from_dynamic_tools(vec![tool]);
+
+            let result = set
+                .execute("dynamic_rich_error", "{}", &mut ToolContext::new())
+                .await;
+
+            assert_eq!(result.is_refused(), refuse);
+            assert_eq!(result.is_error(), !refuse);
+            assert_rich_error_output(&result, "dynamic feedback");
+        }
     }
 }
 
@@ -999,7 +1273,7 @@ mod migrated_tests {
 
         assert_eq!(
             result.output(),
-            &ToolOutput::Json(json!({
+            &ToolOutput::json(json!({
                 "status": "ok",
                 "count": 42
             }))

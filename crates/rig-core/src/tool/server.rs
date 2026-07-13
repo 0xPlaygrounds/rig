@@ -1,8 +1,9 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 #[cfg(feature = "rmcp")]
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use tokio::sync::RwLock;
 
 #[cfg(feature = "rmcp")]
@@ -10,9 +11,56 @@ use crate::tool::ErasedTool;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{DynamicTool, Tool, ToolContext, ToolDispatch, ToolResult, ToolSet, dispatch_tool},
+    tool::{
+        DynamicTool, RegisteredTool, Tool, ToolContext, ToolDispatch, ToolResult, ToolSet,
+        dispatch_tool,
+    },
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
+
+/// One turn's provider definitions and the exact registry entries behind them.
+///
+/// Registration changes after this snapshot is built take effect on the next
+/// turn. Calls from the current turn dispatch through these pinned handles, so
+/// the implementation cannot drift from the schema the provider received.
+#[derive(Clone)]
+pub(crate) struct ToolRegistrySnapshot {
+    definitions: Vec<ToolDefinition>,
+    tools: IndexMap<String, RegisteredTool>,
+}
+
+impl ToolRegistrySnapshot {
+    fn new(tools: IndexMap<String, RegisteredTool>) -> Self {
+        let definitions = tools
+            .iter()
+            .map(|(name, tool)| tool.definition_with_name(name.clone()))
+            .collect();
+        Self { definitions, tools }
+    }
+
+    /// Provider-facing definitions in the same order as their pinned handles.
+    pub(crate) fn definitions(&self) -> &[ToolDefinition] {
+        &self.definitions
+    }
+
+    /// Narrow both provider exposure and dispatch to one per-turn allow-list.
+    pub(crate) fn retain_names(&mut self, names: &BTreeSet<String>) {
+        self.definitions
+            .retain(|definition| names.contains(&definition.name));
+        self.tools.retain(|name, _| names.contains(name));
+    }
+
+    /// Dispatch through the exact implementation advertised for this turn.
+    pub(crate) async fn dispatch(
+        &self,
+        tool_name: &str,
+        args: &str,
+        context: &ToolContext,
+    ) -> ToolDispatch {
+        let tool = self.tools.get(tool_name).cloned();
+        dispatch_tool(tool_name, args.to_string(), tool, context).await
+    }
+}
 
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
@@ -220,15 +268,23 @@ impl ToolServerHandle {
     ) -> HashMap<String, ManagedToolToken> {
         let mut state = self.0.write().await;
         let mut refreshed = HashMap::with_capacity(tools.len());
+        let mut managed_order = Vec::with_capacity(tools.len());
+        let mut seen = std::collections::HashSet::with_capacity(tools.len());
 
         for tool in tools {
             let name = tool.name();
+            if !seen.insert(name.clone()) {
+                tracing::warn!(tool_name = %name, "ignoring duplicate MCP tool definition");
+                continue;
+            }
+            let present = state.toolset.contains(&name);
             let may_register = match expected.remove(&name) {
-                Some(token) => {
-                    state.managed_generations.get(&name) == Some(&token)
-                        && state.toolset.contains(&name)
-                }
-                None => !state.toolset.contains(&name),
+                Some(token) if present => state.managed_generations.get(&name) == Some(&token),
+                // A stale expected token protects a live newer registration,
+                // not an empty slot. Once the competitor disappears, this full
+                // server snapshot must converge in one reconciliation.
+                Some(_) => true,
+                None => !present,
             };
 
             if may_register {
@@ -237,7 +293,8 @@ impl ToolServerHandle {
                 state
                     .managed_generations
                     .insert(name.clone(), token.clone());
-                refreshed.insert(name, token);
+                refreshed.insert(name.clone(), token);
+                managed_order.push(name);
             } else {
                 tracing::debug!(
                     tool_name = name,
@@ -251,6 +308,19 @@ impl ToolServerHandle {
                 state.toolset.delete_tool(&name);
                 state.managed_generations.remove(&name);
             }
+        }
+
+        // A full MCP list is ordered. Move only entries this handler actually
+        // owns to the end in that order, matching remove/re-register semantics;
+        // live local or peer-handler competitors retain their relative slots.
+        let mut ordered_entries = Vec::with_capacity(managed_order.len());
+        for name in managed_order {
+            if let Some(entry) = state.toolset.tools.shift_remove_entry(&name) {
+                ordered_entries.push(entry);
+            }
+        }
+        for (name, registration) in ordered_entries {
+            state.toolset.tools.insert(name, registration);
         }
 
         refreshed
@@ -318,26 +388,25 @@ impl ToolServerHandle {
         &self,
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        // Snapshot the metadata we need under a brief read lock
-        let (static_tool_handles, retrieval_indexes) = {
+        Ok(self.snapshot_tool_defs(prompt).await?.definitions.clone())
+    }
+
+    /// Resolve one ordered provider/dispatch snapshot for an agent turn.
+    ///
+    /// Retrieval runs without holding the registry lock. Once the selected IDs
+    /// are known, one read lock resolves every dynamic and always-exposed name
+    /// to an exact implementation. That single instant is the turn boundary:
+    /// later replacements are visible only to the next snapshot.
+    pub(crate) async fn snapshot_tool_defs(
+        &self,
+        prompt: Option<String>,
+    ) -> Result<ToolRegistrySnapshot, ToolServerError> {
+        let retrieval_indexes = {
             let state = self.0.read().await;
-            (
-                state
-                    .toolset
-                    .always_exposed_names()
-                    .filter_map(|name| {
-                        state
-                            .toolset
-                            .get(name)
-                            .cloned()
-                            .map(|tool| (name.clone(), tool))
-                    })
-                    .collect::<Vec<_>>(),
-                state.retrieval_indexes.clone(),
-            )
+            state.retrieval_indexes.clone()
         };
 
-        let mut tools = if let Some(ref text) = prompt {
+        let dynamic_tool_ids = if let Some(ref text) = prompt {
             // Create a future for each dynamic tool index
             let search_futures = retrieval_indexes.iter().map(|(num_sample, index)| {
                 let text = text.clone();
@@ -363,58 +432,58 @@ impl ToolServerHandle {
             });
 
             // Execute searches concurrently and collect/flatten the IDs
-            let dynamic_tool_ids: Vec<String> = futures::future::try_join_all(search_futures)
+            futures::future::try_join_all(search_futures)
                 .await
                 .map_err(|e| {
                     ToolServerError::DefinitionError(CompletionError::RequestError(Box::new(e)))
                 })?
                 .into_iter()
                 .flatten()
-                .collect();
-
-            let dynamic_tool_handles: Vec<_> = {
-                let state = self.0.read().await;
-                dynamic_tool_ids
-                    .iter()
-                    .filter_map(|doc| {
-                        let handle = state.toolset.get(doc).cloned();
-                        if handle.is_none() {
-                            tracing::warn!("Tool implementation not found in toolset: {}", doc);
-                        }
-                        handle.map(|handle| (doc.clone(), handle))
-                    })
-                    .collect()
-            };
-
-            dynamic_tool_handles
-                .into_iter()
-                .map(|(name, tool)| tool.definition_with_name(name))
-                .collect()
+                .collect::<Vec<String>>()
         } else {
             Vec::new()
         };
 
-        for (name, tool) in static_tool_handles {
-            tools.push(tool.definition_with_name(name));
-        }
+        let tools = {
+            let state = self.0.read().await;
+            let mut tools = IndexMap::new();
 
-        // One shared toolset backs both lists, so a name appearing in the
-        // dynamic AND static lists (or retrieved by two indexes) refers to
-        // the same tool. Keep the first definition and drop exact-name
-        // repeats: providers reject duplicate function declarations.
-        let mut seen = std::collections::HashSet::new();
-        tools.retain(|def| {
-            let fresh = seen.insert(def.name.clone());
-            if !fresh {
-                tracing::debug!(
-                    tool_name = %def.name,
-                    "dropping duplicate tool definition from the request"
-                );
+            // Retrieved tools remain first, in index/result order. Duplicate IDs
+            // and dynamic/static overlap retain the first provider declaration.
+            for name in dynamic_tool_ids {
+                if tools.contains_key(&name) {
+                    tracing::debug!(
+                        tool_name = %name,
+                        "dropping duplicate tool definition from the request"
+                    );
+                    continue;
+                }
+                match state.toolset.get(&name).cloned() {
+                    Some(tool) => {
+                        tools.insert(name, tool);
+                    }
+                    None => {
+                        tracing::warn!("Tool implementation not found in toolset: {name}");
+                    }
+                }
             }
-            fresh
-        });
 
-        Ok(tools)
+            for name in state.toolset.always_exposed_names() {
+                if tools.contains_key(name) {
+                    tracing::debug!(
+                        tool_name = %name,
+                        "dropping duplicate tool definition from the request"
+                    );
+                    continue;
+                }
+                if let Some(tool) = state.toolset.get(name).cloned() {
+                    tools.insert(name.clone(), tool);
+                }
+            }
+            tools
+        };
+
+        Ok(ToolRegistrySnapshot::new(tools))
     }
 }
 
@@ -495,6 +564,33 @@ mod tests {
         }
     }
 
+    struct ReplacementTool {
+        description: &'static str,
+        output: &'static str,
+    }
+
+    impl Tool for ReplacementTool {
+        const NAME: &'static str = "replacement";
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn description(&self) -> String {
+            self.description.to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            Ok(self.output.to_string())
+        }
+    }
+
     #[derive(Debug, thiserror::Error)]
     #[error("init error")]
     struct InitError;
@@ -537,6 +633,42 @@ mod tests {
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn definition_snapshot_pins_the_exact_tool_registration() {
+        let handle = ToolServer::new()
+            .tool(ReplacementTool {
+                description: "first schema",
+                output: "first implementation",
+            })
+            .run();
+        let snapshot = handle.snapshot_tool_defs(None).await.unwrap();
+
+        handle
+            .add_tool(ReplacementTool {
+                description: "second schema",
+                output: "second implementation",
+            })
+            .await;
+
+        assert_eq!(snapshot.definitions()[0].description, "first schema");
+        let dispatch = snapshot
+            .dispatch(ReplacementTool::NAME, "{}", &ToolContext::new())
+            .await;
+        assert_eq!(dispatch.result.output().render(), "first implementation");
+
+        let live = handle
+            .dispatch(ReplacementTool::NAME, "{}", &ToolContext::new())
+            .await;
+        assert_eq!(live.result.output().render(), "second implementation");
+
+        let next_snapshot = handle.snapshot_tool_defs(None).await.unwrap();
+        assert_eq!(next_snapshot.definitions()[0].description, "second schema");
+        let dispatch = next_snapshot
+            .dispatch(ReplacementTool::NAME, "{}", &ToolContext::new())
+            .await;
+        assert_eq!(dispatch.result.output().render(), "second implementation");
     }
 
     #[tokio::test]

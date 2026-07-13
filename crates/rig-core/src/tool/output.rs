@@ -1,69 +1,83 @@
 //! Canonical model-visible tool output.
 
+use std::any::Any;
+
 use serde::Serialize;
 
 use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
 
 /// The canonical model-visible output produced by a tool.
 ///
+/// Every output is stored as one or more typed [`ToolResultContent`] blocks.
 /// Ordinary serializable Rust values are converted through [`IntoToolOutput`]:
-/// strings remain literal text and all other values remain structured JSON.
-/// Multimodal tools opt in explicitly with [`ToolOutput::content`]. Rig never
-/// reparses text as JSON to guess whether it represents rich content.
+/// values that serialize as JSON strings become literal text blocks and all
+/// other values become structured JSON blocks. An explicit
+/// [`serde_json::Value`], including a JSON string, stays JSON. Multimodal tools
+/// opt in explicitly with [`Self::content`]. Rig never reparses text as JSON to
+/// guess whether it represents rich content.
 #[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum ToolOutput {
-    /// Literal model-visible text.
-    Text(String),
-    /// Structured JSON, rendered as JSON text for providers that accept only
-    /// text tool results.
-    Json(serde_json::Value),
-    /// Explicit typed content blocks.
-    Content(OneOrMany<ToolResultContent>),
+pub struct ToolOutput {
+    content: OneOrMany<ToolResultContent>,
 }
 
 impl ToolOutput {
     /// Construct literal text output.
     pub fn text(text: impl Into<String>) -> Self {
-        Self::Text(text.into())
+        Self::one(ToolResultContent::text(text))
     }
 
     /// Construct structured JSON output.
     ///
-    /// A JSON string is normalized to [`Self::Text`] so strings can never be
-    /// mistaken for tagged rich-content envelopes.
+    /// Unlike an ordinary Rust string tool output, an explicit JSON string stays
+    /// a JSON content block.
     pub fn json(value: serde_json::Value) -> Self {
-        match value {
-            serde_json::Value::String(text) => Self::Text(text),
-            value => Self::Json(value),
-        }
+        Self::one(ToolResultContent::json(value))
     }
 
     /// Construct explicit model content.
     pub fn content(content: OneOrMany<ToolResultContent>) -> Self {
-        Self::Content(content)
+        Self { content }
     }
 
     /// Construct one explicit model-content block.
     pub fn one(content: ToolResultContent) -> Self {
-        Self::Content(OneOrMany::one(content))
+        Self::content(OneOrMany::one(content))
     }
 
-    /// Return literal text when this output is text.
+    /// Return literal text when this output is exactly one plain text block.
     pub fn as_text(&self) -> Option<&str> {
-        match self {
-            Self::Text(text) => Some(text),
-            Self::Json(_) | Self::Content(_) => None,
+        if self.content.len() != 1 {
+            return None;
         }
+
+        match self.content.first_ref() {
+            ToolResultContent::Text(text) if text.additional_params.is_none() => Some(&text.text),
+            ToolResultContent::Text(_)
+            | ToolResultContent::Image(_)
+            | ToolResultContent::Json { .. } => None,
+        }
+    }
+
+    /// Return structured JSON when this output is exactly one JSON block.
+    pub fn as_json(&self) -> Option<&serde_json::Value> {
+        if self.content.len() != 1 {
+            return None;
+        }
+
+        match self.content.first_ref() {
+            ToolResultContent::Json { value } => Some(value),
+            ToolResultContent::Text(_) | ToolResultContent::Image(_) => None,
+        }
+    }
+
+    /// Borrow the canonical ordered content blocks.
+    pub fn as_content(&self) -> &OneOrMany<ToolResultContent> {
+        &self.content
     }
 
     /// Convert this output into the canonical message content sent to a model.
     pub fn into_content(self) -> OneOrMany<ToolResultContent> {
-        match self {
-            Self::Text(text) => OneOrMany::one(ToolResultContent::text(text)),
-            Self::Json(value) => OneOrMany::one(ToolResultContent::json(value)),
-            Self::Content(content) => content,
-        }
+        self.content
     }
 
     /// Render a stable text representation for telemetry and diagnostics.
@@ -71,24 +85,26 @@ impl ToolOutput {
     /// This is a terminal rendering operation; the returned text is never used
     /// to reconstruct structured output.
     pub fn render(&self) -> String {
-        match self {
-            Self::Text(text) => text.clone(),
-            Self::Json(value) => value.to_string(),
-            Self::Content(content) => serde_json::to_string(content)
-                .unwrap_or_else(|_| "<structured tool output>".to_string()),
+        if let Some(text) = self.as_text() {
+            text.to_string()
+        } else if let Some(value) = self.as_json() {
+            value.to_string()
+        } else {
+            serde_json::to_string(&self.content)
+                .unwrap_or_else(|_| "<structured tool output>".to_string())
         }
     }
 }
 
 impl From<String> for ToolOutput {
     fn from(text: String) -> Self {
-        Self::Text(text)
+        Self::text(text)
     }
 }
 
 impl From<&str> for ToolOutput {
     fn from(text: &str) -> Self {
-        Self::Text(text.to_string())
+        Self::text(text)
     }
 }
 
@@ -113,8 +129,11 @@ impl From<OneOrMany<ToolResultContent>> for ToolOutput {
 /// Conversion into Rig's canonical tool output.
 ///
 /// A blanket implementation keeps ordinary [`Serialize`] outputs ergonomic.
-/// Tool authors only need to name this trait when implementing a custom output
-/// conversion; explicit multimodal output uses [`ToolOutput`] directly.
+/// Because that blanket implementation already covers every serializable type,
+/// it cannot be overridden with another implementation for a serializable
+/// custom type. Return [`ToolOutput`] from [`Tool::call`](crate::tool::Tool::call)
+/// when that type needs a custom presentation. Implement this trait directly
+/// only for output types that do not implement [`Serialize`].
 pub trait IntoToolOutput {
     /// Convert this value without routing structured data through a string.
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError>;
@@ -122,11 +141,29 @@ pub trait IntoToolOutput {
 
 impl<T> IntoToolOutput for T
 where
-    T: Serialize,
+    T: Serialize + 'static,
 {
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        // `ToolResultContent` and `OneOrMany<ToolResultContent>` are serializable
+        // because they also serve as transcript types. They nevertheless mean
+        // explicit rich output here; serializing them through the fallback would
+        // silently turn an image into a JSON object. Stable Rust cannot express
+        // a blanket `Serialize` impl with negative exceptions, so preserve these
+        // two canonical rich types before taking the serialization path.
+        let value = &self as &dyn Any;
+        if let Some(content) = value.downcast_ref::<ToolResultContent>() {
+            return Ok(ToolOutput::one(content.clone()));
+        }
+        if let Some(content) = value.downcast_ref::<OneOrMany<ToolResultContent>>() {
+            return Ok(ToolOutput::content(content.clone()));
+        }
+        let is_explicit_json = value.is::<serde_json::Value>();
+
         serde_json::to_value(self)
-            .map(ToolOutput::json)
+            .map(|value| match value {
+                serde_json::Value::String(text) if !is_explicit_json => ToolOutput::text(text),
+                value => ToolOutput::json(value),
+            })
             .map_err(|error| {
                 ToolExecutionError::other(format!("failed to serialize tool output: {error}"))
                     .with_source(error)
@@ -151,7 +188,7 @@ mod tests {
         let text = r#"{"type":"image","data":"not-an-envelope"}"#.to_string();
         let output = text.clone().into_tool_output().unwrap();
 
-        assert_eq!(output, ToolOutput::Text(text.clone()));
+        assert_eq!(output, ToolOutput::text(text.clone()));
         let content = output.into_content();
         assert!(matches!(content.first(), ToolResultContent::Text(value) if value.text == text));
     }
@@ -161,7 +198,7 @@ mod tests {
         let value = serde_json::json!({"status": "ok", "count": 2});
         let output = value.clone().into_tool_output().unwrap();
 
-        assert_eq!(output, ToolOutput::Json(value.clone()));
+        assert_eq!(output, ToolOutput::json(value.clone()));
         assert_eq!(output.render(), value.to_string());
         let content = output.into_content();
         assert!(matches!(
@@ -171,12 +208,24 @@ mod tests {
     }
 
     #[test]
+    fn explicit_json_string_is_distinct_from_literal_text() {
+        let explicit = serde_json::Value::String("hello".to_string());
+
+        let json_output = explicit.clone().into_tool_output().unwrap();
+        let text_output = "hello".to_string().into_tool_output().unwrap();
+
+        assert_eq!(json_output, ToolOutput::json(explicit.clone()));
+        assert_eq!(json_output.as_json(), Some(&explicit));
+        assert_eq!(json_output.as_text(), None);
+        assert_eq!(text_output, ToolOutput::text("hello"));
+        assert_eq!(text_output.as_text(), Some("hello"));
+    }
+
+    #[test]
     fn explicit_image_content_preserves_its_type() {
-        let output = ToolOutput::one(ToolResultContent::image_base64(
-            "base64data==",
-            Some(ImageMediaType::JPEG),
-            None,
-        ));
+        let image =
+            ToolResultContent::image_base64("base64data==", Some(ImageMediaType::JPEG), None);
+        let output = image.into_tool_output().unwrap();
 
         let content = output.into_content();
         assert!(matches!(
@@ -185,5 +234,31 @@ mod tests {
                 if image.media_type == Some(ImageMediaType::JPEG)
                     && matches!(&image.data, DocumentSourceKind::Base64(data) if data == "base64data==")
         ));
+    }
+
+    #[test]
+    fn direct_ordered_content_is_not_serialized_as_json() {
+        let content = OneOrMany::many(vec![
+            ToolResultContent::text("before"),
+            ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+            ToolResultContent::json(serde_json::json!({"after": true})),
+        ])
+        .unwrap();
+
+        let output = content.clone().into_tool_output().unwrap();
+
+        assert_eq!(output.as_content(), &content);
+    }
+
+    #[test]
+    fn singleton_plain_content_has_one_canonical_representation() {
+        assert_eq!(
+            ToolOutput::text("hello"),
+            ToolOutput::one(ToolResultContent::text("hello"))
+        );
+        assert_eq!(
+            ToolOutput::json(serde_json::json!({"ok": true})),
+            ToolOutput::one(ToolResultContent::json(serde_json::json!({"ok": true})))
+        );
     }
 }

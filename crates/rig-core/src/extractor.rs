@@ -367,7 +367,7 @@ where
 
 impl<T> Tool for SubmitTool<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     const NAME: &'static str = SUBMIT_TOOL_NAME;
     type Args = T;

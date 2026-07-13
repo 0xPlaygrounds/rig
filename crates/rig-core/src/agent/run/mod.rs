@@ -525,7 +525,7 @@ impl AgentRun {
             tool_name: tool_call.function.name.clone(),
             tool_call_id: Some(tool_call.id.clone()),
             internal_call_id: None,
-            args: Some(json_utils::value_to_json_string(
+            args: Some(json_utils::serialize_json_value(
                 &tool_call.function.arguments,
             )),
             available_tools: resolving.executable_tool_names.iter().cloned().collect(),
@@ -604,7 +604,7 @@ impl AgentRun {
                 {
                     let args = tool_call.function.arguments.clone();
                     let tool_call_id = tool_call.id.clone();
-                    let output = json_utils::value_to_json_string(&args);
+                    let output = json_utils::serialize_json_value(&args);
 
                     // Validate the output against the schema's required fields and
                     // re-prompt while budget remains, so a model that omits fields
@@ -2131,6 +2131,19 @@ mod tests {
         )
     }
 
+    fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value) -> ModelTurn {
+        ModelTurn::new(
+            None,
+            OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+                id.to_string(),
+                ToolFunction::new(name.to_string(), arguments),
+            ))),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add", name]),
+        )
+    }
+
     /// Every assistant tool call in `messages` must have a matching user tool
     /// result — an unanswered tool_use is rejected by providers on replay.
     fn assert_no_orphan_tool_use(messages: &[Message]) {
@@ -2182,6 +2195,37 @@ mod tests {
             messages.last(),
             Some(Message::Assistant { content, .. })
                 if assistant_text_from_choice(content) == r#"{"x":1}"#
+        ));
+    }
+
+    #[test]
+    fn scalar_output_tool_call_is_serialized_as_reparseable_json() {
+        let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(output_tool_turn_with_args(
+                "call_1",
+                "final_result",
+                json!("complete"),
+            ))
+            .expect("model_response should succeed"),
+        );
+
+        let response = expect_done(&mut run);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&response.output)
+                .expect("scalar output must remain valid JSON"),
+            json!("complete")
+        );
+        assert_eq!(response.output, r#""complete""#);
+
+        let messages = response.messages.expect("messages should be recorded");
+        assert_no_orphan_tool_use(&messages);
+        assert!(matches!(
+            messages.last(),
+            Some(Message::Assistant { content, .. })
+                if assistant_text_from_choice(content) == r#""complete""#
         ));
     }
 

@@ -397,7 +397,7 @@ impl StreamedTurnAssembler {
                     let invalid = StreamedInvalidToolCall {
                         tool_call: tool_call.clone(),
                         internal_call_id: internal_call_id.clone(),
-                        args: Some(json_utils::value_to_json_string(
+                        args: Some(json_utils::serialize_json_value(
                             &tool_call.function.arguments,
                         )),
                         executable_tool_names: self.executable_tool_names.clone(),

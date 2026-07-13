@@ -58,7 +58,10 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use std::time::Duration;
 
 use rmcp::ServiceExt;
@@ -84,6 +87,12 @@ pub use rmcp::model::Meta;
 /// without disrupting normal, long-running tools. The agent and tool-server
 /// `rmcp_tool_with_timeout` builders can override or disable it.
 pub const DEFAULT_MCP_TOOL_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Default deadline for fetching an MCP server's complete tool list.
+///
+/// Refreshes are versioned as well as bounded: a slow older fetch may finish,
+/// but it can never roll the registry back after a newer snapshot commits.
+pub const DEFAULT_MCP_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Crate-private adapter used by Rig's public MCP registration methods.
 #[derive(Clone)]
@@ -157,21 +166,42 @@ impl From<rmcp::model::Tool> for ToolDefinition {
 
 /// Parse the JSON `args` string into MCP call arguments.
 ///
-/// Returns `Ok(None)` for empty input or valid-but-non-object JSON (`null`, an
-/// array, a scalar) — all of which carry no MCP arguments — and `Ok(Some(obj))`
-/// for a JSON object. **Malformed JSON is a hard error** (`Err`): LLMs
-/// occasionally emit invalid JSON, and it must surface as a
-/// [`ToolErrorKind::InvalidArgs`] failure rather than being silently coerced
-/// into a no-argument call that reaches the server.
-fn parse_mcp_arguments(args: &str) -> Result<Option<rmcp::model::JsonObject>, serde_json::Error> {
+/// Argument decoding failure at the MCP object boundary.
+#[derive(Debug, thiserror::Error)]
+enum McpArgumentError {
+    /// Malformed JSON.
+    #[error("invalid JSON: {0}")]
+    Json(#[from] serde_json::Error),
+    /// Valid JSON that cannot be represented by MCP's object-valued arguments.
+    #[error("expected a JSON object or null, got {0}")]
+    NonObject(&'static str),
+}
+
+fn json_value_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+/// Returns no argument map for empty input or explicit JSON `null`, and an MCP
+/// argument map for a JSON object. Other valid JSON shapes are rejected: silently
+/// turning an array or scalar into a no-argument request can execute a different
+/// operation than the model requested.
+fn parse_mcp_arguments(args: &str) -> Result<Option<rmcp::model::JsonObject>, McpArgumentError> {
     let trimmed = args.trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
     let value: serde_json::Value = serde_json::from_str(trimmed)?;
     match value {
+        serde_json::Value::Null => Ok(None),
         serde_json::Value::Object(_) => Ok(Some(serde_json::from_value(value)?)),
-        _ => Ok(None),
+        value => Err(McpArgumentError::NonObject(json_value_kind(&value))),
     }
 }
 
@@ -195,7 +225,7 @@ impl McpTool {
             // JSON must surface as an InvalidArgs failure, not a silent no-arg call.
             let arguments = parse_mcp_arguments(&args).map_err(|error| {
                 ToolExecutionError::invalid_args(format!(
-                    "MCP tool '{name}' received invalid JSON arguments: {error}"
+                    "MCP tool '{name}' received invalid arguments: {error}"
                 ))
                 .with_source(error)
             })?;
@@ -291,20 +321,52 @@ fn mcp_content_block_to_tool_content(
 
 /// Build the model presentation without flattening or reparsing MCP blocks.
 fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutionError> {
-    let mut content = result.content.iter().map(mcp_content_block_to_tool_content);
+    let structured = result.structured_content.as_ref();
+    let canonical_fallback = structured.map(serde_json::Value::to_string);
+    let mut replaced_fallback = false;
+    let mut mapped = Vec::with_capacity(result.content.len());
 
-    if let Some(first) = content.next() {
-        let mut ordered = OneOrMany::one(first?);
-        for block in content {
-            ordered.push(block?);
+    for block in &result.content {
+        let fallback_structured = if !replaced_fallback {
+            match (block, canonical_fallback.as_deref(), structured) {
+                (ContentBlock::Text(text), Some(fallback), Some(structured))
+                    if text.text == fallback =>
+                {
+                    Some(structured)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some(structured) = fallback_structured {
+            // rmcp's `structured`/`structured_error` constructors include this
+            // text block solely for older clients. Replace it in place with the
+            // typed value; do not duplicate it as model-visible text.
+            mapped.push(ToolResultContent::json(structured.clone()));
+            replaced_fallback = true;
+        } else {
+            mapped.push(mcp_content_block_to_tool_content(block)?);
         }
-        return Ok(ToolOutput::content(ordered));
     }
 
-    if let Some(structured) = result.structured_content.clone() {
-        // `structuredContent` is explicitly typed JSON by MCP. Preserve that
-        // type even when its JSON value happens to be a string.
-        return Ok(ToolOutput::Json(structured));
+    if let Some(structured) = structured
+        && !replaced_fallback
+    {
+        // A server may provide genuine text/rich content in addition to its
+        // structured result. Keep every real block and place the typed value
+        // first deterministically; only the canonical compatibility text is
+        // replaced rather than duplicated.
+        mapped.insert(0, ToolResultContent::json(structured.clone()));
+    }
+
+    let mut mapped = mapped.into_iter();
+    if let Some(first) = mapped.next() {
+        let mut ordered = OneOrMany::one(first);
+        for block in mapped {
+            ordered.push(block);
+        }
+        return Ok(ToolOutput::content(ordered));
     }
 
     if result.is_error == Some(true) {
@@ -358,12 +420,12 @@ impl ErasedTool for McpTool {
                     };
 
                     if is_error {
-                        ToolResult::failed_with_output(
+                        ToolResult::failed(
                             ToolExecutionError::other(format!(
                                 "MCP tool '{}' reported an execution error",
                                 self.definition.name
-                            )),
-                            output,
+                            ))
+                            .with_model_output(output),
                         )
                     } else {
                         ToolResult::success(output)
@@ -385,6 +447,16 @@ pub enum McpClientError {
     /// Failed to fetch the tool list from the MCP server.
     #[error("Failed to fetch MCP tool list: {0}")]
     ToolFetchError(#[from] rmcp::ServiceError),
+
+    /// The server did not finish returning its tool list before the deadline.
+    #[error("Timed out fetching MCP tool list after {0:?}")]
+    ToolFetchTimeout(Duration),
+}
+
+#[derive(Default)]
+struct ManagedToolsState {
+    registrations: HashMap<String, ManagedToolToken>,
+    committed_refresh: u64,
 }
 
 /// An MCP client handler that automatically re-fetches the tool list when the
@@ -416,10 +488,14 @@ pub struct McpClientHandler {
     /// Per-call timeout applied to every MCP tool this handler registers
     /// (see issue #1914). Defaults to [`DEFAULT_MCP_TOOL_TIMEOUT`].
     timeout: Option<Duration>,
+    /// Deadline for initial and list-changed tool-list fetches.
+    refresh_timeout: Duration,
     /// Tracks the exact registry generation installed for each tool. Refreshes
     /// only mutate a name while this generation remains current, so a newer
     /// local or peer-handler registration cannot be deleted or overwritten.
-    managed_tools: Arc<RwLock<HashMap<String, ManagedToolToken>>>,
+    managed_tools: Arc<RwLock<ManagedToolsState>>,
+    /// Monotonic identity assigned when each tool-list fetch begins.
+    next_refresh: Arc<AtomicU64>,
 }
 
 impl McpClientHandler {
@@ -433,7 +509,9 @@ impl McpClientHandler {
             client_info,
             tool_server_handle,
             timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
-            managed_tools: Arc::new(RwLock::new(HashMap::new())),
+            refresh_timeout: DEFAULT_MCP_REFRESH_TIMEOUT,
+            managed_tools: Arc::new(RwLock::new(ManagedToolsState::default())),
+            next_refresh: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -446,9 +524,60 @@ impl McpClientHandler {
         self
     }
 
+    /// Set the deadline for initial and list-changed tool-list fetches.
+    pub fn with_refresh_timeout(mut self, timeout: Duration) -> Self {
+        self.refresh_timeout = timeout;
+        self
+    }
+
     /// Build the internal MCP adapter with this handler's configured timeout.
     fn build_tool(&self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> McpTool {
         McpTool::from_mcp_server(tool, client).with_timeout(self.timeout)
+    }
+
+    fn begin_refresh(&self) -> u64 {
+        self.next_refresh.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    async fn fetch_tools(
+        &self,
+        peer: &rmcp::service::ServerSink,
+    ) -> Result<Vec<Arc<dyn ErasedTool>>, McpClientError> {
+        let tools = crate::wasm_compat::timeout(self.refresh_timeout, peer.list_all_tools())
+            .await
+            .map_err(|_| McpClientError::ToolFetchTimeout(self.refresh_timeout))??;
+        Ok(tools
+            .into_iter()
+            .map(|tool| Arc::new(self.build_tool(tool, peer.clone())) as Arc<dyn ErasedTool>)
+            .collect())
+    }
+
+    async fn commit_initial(&self, refresh: u64, tools: Vec<Arc<dyn ErasedTool>>) {
+        let mut managed = self.managed_tools.write().await;
+        if refresh <= managed.committed_refresh {
+            tracing::debug!(refresh, "discarding stale initial MCP tool list");
+            return;
+        }
+        managed.registrations = self
+            .tool_server_handle
+            .add_managed_erased_tools(tools)
+            .await;
+        managed.committed_refresh = refresh;
+    }
+
+    async fn commit_refresh(&self, refresh: u64, tools: Vec<Arc<dyn ErasedTool>>) -> bool {
+        let mut managed = self.managed_tools.write().await;
+        if refresh <= managed.committed_refresh {
+            tracing::debug!(refresh, "discarding stale MCP tool-list response");
+            return false;
+        }
+        let expected = managed.registrations.clone();
+        managed.registrations = self
+            .tool_server_handle
+            .reconcile_managed_erased_tools(expected, tools)
+            .await;
+        managed.committed_refresh = refresh;
+        true
     }
 
     /// Connect to an MCP server, fetch the initial tool list, and register
@@ -474,29 +603,10 @@ impl McpClientHandler {
             .await
             .map_err(|e| McpClientError::ConnectionError(e.to_string()))?;
 
-        {
-            let handler = service.service();
-            // Serialize the initial fetch with list-changed callbacks. Without
-            // this guard, a callback can install a newer list while this fetch
-            // is in flight, only for connect to overwrite it with stale tools.
-            let mut managed = handler.managed_tools.write().await;
-            let tools = service.peer().list_all_tools().await?;
-            let tools = tools
-                .into_iter()
-                .map(|tool| {
-                    Arc::new(handler.build_tool(tool, service.peer().clone()))
-                        as Arc<dyn ErasedTool>
-                })
-                .collect();
-            // Use the same managed-registry -> tool-server lock order as
-            // refreshes. A list-changed notification cannot observe installed
-            // tools before their ownership generations are recorded.
-            let registered = handler
-                .tool_server_handle
-                .add_managed_erased_tools(tools)
-                .await;
-            *managed = registered;
-        }
+        let handler = service.service();
+        let refresh = handler.begin_refresh();
+        let tools = handler.fetch_tools(service.peer()).await?;
+        handler.commit_initial(refresh, tools).await;
 
         Ok(service)
     }
@@ -511,11 +621,11 @@ impl rmcp::handler::client::ClientHandler for McpClientHandler {
         &self,
         context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
     ) {
-        // Serialize the fetch as well as the registry commit. If two
-        // notifications fetch concurrently, an older, slower response can
-        // otherwise commit after a newer response and roll the registry back.
-        let mut managed = self.managed_tools.write().await;
-        let tools = match context.peer.list_all_tools().await {
+        let refresh = self.begin_refresh();
+        // Network IO is deliberately outside the ownership lock. A lost older
+        // response therefore cannot block a later notification from fetching
+        // and committing, while commit versions prevent late rollback.
+        let tools = match self.fetch_tools(&context.peer).await {
             Ok(tools) => tools,
             Err(e) => {
                 tracing::error!("Failed to re-fetch MCP tool list: {e}");
@@ -523,25 +633,12 @@ impl rmcp::handler::client::ClientHandler for McpClientHandler {
             }
         };
 
-        let tools = tools
-            .into_iter()
-            .map(|tool| {
-                Arc::new(self.build_tool(tool, context.peer.clone())) as Arc<dyn ErasedTool>
-            })
-            .collect();
-        // Keep the current generations recorded until reconciliation commits.
-        // If this notification future is cancelled while awaiting the server
-        // lock, the next refresh can still update or remove its registrations.
-        let expected = managed.clone();
-        *managed = self
-            .tool_server_handle
-            .reconcile_managed_erased_tools(expected, tools)
-            .await;
+        if !self.commit_refresh(refresh, tools).await {
+            return;
+        }
 
-        tracing::info!(
-            tool_count = managed.len(),
-            "MCP tool list refreshed successfully"
-        );
+        let tool_count = self.managed_tools.read().await.registrations.len();
+        tracing::info!(tool_count, "MCP tool list refreshed successfully");
     }
 }
 
@@ -788,7 +885,45 @@ mod tests {
 
         assert_eq!(
             mcp_result_output(&result).expect("MCP content mapping"),
-            ToolOutput::Json(json!("forty-two"))
+            ToolOutput::json(json!("forty-two"))
+        );
+    }
+
+    #[test]
+    fn structured_constructors_replace_their_canonical_text_fallback() {
+        let value = json!({"answer": 42});
+        for result in [
+            CallToolResult::structured(value.clone()),
+            CallToolResult::structured_error(value.clone()),
+        ] {
+            assert_eq!(
+                mcp_result_output(&result).expect("MCP structured output"),
+                ToolOutput::json(value.clone())
+            );
+        }
+    }
+
+    #[test]
+    fn structured_content_is_kept_alongside_real_rich_blocks() {
+        let value = json!({"answer": 42});
+        let mut result = CallToolResult::structured(value.clone());
+        result
+            .content
+            .push(ContentBlock::image("aW1hZ2U=", "image/png"));
+        result
+            .content
+            .push(ContentBlock::text("human-readable note"));
+
+        let mut expected = OneOrMany::one(RigToolResultContent::json(value));
+        expected.push(RigToolResultContent::image_base64(
+            "aW1hZ2U=",
+            Some(ImageMediaType::PNG),
+            None,
+        ));
+        expected.push(RigToolResultContent::text("human-readable note"));
+        assert_eq!(
+            mcp_result_output(&result).expect("MCP structured rich output"),
+            ToolOutput::content(expected)
         );
     }
 
@@ -821,7 +956,10 @@ mod tests {
         let fixture = fixture(Scenario::Hang, Some(Duration::from_millis(25))).await;
         let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
         assert!(result.is_error_kind(ToolErrorKind::Timeout));
-        assert_eq!(result.output().as_text(), Some("tool execution timed out"));
+        assert_eq!(
+            result.output().as_text(),
+            Some("MCP tool 'fixture_tool' timed out after 25ms")
+        );
         fixture.server_task.abort();
     }
 
@@ -833,8 +971,9 @@ mod tests {
         assert_eq!(error.kind(), ToolErrorKind::Provider);
         assert!(error.is::<rmcp::ServiceError>());
         assert!(error.message().contains("fixture service failed"));
-        assert_eq!(result.output().as_text(), Some("the tool provider failed"));
-        assert!(!result.output().render().contains("fixture service failed"));
+        let output = result.output().render();
+        assert!(output.contains("MCP tool 'fixture_tool' request failed"));
+        assert!(output.contains("fixture service failed"));
         fixture.server_task.abort();
     }
 
@@ -887,7 +1026,11 @@ mod tests {
         let mut context = ToolContext::new();
         let result = execute(&fixture, "{}", &mut context).await;
 
-        let mut expected_content = OneOrMany::one(RigToolResultContent::text("before"));
+        let mut expected_content = OneOrMany::one(RigToolResultContent::json(json!({
+            "answer": 42,
+            "source": "fixture"
+        })));
+        expected_content.push(RigToolResultContent::text("before"));
         expected_content.push(RigToolResultContent::image_base64(
             "aGVsbG8=",
             Some(ImageMediaType::PNG),
@@ -937,18 +1080,42 @@ mod tests {
         let result = execute(&fixture, "{", &mut ToolContext::new()).await;
         let error = result.error().expect("structured argument error");
         assert_eq!(error.kind(), ToolErrorKind::InvalidArgs);
-        assert!(error.is::<serde_json::Error>());
-        assert_eq!(
-            result.output().as_text(),
-            Some("tool arguments were invalid")
-        );
+        assert!(matches!(
+            error.downcast_ref::<McpArgumentError>(),
+            Some(McpArgumentError::Json(_))
+        ));
+        let output = result.output().render();
+        assert!(output.contains("MCP tool 'fixture_tool' received invalid arguments"));
+        assert!(output.contains("invalid JSON"));
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_rejects_non_object_arguments() {
+        let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
+        for args in [r#"[1,2]"#, r#""text""#, "7", "true"] {
+            let result = execute(&fixture, args, &mut ToolContext::new()).await;
+            assert!(
+                result.is_error_kind(ToolErrorKind::InvalidArgs),
+                "{args} must not be coerced into an argument-less MCP call"
+            );
+        }
+
+        // Empty input and explicit null remain the documented no-argument forms.
+        for args in ["", "null"] {
+            let result = execute(&fixture, args, &mut ToolContext::new()).await;
+            assert!(
+                result.is_success(),
+                "{args:?} should remain a no-argument call"
+            );
+        }
         fixture.server_task.abort();
     }
 }
 
 #[cfg(test)]
 mod migrated_tests {
-    use super::McpClientHandler;
+    use super::{McpClientError, McpClientHandler};
     use crate::tool::{DynamicTool, ToolOutput, server::ToolServer};
     use rmcp::{
         RoleServer, ServerHandler, ServiceExt, handler::client::ClientHandler, model::*,
@@ -1010,6 +1177,7 @@ mod migrated_tests {
         list_calls: Arc<AtomicUsize>,
         first_refresh_started: Arc<Notify>,
         release_first_refresh: Arc<Notify>,
+        first_refresh_returned: Arc<Notify>,
     }
 
     impl OrderedRefreshServer {
@@ -1019,6 +1187,7 @@ mod migrated_tests {
                 list_calls: Arc::new(AtomicUsize::new(0)),
                 first_refresh_started: Arc::new(Notify::new()),
                 release_first_refresh: Arc::new(Notify::new()),
+                first_refresh_returned: Arc::new(Notify::new()),
             }
         }
 
@@ -1047,9 +1216,29 @@ mod migrated_tests {
             if call == 1 {
                 self.first_refresh_started.notify_one();
                 self.release_first_refresh.notified().await;
+                self.first_refresh_returned.notify_one();
             }
 
             Ok(ListToolsResult::with_all_items(tools))
+        }
+    }
+
+    #[derive(Clone)]
+    struct HangingListServer;
+
+    impl ServerHandler for HangingListServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("test-hanging-list-server", "0.1.0"))
+        }
+
+        async fn list_tools(
+            &self,
+            _: Option<PaginatedRequestParams>,
+            _: RequestContext<RoleServer>,
+        ) -> Result<ListToolsResult, ErrorData> {
+            std::future::pending().await
         }
     }
 
@@ -1106,6 +1295,29 @@ mod migrated_tests {
         );
         client.cancel().await.unwrap();
         task.abort();
+    }
+
+    #[tokio::test]
+    async fn initial_tool_fetch_is_bounded_by_the_refresh_timeout() {
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let server_task = tokio::spawn(async move {
+            HangingListServer
+                .serve((sfc, s2c))
+                .await
+                .expect("server start")
+        });
+        let refresh_timeout = Duration::from_millis(25);
+        let result = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run())
+            .with_refresh_timeout(refresh_timeout)
+            .connect((cfs, c2s))
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(McpClientError::ToolFetchTimeout(timeout)) if timeout == refresh_timeout
+        ));
+        server_task.abort();
     }
 
     #[tokio::test]
@@ -1168,12 +1380,9 @@ mod migrated_tests {
         .await
         .expect("first refresh fetch started");
 
-        // The refresh must own the managed-registry lock before it fetches.
-        // Otherwise another notification can fetch and commit a newer list,
-        // then be rolled back when this deliberately delayed response arrives.
         assert!(
-            client.service().managed_tools.try_write().is_err(),
-            "the first refresh fetched without serializing registry commits"
+            client.service().managed_tools.try_write().is_ok(),
+            "a hung network fetch must not hold the managed-registry lock"
         );
 
         server_control
@@ -1184,7 +1393,6 @@ mod migrated_tests {
             .notify_tool_list_changed()
             .await
             .unwrap();
-        server_control.release_first_refresh.notify_one();
 
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
@@ -1196,10 +1404,126 @@ mod migrated_tests {
             }
         })
         .await
-        .expect("newest refresh committed after delayed stale refresh");
+        .expect("newest refresh committed while the older fetch remained hung");
+
+        // Let the stale response arrive after the newer snapshot committed. Its
+        // lower refresh version must be discarded rather than rolling back.
+        server_control.release_first_refresh.notify_one();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            server_control.first_refresh_returned.notified(),
+        )
+        .await
+        .expect("delayed refresh response returned");
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].name, "newest");
 
         assert_eq!(server_control.list_calls.load(Ordering::SeqCst), 3);
         client.cancel().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn refresh_rebuilds_owned_tools_in_latest_server_order() {
+        let server =
+            DynamicToolServer::new(vec![make_tool("alpha", "Alpha"), make_tool("beta", "Beta")]);
+        let server_control = server.clone();
+        let handle = ToolServer::new().run();
+        let (client, server_task) = connect(server, handle.clone()).await;
+        server_control
+            .set_tools(vec![
+                make_tool("beta", "Beta refreshed"),
+                make_tool("gamma", "Gamma"),
+                make_tool("alpha", "Alpha refreshed"),
+            ])
+            .await;
+        let running_server = server_task.await.unwrap();
+        running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                let names = defs
+                    .iter()
+                    .map(|definition| definition.name.as_str())
+                    .collect::<Vec<_>>();
+                if names == ["beta", "gamma", "alpha"] && defs[0].description == "Beta refreshed" {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("latest MCP order committed");
+        client.cancel().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn one_refresh_reclaims_a_name_after_a_peer_owner_disappears() {
+        let handle = ToolServer::new().run();
+        let first_server = DynamicToolServer::new(vec![make_tool("shared", "First owner")]);
+        let first_control = first_server.clone();
+        let (first_client, first_server_task) = connect(first_server, handle.clone()).await;
+        let first_running_server = first_server_task.await.unwrap();
+
+        let second_server = DynamicToolServer::new(vec![make_tool("shared", "Second owner")]);
+        let second_control = second_server.clone();
+        let (second_client, second_server_task) = connect(second_server, handle.clone()).await;
+        let second_running_server = second_server_task.await.unwrap();
+        assert_eq!(
+            handle.get_tool_defs(None).await.unwrap()[0].description,
+            "Second owner"
+        );
+
+        second_control.set_tools(Vec::new()).await;
+        second_running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if handle.get_tool_defs(None).await.unwrap().is_empty() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("second owner removed its registration");
+
+        // The first handler still has a stale generation token for `shared`.
+        // One full-list refresh must reclaim the now-empty slot rather than
+        // requiring a second notification to converge.
+        first_control
+            .set_tools(vec![make_tool("shared", "First owner refreshed")])
+            .await;
+        first_running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs.len() == 1 && defs[0].description == "First owner refreshed" {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("one refresh reclaimed the empty slot");
+
+        second_client.cancel().await.unwrap();
+        first_client.cancel().await.unwrap();
     }
 
     #[tokio::test]

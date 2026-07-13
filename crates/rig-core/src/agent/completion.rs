@@ -11,7 +11,7 @@ use crate::{
     json_utils,
     message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
-    tool::server::ToolServerHandle,
+    tool::server::{ToolRegistrySnapshot, ToolServerHandle},
     vector_store::{VectorStoreError, request::VectorSearchRequest},
     wasm_compat::WasmCompatSend,
 };
@@ -33,6 +33,8 @@ pub type DynamicContextStore = Arc<
 /// to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest<M: CompletionModel> {
     pub(crate) builder: CompletionRequestBuilder<M>,
+    /// Exact implementations behind this turn's provider definitions.
+    pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
     pub(crate) executable_tool_names: BTreeSet<String>,
     pub(crate) allowed_tool_names: BTreeSet<String>,
     /// When Tool output mode is active, the name of the synthetic output tool
@@ -325,7 +327,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // Fetch dynamic (RAG) documents and the real executable tool set first, so we
     // can resolve the output mode (which depends on whether tools exist) before
     // building the preamble and request.
-    let (mut tooldefs, fetched_context): (Vec<crate::completion::ToolDefinition>, Vec<Document>) =
+    let (mut tool_snapshot, fetched_context): (ToolRegistrySnapshot, Vec<Document>) =
         match &rag_text {
             Some(text) => {
                 let search_futures = dynamic_context.iter().map(|(num_sample, index)| {
@@ -366,21 +368,25 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
                     .flatten()
                     .collect();
 
-                let tooldefs = tool_server_handle
-                    .get_tool_defs(Some(text.to_string()))
+                let tool_snapshot = tool_server_handle
+                    .snapshot_tool_defs(Some(text.to_string()))
                     .await
                     .map_err(|_| {
                         CompletionError::RequestError("Failed to get tool definitions".into())
                     })?;
 
-                (tooldefs, fetched_context)
+                (tool_snapshot, fetched_context)
             }
             None => {
-                let tooldefs = tool_server_handle.get_tool_defs(None).await.map_err(|_| {
-                    CompletionError::RequestError("Failed to get tool definitions".into())
-                })?;
+                let tool_snapshot =
+                    tool_server_handle
+                        .snapshot_tool_defs(None)
+                        .await
+                        .map_err(|_| {
+                            CompletionError::RequestError("Failed to get tool definitions".into())
+                        })?;
 
-                (tooldefs, Vec::new())
+                (tool_snapshot, Vec::new())
             }
         };
 
@@ -392,8 +398,13 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // narrowed set could commit a name that collides once the filter lifts.
     // Without a filter the full set equals `executable_tool_names` below, so we
     // skip the extra allocation and reuse that.
-    let pre_filter_tool_names: Option<BTreeSet<String>> =
-        active_tools.map(|_| tooldefs.iter().map(|tool| tool.name.clone()).collect());
+    let pre_filter_tool_names: Option<BTreeSet<String>> = active_tools.map(|_| {
+        tool_snapshot
+            .definitions()
+            .iter()
+            .map(|tool| tool.name.clone())
+            .collect()
+    });
 
     // Apply a per-turn `active_tools` allow-list (from a `CompletionCall` hook):
     // narrow the advertised tool set to the named tools BEFORE computing the
@@ -403,10 +414,12 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     // allow-list. A name that isn't available this turn is a hook bug, surfaced
     // as a request error (mirroring `ToolChoice::Specific`'s contract).
     if let Some(allow) = active_tools {
-        if let Some(missing) = allow
-            .iter()
-            .find(|name| !tooldefs.iter().any(|tool| &tool.name == *name))
-        {
+        if let Some(missing) = allow.iter().find(|name| {
+            !tool_snapshot
+                .definitions()
+                .iter()
+                .any(|tool| &tool.name == *name)
+        }) {
             return Err(CompletionError::RequestError(
                 format!(
                     "active_tools requested tool `{missing}`, which is not available this turn"
@@ -414,8 +427,11 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
                 .into(),
             ));
         }
-        tooldefs.retain(|tool| allow.iter().any(|name| name == &tool.name));
+        let allowed: BTreeSet<String> = allow.iter().cloned().collect();
+        tool_snapshot.retain_names(&allowed);
     }
+
+    let mut tooldefs = tool_snapshot.definitions().to_vec();
 
     // Executable tools are the real tool-server tools, computed BEFORE any
     // synthetic output tool is appended.
@@ -609,6 +625,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
 
     Ok(PreparedCompletionRequest {
         builder: completion_request,
+        tool_snapshot: Arc::new(tool_snapshot),
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,

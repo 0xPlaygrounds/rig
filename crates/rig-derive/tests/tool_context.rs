@@ -26,7 +26,7 @@ struct Invocation(&'static str);
 )]
 fn sync_context_in_the_middle(
     left: i32,
-    context: &mut ToolContext,
+    #[rig(context)] context: &mut ToolContext,
     right: i32,
 ) -> Result<i32, rig_core::tool::ToolExecutionError> {
     let offset = context.require::<Offset>()?.0;
@@ -59,6 +59,31 @@ async fn async_context_first(
     std::future::ready(()).await;
     context.insert_result(Invocation("async"));
     Ok(format!("{prefix}{value}"))
+}
+
+mod domain {
+    #[derive(serde::Deserialize, rig_core::schemars::JsonSchema)]
+    pub struct ToolContext {
+        pub label: String,
+    }
+}
+
+#[rig_tool(description = "An application argument named ToolContext is not runtime context")]
+fn domain_context_is_an_ordinary_argument(
+    context: domain::ToolContext,
+) -> Result<String, rig_core::tool::ToolExecutionError> {
+    Ok(context.label)
+}
+
+type RuntimeContextAlias = rig_core::tool::ToolContext;
+
+#[rig_tool(description = "An explicitly marked alias receives runtime context")]
+fn marked_context_alias(
+    #[rig(context)] context: &mut RuntimeContextAlias,
+    value: String,
+) -> Result<String, rig_core::tool::ToolExecutionError> {
+    context.insert_result(Invocation("alias"));
+    Ok(value)
 }
 
 #[tokio::test]
@@ -115,6 +140,47 @@ async fn async_context_is_excluded_from_schema_and_passed_to_the_function() {
 
     assert_eq!(output, "hello world");
     assert_eq!(context.result::<Invocation>(), Some(&Invocation("async")));
+}
+
+#[tokio::test]
+async fn same_named_domain_type_remains_a_model_argument() {
+    let definition = rig_core::tool::tool_definition(&DomainContextIsAnOrdinaryArgument);
+    let properties = definition.parameters["properties"].as_object().unwrap();
+    assert!(properties.contains_key("context"));
+
+    let output = DomainContextIsAnOrdinaryArgument
+        .call(
+            &mut ToolContext::new(),
+            DomainContextIsAnOrdinaryArgumentParameters {
+                context: domain::ToolContext {
+                    label: "domain".to_string(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(output, "domain");
+}
+
+#[tokio::test]
+async fn explicit_marker_supports_imported_aliases() {
+    let definition = rig_core::tool::tool_definition(&MarkedContextAlias);
+    let properties = definition.parameters["properties"].as_object().unwrap();
+    assert_eq!(properties.len(), 1);
+    assert!(properties.contains_key("value"));
+
+    let mut context = ToolContext::new();
+    let output = MarkedContextAlias
+        .call(
+            &mut context,
+            MarkedContextAliasParameters {
+                value: "ok".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(output, "ok");
+    assert_eq!(context.result::<Invocation>(), Some(&Invocation("alias")));
 }
 
 #[test]

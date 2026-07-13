@@ -1,8 +1,25 @@
 //! Event-specific hooks for observing and steering an agent run.
 //!
-//! Each lifecycle method returns an action type containing only actions that
-//! event can honor. Request patches merge, tool argument/result rewrites chain,
-//! and stop actions short-circuit in registration order.
+//! [`AgentHook`] replaces the old universal event/action pair with one lifecycle
+//! method and one action type per event. Unsupported combinations are therefore
+//! rejected by the compiler instead of being interpreted at runtime.
+//!
+//! Hooks run in registration order through [`HookStack`]. Completion-call
+//! [`RequestPatch`] values accumulate and merge; tool-call argument rewrites and
+//! tool-result presentation rewrites chain into later hooks. Nested stacks obey
+//! the same rules as flat stacks, including preserving an argument rewrite when
+//! an inner stack later skips or stops. Every stop action short-circuits the
+//! remaining hooks for that event.
+//!
+//! Register observe-only hooks before steering hooks when every observation is
+//! required: a steering stop intentionally prevents later observers from
+//! running. Tool-result rewrites change only the model-visible `presentation`;
+//! [`ToolResultEvent::raw_result`] and its [`ToolResultEvent::tool_context`]
+//! remain the execution truth used by policy and telemetry.
+//!
+//! Blocking and streaming agents share the same request, tool-call, and
+//! tool-result resolution path. Streaming adds delta-specific observations, but
+//! shared lifecycle actions have identical semantics on both surfaces.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1107,7 +1124,7 @@ impl<M: CompletionModel> HookStack<M> {
     ) -> (ToolCallAction, Option<serde_json::Value>) {
         let mut effective = None;
         for hook in &self.hooks {
-            let rewritten = effective.as_ref().map(json_utils::value_to_json_string);
+            let rewritten = effective.as_ref().map(json_utils::serialize_json_value);
             let current = ToolCall {
                 args: rewritten.as_deref().unwrap_or(event.args),
                 ..event
@@ -1420,7 +1437,7 @@ mod tests {
             *seen.lock().unwrap(),
             vec![
                 (
-                    "tool execution timed out".into(),
+                    "raw failure".into(),
                     ToolErrorKind::Timeout,
                     "request-metadata".into()
                 ),
@@ -1431,7 +1448,7 @@ mod tests {
                 ),
             ]
         );
-        assert_eq!(raw.output().as_text(), Some("tool execution timed out"));
+        assert_eq!(raw.output().as_text(), Some("raw failure"));
         assert_eq!(
             context.result::<String>().map(String::as_str),
             Some("request-metadata")
@@ -2011,6 +2028,43 @@ mod migrated_tests {
         assert_eq!(action, ToolCallAction::skip("called"));
         assert_eq!(salvaged, None);
         assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn string_rewrite_is_json_encoded_for_later_hook_in_same_stack() {
+        let spy = ArgsSpy::default();
+        let replacement = Value::String("sanitized".into());
+        let mut stack = HookStack::<M>::new();
+        stack.push(RewriteHook(replacement.clone()));
+        stack.push(spy.clone());
+
+        let (action, salvaged) = resolve(&stack).await;
+
+        assert_eq!(action, ToolCallAction::rewrite(replacement.clone()));
+        assert_eq!(salvaged, None);
+        assert_eq!(
+            spy.0.lock().unwrap().as_slice(),
+            [serde_json::to_string(&replacement).unwrap()]
+        );
+    }
+
+    #[tokio::test]
+    async fn string_rewrite_is_json_encoded_for_hook_in_nested_stack() {
+        let spy = ArgsSpy::default();
+        let replacement = Value::String("sanitized".into());
+        let inner = HookStack::<M>::with(spy.clone());
+        let mut outer = HookStack::<M>::new();
+        outer.push(RewriteHook(replacement.clone()));
+        outer.push(inner);
+
+        let (action, salvaged) = resolve(&outer).await;
+
+        assert_eq!(action, ToolCallAction::rewrite(replacement.clone()));
+        assert_eq!(salvaged, None);
+        assert_eq!(
+            spy.0.lock().unwrap().as_slice(),
+            [serde_json::to_string(&replacement).unwrap()]
+        );
     }
 
     #[tokio::test]

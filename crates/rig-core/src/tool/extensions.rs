@@ -322,7 +322,10 @@ mod tests {
 
         let error = require_value(&ToolContext::new()).unwrap_err();
         assert!(error.is::<MissingToolContext>());
-        assert_eq!(error.model_feedback(), None);
+        assert_eq!(
+            error.model_feedback(),
+            Some("required tool context value of type `u32` was not found")
+        );
     }
 }
 

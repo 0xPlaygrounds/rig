@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(rig-derive)* [**breaking**] generated `#[rig_tool]` implementations now target the single `Tool::call` API with `ToolContext` and `ToolExecutionError`. A tool function may accept one `&mut ToolContext` parameter in any position (for example, `fn lookup(context: &mut rig::tool::ToolContext, query: String) -> Result<_, _>`); the macro forwards the runtime context and excludes that parameter from the generated arguments and JSON Schema.
+- *(rig-derive)* [**breaking**] generated `#[rig_tool]` implementations now target the single `Tool::call` API with `ToolContext` and `ToolExecutionError`. A tool function may accept one `&mut ToolContext` parameter in any position; fully qualified `rig::tool::ToolContext` / `rig_core::tool::ToolContext` paths are recognized directly, while imported names and aliases use `#[rig(context)]`. The macro forwards the runtime context and excludes that parameter from the generated arguments and JSON Schema without confusing unrelated application types also named `ToolContext`.
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.39.0...rig-derive-v0.40.0) - 2026-07-10
 

@@ -1,5 +1,6 @@
 error: a tool function may have at most one `&mut ToolContext` parameter
- --> tests/ui/tool_context/fail_multiple_contexts.rs:9:5
-  |
-9 |     second: &mut ToolContext,
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+  --> tests/ui/tool_context/fail_multiple_contexts.rs:10:5
+   |
+10 | /     #[rig(context)]
+11 | |     second: &mut ToolContext,
+   | |____________________________^

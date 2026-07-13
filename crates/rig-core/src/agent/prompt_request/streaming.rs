@@ -18,7 +18,7 @@ use crate::{
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::ToolContext,
+    tool::{ToolContext, server::ToolRegistrySnapshot},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt, stream};
@@ -425,6 +425,7 @@ where
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
+        tool_snapshot: Arc<ToolRegistrySnapshot>,
     ) -> DriveStream<'a, Self::Raw>;
 
     /// Record run-level telemetry onto the agent span at `Done`. Gated on
@@ -476,6 +477,10 @@ where
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
         let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+        // Set only after a model turn commits successfully and consumed by its
+        // immediately following CallTools step. This keeps the sans-IO run state
+        // serializable while pinning execution to the definitions sent that turn.
+        let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
 
         'outer: loop {
             let step = match run.next_step() {
@@ -488,6 +493,7 @@ where
 
             match step {
                 AgentRunStep::CallModel { prompt, history, turn } => {
+                    drop(pending_tool_snapshot.take());
                     if runner.max_turns > 1 {
                         tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
                     }
@@ -542,6 +548,7 @@ where
                         }
                     };
                     run.set_output_tool_name(prepared.output_tool_name.clone());
+                    let turn_tool_snapshot = prepared.tool_snapshot.clone();
 
                     let mut turn_stream = source.run_model_turn(
                         &runner,
@@ -567,9 +574,23 @@ where
                     if errored {
                         break 'outer;
                     }
+                    pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let mut tool_stream = source.run_tool_calls(&runner, &hook_ctx, &mut run, calls);
+                    let Some(tool_snapshot) = pending_tool_snapshot.take() else {
+                        yield Err(StreamingError::Completion(CompletionError::ResponseError(
+                            "agent requested tool execution without a prepared registry snapshot"
+                                .to_string(),
+                        )));
+                        break 'outer;
+                    };
+                    let mut tool_stream = source.run_tool_calls(
+                        &runner,
+                        &hook_ctx,
+                        &mut run,
+                        calls,
+                        tool_snapshot,
+                    );
                     let mut errored = false;
                     while let Some(item) = tool_stream.next().await {
                         match item {
@@ -642,6 +663,7 @@ pub(crate) fn drive_tool_calls<'a, M, R, F>(
     hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
+    tool_snapshot: Arc<ToolRegistrySnapshot>,
     chain_tool_span: F,
     forward_items: bool,
 ) -> DriveStream<'a, R>
@@ -742,7 +764,7 @@ where
                 let outcome = run_single_tool(
                     &runner.hooks,
                     hook_ctx,
-                    &runner.tool_server_handle,
+                    &tool_snapshot,
                     &runner.tool_context,
                     &tool_call,
                     &internal_call_id,
@@ -781,7 +803,7 @@ where
                 .map(|(index, call)| {
                     let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
                     let hooks = &runner.hooks;
-                    let tool_server_handle = &runner.tool_server_handle;
+                    let tool_snapshot = &tool_snapshot;
                     let tool_context = &runner.tool_context;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
@@ -803,7 +825,7 @@ where
                         let outcome = run_single_tool(
                             hooks,
                             hook_ctx,
-                            tool_server_handle,
+                            tool_snapshot,
                             tool_context,
                             &tool_call,
                             &internal_call_id,
@@ -1317,10 +1339,19 @@ where
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
+        tool_snapshot: Arc<ToolRegistrySnapshot>,
     ) -> DriveStream<'a, M::StreamingResponse> {
         // The streaming surface chains nothing onto its tool spans, and forwards
         // the ToolCall/ToolResult items to the consumer.
-        drive_tool_calls(runner, hook_ctx, run, calls, |span| span, true)
+        drive_tool_calls(
+            runner,
+            hook_ctx,
+            run,
+            calls,
+            tool_snapshot,
+            |span| span,
+            true,
+        )
     }
 
     fn record_run_level_telemetry(

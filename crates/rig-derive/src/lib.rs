@@ -276,10 +276,12 @@ fn is_option_type(ty: &Type) -> bool {
     false
 }
 
-/// Returns whether `ty` names Rig's tool execution context.
+/// Returns whether `ty` uses an unambiguous path to Rig's tool execution context.
 ///
-/// We intentionally match the final path segment so callers can use either an
-/// imported `ToolContext` or a fully-qualified path through `rig`/`rig_core`.
+/// Procedural macros cannot resolve imported type names. Matching only the last
+/// `ToolContext` path segment would therefore steal unrelated application types
+/// with the same name. Imported aliases use the explicit `#[rig(context)]`
+/// parameter marker instead.
 fn is_tool_context_type(ty: &Type) -> bool {
     let ty = match ty {
         Type::Group(group) => &*group.elem,
@@ -287,15 +289,58 @@ fn is_tool_context_type(ty: &Type) -> bool {
         ty => ty,
     };
 
+    let Type::Path(type_path) = ty else {
+        return false;
+    };
+    let segments = type_path
+        .path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect::<Vec<_>>();
+
     matches!(
-        ty,
-        Type::Path(type_path)
-            if type_path
-                .path
-                .segments
-                .last()
-                .is_some_and(|segment| segment.ident == "ToolContext")
+        segments.as_slice(),
+        [root, tool, context]
+            if matches!(root.as_str(), "rig" | "rig_core")
+                && tool == "tool"
+                && context == "ToolContext"
     )
+}
+
+/// Whether a function parameter explicitly marks itself as Rig's runtime
+/// context. The marker is removed from the emitted function.
+fn has_tool_context_marker(attrs: &[Attribute]) -> syn::Result<bool> {
+    let mut marked = false;
+    for attr in attrs.iter().filter(|attr| attr.path().is_ident("rig")) {
+        if marked {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "duplicate `#[rig(context)]` parameter marker",
+            ));
+        }
+
+        let Meta::List(list) = &attr.meta else {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "expected `#[rig(context)]` on the runtime context parameter",
+            ));
+        };
+        let marker: Ident = list.parse_args().map_err(|_| {
+            syn::Error::new_spanned(
+                attr,
+                "expected `#[rig(context)]` on the runtime context parameter",
+            )
+        })?;
+        if marker != "context" {
+            return Err(syn::Error::new_spanned(
+                marker,
+                "the only supported parameter marker is `#[rig(context)]`",
+            ));
+        }
+        marked = true;
+    }
+    Ok(marked)
 }
 
 /// Classify a function parameter as the distinguished execution context.
@@ -303,7 +348,7 @@ fn is_tool_context_type(ty: &Type) -> bool {
 /// An owned or shared `ToolContext` is almost certainly an authoring mistake:
 /// tools need the exact mutable context supplied by the runtime so result
 /// metadata and mutations remain visible to the caller.
-fn is_tool_context_parameter(ty: &Type) -> syn::Result<bool> {
+fn is_tool_context_parameter(ty: &Type, explicitly_marked: bool) -> syn::Result<bool> {
     let ty = match ty {
         Type::Group(group) => &*group.elem,
         Type::Paren(paren) => &*paren.elem,
@@ -311,7 +356,7 @@ fn is_tool_context_parameter(ty: &Type) -> syn::Result<bool> {
     };
 
     if let Type::Reference(reference) = ty
-        && is_tool_context_type(&reference.elem)
+        && (explicitly_marked || is_tool_context_type(&reference.elem))
     {
         if reference.mutability.is_none() {
             return Err(syn::Error::new_spanned(
@@ -323,7 +368,7 @@ fn is_tool_context_parameter(ty: &Type) -> syn::Result<bool> {
         return Ok(true);
     }
 
-    if is_tool_context_type(ty) {
+    if explicitly_marked || is_tool_context_type(ty) {
         return Err(syn::Error::new_spanned(
             ty,
             "a `ToolContext` parameter must have type `&mut ToolContext`",
@@ -461,11 +506,14 @@ fn result_type_tokens(
 ///
 /// With execution context:
 /// ```text
+/// use rig::tool::ToolContext;
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool]
 /// fn current_user(
-///     context: &mut rig::tool::ToolContext,
+///     // The marker is required for imported names and type aliases. A fully
+///     // qualified `&mut rig::tool::ToolContext` is also recognized directly.
+///     #[rig(context)] context: &mut ToolContext,
 ///     greeting: String,
 /// ) -> Result<String, rig::tool::ToolExecutionError> {
 ///     let user = context
@@ -487,13 +535,16 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let vis = &input_fn.vis;
     let is_async = input_fn.sig.asyncness.is_some();
 
-    // Build a cleaned copy of the function with doc attrs stripped from parameters,
-    // since `#[doc]` on function parameters is not allowed by the compiler.
+    // Build a cleaned copy of the function with macro-only parameter attributes
+    // stripped. Neither parameter doc comments nor our context marker belongs in
+    // the emitted Rust function.
     let cleaned_fn = {
         let mut f = input_fn.clone();
         for arg in f.sig.inputs.iter_mut() {
             if let syn::FnArg::Typed(pat_type) = arg {
-                pat_type.attrs.retain(|a| !a.path().is_ident("doc"));
+                pat_type
+                    .attrs
+                    .retain(|a| !a.path().is_ident("doc") && !a.path().is_ident("rig"));
             }
         }
         f
@@ -533,7 +584,11 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 .into();
         };
 
-        let is_context = match is_tool_context_parameter(&pat_type.ty) {
+        let explicitly_marked = match has_tool_context_marker(&pat_type.attrs) {
+            Ok(marked) => marked,
+            Err(error) => return error.into_compile_error().into(),
+        };
+        let is_context = match is_tool_context_parameter(&pat_type.ty, explicitly_marked) {
             Ok(is_context) => is_context,
             Err(error) => return error.into_compile_error().into(),
         };

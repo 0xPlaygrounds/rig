@@ -58,7 +58,10 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
-    tool::{ToolContext, ToolDispatch, ToolOutput, ToolResult, server::ToolServerHandle},
+    tool::{
+        ToolContext, ToolDispatch, ToolOutput, ToolResult,
+        server::{ToolRegistrySnapshot, ToolServerHandle},
+    },
 };
 
 use super::UNKNOWN_AGENT_NAME;
@@ -482,7 +485,7 @@ pub(crate) struct ToolCallOutcome {
 pub(crate) async fn run_single_tool<M>(
     hooks: &HookStack<M>,
     ctx: &HookContext,
-    tool_server: &ToolServerHandle,
+    tool_snapshot: &ToolRegistrySnapshot,
     tool_context: &ToolContext,
     tool_call: &ToolCall,
     internal_call_id: &str,
@@ -494,7 +497,7 @@ where
     let tool_name = &tool_call.function.name;
     // `mut` so a tool-call hook can rewrite the arguments the tool
     // runs with (the model's emitted arguments are otherwise used verbatim).
-    let mut args = json_utils::value_to_json_string(&tool_call.function.arguments);
+    let mut args = json_utils::serialize_json_value(&tool_call.function.arguments);
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
@@ -522,7 +525,7 @@ where
     // Apply a salvaged rewrite (short-circuit path only) so `args` — what the
     // `ToolResult` reports — and the span reflect the effective arguments.
     if let Some(rewritten) = salvaged_rewrite.as_ref() {
-        args = json_utils::value_to_json_string(rewritten);
+        args = json_utils::serialize_json_value(rewritten);
         tool_span.record("gen_ai.tool.call.arguments", &args);
         tracing::debug!(
             tool_name = tool_name,
@@ -556,7 +559,7 @@ where
             // Proceeding rewrite: re-record the span so the trace, and the
             // downstream `ToolResult` event, reflect what the tool actually
             // received rather than what the model emitted.
-            args = json_utils::value_to_json_string(&replacement);
+            args = json_utils::serialize_json_value(&replacement);
             tool_span.record("gen_ai.tool.call.arguments", &args);
             tracing::debug!(
                 tool_name = tool_name,
@@ -578,7 +581,7 @@ where
             let ToolDispatch {
                 result: exec,
                 context: dispatch_context,
-            } = tool_server.dispatch(tool_name, &args, tool_context).await;
+            } = tool_snapshot.dispatch(tool_name, &args, tool_context).await;
             (
                 exec,
                 ToolExecution::Executed(Box::new(effective_tool_call)),
@@ -588,7 +591,7 @@ where
     };
     // Presentation rewrites happen after execution. The raw structured result
     // and per-dispatch context remain unchanged for every hook and telemetry.
-    match tool_result_decision(
+    let result_decision = tool_result_decision(
         hooks
             .on_tool_result(
                 ctx,
@@ -603,26 +606,28 @@ where
                 },
             )
             .await,
-    ) {
+    );
+    // Telemetry records the execution truth once, after result hooks have
+    // observed it but before presentation steering is applied. A Stop still
+    // completed the tool call, so omitting these fields would erase the very
+    // outcome that caused a policy to terminate the run.
+    record_tool_result(&tool_span, &exec);
+    tool_span.record("gen_ai.tool.call.result", exec.output().render());
+
+    match result_decision {
         ToolResultDecision::Terminate(reason) => Err(PromptError::prompt_cancelled(
             error_history.to_vec(),
             reason,
         )),
-        ToolResultDecision::Replace(replacement) => {
-            record_tool_result(&tool_span, &exec);
-            tool_span.record("gen_ai.tool.call.result", exec.output().render());
-            Ok(ToolCallOutcome {
-                content: tool_result_output(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    replacement,
-                ),
-                execution,
-            })
-        }
+        ToolResultDecision::Replace(replacement) => Ok(ToolCallOutcome {
+            content: tool_result_output(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                replacement,
+            ),
+            execution,
+        }),
         ToolResultDecision::Keep => {
-            record_tool_result(&tool_span, &exec);
-            tool_span.record("gen_ai.tool.call.result", exec.output().render());
             let content = tool_result_output(
                 tool_call.id.clone(),
                 tool_call.call_id.clone(),
@@ -814,6 +819,7 @@ where
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
+        tool_snapshot: Arc<ToolRegistrySnapshot>,
     ) -> DriveStream<'a, M::Response> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it
@@ -823,6 +829,7 @@ where
             hook_ctx,
             run,
             calls,
+            tool_snapshot,
             |span| self.chain_span(span),
             false,
         )
@@ -1098,7 +1105,7 @@ mod tests {
             *blocking.0.lock().unwrap(),
             vec![(
                 ToolErrorKind::Timeout,
-                "tool execution timed out".into(),
+                "raw timeout failure".into(),
                 "shared-result-metadata".into()
             )]
         );
@@ -1178,6 +1185,7 @@ mod migrated_tests {
     use futures::StreamExt;
     use serde::Deserialize;
     use serde_json::json;
+    use tokio::sync::Notify;
 
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
@@ -1617,7 +1625,7 @@ mod migrated_tests {
 
             assert_eq!(hook.outcomes(), vec!["error:timeout".to_string()]);
             // (4) The model still receives useful text for the handled failure.
-            assert_eq!(hook.results(), vec!["tool execution timed out".to_string()]);
+            assert_eq!(hook.results(), vec!["mock tool call failed".to_string()]);
         }
 
         // (2) A hook counts timeout failures in the run scratchpad and terminates
@@ -1818,10 +1826,7 @@ mod migrated_tests {
                 .expect("a permission failure is model-visible feedback, not fatal");
 
             assert_eq!(hook.outcomes(), vec!["error:permission_denied".to_string()]);
-            assert_eq!(
-                hook.results(),
-                vec!["the tool denied the request".to_string()]
-            );
+            assert_eq!(hook.results(), vec!["mock tool call failed".to_string()]);
         }
 
         // A `ToolCallAction::Rewrite` hook followed by a `Skip` hook: the tool must not run,
@@ -2607,6 +2612,18 @@ mod migrated_tests {
             }
         }
 
+        /// Stops the run after observing a completed tool result.
+        struct StopOnResultHook;
+        impl<M: crate::completion::CompletionModel> crate::agent::AgentHook<M> for StopOnResultHook {
+            async fn on_tool_result(
+                &self,
+                _ctx: &HookContext,
+                _event: ToolResultEvent<'_>,
+            ) -> ToolResultAction {
+                ToolResultAction::stop("stop after raw result")
+            }
+        }
+
         /// Captures every value recorded into the `gen_ai.tool.call.result` span
         /// field, so a test can assert telemetry retains the raw execution data.
         #[derive(Default)]
@@ -2685,6 +2702,44 @@ mod migrated_tests {
             assert!(
                 !captured.iter().any(|v| v.contains("[REDACTED]")),
                 "the presentation rewrite must not replace raw telemetry; captured: {captured:?}"
+            );
+        }
+
+        /// Stopping from the result hook must not erase telemetry for the tool
+        /// execution that already completed and triggered the stop.
+        #[tokio::test]
+        async fn tool_result_stop_still_records_raw_span_output() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let subscriber = Registry::default().with(ResultValueLayer {
+                values: values.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            warm_blocking_callsites().await;
+            tracing::callsite::rebuild_interest_cache();
+            values.lock().expect("values").clear();
+
+            let result = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
+                "tc1",
+                "raw_output",
+                serde_json::json!({}),
+            )]))
+            .tool(RawOutputTool)
+            .add_hook(StopOnResultHook)
+            .build()
+            .runner("go")
+            .max_turns(2)
+            .run()
+            .await;
+            assert!(result.is_err(), "the result hook should stop the run");
+
+            let captured = values.lock().expect("values").clone();
+            assert!(
+                captured
+                    .iter()
+                    .any(|value| value.contains("RAW_EXECUTION_OUTPUT_42")),
+                "a Stop must retain raw execution telemetry; captured: {captured:?}"
             );
         }
     }
@@ -4284,6 +4339,26 @@ mod migrated_tests {
         }
     }
 
+    #[derive(Clone)]
+    struct CaptureAndRepairInvalidHook {
+        replacement: &'static str,
+        args: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    impl<M: CompletionModel> AgentHook<M> for CaptureAndRepairInvalidHook {
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            event: &InvalidToolCallContext,
+        ) -> Option<InvalidToolCallAction> {
+            self.args
+                .lock()
+                .expect("invalid args")
+                .push(event.args.clone());
+            Some(InvalidToolCallAction::repair(self.replacement))
+        }
+    }
+
     /// An invalid tool call repaired by a hook recovers identically under run()
     /// and stream(): the renamed tool executes and both drivers reach the same
     /// output, tool-result content, and final message history.
@@ -4369,6 +4444,73 @@ mod migrated_tests {
         assert_eq!(
             serde_json::to_value(&blocking_messages).expect("serialize blocking"),
             serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_stream() {
+        let blocking_args = Arc::new(Mutex::new(Vec::new()));
+        let blocking_hook = RecordingHook::default();
+        let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
+            MockTurn::tool_call("tc1", "unknown_echo", json!("payload")),
+            MockTurn::text("done"),
+        ]))
+        .tool(EchoStringArgs)
+        .build()
+        .runner("echo a string")
+        .max_turns(3)
+        .add_hook(blocking_hook.clone())
+        .add_hook(CaptureAndRepairInvalidHook {
+            replacement: EchoStringArgs::NAME,
+            args: blocking_args.clone(),
+        })
+        .run()
+        .await
+        .expect("blocking scalar repair should succeed");
+
+        let streaming_args = Arc::new(Mutex::new(Vec::new()));
+        let streaming_hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "unknown_echo", json!("payload")),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]))
+        .tool(EchoStringArgs)
+        .build()
+        .runner("echo a string")
+        .max_turns(3)
+        .add_hook(streaming_hook.clone())
+        .add_hook(CaptureAndRepairInvalidHook {
+            replacement: EchoStringArgs::NAME,
+            args: streaming_args.clone(),
+        })
+        .stream()
+        .await;
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(response) =
+                item.expect("streaming scalar repair should succeed")
+            {
+                final_response = Some(response);
+            }
+        }
+        let final_response = final_response.expect("stream should yield a final response");
+
+        let canonical_args = vec![Some(serde_json::to_string("payload").unwrap())];
+        assert_eq!(*blocking_args.lock().unwrap(), canonical_args);
+        assert_eq!(*streaming_args.lock().unwrap(), canonical_args);
+        assert_eq!(blocking_hook.tool_results(), vec!["payload"]);
+        assert_eq!(streaming_hook.tool_results(), vec!["payload"]);
+        assert_eq!(blocking.output, "done");
+        assert_eq!(final_response.output(), "done");
+        assert_eq!(
+            serde_json::to_value(blocking.messages.expect("blocking history")).unwrap(),
+            serde_json::to_value(final_response.messages().expect("streaming history")).unwrap()
         );
     }
 
@@ -4986,6 +5128,174 @@ mod migrated_tests {
         }
     }
 
+    struct EchoStringArgs;
+
+    impl Tool for EchoStringArgs {
+        const NAME: &'static str = "echo_string_args";
+        type Args = String;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "Echo a JSON string argument".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({"type": "string"})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            Ok(args)
+        }
+    }
+
+    #[derive(serde::Deserialize)]
+    struct FirstGenerationArgs {
+        old: String,
+    }
+
+    struct FirstGenerationTool(Arc<AtomicU32>);
+
+    impl Tool for FirstGenerationTool {
+        const NAME: &'static str = "generation_pinned";
+        type Args = FirstGenerationArgs;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "first generation schema".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({
+                "type": "object",
+                "properties": {"old": {"type": "string"}},
+                "required": ["old"]
+            })
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            self.0.fetch_add(1, SeqCst);
+            Ok(format!("first:{}", args.old))
+        }
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SecondGenerationArgs {
+        new: String,
+    }
+
+    struct SecondGenerationTool(Arc<AtomicU32>);
+
+    impl Tool for SecondGenerationTool {
+        const NAME: &'static str = FirstGenerationTool::NAME;
+        type Args = SecondGenerationArgs;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "second generation schema".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({
+                "type": "object",
+                "properties": {"new": {"type": "string"}},
+                "required": ["new"]
+            })
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            self.0.fetch_add(1, SeqCst);
+            Ok(format!("second:{}", args.new))
+        }
+    }
+
+    /// Pauses the first provider call after its request has been built. Tests
+    /// replace the live registry while that request is in flight, then let the
+    /// model return a call that is valid only for the advertised generation.
+    #[derive(Clone)]
+    struct PausingCompletionModel {
+        inner: MockCompletionModel,
+        request_started: Arc<Notify>,
+        release_response: Arc<Notify>,
+        requests: Arc<AtomicU32>,
+    }
+
+    impl PausingCompletionModel {
+        fn new(inner: MockCompletionModel) -> (Self, Arc<Notify>, Arc<Notify>) {
+            let request_started = Arc::new(Notify::new());
+            let release_response = Arc::new(Notify::new());
+            (
+                Self {
+                    inner,
+                    request_started: request_started.clone(),
+                    release_response: release_response.clone(),
+                    requests: Arc::new(AtomicU32::new(0)),
+                },
+                request_started,
+                release_response,
+            )
+        }
+
+        async fn inspect_and_pause(&self, request: &crate::completion::CompletionRequest) {
+            let request_index = self.requests.fetch_add(1, SeqCst);
+            let definition = request
+                .tools
+                .iter()
+                .find(|definition| definition.name == FirstGenerationTool::NAME)
+                .expect("generation tool must be advertised");
+            if request_index == 0 {
+                assert_eq!(definition.description, "first generation schema");
+                self.request_started.notify_one();
+                self.release_response.notified().await;
+            } else {
+                assert_eq!(definition.description, "second generation schema");
+            }
+        }
+    }
+
+    impl CompletionModel for PausingCompletionModel {
+        type Response = crate::test_utils::MockResponse;
+        type StreamingResponse = crate::test_utils::MockResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self::new(MockCompletionModel::default()).0
+        }
+
+        async fn completion(
+            &self,
+            request: crate::completion::CompletionRequest,
+        ) -> Result<
+            crate::completion::CompletionResponse<Self::Response>,
+            crate::completion::CompletionError,
+        > {
+            self.inspect_and_pause(&request).await;
+            self.inner.completion(request).await
+        }
+
+        async fn stream(
+            &self,
+            request: crate::completion::CompletionRequest,
+        ) -> Result<
+            crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+            crate::completion::CompletionError,
+        > {
+            self.inspect_and_pause(&request).await;
+            self.inner.stream(request).await
+        }
+    }
+
     /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
     /// carries the replacement arguments, and is named for fail-closed
     /// diagnostics.
@@ -5068,6 +5378,212 @@ mod migrated_tests {
             streaming_hook.shared_events()
         );
         assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
+    }
+
+    #[tokio::test]
+    async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
+                id: "tc-string",
+                name: EchoStringArgs::NAME,
+                args: json!("original"),
+            }]),
+            ScriptedTurn::Text("done"),
+        ];
+
+        let blocking_hook = RecordingHook::default();
+        let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
+            turns.iter().map(ScriptedTurn::as_blocking_turn),
+        ))
+        .tool(EchoStringArgs)
+        .build()
+        .runner("echo a string")
+        .max_turns(3)
+        .add_hook(blocking_hook.clone())
+        .run()
+        .await
+        .expect("blocking string call should execute");
+
+        let streaming_hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        ))
+        .tool(EchoStringArgs)
+        .build()
+        .runner("echo a string")
+        .max_turns(3)
+        .add_hook(streaming_hook.clone())
+        .stream()
+        .await;
+        let mut final_output = None;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(response) =
+                item.expect("streaming string call should execute")
+            {
+                final_output = Some(response.output().to_string());
+            }
+        }
+
+        assert_eq!(blocking.output, "done");
+        assert_eq!(final_output.as_deref(), Some("done"));
+        assert_eq!(blocking_hook.tool_results(), vec!["original"]);
+        assert_eq!(streaming_hook.tool_results(), vec!["original"]);
+    }
+
+    #[tokio::test]
+    async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
+                id: "tc-string",
+                name: EchoStringArgs::NAME,
+                args: json!("original"),
+            }]),
+            ScriptedTurn::Text("done"),
+        ];
+        let replacement = json!("sanitized");
+
+        let blocking_hook = RecordingHook::default();
+        let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
+            turns.iter().map(ScriptedTurn::as_blocking_turn),
+        ))
+        .tool(EchoStringArgs)
+        .build()
+        .runner("echo a string")
+        .max_turns(3)
+        .add_hook(blocking_hook.clone())
+        .add_hook(RewriteToolArgsHook(replacement.clone()))
+        .run()
+        .await
+        .expect("blocking string rewrite should execute");
+
+        let streaming_hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        ))
+        .tool(EchoStringArgs)
+        .build()
+        .runner("echo a string")
+        .max_turns(3)
+        .add_hook(streaming_hook.clone())
+        .add_hook(RewriteToolArgsHook(replacement))
+        .stream()
+        .await;
+        let mut final_output = None;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(response) =
+                item.expect("streaming string rewrite should execute")
+            {
+                final_output = Some(response.output().to_string());
+            }
+        }
+
+        assert_eq!(blocking.output, "done");
+        assert_eq!(final_output.as_deref(), Some("done"));
+        assert_eq!(blocking_hook.tool_results(), vec!["sanitized"]);
+        assert_eq!(streaming_hook.tool_results(), vec!["sanitized"]);
+    }
+
+    #[tokio::test]
+    async fn blocking_turn_dispatches_the_registry_generation_it_advertised() {
+        let first_calls = Arc::new(AtomicU32::new(0));
+        let second_calls = Arc::new(AtomicU32::new(0));
+        let handle: ToolServerHandle = ToolServer::new()
+            .tool(FirstGenerationTool(first_calls.clone()))
+            .run();
+        let inner = MockCompletionModel::from_turns([
+            MockTurn::tool_call(
+                "tc-generation",
+                FirstGenerationTool::NAME,
+                json!({"old": "payload"}),
+            ),
+            MockTurn::text("done"),
+        ]);
+        let (model, request_started, release_response) = PausingCompletionModel::new(inner);
+        let runner = AgentBuilder::new(model)
+            .tool_server_handle(handle.clone())
+            .build()
+            .runner("use the generation tool")
+            .max_turns(3);
+
+        let run = runner.run();
+        let replace = async {
+            request_started.notified().await;
+            handle
+                .add_tool(SecondGenerationTool(second_calls.clone()))
+                .await;
+            release_response.notify_one();
+        };
+        let (response, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            tokio::join!(run, replace)
+        })
+        .await
+        .expect("in-flight blocking replacement must not hang");
+        let response = response.expect("blocking run should use its pinned tool generation");
+
+        assert_eq!(response.output, "done");
+        assert_eq!(first_calls.load(SeqCst), 1);
+        assert_eq!(second_calls.load(SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn streaming_turn_dispatches_the_registry_generation_it_advertised() {
+        let first_calls = Arc::new(AtomicU32::new(0));
+        let second_calls = Arc::new(AtomicU32::new(0));
+        let handle: ToolServerHandle = ToolServer::new()
+            .tool(FirstGenerationTool(first_calls.clone()))
+            .run();
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
+                id: "tc-generation",
+                name: FirstGenerationTool::NAME,
+                args: json!({"old": "payload"}),
+            }]),
+            ScriptedTurn::Text("done"),
+        ];
+        let inner = MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        );
+        let (model, request_started, release_response) = PausingCompletionModel::new(inner);
+        let runner = AgentBuilder::new(model)
+            .tool_server_handle(handle.clone())
+            .build()
+            .runner("use the generation tool")
+            .max_turns(3);
+
+        let drive = async {
+            let mut stream = runner.stream().await;
+            let mut final_output = None;
+            while let Some(item) = stream.next().await {
+                if let MultiTurnStreamItem::FinalResponse(response) =
+                    item.expect("streaming run should use its pinned tool generation")
+                {
+                    final_output = Some(response.output().to_string());
+                }
+            }
+            final_output
+        };
+        let replace = async {
+            request_started.notified().await;
+            handle
+                .add_tool(SecondGenerationTool(second_calls.clone()))
+                .await;
+            release_response.notify_one();
+        };
+        let (final_output, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            tokio::join!(drive, replace)
+        })
+        .await
+        .expect("in-flight streaming replacement must not hang");
+
+        assert_eq!(final_output.as_deref(), Some("done"));
+        assert_eq!(first_calls.load(SeqCst), 1);
+        assert_eq!(second_calls.load(SeqCst), 0);
     }
 
     /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
