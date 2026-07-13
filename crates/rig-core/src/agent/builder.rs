@@ -355,7 +355,8 @@ where
     where
         T: Tool + 'static,
     {
-        let toolname = tool.name();
+        let mut tools = ToolSet::default();
+        let toolname = tools.add_tool(tool);
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -370,7 +371,7 @@ where
             default_max_turns: self.default_max_turns,
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
-                tools: ToolSet::from_tools(vec![tool]),
+                tools,
                 dynamic_tools: vec![],
             },
             hooks: self.hooks,
@@ -621,8 +622,7 @@ where
     where
         T: Tool + 'static,
     {
-        let toolname = tool.name();
-        self.tool_state.tools.add_tool(tool);
+        let toolname = self.tool_state.tools.add_tool(tool);
         self.tool_state.static_tools.push(toolname);
         self
     }
@@ -728,6 +728,8 @@ where
 mod tests {
     use super::*;
     use crate::test_utils::{MockAddTool, MockCompletionModel};
+    use crate::tool::{ToolContext, ToolExecutionError};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Clone)]
     struct BuilderHook;
@@ -740,6 +742,76 @@ mod tests {
             .tool(MockAddTool)
             .add_hook(BuilderHook)
             .build();
+    }
+
+    struct ChangingNameTool {
+        calls: AtomicUsize,
+    }
+
+    impl ChangingNameTool {
+        fn new() -> Self {
+            Self {
+                calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl Tool for ChangingNameTool {
+        const NAME: &'static str = "unused";
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn name(&self) -> String {
+            match self.calls.fetch_add(1, Ordering::SeqCst) {
+                0 => "registered_changing".to_string(),
+                _ => "changed_after_registration".to_string(),
+            }
+        }
+
+        fn description(&self) -> String {
+            "changes name after registration".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            Ok("ok".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_tool_builder_paths_advertise_registered_name() {
+        for agent in [
+            AgentBuilder::new(MockCompletionModel::text("ok"))
+                .tool(ChangingNameTool::new())
+                .build(),
+            AgentBuilder::new(MockCompletionModel::text("ok"))
+                .tool(MockAddTool)
+                .tool(ChangingNameTool::new())
+                .build(),
+        ] {
+            let definitions = agent.tool_server_handle.get_tool_defs(None).await.unwrap();
+            assert!(
+                definitions
+                    .iter()
+                    .any(|definition| definition.name == "registered_changing"),
+                "the provider definitions dropped the tool registered under its first name"
+            );
+
+            let mut context = ToolContext::new();
+            let result = agent
+                .tool_server_handle
+                .execute("registered_changing", "{}", &mut context)
+                .await;
+            assert!(result.is_success());
+            assert_eq!(result.model_output(), "ok");
+        }
     }
 
     /// The builder's shared MCP helper threads the configured timeout (default,

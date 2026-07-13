@@ -2934,12 +2934,12 @@ mod migrated_tests {
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
         let empty_history: &[Message] = &[];
 
-        let mut extensions = ToolContext::new();
-        extensions.insert(SessionId("xyz-789".to_string()));
+        let mut tool_context = ToolContext::new();
+        tool_context.insert(SessionId("xyz-789".to_string()));
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .tool_context(extensions)
+            .tool_context(tool_context)
             .history(empty_history)
             .max_turns(3)
             .await;
@@ -2955,9 +2955,9 @@ mod migrated_tests {
         assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
     }
 
-    /// Streaming counterpart of the blocking empty-extensions default: with no
-    /// `.tool_extensions(..)`, the tool still runs with empty extensions
-    /// (observing `no-session`), not a stale value.
+    /// Streaming counterpart of the blocking empty-context default: when no
+    /// [`ToolContext`] is supplied, the tool still receives a fresh empty
+    /// context (observing `no-session`), not a stale value.
     #[tokio::test]
     async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
         let model = MockCompletionModel::from_stream_turns([

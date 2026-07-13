@@ -842,6 +842,8 @@ impl AgentRun {
     ///   model-call budget.
     /// - [`InvalidToolCallAction::Repair`] renames the tool call; the
     ///   repaired name is revalidated against the allowed tools.
+    /// - [`InvalidToolCallAction::Stop`] cancels the run with
+    ///   `PromptError::prompt_cancelled` and the supplied reason.
     /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
     ///   and suppresses execution of every tool call in the turn. Rejected
     ///   under [`ToolChoice::None`].
