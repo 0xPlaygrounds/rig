@@ -33,10 +33,6 @@ itinerary.activities = [\"temples\", \"tea ceremony\"], \
 itinerary.lodging.name = \"Sakura Inn\", itinerary.lodging.rooms = 2. \
 After the tool returns, repeat its confirmation code in one short sentence.";
 
-#[derive(Debug, thiserror::Error)]
-#[error("Trip planning failed")]
-struct PlanTripError;
-
 #[derive(Deserialize)]
 struct Lodging {
     name: String,
@@ -60,7 +56,6 @@ struct PlanTrip;
 
 impl Tool for PlanTrip {
     const NAME: &'static str = "plan_trip";
-    type Error = PlanTripError;
     type Args = PlanTripArgs;
     type Output = String;
 
@@ -72,7 +67,11 @@ impl Tool for PlanTrip {
         plan_trip_parameters()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         Ok(format!(
             "Booked {} for {} day(s), {} room(s) at {}, with {} planned activities. \
              Confirmation code SAKURA-77.",

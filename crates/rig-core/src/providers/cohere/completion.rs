@@ -237,7 +237,7 @@ pub struct ToolCall {
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
-    pub r#type: Option<ToolType>,
+    pub r#type: Option<ProviderToolType>,
     #[serde(default)]
     pub function: Option<ToolCallFunction>,
 }
@@ -251,14 +251,14 @@ pub struct ToolCallFunction {
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum ToolType {
+pub enum ProviderToolType {
     #[default]
     Function,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Tool {
-    pub r#type: ToolType,
+    pub r#type: ProviderToolType,
     pub function: Function,
 }
 
@@ -273,7 +273,7 @@ pub struct Function {
 impl From<completion::ToolDefinition> for Tool {
     fn from(tool: completion::ToolDefinition) -> Self {
         Self {
-            r#type: ToolType::default(),
+            r#type: ProviderToolType::default(),
             function: Function {
                 name: tool.name,
                 description: Some(tool.description),
@@ -421,7 +421,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         }) => {
                             tool_calls.push(ToolCall {
                                 id: Some(id),
-                                r#type: Some(ToolType::Function),
+                                r#type: Some(ProviderToolType::Function),
                                 function: Some(ToolCallFunction {
                                     name,
                                     arguments: serde_json::to_value(arguments).unwrap_or_default(),

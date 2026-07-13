@@ -1,16 +1,16 @@
-//! Verifies that a `Flow::RewriteArgs` hook rewrites a tool call's arguments
+//! Verifies that a `ToolCallAction::Rewrite` hook rewrites a tool call's arguments
 //! before the tool executes, end-to-end through a real Anthropic round-trip.
 //!
 //! The `get_weather` tool advertises only a `location` parameter, so the model
 //! never sends a `units` field. A default hook injects `units: "celsius"` on the
-//! `ToolCall` event via `Flow::rewrite_args`, and the tool records what it was
+//! `ToolCall` event via `ToolCallAction::rewrite`, and the tool records what it was
 //! actually called with. A recorded `units` value therefore proves the rewritten
 //! arguments reached execution — and the blocking and streaming tests assert the
 //! same behavior, since both drivers share the same tool-execution seam.
 
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, Flow, StepEvent};
+use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers::anthropic;
@@ -41,10 +41,6 @@ struct WeatherArgs {
     units: Option<String>,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("weather error")]
-struct WeatherError;
-
 /// A tool that records the arguments it observed so the test can assert the
 /// rewritten arguments — not the model's original ones — reached execution.
 #[derive(Clone, Default)]
@@ -60,7 +56,6 @@ impl GetWeather {
 
 impl Tool for GetWeather {
     const NAME: &'static str = "get_weather";
-    type Error = WeatherError;
     type Args = WeatherArgs;
     type Output = String;
 
@@ -81,7 +76,11 @@ impl Tool for GetWeather {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.calls.lock().expect("calls lock").push(ObservedCall {
             location: args.location.clone(),
             units: args.units.clone(),
@@ -101,24 +100,24 @@ impl Tool for GetWeather {
 /// A guardrail hook that injects `units: "celsius"` into every `get_weather`
 /// call before it runs — the parameter-normalization use case `RewriteArgs`
 /// exists for. It reads the model's emitted arguments, adds the field, and
-/// returns the rewritten object via [`Flow::rewrite_args`].
+/// returns the rewritten object via [`ToolCallAction::rewrite`].
 struct PinUnitsToCelsius;
 
 impl<M: CompletionModel> AgentHook<M> for PinUnitsToCelsius {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::ToolCall {
-            tool_name, args, ..
-        } = event
-            && tool_name == GetWeather::NAME
-        {
-            let mut value: serde_json::Value =
-                serde_json::from_str(args).unwrap_or_else(|_| json!({}));
-            if let Some(object) = value.as_object_mut() {
-                object.insert("units".to_string(), json!("celsius"));
-            }
-            return Flow::rewrite_args(value);
+    async fn on_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: ToolCallEvent<'_>,
+    ) -> ToolCallAction {
+        if event.tool_name != GetWeather::NAME {
+            return ToolCallAction::run();
         }
-        Flow::cont()
+        let mut value: serde_json::Value =
+            serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
+        if let Some(object) = value.as_object_mut() {
+            object.insert("units".to_string(), json!("celsius"));
+        }
+        ToolCallAction::rewrite(value)
     }
 }
 

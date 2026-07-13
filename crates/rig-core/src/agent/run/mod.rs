@@ -64,7 +64,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OneOrMany,
-    agent::hook::{InvalidToolCallContext, InvalidToolCallHookAction},
+    agent::hook::{InvalidToolCallAction, InvalidToolCallContext},
     agent::prompt_request::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
@@ -412,7 +412,7 @@ impl AgentRun {
         self.next_step()
     }
 
-    /// Set the retry budget for [`InvalidToolCallHookAction::Retry`]
+    /// Set the retry budget for [`InvalidToolCallAction::Retry`]
     /// resolutions. Invalid tool-call retries also consume the total model-call
     /// budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
@@ -421,7 +421,7 @@ impl AgentRun {
     }
 
     /// Set the tool choice active for this run. Used to reject
-    /// [`InvalidToolCallHookAction::Skip`] resolutions under
+    /// [`InvalidToolCallAction::Skip`] resolutions under
     /// [`ToolChoice::None`] and reported in invalid tool-call contexts.
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
@@ -835,19 +835,19 @@ impl AgentRun {
     /// Answer a pending [`ModelTurnOutcome::NeedsResolution`].
     ///
     /// Applies the agent loop's recovery semantics:
-    /// - [`InvalidToolCallHookAction::Fail`] fails the run with
+    /// - [`InvalidToolCallAction::Fail`] fails the run with
     ///   [`PromptError::UnknownToolCall`].
-    /// - [`InvalidToolCallHookAction::Retry`] rolls the turn back with
+    /// - [`InvalidToolCallAction::Retry`] rolls the turn back with
     ///   corrective feedback while budget remains, consuming the total
     ///   model-call budget.
-    /// - [`InvalidToolCallHookAction::Repair`] renames the tool call; the
+    /// - [`InvalidToolCallAction::Repair`] renames the tool call; the
     ///   repaired name is revalidated against the allowed tools.
-    /// - [`InvalidToolCallHookAction::Skip`] records a synthetic tool result
+    /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
     ///   and suppresses execution of every tool call in the turn. Rejected
     ///   under [`ToolChoice::None`].
     pub fn resolve_invalid_tool_call(
         &mut self,
-        action: InvalidToolCallHookAction,
+        action: InvalidToolCallAction,
     ) -> Result<ModelTurnOutcome, PromptError> {
         // Take the resolving state; rejection paths below restore it so an
         // out-of-protocol call does not corrupt a drivable run.
@@ -883,13 +883,13 @@ impl AgentRun {
             resolving.allowed_tool_names.iter().cloned().collect();
 
         match action {
-            InvalidToolCallHookAction::Fail => Err(unknown_tool_call_error(
+            InvalidToolCallAction::Fail => Err(unknown_tool_call_error(
                 tool_call.function.name,
                 executable_tool_names,
                 allowed_tool_names,
                 diagnostic_history,
             )),
-            InvalidToolCallHookAction::Retry { feedback } => {
+            InvalidToolCallAction::Retry { feedback } => {
                 if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
                     return Err(unknown_tool_call_error(
                         tool_call.function.name,
@@ -918,7 +918,7 @@ impl AgentRun {
                 self.state = RunState::PreparingRequest;
                 Ok(ModelTurnOutcome::TurnRetried)
             }
-            InvalidToolCallHookAction::Repair { tool_name } => {
+            InvalidToolCallAction::Repair { tool_name } => {
                 if !allowed_tool_names.contains(&tool_name) {
                     return Err(unknown_tool_call_error(
                         tool_name,
@@ -936,7 +936,10 @@ impl AgentRun {
                 self.state = RunState::ResolvingToolCalls(resolving);
                 self.advance_resolution()
             }
-            InvalidToolCallHookAction::Skip { reason } => {
+            InvalidToolCallAction::Stop { reason } => {
+                Err(PromptError::prompt_cancelled(diagnostic_history, reason))
+            }
+            InvalidToolCallAction::Skip { reason } => {
                 if matches!(self.tool_choice, Some(ToolChoice::None)) {
                     return Err(unknown_tool_call_error(
                         tool_call.function.name,
@@ -1156,7 +1159,7 @@ impl AgentRun {
         &mut self,
         partial: &PartialStreamedTurn,
         invalid: &StreamedInvalidToolCall,
-        action: InvalidToolCallHookAction,
+        action: InvalidToolCallAction,
     ) -> Result<StreamedResolution, PromptError> {
         if !matches!(self.state, RunState::AwaitingModel) {
             return Err(self.protocol_violation(
@@ -1171,7 +1174,7 @@ impl AgentRun {
         let allowed_tool_names: Vec<String> = invalid.allowed_tool_names.iter().cloned().collect();
 
         match action {
-            InvalidToolCallHookAction::Fail => {
+            InvalidToolCallAction::Fail => {
                 self.state = RunState::Failed;
                 Err(unknown_tool_call_error(
                     invalid.tool_call.function.name.clone(),
@@ -1180,7 +1183,7 @@ impl AgentRun {
                     diagnostic_history,
                 ))
             }
-            InvalidToolCallHookAction::Retry { feedback } => {
+            InvalidToolCallAction::Retry { feedback } => {
                 if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
                     self.state = RunState::Failed;
                     return Err(unknown_tool_call_error(
@@ -1209,7 +1212,7 @@ impl AgentRun {
                     skipped_tool_result: None,
                 })
             }
-            InvalidToolCallHookAction::Repair { tool_name } => {
+            InvalidToolCallAction::Repair { tool_name } => {
                 if !invalid.allowed_tool_names.contains(&tool_name) {
                     self.state = RunState::Failed;
                     return Err(unknown_tool_call_error(
@@ -1221,7 +1224,10 @@ impl AgentRun {
                 }
                 Ok(StreamedResolution::Repaired { tool_name })
             }
-            InvalidToolCallHookAction::Skip { reason } => {
+            InvalidToolCallAction::Stop { reason } => {
+                Err(PromptError::prompt_cancelled(diagnostic_history, reason))
+            }
+            InvalidToolCallAction::Skip { reason } => {
                 if matches!(self.tool_choice, Some(ToolChoice::None)) {
                     self.state = RunState::Failed;
                     return Err(unknown_tool_call_error(
@@ -1658,7 +1664,7 @@ mod tests {
         assert_eq!(context.chat_history.len(), 2);
 
         let err = run
-            .resolve_invalid_tool_call(InvalidToolCallHookAction::fail())
+            .resolve_invalid_tool_call(InvalidToolCallAction::fail())
             .expect_err("fail action should error");
         assert!(matches!(
             err,
@@ -1678,7 +1684,7 @@ mod tests {
                 .expect("model_response should succeed"),
         );
         let outcome = run
-            .resolve_invalid_tool_call(InvalidToolCallHookAction::retry("use add instead"))
+            .resolve_invalid_tool_call(InvalidToolCallAction::retry("use add instead"))
             .expect("retry should be accepted");
         assert!(matches!(outcome, ModelTurnOutcome::TurnRetried));
 
@@ -1698,7 +1704,7 @@ mod tests {
                 .expect("model_response should succeed"),
         );
         let err = run
-            .resolve_invalid_tool_call(InvalidToolCallHookAction::retry("again"))
+            .resolve_invalid_tool_call(InvalidToolCallAction::retry("again"))
             .expect_err("budget exhausted");
         assert!(matches!(err, PromptError::UnknownToolCall { .. }));
     }
@@ -1715,7 +1721,7 @@ mod tests {
                 .expect("model_response should succeed"),
         );
         let outcome = run
-            .resolve_invalid_tool_call(InvalidToolCallHookAction::retry("use add instead"))
+            .resolve_invalid_tool_call(InvalidToolCallAction::retry("use add instead"))
             .expect("retry resolution should be accepted");
         assert!(matches!(outcome, ModelTurnOutcome::TurnRetried));
         assert_eq!(run.completion_calls().len(), 1);
@@ -1740,7 +1746,7 @@ mod tests {
                 .expect("model_response should succeed"),
         );
         let suppressed = expect_continue(
-            run.resolve_invalid_tool_call(InvalidToolCallHookAction::repair("add"))
+            run.resolve_invalid_tool_call(InvalidToolCallAction::repair("add"))
                 .expect("repair should be accepted"),
         );
         assert!(suppressed);
@@ -1760,7 +1766,7 @@ mod tests {
                 .expect("model_response should succeed"),
         );
         let err = run
-            .resolve_invalid_tool_call(InvalidToolCallHookAction::repair("also_unknown"))
+            .resolve_invalid_tool_call(InvalidToolCallAction::repair("also_unknown"))
             .expect_err("repair to disallowed name should fail");
         assert!(matches!(
             err,
@@ -1789,7 +1795,7 @@ mod tests {
                 .expect("model_response should succeed"),
         );
         let suppressed = expect_continue(
-            run.resolve_invalid_tool_call(InvalidToolCallHookAction::skip("not available"))
+            run.resolve_invalid_tool_call(InvalidToolCallAction::skip("not available"))
                 .expect("skip should be accepted"),
         );
         assert!(suppressed);
@@ -1816,7 +1822,7 @@ mod tests {
             .expect("model_response should succeed"),
         );
         let err = run
-            .resolve_invalid_tool_call(InvalidToolCallHookAction::skip("nope"))
+            .resolve_invalid_tool_call(InvalidToolCallAction::skip("nope"))
             .expect_err("skip under ToolChoice::None should fail");
         assert!(matches!(err, PromptError::UnknownToolCall { .. }));
     }

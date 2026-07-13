@@ -893,12 +893,12 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
     #[serde(default, rename = "type")]
-    pub r#type: ToolType,
+    pub r#type: ProviderToolType,
     pub function: Function,
 }
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum ToolType {
+pub enum ProviderToolType {
     #[default]
     Function,
 }
@@ -1159,7 +1159,7 @@ impl Message {
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
-            r#type: ToolType::Function,
+            r#type: ProviderToolType::Function,
             function: Function {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,

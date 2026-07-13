@@ -4,7 +4,10 @@ use anyhow::{Result, anyhow};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, Flow, StepEvent};
+use rig::agent::{
+    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
+    ObservationAction,
+};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Message, Prompt};
 use rig::message::UserContent;
@@ -26,42 +29,44 @@ impl<'a, M> AgentHook<M> for SessionIdHook<'a>
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::CompletionCall { prompt, .. } => {
-                let Message::User { content } = prompt else {
-                    return Flow::terminate("expected a user message");
-                };
-
-                let prompt_text = content
-                    .iter()
-                    .filter_map(|content| match content {
-                        UserContent::Text(text) => Some(text.text.clone()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                self.prompt_calls.fetch_add(1, Ordering::SeqCst);
-                match self.seen_prompt.lock() {
-                    Ok(mut seen_prompt) => {
-                        *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
-                        Flow::cont()
-                    }
-                    Err(_) => Flow::terminate("prompt hook state unavailable"),
-                }
+    async fn on_completion_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let Message::User { content } = event.prompt else {
+            return CompletionCallAction::stop("expected a user message");
+        };
+        let prompt_text = content
+            .iter()
+            .filter_map(|content| match content {
+                UserContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        self.prompt_calls.fetch_add(1, Ordering::SeqCst);
+        match self.seen_prompt.lock() {
+            Ok(mut seen_prompt) => {
+                *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
+                CompletionCallAction::continue_run()
             }
-            StepEvent::CompletionResponse { response, .. } => {
-                self.response_calls.fetch_add(1, Ordering::SeqCst);
-                match self.seen_response.lock() {
-                    Ok(mut seen_response) => {
-                        *seen_response = Some(format!("{:?}", response.choice));
-                        Flow::cont()
-                    }
-                    Err(_) => Flow::terminate("response hook state unavailable"),
-                }
+            Err(_) => CompletionCallAction::stop("prompt hook state unavailable"),
+        }
+    }
+
+    async fn on_completion_response(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: CompletionResponseEvent<'_, M>,
+    ) -> ObservationAction {
+        self.response_calls.fetch_add(1, Ordering::SeqCst);
+        match self.seen_response.lock() {
+            Ok(mut seen_response) => {
+                *seen_response = Some(format!("{:?}", event.response.choice));
+                ObservationAction::continue_run()
             }
-            _ => Flow::cont(),
+            Err(_) => ObservationAction::stop("response hook state unavailable"),
         }
     }
 }

@@ -336,7 +336,7 @@ mod tests {
     use crate::client::{CompletionClient, EmbeddingsClient};
     use crate::message::ImageDetail;
     use crate::providers::openai::{
-        AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
+        AssistantContent, Function, ImageUrl, Message, ProviderToolType, ToolCall, UserContent,
     };
     use crate::{OneOrMany, message};
     use serde_path_to_error::deserialize;
@@ -502,7 +502,7 @@ mod tests {
                     tool_calls[0],
                     ToolCall {
                         id: "call_h89ipqYUjEpCPI6SxspMnoUU".to_string(),
-                        r#type: ToolType::Function,
+                        r#type: ProviderToolType::Function,
                         function: Function {
                             name: "subtract".to_string(),
                             arguments: serde_json::json!({"x": 2, "y": 5}),

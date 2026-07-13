@@ -8,7 +8,7 @@ use crate::{
     memory::ConversationMemory,
     message::ToolChoice,
     tool::{
-        Tool, ToolDyn, ToolSet,
+        DynamicTool, Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
@@ -351,7 +351,10 @@ where
     ///
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
-    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
+    pub fn tool<T>(self, tool: T) -> AgentBuilder<M, WithBuilderTools>
+    where
+        T: Tool + 'static,
+    {
         let toolname = tool.name();
         AgentBuilder {
             name: self.name,
@@ -382,9 +385,9 @@ where
     ///
     /// This is useful when you need to dynamically add static tools to the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
-        let static_tools = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<M, WithBuilderTools> {
+        let static_tools = tools.iter().map(|tool| tool.name().to_string()).collect();
+        let tools = ToolSet::from_dynamic_tools(tools);
 
         AgentBuilder {
             name: self.name,
@@ -506,7 +509,13 @@ where
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
-                tools: ToolSet::from_tools(toolset),
+                tools: {
+                    let mut set = ToolSet::default();
+                    for tool in toolset {
+                        set.add_erased(std::sync::Arc::new(tool));
+                    }
+                    set
+                },
                 dynamic_tools: vec![],
             },
         }
@@ -608,7 +617,10 @@ where
     M: CompletionModel,
 {
     /// Add another static tool to the agent.
-    pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
+    pub fn tool<T>(mut self, tool: T) -> Self
+    where
+        T: Tool + 'static,
+    {
         let toolname = tool.name();
         self.tool_state.tools.add_tool(tool);
         self.tool_state.static_tools.push(toolname);
@@ -616,9 +628,9 @@ where
     }
 
     /// Add a vector of boxed static tools to the agent.
-    pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
-        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
+    pub fn tools(mut self, tools: Vec<DynamicTool>) -> Self {
+        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name().to_string()).collect();
+        let tools = ToolSet::from_dynamic_tools(tools);
         self.tool_state.tools.add_tools(tools);
         self.tool_state.static_tools.extend(toolnames);
         self
@@ -659,7 +671,7 @@ where
     fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
         for (name, tool) in built {
             self.tool_state.static_tools.push(name);
-            self.tool_state.tools.add_tool(tool);
+            self.tool_state.tools.add_erased(std::sync::Arc::new(tool));
         }
 
         self
@@ -712,7 +724,6 @@ where
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -738,8 +749,8 @@ mod tests {
     #[cfg(feature = "rmcp")]
     #[tokio::test]
     async fn build_rmcp_tools_threads_timeout_into_built_tools() {
-        use crate::tool::ToolDyn;
         use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
+        use crate::tool::{ToolContext, ToolErrorKind, server::ToolServer};
         use rmcp::model::{
             CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
             ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
@@ -805,12 +816,19 @@ mod tests {
         );
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].0, "hang_forever");
-        let timed =
-            tokio::time::timeout(Duration::from_secs(5), built[0].1.call("{}".to_string())).await;
-        let err = timed
-            .expect("built tool hung past the safety timeout")
-            .expect_err("call should time out");
-        assert!(err.to_string().contains("timed out"), "got: {err}");
+        let handle = ToolServer::new().run();
+        handle
+            .add_erased_tool(Arc::new(built.into_iter().next().unwrap().1))
+            .await
+            .expect("register built MCP tool");
+        let timed = tokio::time::timeout(Duration::from_secs(5), async {
+            let mut context = ToolContext::new();
+            handle.execute("hang_forever", "{}", &mut context).await
+        })
+        .await;
+        let result = timed.expect("built tool hung past the safety timeout");
+        assert!(result.is_error_kind(ToolErrorKind::Timeout));
+        assert!(result.model_output().contains("timed out"));
 
         drop(client);
         server_task.abort();

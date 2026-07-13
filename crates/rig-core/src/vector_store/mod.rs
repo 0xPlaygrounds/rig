@@ -197,8 +197,6 @@ where
     T: VectorStoreIndex<Filter = F>,
 {
     const NAME: &'static str = "search_vector_store";
-
-    type Error = VectorStoreError;
     type Args = VectorSearchRequest<F>;
     type Output = Vec<VectorStoreOutput>;
 
@@ -229,8 +227,15 @@ where
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let results = self.top_n(args).await?;
+    async fn call(
+        &self,
+        _context: &mut crate::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+        let results = self
+            .top_n(args)
+            .await
+            .map_err(crate::tool::ToolExecutionError::from_error)?;
         Ok(results
             .into_iter()
             .map(|(score, id, document)| VectorStoreOutput {

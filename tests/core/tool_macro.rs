@@ -11,7 +11,7 @@ struct FacadeCoordinates {
 fn facade_find_nearby(
     /// Location to search from
     location: FacadeCoordinates,
-) -> Result<String, rig::tool::ToolError> {
+) -> Result<String, rig::tool::ToolExecutionError> {
     Ok(format!("{},{}", location.lat, location.lng))
 }
 

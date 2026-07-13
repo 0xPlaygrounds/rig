@@ -19,7 +19,7 @@ fn list_items(
     tags: Vec<String>,
     /// Maximum number of results
     limit: Option<i32>,
-) -> Result<Vec<String>, rig_core::tool::ToolError> {
+) -> Result<Vec<String>, rig_core::tool::ToolExecutionError> {
     let direction = match order {
         SortOrder::Ascending => "ascending",
         SortOrder::Descending => "descending",

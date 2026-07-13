@@ -62,7 +62,7 @@ impl<T> WasmCompatSync for T {}
 ///
 /// Gated to match [`WasmCompatSend`]/[`WasmCompatSync`] (and the streaming `Box`
 /// selection) — a `WasmBoxedFuture` returned by a `WasmCompatSend` bound (e.g.
-/// [`ToolDyn::call`](crate::tool::ToolDyn)) must drop `Send` under the same
+/// crate-private erased tool dispatch must drop `Send` under the same
 /// condition the marker relaxes it, or the two disagree on wasm.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 

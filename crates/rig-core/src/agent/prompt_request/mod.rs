@@ -5,7 +5,7 @@ use crate::{
     OneOrMany,
     completion::{CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, ToolResultContent, UserContent},
-    tool::ToolCallExtensions,
+    tool::ToolContext,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use serde::{Deserialize, Serialize};
@@ -21,14 +21,14 @@ use std::{future::IntoFuture, marker::PhantomData};
 /// `$recv` is the field name to delegate through (`runner` or `inner`).
 macro_rules! forward_prompt_setters {
     ($recv:ident) => {
-        /// Attach a per-call [`ToolCallExtensions`] for this request.
+        /// Attach a per-call [`ToolContext`] for this request.
         ///
         /// Every tool the agent executes during this request can read the
         /// caller-provided values (auth tokens, session IDs, conversation state, …)
-        /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
+        /// through the tool's [`ToolContext`](crate::tool::ToolContext),
         /// without the model ever seeing them.
-        pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
-            self.$recv = self.$recv.tool_extensions(extensions);
+        pub fn tool_context(mut self, extensions: ToolContext) -> Self {
+            self.$recv = self.$recv.tool_context(extensions);
             self
         }
 
@@ -750,14 +750,17 @@ where
         Box::pin(self.send())
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
     use crate::{
         agent::{
             AgentBuilder,
-            hook::{AgentHook, Flow, HookContext, InvalidToolCallContext, StepEvent},
+            hook::{
+                AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
+                InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
+                ToolCall as ToolCallEvent, ToolCallAction,
+            },
         },
         completion::{
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
@@ -766,10 +769,9 @@ mod tests {
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockExtensionsProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
-            SessionId,
+            MockExtensionsProbeTool, MockOperationArgs, MockSubtractTool, MockTurn, SessionId,
         },
-        tool::{Tool, ToolCallExtensions},
+        tool::{Tool, ToolContext},
     };
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -823,20 +825,19 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_event(
+        async fn on_completion_response(
             &self,
             _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::CompletionResponse { .. } => {
-                    panic!("unknown tool response should fail before response hooks run")
-                }
-                StepEvent::ToolCall { .. } => {
-                    panic!("unknown tool call should fail before tool hooks run")
-                }
-                _ => Flow::cont(),
-            }
+            _event: CompletionResponseEvent<'_, MockCompletionModel>,
+        ) -> ObservationAction {
+            panic!("unknown tool response should fail before response hooks run")
+        }
+        async fn on_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            panic!("unknown tool call should fail before tool hooks run")
         }
     }
 
@@ -844,17 +845,12 @@ mod tests {
     struct PanicOnToolCallHook;
 
     impl AgentHook<MockCompletionModel> for PanicOnToolCallHook {
-        async fn on_event(
+        async fn on_tool_call(
             &self,
             _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::ToolCall { .. } => {
-                    panic!("recovered invalid turn should not invoke normal tool hooks")
-                }
-                _ => Flow::cont(),
-            }
+            _event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            panic!("recovered invalid turn should not invoke normal tool hooks")
         }
     }
 
@@ -862,22 +858,19 @@ mod tests {
     struct SkipDefaultApiAndPanicOnToolCallHook;
 
     impl AgentHook<MockCompletionModel> for SkipDefaultApiAndPanicOnToolCallHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
-            _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    SkipDefaultApiHook
-                        .on_event(_ctx, StepEvent::InvalidToolCall(context))
-                        .await
-                }
-                event @ StepEvent::ToolCall { .. } => {
-                    PanicOnToolCallHook.on_event(_ctx, event).await
-                }
-                _ => Flow::cont(),
-            }
+            ctx: &HookContext,
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
+        }
+        async fn on_tool_call(
+            &self,
+            ctx: &HookContext,
+            event: ToolCallEvent<'_>,
+        ) -> ToolCallAction {
+            PanicOnToolCallHook.on_tool_call(ctx, event).await
         }
     }
 
@@ -885,18 +878,13 @@ mod tests {
     struct RepairDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    assert_eq!(context.tool_name, "default_api");
-                    Flow::repair("add")
-                }
-                _ => Flow::cont(),
-            }
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            assert_eq!(event.tool_name, "default_api");
+            InvalidToolCallAction::repair("add")
         }
     }
 
@@ -904,15 +892,12 @@ mod tests {
     struct RepairToSubtractHook;
 
     impl AgentHook<MockCompletionModel> for RepairToSubtractHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(_) => Flow::repair("subtract"),
-                _ => Flow::cont(),
-            }
+            _event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            InvalidToolCallAction::repair("subtract")
         }
     }
 
@@ -920,18 +905,15 @@ mod tests {
     struct RetryDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    let allowed_tools = &context.allowed_tools;
-                    Flow::retry(format!("Use one of these tools instead: {allowed_tools:?}"))
-                }
-                _ => Flow::cont(),
-            }
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            InvalidToolCallAction::retry(format!(
+                "Use one of these tools instead: {:?}",
+                event.allowed_tools
+            ))
         }
     }
 
@@ -939,15 +921,12 @@ mod tests {
     struct SkipDefaultApiHook;
 
     impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(_) => Flow::skip("default_api is not available"),
-                _ => Flow::cont(),
-            }
+            _event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            InvalidToolCallAction::skip("default_api is not available")
         }
     }
 
@@ -966,21 +945,16 @@ mod tests {
     }
 
     impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        async fn on_event(
+        async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
-            event: StepEvent<'_, MockCompletionModel>,
-        ) -> Flow {
-            match event {
-                StepEvent::InvalidToolCall(context) => {
-                    self.contexts
-                        .lock()
-                        .expect("invalid tool context records mutex was poisoned")
-                        .push(context.clone());
-                    Flow::fail()
-                }
-                _ => Flow::cont(),
-            }
+            event: &InvalidToolCallContext,
+        ) -> InvalidToolCallAction {
+            self.contexts
+                .lock()
+                .expect("invalid tool context records mutex was poisoned")
+                .push(event.clone());
+            InvalidToolCallAction::fail()
         }
     }
 
@@ -991,7 +965,6 @@ mod tests {
 
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
-        type Error = MockToolError;
         type Args = MockOperationArgs;
         type Output = i32;
 
@@ -1003,7 +976,11 @@ mod tests {
             MockAddTool.parameters()
         }
 
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _context: &mut crate::tool::ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(0)
         }
@@ -1365,10 +1342,10 @@ mod tests {
         assert_eq!(recorded.request_count(), 1);
     }
 
-    /// The motivating use-case: a `ToolCallExtensions` set on the prompt request is
+    /// The motivating use-case: a `ToolContext` set on the prompt request is
     /// threaded all the way to the tool the agent loop executes.
     #[tokio::test]
-    async fn tool_extensions_reach_tool_through_agent_loop() {
+    async fn tool_context_reach_tool_through_agent_loop() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
             MockTurn::text("done"),
@@ -1376,12 +1353,12 @@ mod tests {
         let probe = MockExtensionsProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
-        let mut extensions = ToolCallExtensions::new();
+        let mut extensions = ToolContext::new();
         extensions.insert(SessionId("abc-123".to_string()));
 
         let out = agent
             .prompt("use the tool")
-            .tool_extensions(extensions)
+            .tool_context(extensions)
             .max_turns(3)
             .await
             .expect("run succeeds");
@@ -1394,7 +1371,7 @@ mod tests {
     /// (the headline value prop). The model calls the probe in two consecutive
     /// rounds; both must observe the same injected value, not just the first.
     #[tokio::test]
-    async fn tool_extensions_persist_across_multiple_rounds() {
+    async fn tool_context_persist_across_multiple_rounds() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("c1", "context_probe", json!({})),
             MockTurn::tool_call("c2", "context_probe", json!({})),
@@ -1403,12 +1380,12 @@ mod tests {
         let probe = MockExtensionsProbeTool::default();
         let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
-        let mut extensions = ToolCallExtensions::new();
+        let mut extensions = ToolContext::new();
         extensions.insert(SessionId("abc-123".to_string()));
 
         let out = agent
             .prompt("use the tool twice")
-            .tool_extensions(extensions)
+            .tool_context(extensions)
             .max_turns(5)
             .await
             .expect("run succeeds");
@@ -1438,22 +1415,20 @@ mod tests {
             .expect("run succeeds");
 
         assert_eq!(out, "done");
-        // Reaches `call_with_extensions` with an empty context (the override is the
-        // single entry point), so it observes "no-session" rather than the
-        // plain-`call` "call-no-context".
+        // The single call path receives an empty context and observes no session.
         assert_eq!(probe.observed().as_deref(), Some("no-session"));
     }
 
-    /// Pins the probe's sentinel: its plain `call` body records
-    /// `"call-no-context"`. The dispatched-run tests above assert `"no-session"`
-    /// instead, which is what proves dispatch routes through `call_with_extensions`
-    /// rather than `call`.
+    /// Direct typed calls use the same context contract as dispatched calls.
     #[tokio::test]
-    async fn probe_plain_call_records_sentinel() {
+    async fn probe_direct_call_uses_context() {
         let probe = MockExtensionsProbeTool::default();
-        let out = probe.call(json!({})).await.expect("call succeeds");
-        assert_eq!(out, "call-no-context");
-        assert_eq!(probe.observed().as_deref(), Some("call-no-context"));
+        let out = probe
+            .call(&mut ToolContext::new(), json!({}))
+            .await
+            .expect("call succeeds");
+        assert_eq!(out, "no-session");
+        assert_eq!(probe.observed().as_deref(), Some("no-session"));
     }
 
     #[tokio::test]

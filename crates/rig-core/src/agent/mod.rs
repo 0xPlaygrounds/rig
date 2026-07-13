@@ -119,9 +119,12 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
+pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
-    AgentHook, Flow, HookContext, HookStack, InvalidToolCallContext, InvalidToolCallHookAction,
-    RequestPatch, RunId, Scratchpad, StepEvent, StepEventKind,
+    AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
+    HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelTurnFinished, ObservationAction,
+    RequestPatch, RunId, Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
+    ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,

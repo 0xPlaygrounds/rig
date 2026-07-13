@@ -12,16 +12,11 @@ struct OperationArgs {
     y: i32,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-struct MathError;
-
 #[derive(Deserialize, Serialize)]
 struct Adder;
 
 impl Tool for Adder {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -33,7 +28,11 @@ impl Tool for Adder {
         json!(schema_for!(OperationArgs))
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig_core::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig_core::tool::ToolExecutionError> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)

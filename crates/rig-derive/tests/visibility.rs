@@ -17,7 +17,7 @@ mod tools {
         description = "A public tool for testing visibility",
         params(x = "A number")
     )]
-    pub async fn public_adder(x: i32) -> Result<i32, rig_core::tool::ToolError> {
+    pub async fn public_adder(x: i32) -> Result<i32, rig_core::tool::ToolExecutionError> {
         Ok(x + 1)
     }
 
@@ -27,7 +27,7 @@ mod tools {
         description = "A private tool for testing visibility",
         params(x = "A number")
     )]
-    async fn private_adder(x: i32) -> Result<i32, rig_core::tool::ToolError> {
+    async fn private_adder(x: i32) -> Result<i32, rig_core::tool::ToolExecutionError> {
         Ok(x + 1)
     }
 
@@ -35,7 +35,12 @@ mod tools {
     pub async fn use_private_tool() -> i32 {
         use rig_core::tool::Tool;
         let tool = PrivateAdder;
-        tool.call(PrivateAdderParameters { x: 99 }).await.unwrap()
+        tool.call(
+            &mut rig_core::tool::ToolContext::new(),
+            PrivateAdderParameters { x: 99 },
+        )
+        .await
+        .unwrap()
     }
 }
 
@@ -50,7 +55,10 @@ async fn test_pub_tool_accessible_from_outside_module() {
     assert_eq!(def.description, "A public tool for testing visibility");
 
     let result = tool
-        .call(tools::PublicAdderParameters { x: 41 })
+        .call(
+            &mut rig_core::tool::ToolContext::new(),
+            tools::PublicAdderParameters { x: 41 },
+        )
         .await
         .unwrap();
     assert_eq!(result, serde_json::json!(42));

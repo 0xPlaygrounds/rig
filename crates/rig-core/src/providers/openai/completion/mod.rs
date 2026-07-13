@@ -445,13 +445,13 @@ impl ToolResultContentValue {
 pub struct ToolCall {
     pub id: String,
     #[serde(default)]
-    pub r#type: ToolType,
+    pub r#type: ProviderToolType,
     pub function: Function,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum ToolType {
+pub enum ProviderToolType {
     #[default]
     Function,
 }
@@ -914,7 +914,7 @@ impl From<message::ToolCall> for ToolCall {
             // which prefers the provider-issued `call_id` over the rig-level
             // id (e.g. Responses-API history replayed via chat completions).
             id: tool_call.call_id.unwrap_or(tool_call.id),
-            r#type: ToolType::default(),
+            r#type: ProviderToolType::default(),
             function: Function {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,

@@ -4,19 +4,19 @@
 //! network unreachable (`ENETUNREACH`). The tool classifies each error and adds
 //! typed operation metadata; it does not decide whether the agent may continue.
 //!
-//! A narrow `CompletionCall` hook reliably invokes `system_probe` on turn 1,
+//! A narrow completion-call hook reliably invokes `system_probe` on turn 1,
 //! while the prompt requests the desired operation. It does nothing on later
-//! turns, leaving the recoverable run free to produce a final answer. Two `ToolResult`
+//! turns, leaving the recoverable run free to produce a final answer. Two tool-result
 //! hooks then run in registration order:
 //!
-//! 1. `FailureRecorder` copies the event's call ID, structured outcome, and typed
-//!    extension into a run-scoped scratchpad ledger.
+//! 1. `FailureRecorder` copies the event's call ID, structured error, and typed
+//!    result metadata into a run-scoped scratchpad ledger.
 //! 2. `FatalFailurePolicy` looks up that same call ID, terminating on `Other`/`EIO`
 //!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
 //!    matters because results from concurrent tool calls can interleave.
 //!
-//! `StepEvent::ToolResult` carries facts about one execution: `outcome` is the
-//! standard classification and `extensions` holds tool/application-specific typed
+//! `ToolResultEvent` carries facts about one execution: `raw_result` contains the
+//! standard classification and `tool_context` holds tool/application-specific typed
 //! metadata that is never sent to the model. The scratchpad is different: it is
 //! shared, run-scoped hook state. Here it lets one hook record facts for the next
 //! hook without coupling either hook to model-visible result text.
@@ -32,17 +32,17 @@
 //! lets the network failure return to the model. `--help` requires no credentials.
 
 use anyhow::{Result, bail};
-use rig::agent::{AgentHook, Flow, HookContext, RequestPatch, StepEvent};
+use rig::agent::{
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
+    ToolResultAction, ToolResultEvent,
+};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt};
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::tool::{
-    Tool, ToolCallExtensions, ToolFailure, ToolFailureKind, ToolOutcome, ToolResultExtensions,
-    ToolReturn,
-};
+use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
 
-#[derive(Clone, Copy, Debug, serde::Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum Operation {
     ReadDisk,
@@ -81,7 +81,6 @@ struct SystemProbe;
 
 impl Tool for SystemProbe {
     const NAME: &'static str = "system_probe";
-    type Error = ProbeError;
     type Args = ProbeArgs;
     type Output = String;
 
@@ -103,47 +102,40 @@ impl Tool for SystemProbe {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        match args.operation {
-            Operation::ReadDisk => Err(ProbeError::DiskIo),
-            Operation::ConnectNetwork => Err(ProbeError::NetworkUnreachable),
-        }
-    }
-
-    fn classify_error(&self, error: &Self::Error) -> ToolFailure {
-        match error {
-            ProbeError::DiskIo => ToolFailure::other(error.to_string())
-                .with_code("EIO")
-                .with_retryable(false),
-            ProbeError::NetworkUnreachable => {
-                ToolFailure::network(error.to_string()).with_code("ENETUNREACH")
-            }
-        }
-    }
-
-    async fn call_structured(
+    async fn call(
         &self,
+        context: &mut ToolContext,
         args: Self::Args,
-        _extensions: &ToolCallExtensions,
-    ) -> Result<ToolReturn<Self::Output>, Self::Error> {
-        let site = match args.operation {
-            Operation::ReadDisk => FailureSite {
-                operation: args.operation,
-                resource: "/data/archive.bin",
-            },
-            Operation::ConnectNetwork => FailureSite {
-                operation: args.operation,
-                resource: "backup.example.net",
-            },
+    ) -> Result<Self::Output, ToolExecutionError> {
+        let (error, site) = match args.operation {
+            Operation::ReadDisk => (
+                ProbeError::DiskIo,
+                FailureSite {
+                    operation: args.operation,
+                    resource: "/data/archive.bin",
+                },
+            ),
+            Operation::ConnectNetwork => (
+                ProbeError::NetworkUnreachable,
+                FailureSite {
+                    operation: args.operation,
+                    resource: "backup.example.net",
+                },
+            ),
         };
+        context.insert_result(site);
 
-        match self.call(args).await {
-            Ok(output) => Ok(ToolReturn::success(output)),
-            Err(error) => {
-                let failure = self.classify_error(&error);
-                Ok(ToolReturn::failed(error.to_string(), failure).with_extension(site))
-            }
-        }
+        let message = error.to_string();
+        let execution_error = match error {
+            ProbeError::DiskIo => ToolExecutionError::other(message)
+                .with_code("EIO")
+                .with_retryable(false)
+                .with_source(ProbeError::DiskIo),
+            ProbeError::NetworkUnreachable => ToolExecutionError::network(message)
+                .with_code("ENETUNREACH")
+                .with_source(ProbeError::NetworkUnreachable),
+        };
+        Err(execution_error)
     }
 }
 
@@ -161,13 +153,15 @@ impl<M> AgentHook<M> for ForceSystemProbeOnFirstTurn
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. })
-            && let Some(patch) = system_probe_patch(ctx.turn())
-        {
-            return Flow::patch_request(patch);
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        match system_probe_patch(event.turn) {
+            Some(patch) => CompletionCallAction::patch(patch),
+            None => CompletionCallAction::continue_run(),
         }
-        Flow::cont()
     }
 }
 
@@ -175,7 +169,7 @@ where
 struct FailureRecord {
     internal_call_id: String,
     tool_name: String,
-    kind: ToolFailureKind,
+    kind: ToolErrorKind,
     code: Option<String>,
     operation: Operation,
     resource: &'static str,
@@ -189,18 +183,18 @@ struct FailureRecorder;
 fn failure_record(
     internal_call_id: &str,
     tool_name: &str,
-    outcome: &ToolOutcome,
-    extensions: &ToolResultExtensions,
+    result: &ToolResult,
+    tool_context: &ToolContext,
 ) -> Option<FailureRecord> {
-    let (Some(failure), Some(site)) = (outcome.failure(), extensions.get::<FailureSite>()) else {
+    let (Some(error), Some(site)) = (result.error(), tool_context.result::<FailureSite>()) else {
         return None;
     };
 
     Some(FailureRecord {
         internal_call_id: internal_call_id.to_string(),
         tool_name: tool_name.to_string(),
-        kind: failure.kind,
-        code: failure.code.clone(),
+        kind: error.kind(),
+        code: error.code().map(str::to_string),
         operation: site.operation,
         resource: site.resource,
     })
@@ -210,19 +204,18 @@ impl<M> AgentHook<M> for FailureRecorder
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        let StepEvent::ToolResult {
-            internal_call_id,
-            tool_name,
-            outcome,
-            extensions,
-            ..
-        } = event
-        else {
-            return Flow::cont();
-        };
-        let Some(record) = failure_record(internal_call_id, tool_name, outcome, extensions) else {
-            return Flow::cont();
+    async fn on_tool_result(
+        &self,
+        ctx: &HookContext,
+        event: ToolResultEvent<'_>,
+    ) -> ToolResultAction {
+        let Some(record) = failure_record(
+            event.internal_call_id,
+            event.tool_name,
+            event.raw_result,
+            event.tool_context,
+        ) else {
+            return ToolResultAction::keep();
         };
         println!(
             "[recorder] {} {} failed: kind={}, code={}, resource={}",
@@ -234,7 +227,7 @@ where
         );
         ctx.scratchpad()
             .update(|ledger: &mut FailureLedger| ledger.0.push(record));
-        Flow::cont()
+        ToolResultAction::keep()
     }
 }
 
@@ -245,7 +238,7 @@ enum PolicyDecision {
 }
 
 fn decide(record: &FailureRecord) -> PolicyDecision {
-    if record.kind == ToolFailureKind::Other && record.code.as_deref() == Some("EIO") {
+    if record.kind == ToolErrorKind::Other && record.code.as_deref() == Some("EIO") {
         PolicyDecision::Fatal(format!(
             "fatal disk I/O failure from {} ({})",
             record.tool_name, record.resource
@@ -255,7 +248,7 @@ fn decide(record: &FailureRecord) -> PolicyDecision {
     }
 }
 
-fn policy_flow(ledger: Option<&FailureLedger>, internal_call_id: &str) -> Flow {
+fn policy_action(ledger: Option<&FailureLedger>, internal_call_id: &str) -> ToolResultAction {
     let decision = ledger
         .and_then(|ledger| {
             ledger
@@ -267,12 +260,12 @@ fn policy_flow(ledger: Option<&FailureLedger>, internal_call_id: &str) -> Flow {
         .map(decide);
 
     match decision {
-        Some(PolicyDecision::Fatal(reason)) => Flow::terminate(reason),
+        Some(PolicyDecision::Fatal(reason)) => ToolResultAction::stop(reason),
         Some(PolicyDecision::Recoverable) => {
             println!("[policy] recoverable failure; returning feedback to the model");
-            Flow::cont()
+            ToolResultAction::keep()
         }
-        None => Flow::cont(),
+        None => ToolResultAction::keep(),
     }
 }
 
@@ -282,21 +275,17 @@ impl<M> AgentHook<M> for FatalFailurePolicy
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        let StepEvent::ToolResult {
-            internal_call_id,
-            outcome,
-            ..
-        } = event
-        else {
-            return Flow::cont();
-        };
-        if outcome.failure().is_none() {
-            return Flow::cont();
+    async fn on_tool_result(
+        &self,
+        ctx: &HookContext,
+        event: ToolResultEvent<'_>,
+    ) -> ToolResultAction {
+        if event.raw_result.error().is_none() {
+            return ToolResultAction::keep();
         }
 
         let ledger = ctx.scratchpad().get::<FailureLedger>();
-        policy_flow(ledger.as_ref(), internal_call_id)
+        policy_action(ledger.as_ref(), event.internal_call_id)
     }
 }
 
@@ -350,11 +339,7 @@ async fn main() -> Result<()> {
 
     let response = agent
         .prompt(prompt)
-        // The recoverable path needs exactly two model calls: one tool call,
-        // then one final answer. The fatal path terminates after the first.
         .max_turns(2)
-        // This steering hook only guarantees the initial probe; the next two
-        // hooks remain the example's recorder/policy pipeline.
         .add_hook(ForceSystemProbeOnFirstTurn)
         .add_hook(FailureRecorder)
         .add_hook(FatalFailurePolicy)
@@ -366,11 +351,14 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rig::tool::ToolSet;
 
-    async fn structured_failure(operation: Operation) -> Result<ToolReturn<String>, ProbeError> {
-        SystemProbe
-            .call_structured(ProbeArgs { operation }, &ToolCallExtensions::new())
-            .await
+    async fn structured_failure(operation: Operation) -> (ToolResult, ToolContext) {
+        let tools = ToolSet::from_tools(vec![SystemProbe]);
+        let mut context = ToolContext::new();
+        let args = serde_json::json!({ "operation": operation }).to_string();
+        let result = tools.execute(SystemProbe::NAME, args, &mut context).await;
+        (result, context)
     }
 
     #[test]
@@ -388,20 +376,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connect_network_preserves_classification_and_typed_extension() {
-        let returned = structured_failure(Operation::ConnectNetwork).await;
-        assert!(returned.is_ok());
-        let Ok(returned) = returned else {
+    async fn connect_network_preserves_classification_and_typed_metadata() {
+        let (result, context) = structured_failure(Operation::ConnectNetwork).await;
+        assert!(result.error().is_some(), "probe should fail");
+        let Some(error) = result.error() else {
             return;
         };
-        assert!(returned.outcome.failure().is_some());
-        let Some(failure) = returned.outcome.failure() else {
-            return;
-        };
-        assert_eq!(failure.kind, ToolFailureKind::Network);
-        assert_eq!(failure.code.as_deref(), Some("ENETUNREACH"));
+        assert_eq!(error.kind(), ToolErrorKind::Network);
+        assert_eq!(error.code(), Some("ENETUNREACH"));
+        assert_eq!(result.model_output(), error.model_feedback());
         assert_eq!(
-            returned.extensions.get::<FailureSite>(),
+            context.result::<FailureSite>(),
             Some(&FailureSite {
                 operation: Operation::ConnectNetwork,
                 resource: "backup.example.net",
@@ -410,32 +395,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recorder_data_drives_fatal_and_recoverable_flows_by_call_id() {
-        let fatal = structured_failure(Operation::ReadDisk).await;
-        let recoverable = structured_failure(Operation::ConnectNetwork).await;
-        assert!(fatal.is_ok());
-        assert!(recoverable.is_ok());
-        let (Ok(fatal), Ok(recoverable)) = (fatal, recoverable) else {
-            return;
-        };
-        let fatal_outcome: ToolOutcome = fatal.outcome.into();
-        let recoverable_outcome: ToolOutcome = recoverable.outcome.into();
+    async fn recorder_data_drives_fatal_and_recoverable_actions_by_call_id() {
+        let (fatal_result, fatal_context) = structured_failure(Operation::ReadDisk).await;
+        let (recoverable_result, recoverable_context) =
+            structured_failure(Operation::ConnectNetwork).await;
 
         let mut ledger = FailureLedger::default();
         let fatal_record = failure_record(
             "fatal-call",
             SystemProbe::NAME,
-            &fatal_outcome,
-            &fatal.extensions,
+            &fatal_result,
+            &fatal_context,
         );
         let recoverable_record = failure_record(
             "recoverable-call",
             SystemProbe::NAME,
-            &recoverable_outcome,
-            &recoverable.extensions,
+            &recoverable_result,
+            &recoverable_context,
         );
-        assert!(fatal_record.is_some());
-        assert!(recoverable_record.is_some());
+        assert!(fatal_record.is_some(), "fatal failure record");
+        assert!(recoverable_record.is_some(), "recoverable failure record");
         let (Some(fatal_record), Some(recoverable_record)) = (fatal_record, recoverable_record)
         else {
             return;
@@ -445,30 +424,29 @@ mod tests {
         ledger.0.push(recoverable_record);
 
         assert!(matches!(
-            policy_flow(Some(&ledger), "fatal-call"),
-            Flow::Terminate { .. }
+            policy_action(Some(&ledger), "fatal-call"),
+            ToolResultAction::Stop(_)
         ));
         assert_eq!(
-            policy_flow(Some(&ledger), "recoverable-call"),
-            Flow::Continue
+            policy_action(Some(&ledger), "recoverable-call"),
+            ToolResultAction::Keep
         );
-        assert_eq!(policy_flow(Some(&ledger), "missing-call"), Flow::Continue);
-        assert_eq!(policy_flow(None, "fatal-call"), Flow::Continue);
+        assert_eq!(
+            policy_action(Some(&ledger), "missing-call"),
+            ToolResultAction::Keep
+        );
+        assert_eq!(policy_action(None, "fatal-call"), ToolResultAction::Keep);
     }
 
-    #[test]
-    fn missing_extension_cannot_create_a_record_or_reuse_stale_state() {
-        let outcome = ToolOutcome::Error(
-            ToolFailure::other("disk failed")
-                .with_code("EIO")
-                .with_retryable(false),
-        );
+    #[tokio::test]
+    async fn missing_metadata_cannot_create_a_record_or_reuse_stale_state() {
+        let (result, _context) = structured_failure(Operation::ReadDisk).await;
         assert!(
             failure_record(
                 "current-call",
                 SystemProbe::NAME,
-                &outcome,
-                &ToolResultExtensions::new(),
+                &result,
+                &ToolContext::new(),
             )
             .is_none()
         );
@@ -476,11 +454,14 @@ mod tests {
         let stale = FailureLedger(vec![FailureRecord {
             internal_call_id: "stale-call".to_string(),
             tool_name: SystemProbe::NAME.to_string(),
-            kind: ToolFailureKind::Other,
+            kind: ToolErrorKind::Other,
             code: Some("EIO".to_string()),
             operation: Operation::ReadDisk,
             resource: "/stale",
         }]);
-        assert_eq!(policy_flow(Some(&stale), "current-call"), Flow::Continue);
+        assert_eq!(
+            policy_action(Some(&stale), "current-call"),
+            ToolResultAction::Keep
+        );
     }
 }

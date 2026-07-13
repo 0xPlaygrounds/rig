@@ -21,10 +21,6 @@ struct OperationArgs {
     y: i32,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-struct MathError;
-
 struct Add {
     call_count: Arc<AtomicUsize>,
 }
@@ -37,7 +33,6 @@ impl Add {
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -49,7 +44,11 @@ impl Tool for Add {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -67,7 +66,6 @@ impl Subtract {
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -79,7 +77,11 @@ impl Tool for Subtract {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
@@ -97,7 +99,6 @@ impl Multiply {
 
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -109,7 +110,11 @@ impl Tool for Multiply {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x * args.y)
     }
@@ -127,7 +132,6 @@ impl Divide {
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -139,7 +143,11 @@ impl Tool for Divide {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x / args.y)
     }

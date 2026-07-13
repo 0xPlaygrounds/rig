@@ -1,6 +1,9 @@
 //! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::ToolEmbedding]
 
-use crate::{Embed, tool::ToolEmbeddingDyn};
+use crate::{
+    Embed,
+    tool::{ErasedEmbeddingTool, ToolEmbedding},
+};
 use serde::Serialize;
 
 use super::embed::EmbedError;
@@ -24,13 +27,13 @@ impl Embed for ToolSchema {
 }
 
 impl ToolSchema {
-    /// Convert item that implements [ToolEmbeddingDyn] to an [ToolSchema].
+    /// Convert an embedding-backed tool to a [`ToolSchema`].
     ///
     /// # Example
     /// ```rust
     /// use rig_core::{
     ///     embeddings::ToolSchema,
-    ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},
+    ///     tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError},
     /// };
     ///
     /// #[derive(Debug, thiserror::Error)]
@@ -45,7 +48,6 @@ impl ToolSchema {
     /// impl Tool for Nothing {
     ///     const NAME: &'static str = "nothing";
     ///
-    ///     type Error = NothingError;
     ///     type Args = ();
     ///     type Output = ();
     ///
@@ -57,7 +59,7 @@ impl ToolSchema {
     ///         serde_json::json!({})
     ///     }
     ///
-    ///     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    ///     async fn call(&self, _context: &mut ToolContext, _args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
     ///         Ok(())
     ///     }
     /// }
@@ -83,8 +85,11 @@ impl ToolSchema {
     /// assert_eq!(tool.name, "nothing".to_string());
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
-    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbedError> {
-        Self::from_tool(tool.name(), tool)
+    pub fn try_from<T>(tool: &T) -> Result<Self, EmbedError>
+    where
+        T: ToolEmbedding + 'static,
+    {
+        Self::from_tool(T::NAME, tool)
     }
 
     /// Convert a tool to a schema using an explicit registered name.
@@ -92,13 +97,13 @@ impl ToolSchema {
     /// Registry paths should pass the key under which the tool was registered so
     /// vector-store IDs resolve back to the same entry even if `tool.name()` is
     /// computed dynamically.
-    pub fn from_tool(
+    pub(crate) fn from_tool(
         name: impl Into<String>,
-        tool: &dyn ToolEmbeddingDyn,
+        tool: &dyn ErasedEmbeddingTool,
     ) -> Result<Self, EmbedError> {
         Ok(ToolSchema {
             name: name.into(),
-            context: tool.context().map_err(EmbedError::new)?,
+            context: tool.serialized_context().map_err(EmbedError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
     }

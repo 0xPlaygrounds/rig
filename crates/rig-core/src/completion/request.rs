@@ -157,7 +157,7 @@ pub enum PromptError {
 
     /// There was an error while using a tool
     #[error("ToolCallError: {0}")]
-    ToolError(#[from] ToolSetError),
+    ToolSetError(#[from] ToolSetError),
 
     /// There was an issue while executing a tool on a tool server
     #[error("ToolServerError: {0}")]

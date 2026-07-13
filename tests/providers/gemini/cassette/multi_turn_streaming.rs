@@ -12,7 +12,7 @@ use rig::completion::{self, CompletionError, CompletionModel, PromptError};
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingCompletion};
-use rig::tool::{Tool, ToolError, ToolSetError};
+use rig::tool::{Tool, ToolContext, ToolExecutionError};
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
 use thiserror::Error;
@@ -28,8 +28,8 @@ enum StreamingError {
     Completion(#[from] CompletionError),
     #[error("PromptError: {0}")]
     Prompt(#[from] Box<PromptError>),
-    #[error("ToolSetError: {0}")]
-    Tool(#[from] ToolSetError),
+    #[error("ToolExecutionError: {0}")]
+    Tool(#[from] ToolExecutionError),
 }
 
 type StreamingResult = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + Send>>;
@@ -120,18 +120,18 @@ where
                         did_call_tool = false;
                     }
                     Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
-                        let tool_result = agent
+                        let execution = agent
                             .tool_server_handle
-                            .call_tool(
+                            .execute(
                                 &tool_call.function.name,
                                 &tool_call.function.arguments.to_string(),
+                                &mut ToolContext::new(),
                             )
-                            .await
-                            .map_err(|error| {
-                                StreamingError::Tool(ToolSetError::ToolCallError(
-                                    ToolError::ToolCallError(error.into()),
-                                ))
-                            })?;
+                            .await;
+                        if let Some(error) = execution.error() {
+                            Err(StreamingError::Tool(error.clone()))?;
+                        }
+                        let tool_result = execution.model_output().to_string();
 
                         tool_calls.push(AssistantContent::ToolCall(tool_call.clone()));
                         tool_results.push((tool_call.id, tool_call.call_id, tool_result));
@@ -197,10 +197,6 @@ struct OperationArgs {
     y: i32,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-struct MathError;
-
 struct Add {
     call_count: Arc<AtomicUsize>,
 }
@@ -213,7 +209,6 @@ impl Add {
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -225,7 +220,11 @@ impl Tool for Add {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -243,7 +242,6 @@ impl Subtract {
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -255,7 +253,11 @@ impl Tool for Subtract {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
@@ -273,7 +275,6 @@ impl Multiply {
 
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -285,7 +286,11 @@ impl Tool for Multiply {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x * args.y)
     }
@@ -303,7 +308,6 @@ impl Divide {
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
-    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -315,7 +319,11 @@ impl Tool for Divide {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x / args.y)
     }
