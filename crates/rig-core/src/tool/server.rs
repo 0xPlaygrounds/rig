@@ -246,6 +246,16 @@ impl ToolServerHandle {
         let mut managed = HashMap::with_capacity(tools.len());
 
         for tool in tools {
+            // The initial list fetch can complete just before the transport
+            // closes. Avoid installing a registration that can never execute.
+            if !tool.is_live() {
+                tracing::debug!(
+                    tool_name = %tool.name(),
+                    "ignored initial registration from disconnected MCP owner"
+                );
+                continue;
+            }
+
             let name = state.toolset.add_erased(tool);
             let token = ManagedToolToken::new();
             state
@@ -271,7 +281,34 @@ impl ToolServerHandle {
         let mut managed_order = Vec::with_capacity(tools.len());
         let mut seen = std::collections::HashSet::with_capacity(tools.len());
 
+        // A generation only protects a live owner. MCP service shutdown closes
+        // the sink held by its registered tools, so retire those generations
+        // before deciding whether another handler may reclaim a name. Local
+        // registrations clear their managed token and are never swept here.
+        let disconnected = state
+            .managed_generations
+            .keys()
+            .filter(|name| state.toolset.get(name).is_none_or(|tool| !tool.is_live()))
+            .cloned()
+            .collect::<Vec<_>>();
+        for name in disconnected {
+            state.toolset.delete_tool(&name);
+            state.managed_generations.remove(&name);
+            tracing::debug!(tool_name = %name, "retired disconnected MCP tool registration");
+        }
+
         for tool in tools {
+            // A refresh that raced with service shutdown may already have
+            // fetched definitions before the transport closed. Do not let
+            // that stale refresh recreate an owner we just retired.
+            if !tool.is_live() {
+                tracing::debug!(
+                    tool_name = %tool.name(),
+                    "ignored registration from disconnected MCP owner"
+                );
+                continue;
+            }
+
             let name = tool.name();
             if !seen.insert(name.clone()) {
                 tracing::warn!(tool_name = %name, "ignoring duplicate MCP tool definition");

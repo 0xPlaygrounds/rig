@@ -199,6 +199,14 @@ pub(crate) trait ErasedTool: WasmCompatSend + WasmCompatSync {
     fn name(&self) -> String;
     fn description(&self) -> String;
     fn parameters(&self) -> serde_json::Value;
+    /// Whether the runtime backing this registration can still accept calls.
+    ///
+    /// In-process tools are always live. Remote adapters override this so the
+    /// registry can retire disconnected owners without probing by execution.
+    #[cfg(feature = "rmcp")]
+    fn is_live(&self) -> bool {
+        true
+    }
     fn execute<'a>(
         &'a self,
         args: String,
@@ -415,6 +423,11 @@ impl RegisteredTool {
 
     pub(crate) fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
         definition_with_name(name, self.erased())
+    }
+
+    #[cfg(feature = "rmcp")]
+    pub(crate) fn is_live(&self) -> bool {
+        self.erased().is_live()
     }
 
     pub(crate) async fn execute(&self, args: String, context: &mut ToolContext) -> ToolResult {

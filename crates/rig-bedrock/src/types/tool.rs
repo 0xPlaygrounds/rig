@@ -26,7 +26,10 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
             // retains the value as typed JSON until this terminal provider
             // boundary, where tool results historically used text blocks.
             ToolResultContent::Json { value } => {
-                Ok(aws_bedrock::ToolResultContentBlock::Text(value.to_string()))
+                Ok(aws_bedrock::ToolResultContentBlock::Text(match value {
+                    Value::String(text) => text,
+                    value => value.to_string(),
+                }))
             }
         }
     }
@@ -110,6 +113,21 @@ mod tests {
                 .expect("Bedrock tool result text")
                 .as_str(),
             expected.to_string()
+        );
+    }
+
+    #[test]
+    fn rig_tool_json_string_preserves_the_existing_unquoted_aws_text() {
+        let tool = RigToolResultContent(ToolResultContent::Json {
+            value: serde_json::json!("literal text"),
+        });
+
+        let aws_tool: aws_bedrock::ToolResultContentBlock = tool
+            .try_into()
+            .expect("JSON string should render at the AWS boundary");
+        assert_eq!(
+            aws_tool.as_text().expect("Bedrock tool result text"),
+            "literal text"
         );
     }
 

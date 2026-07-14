@@ -480,6 +480,10 @@ impl ErasedTool for McpTool {
         self.definition.schema_as_json_value()
     }
 
+    fn is_live(&self) -> bool {
+        !self.client.is_transport_closed()
+    }
+
     fn execute<'a>(
         &'a self,
         args: String,
@@ -1762,7 +1766,7 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn one_handler_refresh_does_not_replace_a_newer_peer_handler_registration() {
+    async fn one_handler_refresh_protects_live_peer_and_reclaims_after_disconnect() {
         let server_a = DynamicToolServer::new(vec![make_tool("alpha", "Handler A")]);
         let server_a_control = server_a.clone();
         let server_b = DynamicToolServer::new(vec![make_tool("alpha", "Handler B")]);
@@ -1807,8 +1811,43 @@ mod migrated_tests {
             .expect("alpha remains registered");
         assert_eq!(alpha.description, "Handler B");
 
-        client_a.cancel().await.unwrap();
+        // Once B disconnects, its generation must no longer shield the dead
+        // registration from A. Otherwise the registry keeps advertising B and
+        // execution fails with `Transport closed` indefinitely.
         client_b.cancel().await.unwrap();
+        server_a_control
+            .set_tools(vec![make_tool("alpha", "Reclaimed handler A")])
+            .await;
+        running_server_a
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs
+                    .iter()
+                    .any(|definition| definition.description == "Reclaimed handler A")
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("handler A reclaimed the disconnected peer's registration");
+
+        let result = handle
+            .execute("alpha", "{}", &mut crate::tool::ToolContext::new())
+            .await;
+        assert!(
+            result.is_success(),
+            "reclaimed tool should execute: {result:?}"
+        );
+
+        client_a.cancel().await.unwrap();
     }
 
     #[test]
