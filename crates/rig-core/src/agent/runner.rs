@@ -788,6 +788,12 @@ where
                     ModelTurnOutcome::Continue {
                         response_hook_suppressed,
                     } => {
+                        if runner.record_message_content
+                            && let Some(choice) = run.accepted_turn_choice()
+                        {
+                            crate::telemetry::record_model_output(&chat_span, &choice, true);
+                        }
+
                         if !response_hook_suppressed {
                             // The medium-specific raw response event fires first,
                             // then the normalized per-turn event. Both are

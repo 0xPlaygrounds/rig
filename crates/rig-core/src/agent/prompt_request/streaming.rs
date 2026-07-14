@@ -521,7 +521,7 @@ where
                     // Pin Tool output mode once committed so later turns stay
                     // consistent even if the per-turn tool set changes (#1928).
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let prepared = match build_prepared_completion_request(
+                    let mut prepared = match build_prepared_completion_request(
                         &runner.model,
                         prompt.clone(),
                         &history,
@@ -552,6 +552,7 @@ where
                     if runner.record_message_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
                         crate::telemetry::record_model_input(&chat_span, &input_messages, true);
+                        prepared.builder = prepared.builder.record_message_telemetry(false);
                     }
 
                     let mut turn_stream = source.run_model_turn(
@@ -1312,15 +1313,15 @@ where
             // history; the raw `stream.choice` is kept in `last_final_choice` for
             // the raw/final streaming behavior.
             let canonical_choice = streamed_turn.choice.clone();
+            if let Err(err) = run.streamed_turn(streamed_turn) {
+                yield Err(Box::new(err).into());
+                return;
+            }
             crate::telemetry::record_model_output(
                 &chat_span,
                 &canonical_choice,
                 runner.record_message_content,
             );
-            if let Err(err) = run.streamed_turn(streamed_turn) {
-                yield Err(Box::new(err).into());
-                return;
-            }
 
             // Normalized per-turn event, fired once the turn is committed on the
             // streaming surface — including tool-only / reasoning-only turns that
@@ -1553,7 +1554,7 @@ mod migrated_tests {
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::{CompletionRequest, PromptError, ToolDefinition, Usage};
+    use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolChoice, ToolResultContent, UserContent,
@@ -1563,7 +1564,7 @@ mod migrated_tests {
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
         MockContextProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, MockToolError,
-        SessionId,
+        MockTurn, SessionId,
     };
     use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
@@ -2161,6 +2162,7 @@ mod migrated_tests {
         parent_id: Option<u64>,
         fields: HashMap<String, u64>,
         string_fields: HashMap<String, String>,
+        record_counts: HashMap<String, usize>,
     }
 
     #[derive(Clone, Default)]
@@ -2182,6 +2184,7 @@ mod migrated_tests {
                     parent_id,
                     fields: HashMap::new(),
                     string_fields: HashMap::new(),
+                    record_counts: HashMap::new(),
                 });
             }
         }
@@ -2193,9 +2196,11 @@ mod migrated_tests {
                 for field in fields {
                     match field {
                         CapturedField::Number(name, value) => {
+                            *span.record_counts.entry(name.clone()).or_insert(0) += 1;
                             span.fields.insert(name, value);
                         }
                         CapturedField::Text(name, value) => {
+                            *span.record_counts.entry(name.clone()).or_insert(0) += 1;
                             span.fields.insert(name.clone(), 0);
                             span.string_fields.insert(name, value);
                         }
@@ -2437,7 +2442,9 @@ mod migrated_tests {
         );
     }
 
-    async fn capture_stream_message_telemetry(record_message_content: bool) -> CapturedSpan {
+    async fn capture_stream_message_telemetry(
+        record_message_content: bool,
+    ) -> (CapturedSpan, Vec<CompletionRequest>) {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
         let spans = CapturedSpans::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
@@ -2467,11 +2474,15 @@ mod migrated_tests {
             MockStreamEvent::text("stream response secret"),
             MockStreamEvent::final_response(Usage::default()),
         ]]);
+        let recorded_model = model.clone();
         let builder = AgentBuilder::new(model);
         let agent = if record_message_content {
-            builder.record_message_telemetry(true).build()
+            builder
+                .record_message_telemetry(true)
+                .context("static stream context secret")
+                .build()
         } else {
-            builder.build()
+            builder.context("static stream context secret").build()
         };
 
         let mut stream = agent
@@ -2484,16 +2495,58 @@ mod migrated_tests {
             }
         }
 
-        spans
+        let span = spans
             .snapshot()
             .into_iter()
             .find(|span| span.name == "chat_streaming")
-            .expect("chat_streaming span should be captured")
+            .expect("chat_streaming span should be captured");
+        (span, recorded_model.requests())
+    }
+
+    async fn capture_unary_message_telemetry(
+        record_message_content: bool,
+    ) -> (CapturedSpan, Vec<CompletionRequest>) {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let spans = CapturedSpans::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let _default = tracing::subscriber::set_default(subscriber);
+
+        let warmup_agent =
+            crate::agent::AgentBuilder::new(MockCompletionModel::text("warmup")).build();
+        warmup_agent
+            .prompt("warmup")
+            .await
+            .expect("warmup prompt should not error");
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
+        let model = MockCompletionModel::text("blocking response secret");
+        let recorded_model = model.clone();
+        let builder = AgentBuilder::new(model);
+        let agent = if record_message_content {
+            builder.record_message_telemetry(true).build()
+        } else {
+            builder.build()
+        };
+
+        agent
+            .prompt("blocking prompt secret")
+            .await
+            .expect("prompt should not error");
+
+        let span = spans
+            .snapshot()
+            .into_iter()
+            .find(|span| span.name == "chat")
+            .expect("chat span should be captured");
+        (span, recorded_model.requests())
     }
 
     #[tokio::test]
     async fn stream_prompt_message_telemetry_is_opt_in() {
-        let default_span = capture_stream_message_telemetry(false).await;
+        let (default_span, default_requests) = capture_stream_message_telemetry(false).await;
         assert!(
             !default_span.fields.contains_key("gen_ai.input.messages"),
             "default streaming prompt should not record input message contents"
@@ -2503,17 +2556,218 @@ mod migrated_tests {
             "default streaming prompt should not record output message contents"
         );
 
-        let opt_in_span = capture_stream_message_telemetry(true).await;
+        assert_eq!(default_requests.len(), 1);
+        assert!(
+            !default_requests[0].record_message_content,
+            "default agent stream should keep provider request message telemetry disabled"
+        );
+
+        let (opt_in_span, opt_in_requests) = capture_stream_message_telemetry(true).await;
         let input = opt_in_span
             .string_fields
             .get("gen_ai.input.messages")
             .expect("opt-in should record input messages");
         assert!(input.contains("stream prompt secret"));
+        assert!(input.contains("static stream context secret"));
         let output = opt_in_span
             .string_fields
             .get("gen_ai.output.messages")
             .expect("opt-in should record output messages");
         assert!(output.contains("stream response secret"));
+        assert_eq!(
+            opt_in_span
+                .record_counts
+                .get("gen_ai.input.messages")
+                .copied(),
+            Some(1),
+            "agent-owned input message telemetry should be recorded once"
+        );
+        assert_eq!(
+            opt_in_span
+                .record_counts
+                .get("gen_ai.output.messages")
+                .copied(),
+            Some(1),
+            "agent-owned output message telemetry should be recorded once"
+        );
+        assert_eq!(opt_in_requests.len(), 1);
+        assert!(
+            !opt_in_requests[0].record_message_content,
+            "agent-owned stream telemetry should clear the provider request flag"
+        );
+    }
+
+    #[tokio::test]
+    async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() {
+        let (default_span, default_requests) = capture_unary_message_telemetry(false).await;
+        assert!(
+            !default_span.fields.contains_key("gen_ai.input.messages"),
+            "default blocking prompt should not record input message contents"
+        );
+        assert!(
+            !default_span.fields.contains_key("gen_ai.output.messages"),
+            "default blocking prompt should not record output message contents"
+        );
+        assert_eq!(default_requests.len(), 1);
+        assert!(
+            !default_requests[0].record_message_content,
+            "default blocking prompt should keep provider request message telemetry disabled"
+        );
+
+        let (opt_in_span, opt_in_requests) = capture_unary_message_telemetry(true).await;
+        let input = opt_in_span
+            .string_fields
+            .get("gen_ai.input.messages")
+            .expect("opt-in should record blocking input messages");
+        assert!(input.contains("blocking prompt secret"));
+        let output = opt_in_span
+            .string_fields
+            .get("gen_ai.output.messages")
+            .expect("opt-in should record blocking output messages");
+        assert!(output.contains("blocking response secret"));
+        assert_eq!(opt_in_requests.len(), 1);
+        assert!(
+            !opt_in_requests[0].record_message_content,
+            "agent-owned blocking telemetry should clear the provider request flag"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_rejected_message_telemetry_does_not_record_output() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let spans = CapturedSpans::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let _default = tracing::subscriber::set_default(subscriber);
+
+        let warmup_model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("warmup"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
+        let mut warmup_stream = warmup_agent.stream_prompt("warmup").max_turns(1).await;
+        while let Some(item) = warmup_stream
+            .try_next()
+            .await
+            .expect("warmup stream should not error")
+        {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("rejected stream output secret"),
+            MockStreamEvent::tool_call(
+                "tool_call_1",
+                "default_api",
+                serde_json::json!({"x": 2, "y": 3}),
+            ),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let agent = AgentBuilder::new(model)
+            .record_message_telemetry(true)
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("stream rejection prompt")
+            .max_turns(1)
+            .await;
+        let err = loop {
+            match stream.try_next().await {
+                Ok(Some(_)) => continue,
+                Ok(None) => panic!("rejected stream should error"),
+                Err(err) => break err,
+            }
+        };
+        assert!(
+            err.to_string().contains("default_api"),
+            "expected invalid tool error, got {err}"
+        );
+
+        let chat_span = spans
+            .snapshot()
+            .into_iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("chat_streaming span should be captured");
+        assert!(
+            chat_span.fields.contains_key("gen_ai.input.messages"),
+            "opt-in rejected stream should still record input messages"
+        );
+        assert!(
+            !chat_span.fields.contains_key("gen_ai.output.messages"),
+            "rejected streaming turn must not record output message contents"
+        );
+    }
+
+    #[tokio::test]
+    async fn unary_repaired_message_telemetry_records_canonical_output() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let spans = CapturedSpans::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let _default = tracing::subscriber::set_default(subscriber);
+
+        let warmup_agent =
+            crate::agent::AgentBuilder::new(MockCompletionModel::text("warmup")).build();
+        warmup_agent
+            .prompt("warmup")
+            .await
+            .expect("warmup prompt should not error");
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call(
+                "tool_call_1",
+                "default_api",
+                serde_json::json!({"x": 2, "y": 3}),
+            ),
+            MockTurn::text("done"),
+        ]);
+        let recorded_model = model.clone();
+        let agent = AgentBuilder::new(model)
+            .record_message_telemetry(true)
+            .tool(MockAddTool)
+            .build();
+
+        let output = agent
+            .prompt("repair tool call")
+            .add_hook(RepairDefaultApiHook)
+            .max_turns(3)
+            .await
+            .expect("repaired tool call should complete");
+        assert_eq!(output, "done");
+
+        let output_messages: Vec<String> = spans
+            .snapshot()
+            .into_iter()
+            .filter(|span| span.name == "chat")
+            .filter_map(|span| span.string_fields.get("gen_ai.output.messages").cloned())
+            .collect();
+        assert!(
+            output_messages.iter().any(|output| output.contains("add")),
+            "repaired accepted output should include canonical tool name: {output_messages:?}"
+        );
+        assert!(
+            !output_messages
+                .iter()
+                .any(|output| output.contains("default_api")),
+            "repaired output telemetry must not serialize stale raw tool name: {output_messages:?}"
+        );
+
+        let requests = recorded_model.requests();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests
+                .iter()
+                .all(|request| !request.record_message_content),
+            "agent-owned repaired telemetry should clear provider request flags"
+        );
     }
 
     #[test]

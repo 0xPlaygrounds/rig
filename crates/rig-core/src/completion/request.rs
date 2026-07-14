@@ -1073,6 +1073,15 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             chat_history.insert(0, Message::system(preamble.clone()));
         }
         chat_history.push(self.prompt.clone());
+
+        if let Some(documents) = CompletionRequest::normalized_documents_from(&self.documents) {
+            let insert_at = chat_history
+                .iter()
+                .position(|message| !matches!(message, Message::System { .. }))
+                .unwrap_or(chat_history.len());
+            chat_history.insert(insert_at, documents);
+        }
+
         chat_history
     }
 
@@ -1190,6 +1199,32 @@ mod tests {
             text: text.to_string(),
             additional_props: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn message_telemetry_includes_normalized_documents() {
+        let builder = CompletionRequestBuilder::new(MockCompletionModel::default(), "prompt")
+            .preamble("system".to_string())
+            .message(Message::user("history"))
+            .document(test_document("doc1", "static context secret"));
+
+        let messages = builder.messages_for_telemetry();
+        assert_eq!(messages.len(), 4);
+        assert!(matches!(messages[0], Message::System { .. }));
+        assert!(is_document_message(&messages[1], "doc1"));
+        assert!(matches!(
+            &messages[2],
+            Message::User { content }
+                if matches!(content.first(), UserContent::Text(text) if text.text == "history")
+        ));
+        assert!(matches!(
+            &messages[3],
+            Message::User { content }
+                if matches!(content.first(), UserContent::Text(text) if text.text == "prompt")
+        ));
+
+        let request = builder.build();
+        assert_eq!(messages, request.chat_history_with_documents());
     }
 
     fn is_document_message(message: &Message, expected_id: &str) -> bool {
