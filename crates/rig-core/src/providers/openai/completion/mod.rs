@@ -1967,12 +1967,6 @@ where
         self.client
             .ext()
             .finalize_request_body_with_options(&mut request_body, options)?;
-        crate::telemetry::record_model_input(
-            &span,
-            request_body.get("messages").unwrap_or(&request_body),
-            record_telemetry_content,
-        );
-
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
@@ -2004,14 +1998,6 @@ where
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.get_usage());
-                        if record_telemetry_content {
-                            crate::telemetry::record_model_output(
-                                &span,
-                                &response.get_output_messages(),
-                                true,
-                            );
-                        }
-
                         if enabled!(Level::TRACE) {
                             tracing::trace!(
                                 target: "rig::completions",

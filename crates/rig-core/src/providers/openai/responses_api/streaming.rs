@@ -889,7 +889,6 @@ where
         )
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
-        crate::telemetry::record_model_input(&span, &request.input, record_telemetry_content);
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
 

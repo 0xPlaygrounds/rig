@@ -1295,15 +1295,6 @@ where
             }
 
             let final_turn_content = stream.choice.clone();
-            // Only record onto the agent span when we own it — never pollute a
-            // caller-supplied span (parity with the blocking source).
-            if self.created_agent_span && self.record_telemetry_content {
-                agent_span.record(
-                    "gen_ai.completion",
-                    assistant_text_from_choice(&final_turn_content),
-                );
-            }
-
             self.last_message_id = stream.message_id.clone();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
             // The canonical (committed) assistant content: `finish` normalizes
@@ -1316,6 +1307,14 @@ where
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(Box::new(err).into());
                 return;
+            }
+            // Only accepted, canonical output belongs in content telemetry.
+            // Keep caller-owned spans untouched, matching the blocking source.
+            if self.created_agent_span && self.record_telemetry_content {
+                agent_span.record(
+                    "gen_ai.completion",
+                    assistant_text_from_choice(&canonical_choice),
+                );
             }
             crate::telemetry::record_model_output(
                 &chat_span,
@@ -2659,7 +2658,7 @@ mod migrated_tests {
                 .string_fields
                 .get("gen_ai.system_instructions")
                 .map(String::as_str),
-            Some("blocking system secret")
+            Some(r#"[{"type":"text","content":"blocking system secret"}]"#)
         );
         assert_eq!(
             opt_in_agent_span

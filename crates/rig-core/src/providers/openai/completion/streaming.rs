@@ -189,8 +189,6 @@ where
             .ext()
             .finalize_request_body_with_options(&mut request_as_json, options)?;
 
-        let request_messages = request_as_json.get("messages").unwrap_or(&request_as_json);
-
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
@@ -214,8 +212,6 @@ where
         )
         .system_instructions(preamble.as_deref(), record_telemetry_content)
         .build();
-
-        crate::telemetry::record_model_input(&span, request_messages, record_telemetry_content);
 
         let client = self.client.clone();
 

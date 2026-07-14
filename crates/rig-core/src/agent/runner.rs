@@ -75,18 +75,18 @@ use super::UNKNOWN_AGENT_NAME;
 /// name; every other field is identical across the two surfaces, so it lives
 /// here once instead of being copy-pasted into each `TurnSource::open_chat_span`.
 macro_rules! build_chat_span {
-    ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {
+    ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {{
+        let system_instructions = $crate::telemetry::system_instructions_json(
+            $effective_preamble,
+            $runner.record_telemetry_content,
+        );
         ::tracing::info_span!(
             target: "rig::agent_chat",
             parent: ::tracing::Span::current(),
             $name,
             gen_ai.operation.name = $operation,
             gen_ai.agent.name = $runner.agent_name_or_default(),
-            gen_ai.system_instructions = if $runner.record_telemetry_content {
-                $effective_preamble
-            } else {
-                None
-            },
+            gen_ai.system_instructions = system_instructions.as_deref(),
             gen_ai.provider.name = ::tracing::field::Empty,
             gen_ai.request.model = ::tracing::field::Empty,
             gen_ai.response.id = ::tracing::field::Empty,
@@ -100,7 +100,7 @@ macro_rules! build_chat_span {
             gen_ai.input.messages = ::tracing::field::Empty,
             gen_ai.output.messages = ::tracing::field::Empty,
         )
-    };
+    }};
 }
 pub(crate) use build_chat_span;
 
@@ -392,11 +392,13 @@ pub(crate) fn acquire_agent_span(
     record_content: bool,
 ) -> (tracing::Span, bool) {
     if tracing::Span::current().is_disabled() {
+        let system_instructions =
+            crate::telemetry::system_instructions_json(preamble, record_content);
         let span = info_span!(
             "invoke_agent",
             gen_ai.operation.name = "invoke_agent",
             gen_ai.agent.name = agent_name,
-            gen_ai.system_instructions = if record_content { preamble } else { None },
+            gen_ai.system_instructions = system_instructions.as_deref(),
             gen_ai.prompt = tracing::field::Empty,
             gen_ai.completion = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,

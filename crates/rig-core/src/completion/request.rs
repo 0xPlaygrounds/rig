@@ -687,11 +687,11 @@ pub struct CompletionRequest {
     /// backend storage and query costs. Only enable it when the caller has
     /// explicitly opted in to content telemetry.
     ///
-    /// Providers and higher-level agent drivers that support GenAI message
-    /// fields use this flag to decide whether to record content.
-    /// Low-level streaming output recording is provider- or
-    /// agent-driver-dependent because stream aggregation happens while the
-    /// returned stream is consumed.
+    /// Higher-level agent drivers use this flag for portable input, output, and
+    /// tool-content telemetry. Direct provider calls only forward the policy;
+    /// the exact content fields available there are provider- and
+    /// surface-dependent, especially for streaming responses that are consumed
+    /// after the provider returns.
     ///
     /// This is local observability policy and is never serialized into provider
     /// request payloads.
@@ -1058,8 +1058,10 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// acceptable for this request. Structural metadata and token
     /// usage remain available when this is disabled.
     ///
-    /// This low-level builder stores the opt-in on the built request; providers
-    /// and higher-level agent drivers own the actual span attributes.
+    /// This low-level builder only stores the opt-in on the built request. It
+    /// does not guarantee portable input/output message fields for direct model
+    /// calls; exact coverage is provider- and surface-dependent. Agent APIs own
+    /// normalized input/output recording and provide the consistent surface.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
         self.record_telemetry_content = enabled;
         self
