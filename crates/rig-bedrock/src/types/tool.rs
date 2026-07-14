@@ -22,9 +22,11 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
                 let image = RigImage(image).try_into()?;
                 Ok(aws_bedrock::ToolResultContentBlock::Image(image))
             }
+            // Keep Bedrock's existing model-visible representation stable. Rig
+            // retains the value as typed JSON until this terminal provider
+            // boundary, where tool results historically used text blocks.
             ToolResultContent::Json { value } => {
-                let document: AwsDocument = value.into();
-                Ok(aws_bedrock::ToolResultContentBlock::Json(document.0))
+                Ok(aws_bedrock::ToolResultContentBlock::Text(value.to_string()))
             }
         }
     }
@@ -93,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn rig_tool_json_stays_structured_at_the_aws_boundary() {
+    fn rig_tool_json_preserves_the_existing_aws_text_representation() {
         let expected = serde_json::json!({ "answer": -3, "exact": true });
         let tool = RigToolResultContent(ToolResultContent::Json {
             value: expected.clone(),
@@ -101,13 +103,14 @@ mod tests {
 
         let aws_tool: aws_bedrock::ToolResultContentBlock = tool
             .try_into()
-            .expect("JSON should remain structured at the AWS boundary");
-        assert!(aws_tool.is_json());
-
-        let roundtrip: RigToolResultContent = aws_tool
-            .try_into()
-            .expect("AWS JSON should convert back to a Rig tool result");
-        assert_eq!(roundtrip.0, ToolResultContent::json(expected));
+            .expect("JSON should render at the AWS boundary");
+        assert_eq!(
+            aws_tool
+                .as_text()
+                .expect("Bedrock tool result text")
+                .as_str(),
+            expected.to_string()
+        );
     }
 
     #[test]
