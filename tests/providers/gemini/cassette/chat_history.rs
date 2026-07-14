@@ -36,6 +36,7 @@ impl StressAdd {
 
 impl Tool for StressAdd {
     const NAME: &'static str = "stress_add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = StressMathArgs;
     type Output = i32;
 
@@ -76,6 +77,7 @@ impl StressSubtract {
 
 impl Tool for StressSubtract {
     const NAME: &'static str = "stress_subtract";
+    type Error = rig::tool::ToolExecutionError;
     type Args = StressMathArgs;
     type Output = i32;
 

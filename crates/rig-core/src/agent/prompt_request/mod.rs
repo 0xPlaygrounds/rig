@@ -963,6 +963,7 @@ mod tests {
 
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
+        type Error = rig::tool::ToolExecutionError;
         type Args = MockOperationArgs;
         type Output = i32;
 

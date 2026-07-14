@@ -24,6 +24,7 @@ pub struct ThinkTool;
 
 impl Tool for ThinkTool {
     const NAME: &'static str = "think";
+    type Error = rig::tool::ToolExecutionError;
     type Args = ThinkArgs;
     type Output = String;
 

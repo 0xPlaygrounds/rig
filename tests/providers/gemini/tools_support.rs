@@ -86,6 +86,7 @@ pub(crate) struct CountingAdd {
 
 impl Tool for CountingAdd {
     const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -115,6 +116,7 @@ pub(crate) struct CountingSubtract {
 
 impl Tool for CountingSubtract {
     const NAME: &'static str = "subtract";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -150,6 +152,7 @@ pub(crate) const PING_OUTPUT: &str = "pong-crimson-7423";
 
 impl Tool for CountingPing {
     const NAME: &'static str = "ping";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -197,6 +200,7 @@ pub(crate) struct CodewordLookup {
 
 impl Tool for CodewordLookup {
     const NAME: &'static str = "lookup_codeword";
+    type Error = rig::tool::ToolExecutionError;
     type Args = CodewordArgs;
     type Output = String;
 
@@ -245,6 +249,7 @@ pub(crate) struct StrictRegister {
 
 impl Tool for StrictRegister {
     const NAME: &'static str = "register_guests";
+    type Error = rig::tool::ToolExecutionError;
     type Args = StrictRegisterArgs;
     type Output = String;
 
@@ -284,6 +289,7 @@ pub(crate) struct MottoTool;
 
 impl Tool for MottoTool {
     const NAME: &'static str = "fetch_motto";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -327,6 +333,7 @@ impl ConfigTool {
 
 impl Tool for ConfigTool {
     const NAME: &'static str = "fetch_config";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = ConfigOutput;
 
@@ -356,6 +363,7 @@ pub(crate) struct BadgeImageTool;
 
 impl Tool for BadgeImageTool {
     const NAME: &'static str = "fetch_badge_image";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = ToolOutput;
 
@@ -520,6 +528,7 @@ macro_rules! embeddable_operation {
 
         impl Tool for $name {
             const NAME: &'static str = $tool_name;
+            type Error = rig::tool::ToolExecutionError;
             type Args = OperationArgs;
             type Output = i64;
 

@@ -132,6 +132,7 @@ struct EchoArgs {
 
 impl Tool for PingEmpty {
     const NAME: &'static str = "ping_empty";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -159,6 +160,7 @@ impl Tool for PingEmpty {
 
 impl Tool for InspectManifest {
     const NAME: &'static str = "inspect_manifest";
+    type Error = rig::tool::ToolExecutionError;
     type Args = ManifestArgs;
     type Output = String;
 
@@ -213,6 +215,7 @@ impl Tool for InspectManifest {
 
 impl Tool for JoinLabels {
     const NAME: &'static str = "join_labels";
+    type Error = rig::tool::ToolExecutionError;
     type Args = JoinArgs;
     type Output = String;
 
@@ -243,6 +246,7 @@ impl Tool for JoinLabels {
 
 impl Tool for OptionalNullableProbe {
     const NAME: &'static str = "optional_nullable_probe";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OptionalNullableArgs;
     type Output = String;
 
@@ -279,6 +283,7 @@ impl Tool for OptionalNullableProbe {
 
 impl Tool for EscapeEcho {
     const NAME: &'static str = "escape_echo";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EchoArgs;
     type Output = String;
 

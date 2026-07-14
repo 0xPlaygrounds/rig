@@ -30,6 +30,7 @@ struct HybridImageTool;
 
 impl Tool for HybridImageTool {
     const NAME: &'static str = "render_reference_image";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = ToolOutput;
 

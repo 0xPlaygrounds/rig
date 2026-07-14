@@ -26,6 +26,8 @@ struct TranslatorArgs {
 impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     const NAME: &'static str = TRANSLATOR_TOOL_NAME;
 
+    type Error = rig::tool::ToolExecutionError;
+
     type Args = TranslatorArgs;
     type Output = String;
 

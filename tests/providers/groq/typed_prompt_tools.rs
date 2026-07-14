@@ -39,6 +39,7 @@ impl WeatherTool {
 
 impl Tool for WeatherTool {
     const NAME: &'static str = "weather";
+    type Error = rig::tool::ToolExecutionError;
     type Args = WeatherArgs;
     type Output = String;
 

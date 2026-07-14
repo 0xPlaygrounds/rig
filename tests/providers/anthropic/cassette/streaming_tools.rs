@@ -201,6 +201,7 @@ struct OutOfOrderAlphaSignal(OutOfOrderSignalOrder);
 
 impl Tool for OutOfOrderAlphaSignal {
     const NAME: &'static str = AlphaSignal::NAME;
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -227,6 +228,7 @@ struct OutOfOrderBetaSignal(OutOfOrderSignalOrder);
 
 impl Tool for OutOfOrderBetaSignal {
     const NAME: &'static str = BetaSignal::NAME;
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -276,8 +278,8 @@ async fn collect_concurrent_tool_observation<R>(
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
             }
-            Ok(MultiTurnStreamItem::ToolExecutionStart { .. }) => {
-                observation.events.push("tool_execution_start");
+            Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
+                observation.events.push("tool_execution_committed");
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,

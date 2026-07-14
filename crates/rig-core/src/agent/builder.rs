@@ -754,6 +754,7 @@ mod tests {
 
     impl Tool for NamedTool {
         const NAME: &'static str = "registered_named";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 

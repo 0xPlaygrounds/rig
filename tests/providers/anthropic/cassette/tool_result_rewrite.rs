@@ -55,6 +55,7 @@ impl GetUserRecord {
 
 impl Tool for GetUserRecord {
     const NAME: &'static str = "get_user_record";
+    type Error = rig::tool::ToolExecutionError;
     type Args = LookupArgs;
     type Output = String;
 

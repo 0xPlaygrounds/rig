@@ -11,8 +11,9 @@
 //! without first passing through a string.
 //!
 //! ```
-//! use rig_core::tool::{Tool, ToolContext, ToolExecutionError};
+//! use rig_core::tool::{Tool, ToolContext};
 //! use serde::{Deserialize, Serialize};
+//! use std::convert::Infallible;
 //!
 //! #[derive(Deserialize)]
 //! struct AddArgs {
@@ -34,6 +35,7 @@
 //!     const NAME: &'static str = "add";
 //!     type Args = AddArgs;
 //!     type Output = Sum;
+//!     type Error = Infallible;
 //!
 //!     fn description(&self) -> String {
 //!         "Add two integers".into()
@@ -54,7 +56,7 @@
 //!         &self,
 //!         context: &mut ToolContext,
 //!         args: Self::Args,
-//!     ) -> Result<Self::Output, ToolExecutionError> {
+//!     ) -> Result<Self::Output, Self::Error> {
 //!         let value = args.left + args.right;
 //!         context.insert_result(AuditRecord(value));
 //!         Ok(Sum { value })
@@ -84,10 +86,12 @@
 //! ));
 //! ```
 //!
-//! [`ToolExecutionError`] keeps its detailed message model-visible by default
-//! so parse and validation failures tell the model how to recover. Use
-//! [`ToolExecutionError::redact_model_feedback`] for sensitive diagnostics or
-//! [`ToolExecutionError::with_model_output`] for structured error content.
+//! Explicit [`ToolExecutionError`] constructors keep their detailed message
+//! model-visible so validation failures can tell the model how to recover. The
+//! default [`Tool::map_error`] conversion preserves an arbitrary source error
+//! for operators but exposes only safe kind-level feedback. Override
+//! [`Tool::map_error`] or use [`ToolExecutionError::with_model_output`] when a
+//! domain error has deliberate structured or actionable model feedback.
 //!
 //! # Migration from the parallel tool APIs
 //!
@@ -96,7 +100,7 @@
 //! | Multiple typed `call*` methods | One [`Tool::call`] method |
 //! | Public dynamic dispatch traits | [`DynamicTool`] |
 //! | Parallel error and failure types | [`ToolExecutionError`] and [`ToolErrorKind`] |
-//! | Author-facing outcome enums | Ordinary `Result<T, ToolExecutionError>` |
+//! | Author-facing outcome enums | Ordinary `Result<T, Self::Error>` normalized at dispatch |
 //! | Separate call/result extension maps | [`ToolContext`] |
 //! | Parallel string/structured dispatch | [`ToolSet::execute`] and [`server::ToolServerHandle::execute`] |
 //!
@@ -145,6 +149,13 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// directly; use [`ToolOutput`] when constructing the presentation
     /// explicitly.
     type Output: IntoToolOutput;
+    /// Typed error returned by direct calls to this tool.
+    ///
+    /// Rig normalizes this error into [`ToolExecutionError`] only at the erased
+    /// dispatch boundary. This keeps ordinary `?` propagation and typed unit
+    /// tests available to tool authors without creating a second runtime error
+    /// representation.
+    type Error: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
 
     /// Model-facing description.
     fn description(&self) -> String;
@@ -152,12 +163,21 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// JSON Schema for arguments.
     fn parameters(&self) -> serde_json::Value;
 
+    /// Normalize a typed author-facing error for runtime policy and telemetry.
+    ///
+    /// The default preserves the concrete source and classifies it as
+    /// [`ToolErrorKind::Other`]. Override this method when the domain error can
+    /// provide a more precise kind, retryability policy, or safe model output.
+    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+        ToolExecutionError::from_error(error)
+    }
+
     /// Execute the tool.
     fn call(
         &self,
         context: &mut ToolContext,
         args: Self::Args,
-    ) -> impl Future<Output = Result<Self::Output, ToolExecutionError>> + WasmCompatSend;
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
 }
 
 /// A tool that can be stored in a vector store and reconstructed for RAG.
@@ -245,7 +265,7 @@ where
                     Ok(output) => ToolResult::success(output),
                     Err(error) => ToolResult::failed(error),
                 },
-                Err(error) => ToolResult::failed(error),
+                Err(error) => ToolResult::failed(Tool::map_error(self, error)),
             }
         })
     }
@@ -748,6 +768,7 @@ mod tests {
 
     impl Tool for Echo {
         const NAME: &'static str = "echo";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = serde_json::Value;
 
@@ -801,6 +822,7 @@ mod tests {
 
     impl Tool for PendingTool {
         const NAME: &'static str = "pending";
+        type Error = rig::tool::ToolExecutionError;
         type Args = ();
         type Output = ();
 
@@ -874,6 +896,98 @@ mod tests {
         );
     }
 
+    struct ForeignErrorTool;
+
+    impl Tool for ForeignErrorTool {
+        const NAME: &'static str = "foreign_error";
+        type Error = std::io::Error;
+        type Args = ();
+        type Output = ();
+
+        fn description(&self) -> String {
+            "returns a foreign error type".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            Err(std::io::Error::other("operator-only detail"))
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_foreign_errors_normalize_only_at_dispatch() {
+        let direct: std::io::Error = ForeignErrorTool
+            .call(&mut ToolContext::new(), ())
+            .await
+            .expect_err("direct call should retain its typed error");
+        assert_eq!(direct.to_string(), "operator-only detail");
+
+        let mut set = ToolSet::default();
+        set.add_tool(ForeignErrorTool);
+        let result = set
+            .execute(ForeignErrorTool::NAME, "null", &mut ToolContext::new())
+            .await;
+        let error = result.error().expect("dispatch should normalize the error");
+        assert_eq!(error.kind(), ToolErrorKind::Other);
+        assert_eq!(error.message(), "operator-only detail");
+        assert_eq!(error.model_feedback(), Some("the tool failed"));
+        assert!(error.is::<std::io::Error>());
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("domain timeout")]
+    struct DomainTimeout;
+
+    struct ClassifiedErrorTool;
+
+    impl Tool for ClassifiedErrorTool {
+        const NAME: &'static str = "classified_error";
+        type Error = DomainTimeout;
+        type Args = ();
+        type Output = ();
+
+        fn description(&self) -> String {
+            "classifies a domain error".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+            ToolExecutionError::timeout("safe timeout feedback").with_source(error)
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            Err(DomainTimeout)
+        }
+    }
+
+    #[tokio::test]
+    async fn tools_can_classify_typed_errors_at_the_erased_boundary() {
+        let mut set = ToolSet::default();
+        set.add_tool(ClassifiedErrorTool);
+        let result = set
+            .execute(ClassifiedErrorTool::NAME, "null", &mut ToolContext::new())
+            .await;
+        let error = result.error().expect("dispatch should normalize the error");
+        assert_eq!(error.kind(), ToolErrorKind::Timeout);
+        assert_eq!(error.retryable(), Some(true));
+        assert_eq!(error.model_feedback(), Some("safe timeout feedback"));
+        assert!(error.is::<DomainTimeout>());
+    }
+
     #[tokio::test]
     async fn dynamic_tool_preserves_concrete_error() {
         #[derive(Debug, thiserror::Error)]
@@ -897,6 +1011,7 @@ mod tests {
 
     impl Tool for DirectRichOutput {
         const NAME: &'static str = "direct_rich_output";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = ToolResultContent;
 
@@ -944,6 +1059,7 @@ mod tests {
 
     impl Tool for TypedRichError {
         const NAME: &'static str = "typed_rich_error";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -1135,6 +1251,7 @@ mod migrated_tests {
 
         impl Tool for NamedTool {
             const NAME: &'static str = "canonical";
+            type Error = rig::tool::ToolExecutionError;
             type Args = serde_json::Value;
             type Output = String;
 
@@ -1174,6 +1291,7 @@ mod migrated_tests {
 
         impl Tool for RetrievedTool {
             const NAME: &'static str = "retrieved";
+            type Error = rig::tool::ToolExecutionError;
             type Args = serde_json::Value;
             type Output = String;
 
@@ -1283,6 +1401,7 @@ mod migrated_tests {
 
         impl Tool for JsonShapedStringTool {
             const NAME: &'static str = "json_shaped_string";
+            type Error = rig::tool::ToolExecutionError;
             type Args = serde_json::Value;
             type Output = String;
 
@@ -1381,6 +1500,7 @@ mod migrated_tests {
 
         impl Tool for NoArgTool {
             const NAME: &'static str = "no_arg_tool";
+            type Error = rig::tool::ToolExecutionError;
             type Args = NoRequiredArgs;
             type Output = String;
 

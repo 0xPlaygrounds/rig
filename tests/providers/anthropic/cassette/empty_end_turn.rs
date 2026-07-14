@@ -64,6 +64,7 @@ impl Notify {
 
 impl Tool for Notify {
     const NAME: &'static str = "notify";
+    type Error = rig::tool::ToolExecutionError;
     type Args = NotifyArgs;
     type Output = String;
 

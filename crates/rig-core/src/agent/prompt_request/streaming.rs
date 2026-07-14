@@ -51,7 +51,7 @@ pub enum MultiTurnStreamItem<R> {
     /// tool call Rig routes to execution. Such a call is reported here whether or
     /// not the tool body ultimately runs (a hook skip still reports it);
     /// it is **not** an execution-lifecycle event (see
-    /// [`ToolExecutionStart`](Self::ToolExecutionStart)).
+    /// [`ToolExecutionCommitted`](Self::ToolExecutionCommitted)).
     ///
     /// Two kinds of model tool call are **not** re-emitted as a complete
     /// `ToolCall` item here (their arguments still stream as tool-call deltas):
@@ -61,17 +61,16 @@ pub enum MultiTurnStreamItem<R> {
     /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
     /// `ToolCall` item.
     StreamAssistantItem(StreamedAssistantContent<R>),
-    /// Rig **executed** a tool call. Surfaced only for a tool whose body actually
-    /// ran (it passed its `ToolCall` hook checks) — never for a model tool call
-    /// that was dropped by a sibling's termination, skipped by a hook, or
-    /// resolved by invalid-tool-call recovery. The tool batch
-    /// commits and surfaces **atomically at every `tool_concurrency`** (including
-    /// the sequential default): this event is surfaced together with its
-    /// `ToolResult` once the whole batch has settled successfully, so a run that
-    /// terminates mid-batch produces **no** `ToolExecutionStart` (hence no orphan
-    /// start without a result). Correlate with the model tool call and the result
-    /// via `internal_call_id`.
-    ToolExecutionStart {
+    /// Confirmation that Rig **executed and committed** a tool call. This is not
+    /// a real-time start notification: it is surfaced together with its
+    /// `ToolResult` only after the whole batch settles successfully. Use tool
+    /// hooks for live host-side start/result observation.
+    ///
+    /// This item is emitted only for a tool whose body actually ran (it passed
+    /// its `ToolCall` hook checks), never for a call dropped by a sibling's
+    /// termination, skipped by a hook, or resolved by invalid-call recovery.
+    /// Correlate it with the model call and result through `internal_call_id`.
+    ToolExecutionCommitted {
         /// The tool call as **executed**: the model's call with any
         /// [`ToolCallAction::Rewrite`](crate::agent::ToolCallAction::Rewrite) hook rewrite
         /// applied (so a redaction rewrite is reflected here, not leaked). The
@@ -318,7 +317,7 @@ where
     /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: at any
     /// `concurrency` the stream emits the model's `ToolCall` items (call order),
     /// then — atomically, after the whole tool batch settles successfully — the
-    /// per-tool `ToolExecutionStart` + `ToolResult` items in **call order** (not
+    /// per-tool `ToolExecutionCommitted` + `ToolResult` items in **call order** (not
     /// completion order). The streamed message history is unchanged at any
     /// `concurrency`.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
@@ -646,11 +645,11 @@ where
 /// - On the first hook termination / fail-closed error the batch fails fast: no
 ///   new tool starts, not-yet-started concurrent siblings are dropped,
 ///   already-started ones are drained, and the deterministic lowest call-index
-///   error is surfaced with **no** successful [`ToolExecutionStart`] /
+///   error is surfaced with **no** successful [`ToolExecutionCommitted`] /
 ///   [`StreamUserItem`](MultiTurnStreamItem::StreamUserItem) items and **no**
 ///   history commit.
 /// - Only if the whole batch settles successfully are the per-tool
-///   [`ToolExecutionStart`](MultiTurnStreamItem::ToolExecutionStart) + result
+///   [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted) + result
 ///   items surfaced (in call order, only for tools whose body actually ran) and
 ///   the results committed to run history.
 ///
@@ -682,10 +681,10 @@ where
         span: tracing::Span,
     }
     // How a settled tool call is surfaced on the stream once the batch succeeds:
-    //   - `Executed`: `ToolExecutionStart` (with the effective, hook-rewritten
+    //   - `Executed`: `ToolExecutionCommitted` (with the effective, hook-rewritten
     //     call) + the `ToolResult`.
     //   - `Skipped`: the `ToolResult` only (a `ToolCall` hook returned `Skip`, so
-    //     nothing ran — no execution-start — but the model still sees the result).
+    //     nothing ran — no execution commit — but the model still sees the result).
     //   - `Preresolved`: neither (an invalid-recovery result, already surfaced
     //     during the model turn); committed to history only.
     enum ToolSurface {
@@ -877,20 +876,23 @@ where
         }
 
         // Settle. On termination: surface only the deterministic error — no
-        // execution-start, no result, no history commit (all-or-nothing).
+        // execution commit, no result, no history commit (all-or-nothing).
         if let Some((_, err)) = first_error {
             yield Err(StreamingError::Prompt(Box::new(err)));
             return;
         }
 
-        // Success: surface each call's stream items in call order, then commit the
-        // results in call order. An executed call surfaces `ToolExecutionStart`
+        // Success: prepare each call's stream items and results in call order,
+        // commit the results, then surface the buffered items. An executed call
+        // surfaces `ToolExecutionCommitted`
         // (with the effective, hook-rewritten call) then its `ToolResult`; a
         // hook-skipped call surfaces its `ToolResult` only (nothing ran); a
         // preresolved call surfaces nothing (already surfaced during the model
         // turn) but is still committed. Every non-dropped slot is filled; a
         // dropped slot only occurs after a termination, handled above.
         let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
+        let mut surface_items: Vec<MultiTurnStreamItem<R>> =
+            Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
             let CollectedToolResult { content, internal_call_id, surface } = match slot {
                 Some(collected_result) => collected_result,
@@ -904,12 +906,12 @@ where
                 }
             };
             if forward_items {
-                // An executed call also surfaces its execution-start; a skipped
+                // An executed call also surfaces its execution commit; a skipped
                 // call surfaces only its result; a preresolved call surfaces
                 // nothing here.
                 let surface_result = match surface {
                     ToolSurface::Executed(tool_call) => {
-                        yield Ok(MultiTurnStreamItem::ToolExecutionStart {
+                        surface_items.push(MultiTurnStreamItem::ToolExecutionCommitted {
                             tool_call: *tool_call,
                             internal_call_id: internal_call_id.clone(),
                         });
@@ -921,7 +923,7 @@ where
                 if surface_result
                     && let UserContent::ToolResult(tool_result) = &content
                 {
-                    yield Ok(MultiTurnStreamItem::StreamUserItem(
+                    surface_items.push(MultiTurnStreamItem::StreamUserItem(
                         StreamedUserContent::ToolResult {
                             tool_result: tool_result.clone(),
                             internal_call_id,
@@ -935,6 +937,10 @@ where
         if let Err(err) = run.tool_results(committed) {
             yield Err(Box::new(err).into());
             return;
+        }
+
+        for item in surface_items {
+            yield Ok(item);
         }
     })
 }
@@ -1551,7 +1557,7 @@ mod migrated_tests {
     use crate::tool::{Tool, ToolContext, ToolExecutionError};
     use futures::{StreamExt, TryStreamExt};
     use serde::Deserialize;
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -1982,6 +1988,7 @@ mod migrated_tests {
 
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
+        type Error = rig::tool::ToolExecutionError;
         type Args = CountingOperationArgs;
         type Output = i32;
 
@@ -2005,6 +2012,7 @@ mod migrated_tests {
 
     impl Tool for CountingSubtractTool {
         const NAME: &'static str = "subtract";
+        type Error = rig::tool::ToolExecutionError;
         type Args = CountingOperationArgs;
         type Output = i32;
 
@@ -2054,6 +2062,85 @@ mod migrated_tests {
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
+    }
+
+    #[tokio::test]
+    async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
+        let runner = AgentBuilder::new(MockCompletionModel::default())
+            .build()
+            .runner("go");
+        let tool_snapshot = Arc::new(
+            runner
+                .tool_server_handle
+                .snapshot_tool_defs(None)
+                .await
+                .expect("empty tool snapshot should build"),
+        );
+
+        let mut run = AgentRun::new("go").max_turns(2);
+        assert!(matches!(
+            run.next_step().expect("initial model step"),
+            AgentRunStep::CallModel { .. }
+        ));
+
+        let tool_name = "missing".to_string();
+        let advertised = BTreeSet::from([tool_name.clone()]);
+        let turn = crate::agent::run::ModelTurn::new(
+            None,
+            OneOrMany::one(AssistantContent::ToolCall(crate::message::ToolCall::new(
+                "expected_call".to_string(),
+                crate::message::ToolFunction::new(tool_name, serde_json::json!({})),
+            ))),
+            Usage::new(),
+            advertised.clone(),
+            advertised,
+        );
+        assert!(matches!(
+            run.model_response(turn)
+                .expect("tool turn should be accepted"),
+            crate::agent::run::ModelTurnOutcome::Continue { .. }
+        ));
+
+        let mut calls = match run.next_step().expect("tool step") {
+            AgentRunStep::CallTools { calls } => calls,
+            other => panic!("expected tool step, got {other:?}"),
+        };
+        // Corrupt only the driver's copy so execution settles successfully but
+        // `AgentRun` rejects the result before any commit-labelled item escapes.
+        calls[0].tool_call.id = "mismatched_call".to_string();
+
+        let hook_context = HookContext::new(true, None);
+        hook_context.set_turn(1);
+        let mut stream = drive_tool_calls::<MockCompletionModel, MockResponse, _>(
+            &runner,
+            &hook_context,
+            &mut run,
+            calls,
+            tool_snapshot,
+            |span| span,
+            true,
+        );
+
+        let mut saw_commit = false;
+        let mut saw_result = false;
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => saw_commit = true,
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => saw_result = true,
+                Err(_) => saw_error = true,
+                _ => {}
+            }
+        }
+
+        assert!(
+            saw_error,
+            "the mismatched result must fail run-state commit"
+        );
+        assert!(!saw_commit, "a failed run-state commit cannot be announced");
+        assert!(!saw_result, "an uncommitted result cannot be surfaced");
     }
 
     #[derive(Clone, Debug, Default)]

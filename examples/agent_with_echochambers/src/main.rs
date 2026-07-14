@@ -48,6 +48,7 @@ struct SendMessage {
 
 impl Tool for SendMessage {
     const NAME: &'static str = "send_message";
+    type Error = rig::tool::ToolExecutionError;
     type Args = SendMessageArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {
@@ -141,6 +142,7 @@ struct GetHistory;
 
 impl Tool for GetHistory {
     const NAME: &'static str = "get_history";
+    type Error = rig::tool::ToolExecutionError;
     type Args = GetHistoryArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {
@@ -189,6 +191,7 @@ struct GetRoomMetrics;
 
 impl Tool for GetRoomMetrics {
     const NAME: &'static str = "get_room_metrics";
+    type Error = rig::tool::ToolExecutionError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
 
@@ -235,6 +238,7 @@ impl Tool for GetRoomMetrics {
 struct GetAgentMetrics;
 impl Tool for GetAgentMetrics {
     const NAME: &'static str = "get_agent_metrics";
+    type Error = rig::tool::ToolExecutionError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {
@@ -279,6 +283,7 @@ impl Tool for GetAgentMetrics {
 struct GetMetricsHistory;
 impl Tool for GetMetricsHistory {
     const NAME: &'static str = "get_metrics_history";
+    type Error = rig::tool::ToolExecutionError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {

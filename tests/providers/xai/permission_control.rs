@@ -61,6 +61,7 @@ struct ReadFileHead {
 
 impl Tool for ReadFileHead {
     const NAME: &'static str = "read_file_head";
+    type Error = rig::tool::ToolExecutionError;
     type Args = ReadFileArgs;
     type Output = String;
 
@@ -101,6 +102,7 @@ struct ReadFileTail {
 
 impl Tool for ReadFileTail {
     const NAME: &'static str = "read_file_tail";
+    type Error = rig::tool::ToolExecutionError;
     type Args = ReadFileArgs;
     type Output = String;
 

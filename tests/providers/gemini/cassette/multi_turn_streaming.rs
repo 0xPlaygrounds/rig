@@ -209,6 +209,7 @@ impl Add {
 
 impl Tool for Add {
     const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -242,6 +243,7 @@ impl Subtract {
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -275,6 +277,7 @@ impl Multiply {
 
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -308,6 +311,7 @@ impl Divide {
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 

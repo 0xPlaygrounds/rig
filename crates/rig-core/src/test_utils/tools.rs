@@ -26,6 +26,7 @@ pub struct MockAddTool;
 
 impl Tool for MockAddTool {
     const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = MockOperationArgs;
     type Output = i32;
 
@@ -96,6 +97,7 @@ impl MockContextProbeTool {
 
 impl Tool for MockContextProbeTool {
     const NAME: &'static str = "context_probe";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -130,6 +132,7 @@ pub struct MockSubtractTool;
 
 impl Tool for MockSubtractTool {
     const NAME: &'static str = "subtract";
+    type Error = rig::tool::ToolExecutionError;
     type Args = MockOperationArgs;
     type Output = i32;
 
@@ -177,6 +180,7 @@ pub struct MockStringOutputTool;
 
 impl Tool for MockStringOutputTool {
     const NAME: &'static str = "string_output";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -206,6 +210,7 @@ pub struct MockImageOutputTool;
 
 impl Tool for MockImageOutputTool {
     const NAME: &'static str = "image_output";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = ToolOutput;
 
@@ -237,6 +242,7 @@ pub struct MockImageGeneratorTool;
 
 impl Tool for MockImageGeneratorTool {
     const NAME: &'static str = "generate_test_image";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = ToolOutput;
 
@@ -273,6 +279,7 @@ pub struct MockObjectOutputTool;
 
 impl Tool for MockObjectOutputTool {
     const NAME: &'static str = "object_output";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = serde_json::Value;
 
@@ -304,6 +311,7 @@ pub struct MockExampleTool;
 
 impl Tool for MockExampleTool {
     const NAME: &'static str = "example_tool";
+    type Error = rig::tool::ToolExecutionError;
     type Args = ();
     type Output = String;
 
@@ -344,6 +352,7 @@ impl MockBarrierTool {
 
 impl Tool for MockBarrierTool {
     const NAME: &'static str = "barrier_tool";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -386,6 +395,7 @@ impl MockControlledTool {
 
 impl Tool for MockControlledTool {
     const NAME: &'static str = "controlled";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = i32;
 
@@ -502,6 +512,7 @@ impl MockFailingTool {
 
 impl Tool for MockFailingTool {
     const NAME: &'static str = "flaky_tool";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -535,6 +546,7 @@ pub struct MockHandledFailureTool;
 
 impl Tool for MockHandledFailureTool {
     const NAME: &'static str = "lookup";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -563,6 +575,7 @@ pub struct MockDeniedTool;
 
 impl Tool for MockDeniedTool {
     const NAME: &'static str = "guarded";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -598,6 +611,7 @@ pub struct MockMetadataTool;
 
 impl Tool for MockMetadataTool {
     const NAME: &'static str = "with_meta";
+    type Error = rig::tool::ToolExecutionError;
     type Args = serde_json::Value;
     type Output = String;
 

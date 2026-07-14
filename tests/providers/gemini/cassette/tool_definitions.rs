@@ -32,6 +32,7 @@ struct PlanTrip;
 
 impl Tool for PlanTrip {
     const NAME: &'static str = "plan_trip";
+    type Error = rig::tool::ToolExecutionError;
     type Args = TripArgs;
     type Output = String;
 
@@ -97,6 +98,7 @@ struct EchoArgs {
 
 impl Tool for LegacyEcho {
     const NAME: &'static str = "echo";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EchoArgs;
     type Output = String;
 
@@ -128,6 +130,7 @@ struct ModernEcho;
 
 impl Tool for ModernEcho {
     const NAME: &'static str = "echo";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EchoArgs;
     type Output = String;
 
