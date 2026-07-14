@@ -65,8 +65,12 @@ use std::sync::{
 use std::time::Duration;
 
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolResult, ContentBlock, ResourceContents};
-use tokio::sync::RwLock;
+use rmcp::model::{
+    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, ListToolsRequest,
+    PaginatedRequestParams, ResourceContents, ServerResult,
+};
+use rmcp::service::PeerRequestOptions;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::OneOrMany;
 use crate::completion::ToolDefinition;
@@ -103,9 +107,8 @@ pub(crate) struct McpTool {
     /// within this duration resolves to a [`ToolExecutionError`] instead of blocking
     /// forever (see issue #1914). When `None`, the call is unbounded.
     ///
-    /// On elapse the call is abandoned **locally** (the future is dropped); the
-    /// server is not sent a cancellation, so a still-running tool keeps running
-    /// server-side, and rmcp reclaims the request slot when the session closes.
+    /// On elapse RMCP sends a cancellation notification so both peers can
+    /// release request-scoped resources.
     timeout: Option<Duration>,
 }
 
@@ -130,8 +133,8 @@ impl McpTool {
     /// Pass a [`Duration`] to bound calls, or `None` to make them unbounded.
     /// On timeout the call resolves to a [`ToolExecutionError`] (which the agent loop
     /// surfaces to the model as a tool result, so the agent can recover rather
-    /// than hang). Note the timeout abandons the call locally and does **not**
-    /// send a cancellation to the MCP server.
+    /// than hang). RMCP sends a cancellation notification when the deadline
+    /// elapses.
     pub(crate) fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
         self.timeout = timeout.into();
         self
@@ -205,6 +208,83 @@ fn parse_mcp_arguments(args: &str) -> Result<Option<rmcp::model::JsonObject>, Mc
     }
 }
 
+async fn call_mcp_tool(
+    peer: &rmcp::service::ServerSink,
+    params: rmcp::model::CallToolRequestParams,
+    timeout: Option<Duration>,
+) -> Result<CallToolResult, rmcp::ServiceError> {
+    let deadline = timeout.map(|timeout| (tokio::time::Instant::now() + timeout, timeout));
+    let response = send_mcp_request(
+        peer,
+        ClientRequest::CallToolRequest(CallToolRequest::new(params)),
+        deadline,
+    )
+    .await?;
+
+    match response {
+        ServerResult::CallToolResult(result) => Ok(result),
+        _ => Err(rmcp::ServiceError::UnexpectedResponse),
+    }
+}
+
+async fn send_mcp_request(
+    peer: &rmcp::service::ServerSink,
+    request: ClientRequest,
+    deadline: Option<(tokio::time::Instant, Duration)>,
+) -> Result<ServerResult, rmcp::ServiceError> {
+    let handle = match deadline {
+        Some((deadline, timeout)) => {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(rmcp::ServiceError::Timeout { timeout });
+            }
+            crate::wasm_compat::timeout(
+                remaining,
+                peer.send_cancellable_request(request, PeerRequestOptions::no_options()),
+            )
+            .await
+            .map_err(|_| rmcp::ServiceError::Timeout { timeout })??
+        }
+        None => {
+            peer.send_cancellable_request(request, PeerRequestOptions::no_options())
+                .await?
+        }
+    };
+
+    let Some((deadline, timeout)) = deadline else {
+        return handle.await_response().await;
+    };
+    let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+    let mut handle = handle;
+    match crate::wasm_compat::timeout(remaining, &mut handle.rx).await {
+        Ok(response) => response.map_err(|_| rmcp::ServiceError::TransportClosed)?,
+        Err(_) => {
+            cancel_timed_out_request(handle);
+            Err(rmcp::ServiceError::Timeout { timeout })
+        }
+    }
+}
+
+/// Keep cancellation delivery out of the caller's deadline. RMCP's cancellation
+/// notification uses the same bounded outbound queue as requests, so awaiting it
+/// inline could exceed the timeout precisely when that queue is saturated.
+fn cancel_timed_out_request(handle: rmcp::service::RequestHandle<rmcp::service::RoleClient>) {
+    let cancellation = async move {
+        let _ = handle
+            .cancel(Some(
+                rmcp::service::RequestHandle::<rmcp::service::RoleClient>::REQUEST_TIMEOUT_REASON
+                    .to_owned(),
+            ))
+            .await;
+    };
+
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    tokio::spawn(cancellation);
+
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    wasm_bindgen_futures::spawn_local(cancellation);
+}
+
 impl McpTool {
     /// Execute one MCP request.
     ///
@@ -236,30 +316,27 @@ impl McpTool {
                 .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
             request.meta = meta;
 
-            let call = self.client.call_tool(request);
-            // Bound the call so a never-answered request (see issue #1914)
-            // becomes a recoverable error instead of an unbounded await.
-            let call_result = match self.timeout {
-                Some(timeout) => {
-                    crate::wasm_compat::timeout(timeout, call)
-                        .await
-                        .map_err(|_| {
-                            ToolExecutionError::timeout(format!(
-                                "MCP tool '{}' timed out after {timeout:?}",
-                                self.definition.name
-                            ))
-                        })?
+            match call_mcp_tool(&self.client, request, self.timeout).await {
+                Ok(result) => Ok(result),
+                Err(
+                    error @ rmcp::ServiceError::Timeout {
+                        timeout: elapsed_timeout,
+                    },
+                ) => {
+                    let timeout = self.timeout.unwrap_or(elapsed_timeout);
+                    Err(ToolExecutionError::timeout(format!(
+                        "MCP tool '{}' timed out after {timeout:?}",
+                        self.definition.name
+                    ))
+                    .with_source(error))
                 }
-                None => call.await,
-            };
-            // A transport/service error before the tool produced a result.
-            call_result.map_err(|error| {
-                ToolExecutionError::provider(format!(
+                // A transport/service error before the tool produced a result.
+                Err(error) => Err(ToolExecutionError::provider(format!(
                     "MCP tool '{}' request failed: {error}",
                     self.definition.name
                 ))
-                .with_source(error)
-            })
+                .with_source(error)),
+            }
         })
     }
 }
@@ -459,6 +536,14 @@ struct ManagedToolsState {
     committed_refresh: u64,
 }
 
+#[derive(Default)]
+struct RefreshActivity {
+    active: usize,
+    dirty: bool,
+}
+
+const MAX_CONCURRENT_REFRESHES: usize = 2;
+
 /// An MCP client handler that automatically re-fetches the tool list when the
 /// server sends a `notifications/tools/list_changed` notification.
 ///
@@ -494,6 +579,8 @@ pub struct McpClientHandler {
     /// only mutate a name while this generation remains current, so a newer
     /// local or peer-handler registration cannot be deleted or overwritten.
     managed_tools: Arc<RwLock<ManagedToolsState>>,
+    /// Bounds notification-driven list fetches and coalesces excess signals.
+    refresh_activity: Arc<Mutex<RefreshActivity>>,
     /// Monotonic identity assigned when each tool-list fetch begins.
     next_refresh: Arc<AtomicU64>,
 }
@@ -511,6 +598,7 @@ impl McpClientHandler {
             timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
             refresh_timeout: DEFAULT_MCP_REFRESH_TIMEOUT,
             managed_tools: Arc::new(RwLock::new(ManagedToolsState::default())),
+            refresh_activity: Arc::new(Mutex::new(RefreshActivity::default())),
             next_refresh: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -543,13 +631,70 @@ impl McpClientHandler {
         &self,
         peer: &rmcp::service::ServerSink,
     ) -> Result<Vec<Arc<dyn ErasedTool>>, McpClientError> {
-        let tools = crate::wasm_compat::timeout(self.refresh_timeout, peer.list_all_tools())
+        let deadline = tokio::time::Instant::now() + self.refresh_timeout;
+        let mut tools = Vec::new();
+        let mut cursor = None;
+
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(McpClientError::ToolFetchTimeout(self.refresh_timeout));
+            }
+            let mut params = PaginatedRequestParams::default();
+            params.cursor = cursor;
+            let response = send_mcp_request(
+                peer,
+                ClientRequest::ListToolsRequest(ListToolsRequest::with_param(params)),
+                Some((deadline, self.refresh_timeout)),
+            )
             .await
-            .map_err(|_| McpClientError::ToolFetchTimeout(self.refresh_timeout))??;
+            .map_err(|error| match error {
+                rmcp::ServiceError::Timeout { .. } => {
+                    McpClientError::ToolFetchTimeout(self.refresh_timeout)
+                }
+                error => McpClientError::ToolFetchError(error),
+            })?;
+            let page = match response {
+                ServerResult::ListToolsResult(page) => page,
+                _ => {
+                    return Err(McpClientError::ToolFetchError(
+                        rmcp::ServiceError::UnexpectedResponse,
+                    ));
+                }
+            };
+            tools.extend(page.tools);
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+
         Ok(tools
             .into_iter()
             .map(|tool| Arc::new(self.build_tool(tool, peer.clone())) as Arc<dyn ErasedTool>)
             .collect())
+    }
+
+    async fn try_start_refresh(&self) -> bool {
+        let mut activity = self.refresh_activity.lock().await;
+        if activity.active >= MAX_CONCURRENT_REFRESHES {
+            activity.dirty = true;
+            false
+        } else {
+            activity.active += 1;
+            true
+        }
+    }
+
+    async fn finish_or_restart_refresh(&self) -> bool {
+        let mut activity = self.refresh_activity.lock().await;
+        if activity.dirty {
+            activity.dirty = false;
+            true
+        } else {
+            activity.active -= 1;
+            false
+        }
     }
 
     async fn commit_initial(&self, refresh: u64, tools: Vec<Arc<dyn ErasedTool>>) {
@@ -621,24 +766,29 @@ impl rmcp::handler::client::ClientHandler for McpClientHandler {
         &self,
         context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
     ) {
-        let refresh = self.begin_refresh();
-        // Network IO is deliberately outside the ownership lock. A lost older
-        // response therefore cannot block a later notification from fetching
-        // and committing, while commit versions prevent late rollback.
-        let tools = match self.fetch_tools(&context.peer).await {
-            Ok(tools) => tools,
-            Err(e) => {
-                tracing::error!("Failed to re-fetch MCP tool list: {e}");
-                return;
-            }
-        };
-
-        if !self.commit_refresh(refresh, tools).await {
+        if !self.try_start_refresh().await {
             return;
         }
 
-        let tool_count = self.managed_tools.read().await.registrations.len();
-        tracing::info!(tool_count, "MCP tool list refreshed successfully");
+        loop {
+            let refresh = self.begin_refresh();
+            // Network IO is deliberately outside the ownership lock. Up to two
+            // fetches may overlap so a newer snapshot can bypass one stalled
+            // request; further notifications coalesce into one follow-up fetch.
+            match self.fetch_tools(&context.peer).await {
+                Ok(tools) => {
+                    if self.commit_refresh(refresh, tools).await {
+                        let tool_count = self.managed_tools.read().await.registrations.len();
+                        tracing::info!(tool_count, "MCP tool list refreshed successfully");
+                    }
+                }
+                Err(error) => tracing::error!("Failed to re-fetch MCP tool list: {error}"),
+            }
+
+            if !self.finish_or_restart_refresh().await {
+                break;
+            }
+        }
     }
 }
 
@@ -650,7 +800,10 @@ mod tests {
     use rmcp::service::RequestContext;
     use rmcp::{RoleServer, ServerHandler, ServiceExt};
     use serde_json::json;
-    use tokio::{sync::RwLock, task::JoinHandle};
+    use tokio::{
+        sync::{Notify, RwLock},
+        task::JoinHandle,
+    };
 
     use super::*;
     use crate::message::ToolResultContent as RigToolResultContent;
@@ -674,6 +827,7 @@ mod tests {
     struct ScenarioServer {
         scenario: Scenario,
         seen: Arc<RwLock<Option<Meta>>>,
+        cancelled: Arc<Notify>,
     }
 
     impl ServerHandler for ScenarioServer {
@@ -711,7 +865,11 @@ mod tests {
                     response.content.clear();
                     Ok(response)
                 }
-                Scenario::Hang => std::future::pending::<Result<CallToolResult, ErrorData>>().await,
+                Scenario::Hang => {
+                    context.ct.cancelled().await;
+                    self.cancelled.notify_one();
+                    Err(ErrorData::internal_error("fixture request cancelled", None))
+                }
                 Scenario::ServiceError => {
                     Err(ErrorData::internal_error("fixture service failed", None))
                 }
@@ -731,17 +889,20 @@ mod tests {
     struct Fixture {
         handle: ToolServerHandle,
         seen: Arc<RwLock<Option<Meta>>>,
+        cancelled: Arc<Notify>,
         _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
         server_task: JoinHandle<()>,
     }
 
     async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
         let seen = Arc::new(RwLock::new(None));
+        let cancelled = Arc::new(Notify::new());
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
         let (server_to_client, client_from_server) = tokio::io::duplex(8192);
         let server = ScenarioServer {
             scenario,
             seen: seen.clone(),
+            cancelled: cancelled.clone(),
         };
         let server_task = tokio::spawn(async move {
             let running = server
@@ -765,6 +926,7 @@ mod tests {
         Fixture {
             handle,
             seen,
+            cancelled,
             _client: client,
             server_task,
         }
@@ -960,6 +1122,9 @@ mod tests {
             result.output().as_text(),
             Some("MCP tool 'fixture_tool' timed out after 25ms")
         );
+        tokio::time::timeout(Duration::from_secs(1), fixture.cancelled.notified())
+            .await
+            .expect("the timed-out MCP request should be cancelled at the peer");
         fixture.server_task.abort();
     }
 
@@ -1115,7 +1280,7 @@ mod tests {
 
 #[cfg(test)]
 mod migrated_tests {
-    use super::{McpClientError, McpClientHandler};
+    use super::{MAX_CONCURRENT_REFRESHES, McpClientError, McpClientHandler};
     use crate::tool::{DynamicTool, ToolOutput, server::ToolServer};
     use rmcp::{
         RoleServer, ServerHandler, ServiceExt, handler::client::ClientHandler, model::*,
@@ -1318,6 +1483,27 @@ mod migrated_tests {
             Err(McpClientError::ToolFetchTimeout(timeout)) if timeout == refresh_timeout
         ));
         server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn refresh_activity_is_bounded_and_coalesces_excess_notifications() {
+        let handler = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run());
+
+        assert!(handler.try_start_refresh().await);
+        assert!(handler.try_start_refresh().await);
+        assert!(!handler.try_start_refresh().await);
+        {
+            let activity = handler.refresh_activity.lock().await;
+            assert_eq!(activity.active, MAX_CONCURRENT_REFRESHES);
+            assert!(activity.dirty);
+        }
+
+        assert!(handler.finish_or_restart_refresh().await);
+        assert!(!handler.finish_or_restart_refresh().await);
+        assert!(!handler.finish_or_restart_refresh().await);
+        let activity = handler.refresh_activity.lock().await;
+        assert_eq!(activity.active, 0);
+        assert!(!activity.dirty);
     }
 
     #[tokio::test]

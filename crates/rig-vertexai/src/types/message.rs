@@ -35,12 +35,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                                         ToolResultContent::Text(Text { text, .. }) => {
                                             Ok(serde_json::Value::String(text.clone()))
                                         }
-                                        // Keep Rig's value structured until the terminal provider
-                                        // boundary while preserving Vertex AI's established JSON
-                                        // string representation for serialized tool outputs.
-                                        ToolResultContent::Json { value } => {
-                                            Ok(serde_json::Value::String(value.to_string()))
-                                        }
+                                        ToolResultContent::Json { value } => Ok(value.clone()),
                                         ToolResultContent::Image(_) => {
                                             Err(CompletionError::ProviderError(
                                                 "Vertex AI does not support images in tool results"
@@ -453,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn structured_tool_result_preserves_the_established_vertex_string_wire_shape() {
+    fn structured_tool_result_stays_structured_at_the_vertex_boundary() {
         let value = serde_json::json!({ "answer": 8 });
         let message = Message::User {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
@@ -474,7 +469,7 @@ mod tests {
                 .response
                 .as_ref()
                 .and_then(|response| response.get("output")),
-            Some(&serde_json::Value::String(value.to_string()))
+            Some(&value)
         );
     }
 }

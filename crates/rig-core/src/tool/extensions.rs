@@ -150,9 +150,11 @@ impl TypeMap {
 /// values nor result metadata are sent to the model.
 ///
 /// Registry, server, and agent dispatch clone inbound values once per call.
-/// Mutating that snapshot affects only the current tool execution; the
-/// dispatch surface returns result metadata without replacing the caller's
-/// inbound values.
+/// Map-level mutations (inserting, replacing, or removing typed slots) affect
+/// only that execution. Value-level isolation follows each value's [`Clone`]
+/// semantics, so intentionally shared values such as `Arc<Mutex<_>>` continue
+/// to share their referent across dispatches. The dispatch surface returns
+/// result metadata without replacing the caller's inbound slots.
 #[derive(Default, Clone)]
 pub struct ToolContext {
     inbound: TypeMap,
@@ -244,9 +246,9 @@ impl ToolContext {
     /// Build a fresh execution context with the same inbound values and no
     /// result metadata.
     ///
-    /// Dispatch always runs against this snapshot. A tool may therefore mutate
-    /// its local inbound values without changing the run-wide or caller-owned
-    /// context that supplied them.
+    /// Dispatch always runs against this snapshot. Mutating its typed slots does
+    /// not change the run-wide or caller-owned map. Values with shared/interior
+    /// state remain shared according to their [`Clone`] implementation.
     pub(crate) fn for_dispatch(&self) -> Self {
         Self {
             inbound: self.inbound.clone(),
@@ -382,6 +384,22 @@ mod migrated_tests {
         clone.get_mut::<Vec<u8>>().unwrap().push(4);
         assert_eq!(c.get::<Vec<u8>>(), Some(&vec![1, 2, 3]));
         assert_eq!(clone.get::<Vec<u8>>(), Some(&vec![1, 2, 3, 4]));
+    }
+    #[test]
+    fn clone_preserves_intentionally_shared_value_state() {
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(1_u32));
+        let mut context = ToolContext::new();
+        context.insert(shared.clone());
+
+        let snapshot = context.for_dispatch();
+        *snapshot
+            .get::<std::sync::Arc<std::sync::Mutex<u32>>>()
+            .expect("shared value")
+            .lock()
+            .expect("shared value lock") = 2;
+
+        assert_eq!(*shared.lock().expect("shared value lock"), 2);
+        assert!(context.contains::<std::sync::Arc<std::sync::Mutex<u32>>>());
     }
     #[test]
     fn empty_context_is_default_and_allocation_free() {

@@ -6432,22 +6432,30 @@ mod migrated_tests {
     }
 
     impl<M: CompletionModel> AgentHook<M> for RegisterLateFinalResultTool {
-        async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-            if ctx.turn() == 1 && matches!(event, StepEvent::ModelTurnFinished { .. }) {
-                self.handle
-                    .add_tool(FinalResultTool)
-                    .await
-                    .expect("register late final_result tool");
+        async fn on_model_turn_finished(
+            &self,
+            ctx: &HookContext,
+            _event: ModelTurnFinished<'_>,
+        ) -> ObservationAction {
+            if ctx.turn() == 1 {
+                self.handle.add_tool(FinalResultTool).await;
             }
 
+            ObservationAction::continue_run()
+        }
+
+        async fn on_completion_call(
+            &self,
+            ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
             if ctx.turn() == 2
-                && matches!(event, StepEvent::CompletionCall { .. })
                 && let Some(patch) = &self.second_turn_patch
             {
-                return Flow::patch_request(patch.clone());
+                return CompletionCallAction::patch(patch.clone());
             }
 
-            Flow::cont()
+            CompletionCallAction::continue_run()
         }
     }
 
@@ -6727,7 +6735,7 @@ mod migrated_tests {
         retrieved_tools.add_tool(FinalResultTool);
         let handle = ToolServer::new()
             .tool(MockAddTool)
-            .dynamic_tools(1, LateFinalResultIndex::default(), retrieved_tools)
+            .retrieved_tools(1, LateFinalResultIndex::default(), retrieved_tools)
             .run();
         let model = MockCompletionModel::from_turns([
             MockTurn::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
