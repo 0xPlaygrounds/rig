@@ -2467,7 +2467,10 @@ where
             &request_model,
             CompletionOperation::Chat,
         )
-        .system_instructions(completion_request.preamble.as_deref())
+        .system_instructions(
+            completion_request.preamble.as_deref(),
+            completion_request.record_telemetry_content,
+        )
         .build();
 
         // Check if max_tokens is set, required for Anthropic
@@ -3055,7 +3058,7 @@ mod tests {
             tool_choice: None,
             additional_params,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         }
     }
 
@@ -3074,7 +3077,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         }
     }
 

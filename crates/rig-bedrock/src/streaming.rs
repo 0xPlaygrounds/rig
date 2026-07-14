@@ -94,6 +94,7 @@ impl CompletionModel {
     ) -> Result<StreamingCompletionResponse<BedrockStreamingResponse>, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = AwsCompletionRequest {
             inner: completion_request,
             prompt_caching: self.prompt_caching,
@@ -103,7 +104,7 @@ impl CompletionModel {
             &request_model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
         let mut converse_builder = self

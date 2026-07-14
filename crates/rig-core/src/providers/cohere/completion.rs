@@ -639,11 +639,12 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let llm_span =
             CompletionSpanBuilder::new("cohere", &request.model, CompletionOperation::Chat)
-                .system_instructions(system_instructions.as_deref())
+                .system_instructions(system_instructions.as_deref(), record_telemetry_content)
                 .build();
 
         if enabled!(Level::TRACE) {

@@ -212,7 +212,7 @@ mod tests {
             }),
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
         request.tools = vec![crate::completion::ToolDefinition {
             name: "lookup".to_string(),

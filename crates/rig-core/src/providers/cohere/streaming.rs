@@ -100,14 +100,14 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let system_instructions = request.preamble.clone();
-        let record_message_content = request.record_message_content;
+        let record_telemetry_content = request.record_telemetry_content;
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
             "cohere",
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
         let params = json_utils::merge(
@@ -168,26 +168,30 @@ where
                                 let Some(content) = &message.content else { continue; };
                                 let Some(text) = &content.text else { continue; };
 
-                                text_response += text;
+                                if record_telemetry_content {
+                                    text_response += text;
+                                }
                                 yield Ok(RawStreamingChoice::Message(text.clone()));
                             },
 
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
                                 let span = tracing::Span::current();
                                 span.record_token_usage(&delta.usage);
-                                let message = Message::Assistant {
-                                    tool_calls: tool_calls.clone(),
-                                    content: vec![AssistantContent::Text {
-                                        text: text_response.clone(),
-                                    }],
-                                    tool_plan: None,
-                                    citations: vec![],
-                                };
-                                crate::telemetry::record_model_output(
-                                    &span,
-                                    &vec![message],
-                                    record_message_content,
-                                );
+                                if record_telemetry_content {
+                                    let message = Message::Assistant {
+                                        tool_calls: tool_calls.clone(),
+                                        content: vec![AssistantContent::Text {
+                                            text: text_response.clone(),
+                                        }],
+                                        tool_plan: None,
+                                        citations: vec![],
+                                    };
+                                    crate::telemetry::record_model_output(
+                                        &span,
+                                        &vec![message],
+                                        true,
+                                    );
+                                }
 
                                 final_usage = Some(delta.usage.clone());
                                 break;
@@ -234,14 +238,16 @@ where
 
                                 let raw_tool_call = RawStreamingToolCall::new(tc.0.clone(), tc.2.clone(), args.clone())
                                     .with_internal_call_id(tc.1);
-                                tool_calls.push(ToolCall {
-                                    id: Some(tc.0),
-                                    r#type: Some(ToolType::Function),
-                                    function: Some(ToolCallFunction {
-                                        name: tc.2,
-                                        arguments: args,
-                                    }),
-                                });
+                                if record_telemetry_content {
+                                    tool_calls.push(ToolCall {
+                                        id: Some(tc.0),
+                                        r#type: Some(ToolType::Function),
+                                        function: Some(ToolCallFunction {
+                                            name: tc.2,
+                                            arguments: args,
+                                        }),
+                                    });
+                                }
                                 yield Ok(RawStreamingChoice::ToolCall(raw_tool_call));
 
                                 current_tool_call = None;

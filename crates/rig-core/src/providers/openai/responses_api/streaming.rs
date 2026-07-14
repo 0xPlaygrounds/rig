@@ -862,7 +862,7 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let system_instructions = completion_request.preamble.clone();
-        let record_message_content = completion_request.record_message_content;
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
@@ -887,9 +887,9 @@ where
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
-        crate::telemetry::record_model_input(&span, &request.input, record_message_content);
+        crate::telemetry::record_model_input(&span, &request.input, record_telemetry_content);
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
 

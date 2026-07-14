@@ -127,7 +127,10 @@ where
             &self.model,
             CompletionOperation::Interactions,
         )
-        .system_instructions(completion_request.preamble.as_deref())
+        .system_instructions(
+            completion_request.preamble.as_deref(),
+            completion_request.record_telemetry_content,
+        )
         .build();
 
         let request = self.create_completion_request(completion_request, Some(false))?;
@@ -2583,6 +2586,7 @@ mod tests {
         };
 
         let request = CompletionRequest {
+            record_telemetry_content: false,
             model: None,
             preamble: Some("Be precise.".to_string()),
             chat_history: OneOrMany::one(prompt),
@@ -2593,7 +2597,6 @@ mod tests {
             tool_choice: Some(MessageToolChoice::Required),
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
         };
 
         let result = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
@@ -2774,6 +2777,7 @@ mod tests {
             .expect("tool result content should be non-empty"),
         });
         let request = CompletionRequest {
+            record_telemetry_content: false,
             model: None,
             preamble: None,
             chat_history: OneOrMany::one(Message::User {

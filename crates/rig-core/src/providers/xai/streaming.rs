@@ -27,6 +27,7 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let preamble = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request =
             XAICompletionRequest::try_from((self.model.as_str(), completion_request))?;
 
@@ -53,7 +54,7 @@ where
 
         let span =
             CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::ChatStreaming)
-                .system_instructions(preamble.as_deref())
+                .system_instructions(preamble.as_deref(), record_telemetry_content)
                 .build();
 
         send_xai_streaming_request(self.client.clone(), req)

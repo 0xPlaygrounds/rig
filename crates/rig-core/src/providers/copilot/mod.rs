@@ -824,6 +824,7 @@ where
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.chat_request(completion_request)?;
         let body = serde_json::to_vec(&request)?;
         let auth = self.auth_context().await?;
@@ -837,7 +838,7 @@ where
         .map_err(|err| CompletionError::HttpError(err.into()))?;
 
         let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref())
+            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
             .build();
 
         async move {
@@ -899,6 +900,7 @@ where
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.responses_request(completion_request)?;
         let auth = self.auth_context().await?;
 
@@ -911,7 +913,7 @@ where
         .map_err(|err| CompletionError::HttpError(err.into()))?;
 
         let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref())
+            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
             .build();
 
         async move {
@@ -960,6 +962,7 @@ where
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.chat_request(completion_request)?;
         let auth = self.auth_context().await?;
         let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
@@ -985,7 +988,7 @@ where
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
         tracing::Instrument::instrument(
@@ -1002,6 +1005,7 @@ where
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request = self.responses_request(completion_request)?;
         request.stream = Some(true);
         let auth = self.auth_context().await?;
@@ -1019,7 +1023,7 @@ where
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
         let client = self.client.clone();

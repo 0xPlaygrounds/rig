@@ -80,9 +80,14 @@ impl<'a> CompletionSpanBuilder<'a> {
         }
     }
 
-    /// Set the system instructions sent with the request.
-    pub fn system_instructions(mut self, system_instructions: Option<&'a str>) -> Self {
-        self.system_instructions = system_instructions;
+    /// Set the system instructions sent with the request when sensitive content
+    /// telemetry has been explicitly enabled.
+    pub fn system_instructions(
+        mut self,
+        system_instructions: Option<&'a str>,
+        record_content: bool,
+    ) -> Self {
+        self.system_instructions = record_content.then_some(system_instructions).flatten();
         self
     }
 
@@ -143,8 +148,12 @@ impl<'a> CompletionSpanBuilder<'a> {
     }
 }
 
-fn record_message_content<T>(span: &tracing::Span, field: &'static str, messages: &T, enabled: bool)
-where
+fn record_telemetry_content<T>(
+    span: &tracing::Span,
+    field: &'static str,
+    messages: &T,
+    enabled: bool,
+) where
     T: Serialize,
 {
     if !enabled || span.is_disabled() {
@@ -157,7 +166,7 @@ where
 }
 
 /// Records serialized model input messages on `gen_ai.input.messages` when
-/// message-content telemetry is explicitly enabled.
+/// content telemetry is explicitly enabled.
 ///
 /// Message content can contain prompts, retrieved context, tool results, and
 /// other sensitive or high-cardinality data. Keep this disabled unless the
@@ -166,11 +175,11 @@ pub fn record_model_input<T>(span: &tracing::Span, messages: &T, enabled: bool)
 where
     T: Serialize,
 {
-    record_message_content(span, "gen_ai.input.messages", messages, enabled);
+    record_telemetry_content(span, "gen_ai.input.messages", messages, enabled);
 }
 
 /// Records serialized model output messages on `gen_ai.output.messages` when
-/// message-content telemetry is explicitly enabled.
+/// content telemetry is explicitly enabled.
 ///
 /// Message content can contain model responses, tool calls, and other sensitive
 /// or high-cardinality data. Keep this disabled unless the caller has explicitly
@@ -179,7 +188,7 @@ pub fn record_model_output<T>(span: &tracing::Span, messages: &T, enabled: bool)
 where
     T: Serialize,
 {
-    record_message_content(span, "gen_ai.output.messages", messages, enabled);
+    record_telemetry_content(span, "gen_ai.output.messages", messages, enabled);
 }
 
 /// Provider response metadata used to populate GenAI telemetry spans.
@@ -443,7 +452,7 @@ mod tests {
             });
             tracing::subscriber::with_default(subscriber, || {
                 let span = CompletionSpanBuilder::new("openai", "gpt-5", operation)
-                    .system_instructions(Some("system prompt"))
+                    .system_instructions(Some("system prompt"), true)
                     .build();
                 assert!(!span.is_disabled());
             });
@@ -546,7 +555,7 @@ mod tests {
                 "claude-sonnet",
                 CompletionOperation::ChatStreaming,
             )
-            .system_instructions(Some("provider system"))
+            .system_instructions(Some("provider system"), true)
             .build();
             assert_eq!(span.id(), agent_chat.id());
         });

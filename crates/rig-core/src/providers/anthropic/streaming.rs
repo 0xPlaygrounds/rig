@@ -233,7 +233,10 @@ where
             &request_model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(completion_request.preamble.as_deref())
+        .system_instructions(
+            completion_request.preamble.as_deref(),
+            completion_request.record_telemetry_content,
+        )
         .build();
         let max_tokens = if let Some(tokens) = completion_request.max_tokens {
             tokens
@@ -627,7 +630,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         let body = create_streaming_request_body(
@@ -683,7 +686,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: Some(schema),
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         let streaming_body = create_streaming_request_body(
@@ -751,7 +754,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         let body = create_streaming_request_body(
@@ -788,7 +791,7 @@ mod tests {
             tool_choice: Some(crate::message::ToolChoice::Auto),
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         let body = create_streaming_request_body(

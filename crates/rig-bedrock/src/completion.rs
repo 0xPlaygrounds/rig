@@ -227,7 +227,10 @@ impl completion::CompletionModel for CompletionModel {
 
         let span =
             CompletionSpanBuilder::new("aws_bedrock", &request_model, CompletionOperation::Chat)
-                .system_instructions(completion_request.preamble.as_deref())
+                .system_instructions(
+                    completion_request.preamble.as_deref(),
+                    completion_request.record_telemetry_content,
+                )
                 .build();
 
         let request = AwsCompletionRequest {

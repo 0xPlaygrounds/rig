@@ -329,7 +329,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         }
     }
 

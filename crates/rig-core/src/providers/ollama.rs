@@ -628,9 +628,10 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let span = CompletionSpanBuilder::new("ollama", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref())
+            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
             .build();
 
         if tracing::enabled!(tracing::Level::TRACE) {
@@ -694,14 +695,14 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
         let system_instructions = request.preamble.clone();
-        let record_message_content = request.record_message_content;
+        let record_telemetry_content = request.record_telemetry_content;
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
             "ollama",
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
         request.stream = true;
 
@@ -766,7 +767,9 @@ where
 
                     if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
-                            thinking_response += &thinking_content;
+                            if record_telemetry_content {
+                                thinking_response += &thinking_content;
+                            }
                             yield RawStreamingChoice::ReasoningDelta {
                                 id: None,
                                 reasoning: thinking_content,
@@ -774,12 +777,16 @@ where
                         }
 
                         if !content.is_empty() {
-                            text_response += &content;
+                            if record_telemetry_content {
+                                text_response += &content;
+                            }
                             yield RawStreamingChoice::Message(content);
                         }
 
                         for tool_call in tool_calls {
-                            tool_calls_final.push(tool_call.clone());
+                            if record_telemetry_content {
+                                tool_calls_final.push(tool_call.clone());
+                            }
                             yield RawStreamingChoice::ToolCall(
                                 crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
                             );
@@ -789,18 +796,16 @@ where
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        let message = Message::Assistant {
-                            content: text_response.clone(),
-                            thinking: if thinking_response.is_empty() { None } else { Some(thinking_response.clone()) },
-                            images: None,
-                            name: None,
-                            tool_calls: tool_calls_final.clone()
-                        };
-                        crate::telemetry::record_model_output(
-                            &span,
-                            &vec![message],
-                            record_message_content,
-                        );
+                        if record_telemetry_content {
+                            let message = Message::Assistant {
+                                content: text_response.clone(),
+                                thinking: if thinking_response.is_empty() { None } else { Some(thinking_response.clone()) },
+                                images: None,
+                                name: None,
+                                tool_calls: tool_calls_final.clone()
+                            };
+                            crate::telemetry::record_model_output(&span, &vec![message], true);
+                        }
                         yield RawStreamingChoice::FinalResponse(
                             StreamingCompletionResponse {
                                 total_duration: response.total_duration,
@@ -1750,7 +1755,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1817,7 +1822,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1884,7 +1889,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1951,7 +1956,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2018,7 +2023,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2049,7 +2054,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2115,7 +2120,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: Some(schema),
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -2159,7 +2164,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-            record_message_content: false,
+            record_telemetry_content: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
