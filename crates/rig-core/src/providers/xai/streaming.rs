@@ -14,12 +14,18 @@ use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
     ResponsesStreamOptions, StreamingCompletionResponse, stream_from_event_source_with_options,
 };
+use crate::providers::xai::client::XAiRequestAuth;
 use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming;
 
-impl<T> CompletionModel<T>
+impl<T, E> CompletionModel<T, E>
 where
     T: HttpClientExt + Clone + 'static,
+    E: XAiRequestAuth
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + Clone
+        + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -50,6 +56,12 @@ where
             .post("/v1/responses")?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        let req = self
+            .client
+            .ext()
+            .authorize_request(req)
+            .await
+            .map_err(CompletionError::HttpError)?;
 
         let span =
             CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::ChatStreaming)

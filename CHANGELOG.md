@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(xai)* add SuperGrok subscription OAuth from an existing xAI `auth.json` token cache with `Client::builder().oauth()` or `OAuthClient::from_env()`. The default cache matches LiteLLM, refreshes are cross-process safe, and OAuth bearer tokens are restricted to `https://api.x.ai`.
+
 ### Changed
 
 - *(tool)* [**breaking**] Replace the parallel tool-execution APIs with one structured path. Typed tools now implement only `Tool::call(&mut ToolContext, Args) -> Result<Output, Error>`; author-facing errors remain typed until private runtime erasure normalizes them into `ToolExecutionError`, `ToolContext` carries inbound values and host-only result metadata, `ToolResult` is the single runtime observation, and `ToolSet::execute` / `ToolServerHandle::execute` are the dispatch surfaces. Event-specific hook action types make invalid event/action combinations unrepresentable.

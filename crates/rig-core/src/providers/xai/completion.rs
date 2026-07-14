@@ -9,7 +9,7 @@ use serde_json::Value;
 use tracing::{Instrument, Level, enabled};
 
 use super::api::{ApiResponse, Message, ToolDefinition};
-use super::client::Client;
+use super::client::{XAiExt, XAiRequestAuth};
 use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
@@ -170,13 +170,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 // ================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
+pub struct CompletionModel<T = reqwest::Client, E = XAiExt> {
+    pub(crate) client: crate::client::Client<E, T>,
     pub model: String,
 }
 
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+impl<T, E> CompletionModel<T, E> {
+    pub fn new(client: crate::client::Client<E, T>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -184,14 +184,20 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T, E> completion::CompletionModel for CompletionModel<T, E>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    E: XAiRequestAuth
+        + crate::client::DebugExt
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + Clone
+        + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    type Client = Client<T>;
+    type Client = crate::client::Client<E, T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
@@ -223,6 +229,12 @@ where
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         async move {
+            let req = self
+                .client
+                .ext()
+                .authorize_request(req)
+                .await
+                .map_err(CompletionError::HttpError)?;
             let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -498,5 +510,51 @@ mod tests {
             }
             other => panic!("expected ProviderResponse, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn completion_oauth_cache_adds_bearer_token() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let dir = assert_fs::TempDir::new().unwrap();
+        let future = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+            + 3600;
+        std::fs::write(
+            dir.path().join("auth.json"),
+            format!(
+                r#"{{"access_token":"xai_cached","refresh_token":"xai_refresh","expires_at":{future}}}"#
+            ),
+        )
+        .unwrap();
+
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNAUTHORIZED, "{}");
+        let client = crate::providers::xai::Client::builder()
+            .oauth()
+            .token_dir(dir.path())
+            .http_client(http_client.clone())
+            .build()
+            .expect("build OAuth client");
+        let model = client.completion_model(crate::providers::xai::completion::GROK_4);
+        let request = model.completion_request("hello").build();
+
+        let _ = model
+            .completion(request)
+            .await
+            .expect_err("mock response is unauthorized");
+
+        let requests = http_client.requests();
+        let auth = requests[0]
+            .headers
+            .get(http::header::AUTHORIZATION)
+            .expect("authorization header")
+            .to_str()
+            .unwrap();
+        assert_eq!(auth, "Bearer xai_cached");
     }
 }
