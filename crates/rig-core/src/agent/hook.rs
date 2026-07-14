@@ -13,9 +13,11 @@
 //!
 //! Register observe-only hooks before steering hooks when every observation is
 //! required: a steering stop intentionally prevents later observers from
-//! running. Tool-result rewrites change only the model-visible `presentation`;
+//! running. Tool-result rewrites change the effective `presentation` sent to
+//! the model and recorded as result-content telemetry. The
 //! [`ToolResultEvent::raw_result`] and its [`ToolResultEvent::tool_context`]
-//! remain the execution truth used by policy and telemetry.
+//! remain unchanged for policy decisions and execution-outcome metadata. A
+//! tool-result stop omits result content from telemetry.
 //!
 //! Blocking and streaming agents share the same request, tool-call, and
 //! tool-result resolution path. Streaming adds delta-specific observations, but
@@ -648,7 +650,8 @@ impl ToolCallAction {
 pub enum ToolResultAction {
     /// Keep the current presentation.
     Keep,
-    /// Replace only the model-visible presentation.
+    /// Replace the effective presentation sent to the model and result-content
+    /// telemetry.
     Rewrite(ToolOutput),
     /// Stop the run.
     Stop(String),
@@ -660,15 +663,16 @@ impl ToolResultAction {
         Self::Keep
     }
 
-    /// Creates an action that replaces only the model-visible presentation.
+    /// Creates an action that replaces the effective presentation sent to the
+    /// model and result-content telemetry.
     ///
     /// The tool's raw structured result remains unchanged.
     pub fn rewrite(result: impl Into<String>) -> Self {
         Self::Rewrite(ToolOutput::text(result))
     }
 
-    /// Creates an action that replaces the model-visible presentation with
-    /// explicit structured or multimodal output.
+    /// Creates an action that replaces the effective model and telemetry
+    /// presentation with explicit structured or multimodal output.
     pub fn rewrite_output(output: ToolOutput) -> Self {
         Self::Rewrite(output)
     }
@@ -831,8 +835,10 @@ where
     /// Runs after a tool call resolves and before its presentation is sent to the model.
     ///
     /// This includes framework-skipped calls whose tool body did not execute.
-    /// Rewrites affect only the model-visible presentation, not the raw
-    /// structured result. The default action keeps the current presentation.
+    /// Rewrites affect the model-visible presentation and result-content
+    /// telemetry, but not the raw structured result or execution-outcome
+    /// metadata. A stop omits result content from telemetry. The default action
+    /// keeps the current presentation.
     fn on_tool_result(
         &self,
         _ctx: &HookContext,

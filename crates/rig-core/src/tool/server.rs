@@ -75,6 +75,28 @@ struct ToolServerState {
     managed_generations: HashMap<String, ManagedToolToken>,
 }
 
+#[cfg(feature = "rmcp")]
+impl ToolServerState {
+    /// Remove remote registrations whose transport can no longer accept calls.
+    /// In-process tools use the default live state, while both handler-managed
+    /// and directly registered MCP tools report their transport state.
+    fn retire_disconnected_tools(&mut self) {
+        let disconnected = self
+            .toolset
+            .tools
+            .keys()
+            .filter(|name| self.toolset.get(name).is_none_or(|tool| !tool.is_live()))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for name in disconnected {
+            self.toolset.delete_tool(&name);
+            self.managed_generations.remove(&name);
+            tracing::debug!(tool_name = %name, "retired disconnected MCP tool registration");
+        }
+    }
+}
+
 /// Opaque identity for one MCP-managed registry generation.
 #[cfg(feature = "rmcp")]
 #[derive(Clone, Debug)]
@@ -284,18 +306,9 @@ impl ToolServerHandle {
         // A generation only protects a live owner. MCP service shutdown closes
         // the sink held by its registered tools, so retire those generations
         // before deciding whether another handler may reclaim a name. Local
-        // registrations clear their managed token and are never swept here.
-        let disconnected = state
-            .managed_generations
-            .keys()
-            .filter(|name| state.toolset.get(name).is_none_or(|tool| !tool.is_live()))
-            .cloned()
-            .collect::<Vec<_>>();
-        for name in disconnected {
-            state.toolset.delete_tool(&name);
-            state.managed_generations.remove(&name);
-            tracing::debug!(tool_name = %name, "retired disconnected MCP tool registration");
-        }
+        // in-process registrations stay live; directly registered MCP tools are
+        // also retired when their sink closes.
+        state.retire_disconnected_tools();
 
         for tool in tools {
             // A refresh that raced with service shutdown may already have
@@ -412,6 +425,13 @@ impl ToolServerHandle {
         args: &str,
         context: &ToolContext,
     ) -> ToolDispatch {
+        #[cfg(feature = "rmcp")]
+        let tool = {
+            let mut state = self.0.write().await;
+            state.retire_disconnected_tools();
+            state.toolset.get(tool_name).cloned()
+        };
+        #[cfg(not(feature = "rmcp"))]
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
@@ -481,47 +501,61 @@ impl ToolServerHandle {
             Vec::new()
         };
 
+        #[cfg(feature = "rmcp")]
+        let tools = {
+            let mut state = self.0.write().await;
+            state.retire_disconnected_tools();
+            snapshot_registered_tools(&state, dynamic_tool_ids)
+        };
+        #[cfg(not(feature = "rmcp"))]
         let tools = {
             let state = self.0.read().await;
-            let mut tools = IndexMap::new();
-
-            // Retrieved tools remain first, in index/result order. Duplicate IDs
-            // and dynamic/static overlap retain the first provider declaration.
-            for name in dynamic_tool_ids {
-                if tools.contains_key(&name) {
-                    tracing::debug!(
-                        tool_name = %name,
-                        "dropping duplicate tool definition from the request"
-                    );
-                    continue;
-                }
-                match state.toolset.get(&name).cloned() {
-                    Some(tool) => {
-                        tools.insert(name, tool);
-                    }
-                    None => {
-                        tracing::warn!("Tool implementation not found in toolset: {name}");
-                    }
-                }
-            }
-
-            for name in state.toolset.always_exposed_names() {
-                if tools.contains_key(name) {
-                    tracing::debug!(
-                        tool_name = %name,
-                        "dropping duplicate tool definition from the request"
-                    );
-                    continue;
-                }
-                if let Some(tool) = state.toolset.get(name).cloned() {
-                    tools.insert(name.clone(), tool);
-                }
-            }
-            tools
+            snapshot_registered_tools(&state, dynamic_tool_ids)
         };
 
         Ok(ToolRegistrySnapshot::new(tools))
     }
+}
+
+fn snapshot_registered_tools(
+    state: &ToolServerState,
+    dynamic_tool_ids: Vec<String>,
+) -> IndexMap<String, RegisteredTool> {
+    let mut tools = IndexMap::new();
+
+    // Retrieved tools remain first, in index/result order. Duplicate IDs and
+    // dynamic/static overlap retain the first provider declaration.
+    for name in dynamic_tool_ids {
+        if tools.contains_key(&name) {
+            tracing::debug!(
+                tool_name = %name,
+                "dropping duplicate tool definition from the request"
+            );
+            continue;
+        }
+        match state.toolset.get(&name).cloned() {
+            Some(tool) => {
+                tools.insert(name, tool);
+            }
+            None => {
+                tracing::warn!("Tool implementation not found in toolset: {name}");
+            }
+        }
+    }
+
+    for name in state.toolset.always_exposed_names() {
+        if tools.contains_key(name) {
+            tracing::debug!(
+                tool_name = %name,
+                "dropping duplicate tool definition from the request"
+            );
+            continue;
+        }
+        if let Some(tool) = state.toolset.get(name).cloned() {
+            tools.insert(name.clone(), tool);
+        }
+    }
+    tools
 }
 
 #[derive(Debug, thiserror::Error)]

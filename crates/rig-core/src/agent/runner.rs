@@ -590,7 +590,7 @@ where
         }
     };
     // Presentation rewrites happen after execution. The raw structured result
-    // and per-dispatch context remain unchanged for every hook and telemetry.
+    // and per-dispatch context remain unchanged for every hook.
     let result_decision = tool_result_decision(
         hooks
             .on_tool_result(
@@ -607,27 +607,29 @@ where
             )
             .await,
     );
-    // Telemetry records the execution truth once, after result hooks have
-    // observed it but before presentation steering is applied. A Stop still
-    // completed the tool call, so omitting these fields would erase the very
-    // outcome that caused a policy to terminate the run.
+    // Outcome metadata describes the execution itself, while result content
+    // follows the same presentation policy as the model. This keeps redaction
+    // and stop hooks from leaking raw tool output through telemetry.
     record_tool_result(&tool_span, &exec);
-    tool_span.record("gen_ai.tool.call.result", exec.output().render());
 
     match result_decision {
         ToolResultDecision::Terminate(reason) => Err(PromptError::prompt_cancelled(
             error_history.to_vec(),
             reason,
         )),
-        ToolResultDecision::Replace(replacement) => Ok(ToolCallOutcome {
-            content: tool_result_output(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                replacement,
-            ),
-            execution,
-        }),
+        ToolResultDecision::Replace(replacement) => {
+            tool_span.record("gen_ai.tool.call.result", replacement.render());
+            Ok(ToolCallOutcome {
+                content: tool_result_output(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    replacement,
+                ),
+                execution,
+            })
+        }
         ToolResultDecision::Keep => {
+            tool_span.record("gen_ai.tool.call.result", exec.output().render());
             let content = tool_result_output(
                 tool_call.id.clone(),
                 tool_call.call_id.clone(),
@@ -2571,10 +2573,10 @@ mod migrated_tests {
             );
         }
 
-        // --- Tool-result rewrites are presentation-only ---
+        // --- Tool-result rewrites preserve raw policy data and redact telemetry ---
 
-        /// A tool that returns a raw marker; a rewrite hook replaces only the
-        /// model-visible presentation.
+        /// A tool that returns a raw marker; a rewrite hook replaces the
+        /// effective model and telemetry presentation.
         struct RawOutputTool;
         impl crate::tool::Tool for RawOutputTool {
             const NAME: &'static str = "raw_output";
@@ -2625,7 +2627,7 @@ mod migrated_tests {
         }
 
         /// Captures every value recorded into the `gen_ai.tool.call.result` span
-        /// field, so a test can assert telemetry retains the raw execution data.
+        /// field, so tests can assert telemetry follows result-hook policy.
         #[derive(Default)]
         struct ResultValueVisitor {
             values: Vec<String>,
@@ -2659,11 +2661,10 @@ mod migrated_tests {
             }
         }
 
-        /// A `ToolResult` rewrite changes only model presentation. Telemetry must
-        /// retain the raw output so a presentation hook cannot rewrite policy or
-        /// observability data.
+        /// A `ToolResult` rewrite applies to both model presentation and
+        /// telemetry so redaction hooks cannot leak the raw output through spans.
         #[tokio::test]
-        async fn tool_result_rewrite_does_not_mutate_raw_span_output() {
+        async fn tool_result_rewrite_redacts_span_output() {
             let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
             let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
             let subscriber = Registry::default().with(ResultValueLayer {
@@ -2694,21 +2695,21 @@ mod migrated_tests {
 
             let captured = values.lock().expect("values").clone();
             assert!(
-                captured
-                    .iter()
-                    .any(|v| v.contains("RAW_EXECUTION_OUTPUT_42")),
-                "the raw tool output must remain in telemetry; captured: {captured:?}"
+                captured.iter().any(|v| v.contains("[REDACTED]")),
+                "the rewritten presentation must reach telemetry; captured: {captured:?}"
             );
             assert!(
-                !captured.iter().any(|v| v.contains("[REDACTED]")),
-                "the presentation rewrite must not replace raw telemetry; captured: {captured:?}"
+                !captured
+                    .iter()
+                    .any(|v| v.contains("RAW_EXECUTION_OUTPUT_42")),
+                "the raw tool output must not leak through telemetry; captured: {captured:?}"
             );
         }
 
-        /// Stopping from the result hook must not erase telemetry for the tool
-        /// execution that already completed and triggered the stop.
+        /// Stopping from the result hook retains outcome metadata but omits
+        /// potentially sensitive result content from telemetry.
         #[tokio::test]
-        async fn tool_result_stop_still_records_raw_span_output() {
+        async fn tool_result_stop_omits_span_output() {
             let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
             let values: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
             let subscriber = Registry::default().with(ResultValueLayer {
@@ -2736,10 +2737,10 @@ mod migrated_tests {
 
             let captured = values.lock().expect("values").clone();
             assert!(
-                captured
+                !captured
                     .iter()
                     .any(|value| value.contains("RAW_EXECUTION_OUTPUT_42")),
-                "a Stop must retain raw execution telemetry; captured: {captured:?}"
+                "a Stop must not leak raw execution telemetry; captured: {captured:?}"
             );
         }
     }

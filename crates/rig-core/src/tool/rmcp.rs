@@ -1467,6 +1467,42 @@ mod migrated_tests {
     }
 
     #[tokio::test]
+    async fn disconnected_handler_tools_are_retired_on_snapshot() {
+        let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
+        let handle = ToolServer::new().run();
+        let (client, task) = connect(server, handle.clone()).await;
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+
+        client.cancel().await.unwrap();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert!(
+            defs.is_empty(),
+            "a disconnected sole owner must not remain provider-visible"
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn disconnected_handler_tools_are_retired_on_direct_dispatch() {
+        let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
+        let handle = ToolServer::new().run();
+        let (client, task) = connect(server, handle.clone()).await;
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+
+        client.cancel().await.unwrap();
+
+        let result = handle
+            .execute("tool_a", "{}", &mut crate::tool::ToolContext::new())
+            .await;
+        assert_eq!(
+            result.error().expect("disconnected tool must fail").kind(),
+            crate::tool::ToolErrorKind::NotFound
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
     async fn initial_tool_fetch_is_bounded_by_the_refresh_timeout() {
         let (c2s, sfc) = tokio::io::duplex(8192);
         let (s2c, cfs) = tokio::io::duplex(8192);
@@ -1881,6 +1917,39 @@ mod migrated_tests {
         assert_eq!(defs[0].name, "search_docs");
         assert_eq!(defs[0].description, "Search the docs");
         client.cancel().await.unwrap();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert!(
+            defs.is_empty(),
+            "a disconnected directly registered MCP tool must not remain provider-visible"
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn disconnected_directly_registered_mcp_tool_is_retired_on_dispatch() {
+        let tool = make_tool("search_docs", "Search the docs");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let task = tokio::spawn(async move {
+            let running = server.serve((sfc, s2c)).await.unwrap();
+            running.waiting().await.unwrap();
+        });
+        let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
+        let handle = ToolServer::new()
+            .rmcp_tool(tool, client.peer().clone())
+            .run();
+
+        client.cancel().await.unwrap();
+
+        let result = handle
+            .execute("search_docs", "{}", &mut crate::tool::ToolContext::new())
+            .await;
+        assert_eq!(
+            result.error().expect("disconnected tool must fail").kind(),
+            crate::tool::ToolErrorKind::NotFound
+        );
         task.abort();
     }
 }

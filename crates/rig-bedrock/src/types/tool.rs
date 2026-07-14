@@ -1,12 +1,10 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
+use super::{image::RigImage, json::AwsDocument};
 use rig_core::{
     completion::CompletionError,
     message::{Text, ToolResultContent},
 };
-use serde_json::Value;
-
-use super::{image::RigImage, json::AwsDocument};
 
 pub struct RigToolResultContent(pub ToolResultContent);
 
@@ -22,14 +20,9 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
                 let image = RigImage(image).try_into()?;
                 Ok(aws_bedrock::ToolResultContentBlock::Image(image))
             }
-            // Keep Bedrock's existing model-visible representation stable. Rig
-            // retains the value as typed JSON until this terminal provider
-            // boundary, where tool results historically used text blocks.
             ToolResultContent::Json { value } => {
-                Ok(aws_bedrock::ToolResultContentBlock::Text(match value {
-                    Value::String(text) => text,
-                    value => value.to_string(),
-                }))
+                let document: AwsDocument = value.into();
+                Ok(aws_bedrock::ToolResultContentBlock::Json(document.0))
             }
         }
     }
@@ -45,7 +38,7 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
                 Ok(RigToolResultContent(ToolResultContent::Image(image.0)))
             }
             aws_bedrock::ToolResultContentBlock::Json(document) => {
-                let json: Value = AwsDocument(document).into();
+                let json: serde_json::Value = AwsDocument(document).into();
                 Ok(RigToolResultContent(ToolResultContent::Json {
                     value: json,
                 }))
@@ -98,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn rig_tool_json_preserves_the_existing_aws_text_representation() {
+    fn rig_tool_json_maps_to_native_aws_json() {
         let expected = serde_json::json!({ "answer": -3, "exact": true });
         let tool = RigToolResultContent(ToolResultContent::Json {
             value: expected.clone(),
@@ -107,17 +100,16 @@ mod tests {
         let aws_tool: aws_bedrock::ToolResultContentBlock = tool
             .try_into()
             .expect("JSON should render at the AWS boundary");
-        assert_eq!(
-            aws_tool
-                .as_text()
-                .expect("Bedrock tool result text")
-                .as_str(),
-            expected.to_string()
-        );
+        let document = match aws_tool {
+            aws_bedrock::ToolResultContentBlock::Json(document) => document,
+            other => panic!("expected Bedrock JSON tool result, got {other:?}"),
+        };
+        let actual: serde_json::Value = crate::types::json::AwsDocument(document).into();
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn rig_tool_json_string_preserves_the_existing_unquoted_aws_text() {
+    fn rig_tool_json_string_remains_distinct_from_text() {
         let tool = RigToolResultContent(ToolResultContent::Json {
             value: serde_json::json!("literal text"),
         });
@@ -125,10 +117,12 @@ mod tests {
         let aws_tool: aws_bedrock::ToolResultContentBlock = tool
             .try_into()
             .expect("JSON string should render at the AWS boundary");
-        assert_eq!(
-            aws_tool.as_text().expect("Bedrock tool result text"),
-            "literal text"
-        );
+        let document = match aws_tool {
+            aws_bedrock::ToolResultContentBlock::Json(document) => document,
+            other => panic!("expected Bedrock JSON tool result, got {other:?}"),
+        };
+        let actual: serde_json::Value = crate::types::json::AwsDocument(document).into();
+        assert_eq!(actual, serde_json::json!("literal text"));
     }
 
     #[test]

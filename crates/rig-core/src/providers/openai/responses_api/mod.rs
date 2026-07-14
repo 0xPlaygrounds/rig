@@ -277,9 +277,108 @@ pub struct ToolResult {
     /// The call ID of a tool (this should be linked to the call ID for a tool call, otherwise an error will be received)
     call_id: String,
     /// The result of a tool call.
-    output: String,
+    output: ToolResultOutput,
     /// The status of a tool call (if used in a completion request, this should always be Completed)
     status: ToolStatus,
+}
+
+/// Responses API function-call output, which accepts either plain text or an
+/// ordered list of rich input blocks.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ToolResultOutput {
+    /// A plain textual function result.
+    Text(String),
+    /// Ordered rich input blocks for a multimodal function result.
+    Content(Vec<ToolResultOutputContent>),
+}
+
+/// Rich content supported by a Responses API function-call output.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolResultOutputContent {
+    /// Textual function-output content.
+    InputText {
+        /// The text presented to the model.
+        text: String,
+    },
+    /// Image function-output content.
+    InputImage {
+        /// A public URL or base64 data URL, mutually exclusive with `file_id`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        image_url: Option<String>,
+        /// An uploaded OpenAI file identifier, mutually exclusive with
+        /// `image_url`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_id: Option<String>,
+        /// Provider image-detail preference.
+        #[serde(default)]
+        detail: ImageDetail,
+    },
+}
+
+fn responses_tool_result_output(
+    content: OneOrMany<message::ToolResultContent>,
+) -> Result<ToolResultOutput, MessageError> {
+    let mut text_output = Vec::new();
+    let mut rich_output = Vec::new();
+    let mut has_image = false;
+
+    for content in content {
+        match content {
+            message::ToolResultContent::Text(Text { text, .. }) => {
+                text_output.push(text.clone());
+                rich_output.push(ToolResultOutputContent::InputText { text });
+            }
+            message::ToolResultContent::Json { value } => {
+                let text = value.to_string();
+                text_output.push(text.clone());
+                rich_output.push(ToolResultOutputContent::InputText { text });
+            }
+            message::ToolResultContent::Image(message::Image {
+                data,
+                media_type,
+                detail,
+                ..
+            }) => {
+                has_image = true;
+                let (image_url, file_id) = match data {
+                    DocumentSourceKind::Base64(data) => {
+                        let media_type = media_type.ok_or_else(|| {
+                            MessageError::ConversionError(
+                                "A media type is required for base64 tool-result images".into(),
+                            )
+                        })?;
+                        (
+                            Some(format!(
+                                "data:{media_type};base64,{data}",
+                                media_type = media_type.to_mime_type()
+                            )),
+                            None,
+                        )
+                    }
+                    DocumentSourceKind::Url(url) => (Some(url), None),
+                    DocumentSourceKind::FileId(file_id) => (None, Some(file_id)),
+                    unsupported => {
+                        return Err(MessageError::ConversionError(format!(
+                            "Unsupported tool-result image source: {unsupported}"
+                        )));
+                    }
+                };
+                rich_output.push(ToolResultOutputContent::InputImage {
+                    image_url,
+                    file_id,
+                    detail: detail.unwrap_or_default(),
+                });
+            }
+        }
+    }
+
+    if has_image {
+        Ok(ToolResultOutput::Content(rich_output))
+    } else {
+        Ok(ToolResultOutput::Text(text_output.join("\n")))
+    }
 }
 
 impl From<Message> for InputItem {
@@ -359,24 +458,10 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 ..
                             },
                         ) => {
-                            let output = tool_content
-                                .into_iter()
-                                .map(|content| match content {
-                                    crate::message::ToolResultContent::Text(Text {
-                                        text, ..
-                                    }) => Ok(text),
-                                    crate::message::ToolResultContent::Json { value } => {
-                                        Ok(value.to_string())
-                                    }
-                                    crate::message::ToolResultContent::Image(_) => {
-                                        Err(CompletionError::ProviderError(
-                                            "The OpenAI Responses API does not support images in tool results"
-                                                .to_string(),
-                                        ))
-                                    }
-                                })
-                                .collect::<Result<Vec<_>, _>>()?
-                                .join("\n");
+                            let output =
+                                responses_tool_result_output(tool_content).map_err(|error| {
+                                    CompletionError::ProviderError(error.to_string())
+                                })?;
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {
@@ -2304,7 +2389,7 @@ pub enum Message {
     #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
-        output: String,
+        output: ToolResultOutput,
     },
 }
 
@@ -2532,18 +2617,7 @@ fn responses_user_content(content: message::UserContent) -> Result<UserContent, 
 }
 
 fn responses_tool_result(tool_result: message::ToolResult) -> Result<Message, MessageError> {
-    let output = tool_result
-        .content
-        .into_iter()
-        .map(|content| match content {
-            completion::message::ToolResultContent::Text(Text { text, .. }) => Ok(text),
-            completion::message::ToolResultContent::Json { value } => Ok(value.to_string()),
-            completion::message::ToolResultContent::Image(_) => Err(MessageError::ConversionError(
-                "OpenAI Responses API does not support images in tool results".into(),
-            )),
-        })
-        .collect::<Result<Vec<_>, _>>()?
-        .join("\n");
+    let output = responses_tool_result_output(tool_result.content)?;
 
     Ok(Message::ToolResult {
         tool_call_id: tool_result.call_id.ok_or_else(|| {
@@ -2763,18 +2837,102 @@ mod tests {
             let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
             assert!(matches!(
                 messages.as_slice(),
-                [Message::ToolResult { output, .. }] if output == &expected
+                [Message::ToolResult {
+                    output: ToolResultOutput::Text(output),
+                    ..
+                }] if output == &expected
             ));
 
             let items: Vec<InputItem> = input.try_into().expect("input item conversion");
             assert!(matches!(
                 items.as_slice(),
                 [InputItem {
-                    input: InputContent::FunctionCallOutput(ToolResult { output, .. }),
+                    input: InputContent::FunctionCallOutput(ToolResult {
+                        output: ToolResultOutput::Text(output),
+                        ..
+                    }),
                     ..
                 }] if output == &expected
             ));
         }
+    }
+
+    #[test]
+    fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
+        let content = OneOrMany::many(vec![
+            message::ToolResultContent::text("before"),
+            message::ToolResultContent::image_base64(
+                "aW1hZ2U=",
+                Some(message::ImageMediaType::PNG),
+                None,
+            ),
+            message::ToolResultContent::json(json!({ "after": true })),
+        ])
+        .expect("mixed tool output is non-empty");
+        let input = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+                id: "result-id".to_string(),
+                call_id: Some("call-id".to_string()),
+                content,
+            })),
+        };
+
+        let assert_output = |output: &ToolResultOutput| {
+            assert!(matches!(
+                output,
+                ToolResultOutput::Content(content)
+                    if matches!(content.as_slice(), [
+                        ToolResultOutputContent::InputText { text: before },
+                        ToolResultOutputContent::InputImage { image_url, .. },
+                        ToolResultOutputContent::InputText { text: after },
+                    ] if before == "before"
+                        && image_url.as_deref() == Some("data:image/png;base64,aW1hZ2U=")
+                        && after == r#"{"after":true}"#)
+            ));
+        };
+
+        let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
+        match messages.as_slice() {
+            [Message::ToolResult { output, .. }] => assert_output(output),
+            other => panic!("expected one rich tool result, got {other:?}"),
+        }
+
+        let items: Vec<InputItem> = input.try_into().expect("input item conversion");
+        match items.as_slice() {
+            [
+                InputItem {
+                    input: InputContent::FunctionCallOutput(ToolResult { output, .. }),
+                    ..
+                },
+            ] => assert_output(output),
+            other => panic!("expected one rich function output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_file_id_image_uses_the_native_wire_field() {
+        let input = rig_tool_result(message::ToolResultContent::Image(message::Image {
+            data: message::DocumentSourceKind::FileId("file-image-123".to_string()),
+            media_type: None,
+            detail: None,
+            additional_params: None,
+        }));
+
+        let items: Vec<InputItem> = input.try_into().expect("input item conversion");
+        let wire = serde_json::to_value(&items[0]).expect("serialize input item");
+        assert_eq!(
+            wire,
+            json!({
+                "type": "function_call_output",
+                "call_id": "call-id",
+                "output": [{
+                    "type": "input_image",
+                    "file_id": "file-image-123",
+                    "detail": "auto"
+                }],
+                "status": "completed"
+            })
+        );
     }
 
     fn weather_tool_request() -> completion::CompletionRequest {

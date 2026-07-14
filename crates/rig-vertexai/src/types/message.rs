@@ -6,6 +6,7 @@ use rig_core::message::{
     AssistantContent, DocumentSourceKind, Image, ImageMediaType, Message, MimeType, Text,
     ToolResultContent, UserContent,
 };
+use std::collections::HashSet;
 
 pub struct RigMessage(pub Message);
 
@@ -25,26 +26,44 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             Ok(vertexai::model::Part::new().set_text(text))
                         }
                         UserContent::ToolResult(tool_result) => {
-                            // vertexai tool calling response takes in a serde_json::Map. For now we bundle all
-                            // outputs into a single key and the value will either be a Value or Array depending on num outputs
-                            let outputs: Vec<serde_json::Value> = tool_result
-                                .content
-                                .iter()
-                                .map(|content| -> Result<_, CompletionError> {
-                                    match content {
-                                        ToolResultContent::Text(Text { text, .. }) => {
-                                            Ok(serde_json::Value::String(text.clone()))
-                                        }
-                                        ToolResultContent::Json { value } => Ok(value.clone()),
-                                        ToolResultContent::Image(_) => {
-                                            Err(CompletionError::ProviderError(
-                                                "Vertex AI does not support images in tool results"
-                                                    .to_string(),
-                                            ))
-                                        }
+                            // Vertex carries media in `parts` and locates it in
+                            // the structured response through display-name
+                            // references, preserving canonical block order.
+                            let mut outputs = Vec::new();
+                            let mut response_parts = Vec::new();
+                            let mut reserved_display_names = HashSet::new();
+                            for content in tool_result.content.iter() {
+                                if let ToolResultContent::Json { value } = content {
+                                    collect_json_ref_names(value, &mut reserved_display_names);
+                                }
+                            }
+                            let mut image_index = 0;
+
+                            for content in tool_result.content.iter() {
+                                match content {
+                                    ToolResultContent::Text(Text { text, .. }) => {
+                                        outputs.push(serde_json::Value::String(text.clone()));
                                     }
-                                })
-                                .collect::<Result<_, _>>()?;
+                                    ToolResultContent::Json { value } => {
+                                        outputs.push(value.clone());
+                                    }
+                                    ToolResultContent::Image(image) => {
+                                        let display_name = loop {
+                                            let candidate =
+                                                format!("rig_tool_result_image_{image_index}");
+                                            image_index += 1;
+                                            if reserved_display_names.insert(candidate.clone()) {
+                                                break candidate;
+                                            }
+                                        };
+                                        response_parts.push(vertex_tool_result_image_part(
+                                            image,
+                                            &display_name,
+                                        )?);
+                                        outputs.push(serde_json::json!({ "$ref": display_name }));
+                                    }
+                                }
+                            }
 
                             let output_value = match outputs.as_slice() {
                                 [single] => single.clone(),
@@ -56,7 +75,8 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
 
                             let function_response = vertexai::model::FunctionResponse::new()
                                 .set_name(tool_result.id.clone())
-                                .set_response(response_struct);
+                                .set_response(response_struct)
+                                .set_parts(response_parts);
 
                             Ok(vertexai::model::Part::new()
                                 .set_function_response(function_response))
@@ -143,6 +163,84 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                     .set_parts(parts))
             }
         }
+    }
+}
+
+fn collect_json_ref_names(value: &serde_json::Value, names: &mut HashSet<String>) {
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::String(name)) = object.get("$ref") {
+                names.insert(name.clone());
+            }
+            for value in object.values() {
+                collect_json_ref_names(value, names);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_json_ref_names(value, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn vertex_tool_result_image_part(
+    image: &Image,
+    display_name: &str,
+) -> Result<vertexai::model::FunctionResponsePart, CompletionError> {
+    let media_type = image.media_type.as_ref().ok_or_else(|| {
+        CompletionError::RequestError(
+            "Media type for tool-result image is required for Vertex AI".into(),
+        )
+    })?;
+    match media_type {
+        ImageMediaType::JPEG | ImageMediaType::PNG | ImageMediaType::WEBP => {}
+        unsupported => {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "Unsupported Vertex AI tool-result image media type {unsupported:?}; \
+                     expected JPEG, PNG, or WEBP"
+                )
+                .into(),
+            ));
+        }
+    }
+    let mime_type = media_type.to_mime_type();
+
+    match &image.data {
+        DocumentSourceKind::Base64(data) => {
+            let data = BASE64.decode(data.as_bytes()).map_err(|error| {
+                CompletionError::RequestError(
+                    format!("Invalid base64 tool-result image data: {error}").into(),
+                )
+            })?;
+            Ok(
+                vertexai::model::FunctionResponsePart::new().set_inline_data(
+                    vertexai::model::FunctionResponseBlob::new()
+                        .set_mime_type(mime_type)
+                        .set_data(data)
+                        .set_display_name(display_name),
+                ),
+            )
+        }
+        DocumentSourceKind::Raw(data) => Ok(vertexai::model::FunctionResponsePart::new()
+            .set_inline_data(
+                vertexai::model::FunctionResponseBlob::new()
+                    .set_mime_type(mime_type)
+                    .set_data(data.clone())
+                    .set_display_name(display_name),
+            )),
+        DocumentSourceKind::Url(url) => Ok(vertexai::model::FunctionResponsePart::new()
+            .set_file_data(
+                vertexai::model::FunctionResponseFileData::new()
+                    .set_mime_type(mime_type)
+                    .set_file_uri(url.clone())
+                    .set_display_name(display_name),
+            )),
+        unsupported => Err(CompletionError::RequestError(
+            format!("Unsupported Vertex AI tool-result image source: {unsupported}").into(),
+        )),
     }
 }
 
@@ -470,6 +568,172 @@ mod tests {
                 .as_ref()
                 .and_then(|response| response.get("output")),
             Some(&value)
+        );
+    }
+
+    #[test]
+    fn image_tool_result_maps_to_native_function_response_part() {
+        let raw = vec![0, 1, 2, 255];
+        let message = Message::User {
+            content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
+                id: "inspect".to_string(),
+                call_id: None,
+                content: OneOrMany::one(ToolResultContent::image_base64(
+                    BASE64.encode(&raw),
+                    Some(ImageMediaType::PNG),
+                    None,
+                )),
+            })),
+        };
+
+        let content: vertexai::model::Content = RigMessage(message)
+            .try_into()
+            .expect("image tool result should convert");
+        let response = content.parts[0]
+            .function_response()
+            .expect("function response");
+        assert_eq!(response.parts.len(), 1);
+        let blob = response.parts[0].inline_data().expect("inline image");
+        assert_eq!(blob.mime_type, "image/png");
+        assert_eq!(blob.data.as_ref(), raw.as_slice());
+        assert_eq!(blob.display_name, "rig_tool_result_image_0");
+        assert_eq!(
+            response
+                .response
+                .as_ref()
+                .and_then(|response| response.get("output")),
+            Some(&serde_json::json!({ "$ref": "rig_tool_result_image_0" }))
+        );
+    }
+
+    #[test]
+    fn mixed_tool_result_preserves_structured_and_media_order() {
+        let content = OneOrMany::many(vec![
+            ToolResultContent::text("before"),
+            ToolResultContent::image_raw(vec![1, 2, 3], Some(ImageMediaType::JPEG), None),
+            ToolResultContent::json(serde_json::json!({ "after": true })),
+            ToolResultContent::image_url("gs://bucket/result.png", Some(ImageMediaType::PNG), None),
+        ])
+        .expect("mixed output is non-empty");
+        let message = Message::User {
+            content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
+                id: "inspect".to_string(),
+                call_id: None,
+                content,
+            })),
+        };
+
+        let content: vertexai::model::Content = RigMessage(message)
+            .try_into()
+            .expect("mixed tool result should convert");
+        let response = content.parts[0]
+            .function_response()
+            .expect("function response");
+        assert_eq!(
+            response
+                .response
+                .as_ref()
+                .and_then(|response| response.get("output")),
+            Some(&serde_json::json!([
+                "before",
+                { "$ref": "rig_tool_result_image_0" },
+                { "after": true },
+                { "$ref": "rig_tool_result_image_1" }
+            ]))
+        );
+        assert_eq!(response.parts.len(), 2);
+        assert_eq!(
+            response.parts[0]
+                .inline_data()
+                .expect("first media part")
+                .data
+                .as_ref(),
+            &[1, 2, 3]
+        );
+        assert_eq!(
+            response.parts[0]
+                .inline_data()
+                .expect("first media part")
+                .display_name,
+            "rig_tool_result_image_0"
+        );
+        assert_eq!(
+            response.parts[1]
+                .file_data()
+                .expect("second media part")
+                .file_uri,
+            "gs://bucket/result.png"
+        );
+        assert_eq!(
+            response.parts[1]
+                .file_data()
+                .expect("second media part")
+                .display_name,
+            "rig_tool_result_image_1"
+        );
+    }
+
+    #[test]
+    fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
+        let content = OneOrMany::many(vec![
+            ToolResultContent::json(serde_json::json!({
+                "literal": { "$ref": "rig_tool_result_image_0" }
+            })),
+            ToolResultContent::image_raw(vec![1, 2, 3], Some(ImageMediaType::PNG), None),
+        ])
+        .expect("mixed output is non-empty");
+        let message = Message::User {
+            content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
+                id: "inspect".to_string(),
+                call_id: None,
+                content,
+            })),
+        };
+
+        let content: vertexai::model::Content = RigMessage(message)
+            .try_into()
+            .expect("colliding ref should be avoided");
+        let response = content.parts[0]
+            .function_response()
+            .expect("function response");
+        assert_eq!(
+            response
+                .response
+                .as_ref()
+                .and_then(|response| response.get("output")),
+            Some(&serde_json::json!([
+                { "literal": { "$ref": "rig_tool_result_image_0" } },
+                { "$ref": "rig_tool_result_image_1" }
+            ]))
+        );
+        assert_eq!(
+            response.parts[0]
+                .inline_data()
+                .expect("image part")
+                .display_name,
+            "rig_tool_result_image_1"
+        );
+    }
+
+    #[test]
+    fn unsupported_tool_result_image_media_type_is_rejected_locally() {
+        let message = Message::User {
+            content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
+                id: "inspect".to_string(),
+                call_id: None,
+                content: OneOrMany::one(ToolResultContent::image_raw(
+                    vec![1, 2, 3],
+                    Some(ImageMediaType::GIF),
+                    None,
+                )),
+            })),
+        };
+
+        let error = vertexai::model::Content::try_from(RigMessage(message))
+            .expect_err("unsupported media must fail before the provider request");
+        assert!(
+            error.to_string().contains("expected JPEG, PNG, or WEBP"),
+            "unexpected conversion error: {error}"
         );
     }
 }
