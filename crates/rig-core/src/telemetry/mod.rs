@@ -358,7 +358,10 @@ fn output_messages(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryOutput
     {
         "tool_call"
     } else {
-        "stop"
+        // Rig's normalized assistant content does not retain provider finish
+        // reasons such as length or content filtering. Avoid claiming a clean
+        // stop when the actual reason is unavailable.
+        "unknown"
     };
     vec![TelemetryOutputMessage {
         role: "assistant",
@@ -578,6 +581,17 @@ mod tests {
                     "arguments": {"city": "Paris"}
                 }],
                 "finish_reason": "tool_call"
+            }])
+        );
+
+        let text_output = OneOrMany::one(AssistantContent::text("done"));
+        assert_eq!(
+            serde_json::to_value(output_messages(&text_output))
+                .expect("semantic-convention text output DTOs serialize"),
+            json!([{
+                "role": "assistant",
+                "parts": [{"type": "text", "content": "done"}],
+                "finish_reason": "unknown"
             }])
         );
     }
