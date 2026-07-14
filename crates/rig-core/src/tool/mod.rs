@@ -606,6 +606,7 @@ impl ToolSet {
         args: impl Into<String>,
         context: &mut ToolContext,
     ) -> ToolResult {
+        context.clear_dispatch_result();
         let tool = self.get(name).cloned();
         let ToolDispatch {
             result,
@@ -697,9 +698,14 @@ impl ToolSetBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+    use std::{
+        future::{Future, pending, poll_fn},
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        },
+        task::Poll,
+        time::Duration,
     };
 
     use crate::{
@@ -789,6 +795,61 @@ mod tests {
             context.result::<String>().map(String::as_str),
             Some("result-metadata")
         );
+    }
+
+    struct PendingTool(Arc<AtomicBool>);
+
+    impl Tool for PendingTool {
+        const NAME: &'static str = "pending";
+        type Args = ();
+        type Output = ();
+
+        fn description(&self) -> String {
+            "never completes".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        async fn call(
+            &self,
+            context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            context.insert_result("unpublished".to_string());
+            self.0.store(true, Ordering::SeqCst);
+            pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_toolset_dispatch_does_not_retain_stale_result_metadata() {
+        let mut set = ToolSet::default();
+        let started = Arc::new(AtomicBool::new(false));
+        set.add_tool(PendingTool(started.clone()));
+        let mut context = ToolContext::new();
+        context.insert_result("stale".to_string());
+
+        let mut execution = Box::pin(set.execute(PendingTool::NAME, "null", &mut context));
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            poll_fn(|cx| {
+                assert!(execution.as_mut().poll(cx).is_pending());
+                started.load(Ordering::SeqCst).then_some(()).map_or_else(
+                    || {
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    },
+                    Poll::Ready,
+                )
+            }),
+        )
+        .await
+        .expect("pending tool did not start");
+        drop(execution);
+
+        assert!(context.result::<String>().is_none());
     }
 
     #[tokio::test]

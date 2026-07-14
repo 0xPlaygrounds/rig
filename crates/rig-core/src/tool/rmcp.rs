@@ -98,6 +98,10 @@ pub const DEFAULT_MCP_TOOL_TIMEOUT: Duration = Duration::from_secs(300);
 /// but it can never roll the registry back after a newer snapshot commits.
 pub const DEFAULT_MCP_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Maximum time spent delivering a best-effort cancellation after a request
+/// has already exceeded its caller-visible deadline.
+const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
+
 /// Crate-private adapter used by Rig's public MCP registration methods.
 #[derive(Clone)]
 pub(crate) struct McpTool {
@@ -267,15 +271,19 @@ async fn send_mcp_request(
 
 /// Keep cancellation delivery out of the caller's deadline. RMCP's cancellation
 /// notification uses the same bounded outbound queue as requests, so awaiting it
-/// inline could exceed the timeout precisely when that queue is saturated.
+/// inline could exceed the timeout precisely when that queue is saturated. The
+/// detached delivery is itself bounded so a stalled transport cannot retain one
+/// task and request handle for every timed-out call indefinitely.
 fn cancel_timed_out_request(handle: rmcp::service::RequestHandle<rmcp::service::RoleClient>) {
     let cancellation = async move {
-        let _ = handle
-            .cancel(Some(
+        bounded_best_effort_cancellation(
+            handle.cancel(Some(
                 rmcp::service::RequestHandle::<rmcp::service::RoleClient>::REQUEST_TIMEOUT_REASON
                     .to_owned(),
-            ))
-            .await;
+            )),
+            MCP_CANCELLATION_GRACE_PERIOD,
+        )
+        .await;
     };
 
     #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
@@ -283,6 +291,13 @@ fn cancel_timed_out_request(handle: rmcp::service::RequestHandle<rmcp::service::
 
     #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
     wasm_bindgen_futures::spawn_local(cancellation);
+}
+
+async fn bounded_best_effort_cancellation(
+    cancellation: impl std::future::Future<Output = Result<(), rmcp::ServiceError>>,
+    grace_period: Duration,
+) {
+    let _ = crate::wasm_compat::timeout(grace_period, cancellation).await;
 }
 
 impl McpTool {
@@ -798,7 +813,14 @@ impl rmcp::handler::client::ClientHandler for McpClientHandler {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::{
+        future::pending,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::Duration,
+    };
 
     use rmcp::model::*;
     use rmcp::service::RequestContext;
@@ -943,6 +965,33 @@ mod tests {
         )
         .await
         .expect("MCP dispatch exceeded the outer safety timeout")
+    }
+
+    #[tokio::test]
+    async fn best_effort_cancellation_drops_stalled_delivery_after_grace_period() {
+        struct DropProbe(Arc<AtomicBool>);
+
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let dropped = Arc::new(AtomicBool::new(false));
+        let drop_probe = DropProbe(dropped.clone());
+        let stalled = async move {
+            let _drop_probe = drop_probe;
+            pending::<Result<(), rmcp::ServiceError>>().await
+        };
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            bounded_best_effort_cancellation(stalled, Duration::from_millis(10)),
+        )
+        .await
+        .expect("best-effort cancellation exceeded its grace period");
+
+        assert!(dropped.load(Ordering::SeqCst));
     }
 
     #[test]

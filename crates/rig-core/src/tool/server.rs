@@ -410,6 +410,7 @@ impl ToolServerHandle {
         args: &str,
         context: &mut ToolContext,
     ) -> ToolResult {
+        context.clear_dispatch_result();
         let ToolDispatch {
             result,
             context: dispatch_context,
@@ -566,10 +567,12 @@ pub enum ToolServerError {
 #[cfg(test)]
 mod tests {
     use std::{
+        future::{Future, pending, poll_fn},
         sync::{
             Arc,
-            atomic::{AtomicUsize, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
+        task::Poll,
         time::Duration,
     };
 
@@ -1130,6 +1133,60 @@ mod tests {
             "tool-local inbound mutations must not change the caller's context"
         );
         assert_eq!(context.result::<usize>(), Some(&1));
+    }
+
+    struct PendingTool(Arc<AtomicBool>);
+
+    impl Tool for PendingTool {
+        const NAME: &'static str = "pending";
+        type Args = ();
+        type Output = ();
+
+        fn description(&self) -> String {
+            "never completes".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        async fn call(
+            &self,
+            context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, ToolExecutionError> {
+            context.insert_result("unpublished".to_string());
+            self.0.store(true, Ordering::SeqCst);
+            pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_server_dispatch_does_not_retain_stale_result_metadata() {
+        let started = Arc::new(AtomicBool::new(false));
+        let handle = ToolServer::new().tool(PendingTool(started.clone())).run();
+        let mut context = ToolContext::new();
+        context.insert_result("stale".to_string());
+
+        let mut execution = Box::pin(handle.execute(PendingTool::NAME, "null", &mut context));
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            poll_fn(|cx| {
+                assert!(execution.as_mut().poll(cx).is_pending());
+                started.load(Ordering::SeqCst).then_some(()).map_or_else(
+                    || {
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    },
+                    Poll::Ready,
+                )
+            }),
+        )
+        .await
+        .expect("pending tool did not start");
+        drop(execution);
+
+        assert!(context.result::<String>().is_none());
     }
 
     #[tokio::test]
