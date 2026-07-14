@@ -530,6 +530,7 @@ where
                         runner.temperature,
                         runner.max_tokens,
                         runner.additional_params.as_ref(),
+                        runner.record_message_content,
                         runner.tool_choice.as_ref(),
                         &runner.tool_server_handle,
                         &runner.dynamic_context,
@@ -548,6 +549,10 @@ where
                     };
                     run.set_output_tool_name(prepared.output_tool_name.clone());
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
+                    if runner.record_message_content {
+                        let input_messages = prepared.builder.messages_for_telemetry();
+                        crate::telemetry::record_model_input(&chat_span, &input_messages, true);
+                    }
 
                     let mut turn_stream = source.run_model_turn(
                         &runner,
@@ -1307,6 +1312,11 @@ where
             // history; the raw `stream.choice` is kept in `last_final_choice` for
             // the raw/final streaming behavior.
             let canonical_choice = streamed_turn.choice.clone();
+            crate::telemetry::record_model_output(
+                &chat_span,
+                &canonical_choice,
+                runner.record_message_content,
+            );
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(Box::new(err).into());
                 return;
@@ -2176,11 +2186,21 @@ mod migrated_tests {
             }
         }
 
-        fn record(&self, id: &Id, fields: Vec<(String, u64)>) {
+        fn record(&self, id: &Id, fields: Vec<CapturedField>) {
             if let Ok(mut spans) = self.0.lock()
                 && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
             {
-                span.fields.extend(fields);
+                for field in fields {
+                    match field {
+                        CapturedField::Number(name, value) => {
+                            span.fields.insert(name, value);
+                        }
+                        CapturedField::Text(name, value) => {
+                            span.fields.insert(name.clone(), 0);
+                            span.string_fields.insert(name, value);
+                        }
+                    }
+                }
             }
         }
 
@@ -2233,8 +2253,13 @@ mod migrated_tests {
         }
     }
 
+    enum CapturedField {
+        Number(String, u64),
+        Text(String, String),
+    }
+
     struct SpanFieldCaptureVisitor<'a> {
-        fields: &'a mut Vec<(String, u64)>,
+        fields: &'a mut Vec<CapturedField>,
     }
 
     struct SpanStringCaptureVisitor<'a> {
@@ -2255,17 +2280,24 @@ mod migrated_tests {
 
     impl Visit for SpanFieldCaptureVisitor<'_> {
         fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields.push((field.name().to_string(), value));
+            self.fields
+                .push(CapturedField::Number(field.name().to_string(), value));
         }
 
         // Capture the *presence* of non-numeric fields (e.g. `gen_ai.completion`)
         // with a placeholder value so tests can assert whether they were recorded.
-        fn record_str(&mut self, field: &Field, _value: &str) {
-            self.fields.push((field.name().to_string(), 0));
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields.push(CapturedField::Text(
+                field.name().to_string(),
+                value.to_string(),
+            ));
         }
 
-        fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
-            self.fields.push((field.name().to_string(), 0));
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.fields.push(CapturedField::Text(
+                field.name().to_string(),
+                format!("{value:?}"),
+            ));
         }
     }
 
@@ -2403,6 +2435,85 @@ mod migrated_tests {
             "gen_ai.completion should not be recorded onto the caller's outer span \
              (parity with the blocking driver)"
         );
+    }
+
+    async fn capture_stream_message_telemetry(record_message_content: bool) -> CapturedSpan {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let spans = CapturedSpans::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let _default = tracing::subscriber::set_default(subscriber);
+
+        let warmup_model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("warmup"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
+        let mut warmup_stream = warmup_agent.stream_prompt("warmup").max_turns(1).await;
+        while let Some(item) = warmup_stream
+            .try_next()
+            .await
+            .expect("warmup stream should not error")
+        {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("stream response secret"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let builder = AgentBuilder::new(model);
+        let agent = if record_message_content {
+            builder.record_message_telemetry(true).build()
+        } else {
+            builder.build()
+        };
+
+        let mut stream = agent
+            .stream_prompt("stream prompt secret")
+            .max_turns(1)
+            .await;
+        while let Some(item) = stream.try_next().await.expect("stream should not error") {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+
+        spans
+            .snapshot()
+            .into_iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("chat_streaming span should be captured")
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_message_telemetry_is_opt_in() {
+        let default_span = capture_stream_message_telemetry(false).await;
+        assert!(
+            !default_span.fields.contains_key("gen_ai.input.messages"),
+            "default streaming prompt should not record input message contents"
+        );
+        assert!(
+            !default_span.fields.contains_key("gen_ai.output.messages"),
+            "default streaming prompt should not record output message contents"
+        );
+
+        let opt_in_span = capture_stream_message_telemetry(true).await;
+        let input = opt_in_span
+            .string_fields
+            .get("gen_ai.input.messages")
+            .expect("opt-in should record input messages");
+        assert!(input.contains("stream prompt secret"));
+        let output = opt_in_span
+            .string_fields
+            .get("gen_ai.output.messages")
+            .expect("opt-in should record output messages");
+        assert!(output.contains("stream response secret"));
     }
 
     #[test]

@@ -3055,6 +3055,7 @@ mod tests {
             tool_choice: None,
             additional_params,
             output_schema: None,
+            record_message_content: false,
         }
     }
 
@@ -3073,6 +3074,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         }
     }
 

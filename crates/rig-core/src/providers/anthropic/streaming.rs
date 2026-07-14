@@ -627,6 +627,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let body = create_streaming_request_body(
@@ -682,6 +683,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: Some(schema),
+            record_message_content: false,
         };
 
         let streaming_body = create_streaming_request_body(
@@ -749,6 +751,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let body = create_streaming_request_body(
@@ -785,6 +788,7 @@ mod tests {
             tool_choice: Some(crate::message::ToolChoice::Auto),
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let body = create_streaming_request_body(

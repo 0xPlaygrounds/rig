@@ -2593,6 +2593,7 @@ mod tests {
             tool_choice: Some(MessageToolChoice::Required),
             additional_params: None,
             output_schema: None,
+            record_message_content: false,
         };
 
         let result = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
