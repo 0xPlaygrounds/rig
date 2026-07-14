@@ -634,7 +634,7 @@ pub mod interactions_api_types {
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
-    use serde_json::{Value, json};
+    use serde_json::Value;
 
     // =================================================================
     // Request / Response Types
@@ -1781,6 +1781,45 @@ pub mod interactions_api_types {
         FileSearchResult(FileSearchResultContent),
     }
 
+    fn rich_function_result_block(
+        content: message::ToolResultContent,
+    ) -> Result<Value, message::MessageError> {
+        let content = match content {
+            message::ToolResultContent::Text(text) => Content::Text(TextContent {
+                text: text.text,
+                annotations: None,
+            }),
+            message::ToolResultContent::Json { value } => Content::Text(TextContent {
+                text: value.to_string(),
+                annotations: None,
+            }),
+            message::ToolResultContent::Image(message::Image {
+                data, media_type, ..
+            }) => {
+                let media_type = media_type.ok_or_else(|| {
+                    message::MessageError::ConversionError(
+                        "Image media type is required for Gemini Interactions tool results"
+                            .to_string(),
+                    )
+                })?;
+                let (data, uri) = split_data_uri(data)?;
+
+                Content::Image(ImageContent {
+                    data,
+                    uri,
+                    mime_type: Some(media_type.to_mime_type().to_string()),
+                    resolution: None,
+                })
+            }
+        };
+
+        serde_json::to_value(content).map_err(|err| {
+            message::MessageError::ConversionError(format!(
+                "Failed to serialize Gemini Interactions tool result content: {err}"
+            ))
+        })
+    }
+
     impl TryFrom<message::UserContent> for Content {
         type Error = message::MessageError;
 
@@ -1803,18 +1842,34 @@ pub mod interactions_api_types {
                         ));
                     };
 
-                    let content = content.first();
+                    let mut contents = content.into_iter().collect::<Vec<_>>();
+                    let result = if contents.len() == 1 {
+                        let content = contents.pop().ok_or_else(|| {
+                            message::MessageError::ConversionError(
+                                "Tool result content must not be empty".to_string(),
+                            )
+                        })?;
 
-                    let message::ToolResultContent::Text(text) = content else {
-                        return Err(message::MessageError::ConversionError(
-                            "Tool result content must be text".to_string(),
-                        ));
+                        match content {
+                            message::ToolResultContent::Text(text) => Value::String(text.text),
+                            message::ToolResultContent::Json { value } => match value {
+                                value @ (Value::String(_) | Value::Object(_)) => value,
+                                value => Value::Array(vec![rich_function_result_block(
+                                    message::ToolResultContent::Json { value },
+                                )?]),
+                            },
+                            rich_content => {
+                                Value::Array(vec![rich_function_result_block(rich_content)?])
+                            }
+                        }
+                    } else {
+                        Value::Array(
+                            contents
+                                .into_iter()
+                                .map(rich_function_result_block)
+                                .collect::<Result<Vec<_>, _>>()?,
+                        )
                     };
-
-                    let result: Value = serde_json::from_str(&text.text).unwrap_or_else(|error| {
-                        tracing::trace!(?error, "Tool result is not valid JSON; sending as string");
-                        json!(text.text)
-                    });
 
                     Ok(Self::FunctionResult(FunctionResultContent {
                         name: Some(id),
@@ -2580,6 +2635,186 @@ mod tests {
 
         let err = Content::try_from(content).expect_err("should require call_id");
         assert!(format!("{err}").contains("call_id"));
+    }
+
+    #[test]
+    fn test_tool_result_preserves_text_and_json_types() {
+        let content = message::UserContent::ToolResult(message::ToolResult {
+            id: "get_weather".to_string(),
+            call_id: Some("call-123".to_string()),
+            content: OneOrMany::many(vec![
+                message::ToolResultContent::text(r#"{"status":"literal"}"#),
+                message::ToolResultContent::json(json!({ "status": "structured" })),
+            ])
+            .expect("tool result content is non-empty"),
+        });
+
+        let converted = Content::try_from(content).expect("tool result should convert");
+        let Content::FunctionResult(result) = converted else {
+            panic!("expected function result");
+        };
+        let expected_result = json!([
+            {
+                "type": "text",
+                "text": "{\"status\":\"literal\"}"
+            },
+            {
+                "type": "text",
+                "text": "{\"status\":\"structured\"}"
+            }
+        ]);
+        assert_eq!(result.result, Some(expected_result.clone()));
+        assert_eq!(
+            serde_json::to_value(Content::FunctionResult(result))
+                .expect("function result should serialize"),
+            json!({
+                "type": "function_result",
+                "name": "get_weather",
+                "result": expected_result,
+                "call_id": "call-123"
+            })
+        );
+    }
+
+    #[test]
+    fn test_tool_result_text_and_json_singletons_remain_scalar() {
+        let cases = [
+            (
+                message::ToolResultContent::text(r#"{"status":"literal"}"#),
+                json!("{\"status\":\"literal\"}"),
+            ),
+            (
+                message::ToolResultContent::json(json!({ "status": "structured" })),
+                json!({ "status": "structured" }),
+            ),
+            (
+                message::ToolResultContent::json(json!("structured string")),
+                json!("structured string"),
+            ),
+        ];
+
+        for (tool_content, expected) in cases {
+            let content = message::UserContent::ToolResult(message::ToolResult {
+                id: "get_weather".to_string(),
+                call_id: Some("call-123".to_string()),
+                content: OneOrMany::one(tool_content),
+            });
+
+            let Content::FunctionResult(result) =
+                Content::try_from(content).expect("tool result should convert")
+            else {
+                panic!("expected function result");
+            };
+            assert_eq!(result.result, Some(expected));
+        }
+    }
+
+    #[test]
+    fn test_tool_result_rich_singletons_use_tagged_content() {
+        let cases = [
+            (
+                message::ToolResultContent::json(json!(["sunny", 72])),
+                json!([{
+                    "type": "text",
+                    "text": "[\"sunny\",72]"
+                }]),
+            ),
+            (
+                message::ToolResultContent::image_base64(
+                    "image-data",
+                    Some(message::ImageMediaType::PNG),
+                    None,
+                ),
+                json!([{
+                    "type": "image",
+                    "data": "image-data",
+                    "mime_type": "image/png"
+                }]),
+            ),
+        ];
+
+        for (tool_content, expected) in cases {
+            let content = message::UserContent::ToolResult(message::ToolResult {
+                id: "get_weather".to_string(),
+                call_id: Some("call-123".to_string()),
+                content: OneOrMany::one(tool_content),
+            });
+
+            let Content::FunctionResult(result) =
+                Content::try_from(content).expect("tool result should convert")
+            else {
+                panic!("expected function result");
+            };
+            assert_eq!(result.result, Some(expected));
+        }
+    }
+
+    #[test]
+    fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
+        let tool_result = message::UserContent::ToolResult(message::ToolResult {
+            id: "render".to_string(),
+            call_id: Some("call-image".to_string()),
+            content: OneOrMany::many(vec![
+                message::ToolResultContent::image_base64(
+                    "first-image",
+                    Some(message::ImageMediaType::PNG),
+                    None,
+                ),
+                message::ToolResultContent::text("between-images"),
+                message::ToolResultContent::Image(message::Image {
+                    data: message::DocumentSourceKind::Url(
+                        "https://example.com/second.jpg".to_string(),
+                    ),
+                    media_type: Some(message::ImageMediaType::JPEG),
+                    detail: None,
+                    additional_params: None,
+                }),
+            ])
+            .expect("tool result content should be non-empty"),
+        });
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(Message::User {
+                content: OneOrMany::one(tool_result),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request = create_request_body("gemini-2.5-flash".to_string(), request, None)
+            .expect("request should build");
+        let serialized = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(
+            serialized.pointer("/input/0/content/0"),
+            Some(&json!({
+                "type": "function_result",
+                "name": "render",
+                "result": [
+                    {
+                        "type": "image",
+                        "data": "first-image",
+                        "mime_type": "image/png"
+                    },
+                    {
+                        "type": "text",
+                        "text": "between-images"
+                    },
+                    {
+                        "type": "image",
+                        "uri": "https://example.com/second.jpg",
+                        "mime_type": "image/jpeg"
+                    }
+                ],
+                "call_id": "call-image"
+            }))
+        );
     }
 
     #[test]

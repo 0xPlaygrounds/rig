@@ -38,13 +38,11 @@ use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
 use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
-use crate::tool::server::ToolServerError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, http_client};
 use crate::{
     json_utils,
     message::{Message, UserContent},
-    tool::ToolSetError,
 };
 
 use serde::de::DeserializeOwned;
@@ -154,14 +152,6 @@ pub enum PromptError {
     /// Conversation memory failed to load history.
     #[error("MemoryError: {0}")]
     MemoryError(#[from] crate::memory::MemoryError),
-
-    /// There was an error while using a tool
-    #[error("ToolCallError: {0}")]
-    ToolError(#[from] ToolSetError),
-
-    /// There was an issue while executing a tool on a tool server
-    #[error("ToolServerError: {0}")]
-    ToolServerError(#[from] Box<ToolServerError>),
 
     /// The run exhausted its total model-call budget. The budget includes the
     /// initial call and every retry or continuation; increase `.max_turns()` if

@@ -29,7 +29,6 @@ struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -54,7 +53,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
@@ -81,7 +84,6 @@ struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-
     type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
@@ -106,7 +108,11 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }
@@ -143,8 +149,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let toolset = ToolSet::builder()
-        .dynamic_tool(Add)
-        .dynamic_tool(Subtract)
+        .retrieved_tool(Add)
+        .retrieved_tool(Subtract)
         .build();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -168,7 +174,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         // Add a dynamic tool source with a sample rate of 2 (i.e.: only
         // 2 additional tool will be added to prompts)
-        .dynamic_tools(2, index, toolset)
+        .retrieved_tools(2, index, toolset)
         .build();
 
     // Prompt the agent and print the response

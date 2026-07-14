@@ -2,18 +2,18 @@
 //!
 //! An agent is given two side-effecting tools (`send_email`, `delete_file`).
 //! Before *any* tool runs, an [`ApprovalHook`] pauses the run on the
-//! [`StepEvent::ToolCall`] event, shows the human the tool name and arguments,
-//! and waits for a decision on stdin. Each decision maps to an existing [`Flow`]
-//! action — no special HITL machinery is required:
+//! [`ToolCallEvent`] event, shows the human the tool name and arguments,
+//! and waits for a decision on stdin. Each decision maps to an existing
+//! event-specific action — no special HITL machinery is required:
 //!
-//! | Human decision | `Flow` returned        | Effect                                                              |
-//! |----------------|------------------------|--------------------------------------------------------------------|
-//! | **approve**    | [`Flow::cont`]         | the tool executes as the model requested                           |
-//! | **deny**       | [`Flow::skip`]         | the tool does *not* run; the reason becomes the tool result the model sees, so it can adapt |
-//! | **edit**       | [`Flow::rewrite_args`] | the tool executes with human-supplied arguments instead            |
-//! | **abort**      | [`Flow::terminate`]    | the whole run stops and surfaces the reason as an error            |
+//! | Human decision | Action returned                  | Effect                                                              |
+//! |----------------|----------------------------------|--------------------------------------------------------------------|
+//! | **approve**    | [`ToolCallAction::run`]          | the tool executes as the model requested                           |
+//! | **deny**       | [`ToolCallAction::skip`]         | the tool does *not* run; the reason becomes the tool result the model sees, so it can adapt |
+//! | **edit**       | [`ToolCallAction::rewrite`]      | the tool executes with human-supplied arguments instead            |
+//! | **abort**      | [`ToolCallAction::stop`]         | the whole run stops and surfaces the reason as an error            |
 //!
-//! Because `AgentHook::on_event` is `async`, the hook can simply `.await` the
+//! Because `AgentHook::on_tool_call` is `async`, the hook can simply `.await` the
 //! human's input inline (here from stdin; in a real app this might be an HTTP
 //! request to an approval UI, a Slack round-trip, or a database poll). The same
 //! hook works unchanged on the streaming driver (`stream_prompt`).
@@ -21,7 +21,7 @@
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
 
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, HookContext, StepEvent};
+use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers::openai;
@@ -68,7 +68,11 @@ impl Tool for SendEmail {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         // A real implementation would hit an email API here.
         println!(
             "   📧 [send_email] -> {} (subject: {:?}, {} chars)",
@@ -107,7 +111,11 @@ impl Tool for DeleteFile {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         // A real implementation would delete the file here.
         println!("   🗑️  [delete_file] -> {}", args.path);
         Ok(format!("deleted {}", args.path))
@@ -150,15 +158,9 @@ async fn ask(prompt: &str) -> Option<String> {
 struct ApprovalHook;
 
 impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        // Only the pre-execution tool-call event is a decision point; everything
-        // else falls through untouched.
-        let StepEvent::ToolCall {
-            tool_name, args, ..
-        } = event
-        else {
-            return Flow::cont();
-        };
+    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
+        let tool_name = event.tool_name;
+        let args = event.args;
 
         println!("\n⏸  The agent wants to run a tool — your approval is required:");
         println!("     tool: {tool_name}");
@@ -168,7 +170,7 @@ impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
         let Some(choice) = ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort run? ").await
         else {
             println!("     → no input (stdin closed); aborting (fail-closed)");
-            return Flow::terminate("no reviewer input available (stdin closed)");
+            return ToolCallAction::stop("no reviewer input available (stdin closed)");
         };
 
         // Match the whole (lowercased) answer, accepting either the hotkey or the
@@ -176,7 +178,7 @@ impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
         match choice.to_ascii_lowercase().as_str() {
             "a" | "approve" => {
                 println!("     → approved");
-                Flow::cont()
+                ToolCallAction::run()
             }
             // Deny: the tool does not run; the reason is fed back to the model as
             // the tool result so it can choose another course of action.
@@ -186,7 +188,7 @@ impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
                     .filter(|r| !r.is_empty())
                     .unwrap_or_else(|| "denied by the human reviewer".to_string());
                 println!("     → denied");
-                Flow::skip(reason)
+                ToolCallAction::skip(reason)
             }
             // Edit: run the tool with human-supplied JSON arguments instead.
             "e" | "edit" => {
@@ -197,11 +199,11 @@ impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
                 {
                     Some(Ok(value)) => {
                         println!("     → running with edited arguments");
-                        Flow::rewrite_args(value)
+                        ToolCallAction::rewrite(value)
                     }
                     other => {
                         println!("     ! no valid JSON ({other:?}); denying instead");
-                        Flow::skip(
+                        ToolCallAction::skip(
                             "the reviewer tried to edit the arguments but supplied no valid JSON",
                         )
                     }
@@ -210,16 +212,16 @@ impl<M: CompletionModel> AgentHook<M> for ApprovalHook {
             // Abort: stop the whole run.
             "b" | "abort" | "q" | "quit" => {
                 println!("     → aborting the run");
-                Flow::terminate("run aborted by the human reviewer")
+                ToolCallAction::stop("run aborted by the human reviewer")
             }
             // Fail closed: empty or unrecognized input denies rather than runs.
             "" => {
                 println!("     → empty input; denying (fail-closed)");
-                Flow::skip("denied: the reviewer gave no decision")
+                ToolCallAction::skip("denied: the reviewer gave no decision")
             }
             other => {
                 println!("     ! unrecognized choice '{other}'; denying (fail-closed)");
-                Flow::skip(format!("denied: unrecognized reviewer input '{other}'"))
+                ToolCallAction::skip(format!("denied: unrecognized reviewer input '{other}'"))
             }
         }
     }

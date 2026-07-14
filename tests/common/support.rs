@@ -142,7 +142,11 @@ impl Tool for Adder {
             .expect("adder schema should deserialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -167,7 +171,11 @@ impl Tool for Subtract {
             .expect("subtract schema should deserialize")
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -193,7 +201,11 @@ impl Tool for AlphaSignal {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
 }
@@ -219,7 +231,11 @@ impl Tool for BetaSignal {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }
 }

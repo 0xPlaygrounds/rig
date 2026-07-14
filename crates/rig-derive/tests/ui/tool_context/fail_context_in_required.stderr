@@ -1,0 +1,9 @@
+error: `ToolContext` is host-only and cannot be listed in `params(...)` or `required(...)`
+  --> tests/ui/tool_context/fail_context_in_required.rs:7:1
+   |
+ 7 | / fn context_in_required(
+ 8 | |     #[rig(context)]
+ 9 | |     context: &mut ToolContext,
+10 | |     query: String,
+11 | | ) -> Result<String, rig_core::tool::ToolExecutionError> {
+   | |_______________________________________________________^

@@ -313,7 +313,11 @@ impl Tool for WeatherTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "Weather in {}: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW",
@@ -627,8 +631,14 @@ pub(crate) fn assert_chat_history_preserves_reasoning_tool_roundtrip(
                         UserContent::ToolResult(tool_result) => {
                             tool_result_index.get_or_insert(index);
                             for content in tool_result.content.iter() {
-                                if let ToolResultContent::Text(text) = content {
-                                    tool_result_text.push_str(&text.text);
+                                match content {
+                                    ToolResultContent::Text(text) => {
+                                        tool_result_text.push_str(&text.text);
+                                    }
+                                    ToolResultContent::Json { value } => {
+                                        tool_result_text.push_str(&value.to_string());
+                                    }
+                                    ToolResultContent::Image(_) => {}
                                 }
                             }
                         }

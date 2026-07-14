@@ -218,12 +218,56 @@ pub struct ToolResult {
     pub content: OneOrMany<ToolResultContent>,
 }
 
-/// Describes the content of a tool result, which can be text or an image.
+/// Describes one typed item in a tool result.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ToolResultContent {
+    /// Literal text. Providers must not reinterpret it as structured JSON.
     Text(Text),
+    /// An image supplied explicitly by the tool.
     Image(Image),
+    /// Structured JSON supplied explicitly by the tool runtime.
+    Json {
+        /// The structured value.
+        value: serde_json::Value,
+    },
+}
+
+impl ToolResultContent {
+    /// Borrow literal text content.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(&text.text),
+            Self::Image(_) | Self::Json { .. } => None,
+        }
+    }
+
+    /// Borrow structured JSON content.
+    pub fn as_json(&self) -> Option<&serde_json::Value> {
+        match self {
+            Self::Json { value } => Some(value),
+            Self::Text(_) | Self::Image(_) => None,
+        }
+    }
+
+    /// Deserialize JSON content into a typed value.
+    ///
+    /// Structured JSON is decoded directly. Literal text is parsed only because
+    /// the caller explicitly requested JSON decoding, which supports transcripts
+    /// recorded before structured tool output was preserved canonically. This
+    /// helper never changes the content sent to a model or provider.
+    pub fn deserialize_json<T>(&self) -> Result<T, serde_json::Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self {
+            Self::Json { value } => serde_json::from_value(value.clone()),
+            Self::Text(text) => serde_json::from_str(&text.text),
+            Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
+                "cannot decode image tool-result content as JSON",
+            )),
+        }
+    }
 }
 
 /// Describes a tool call with an id and function to call, generally produced by a provider.
@@ -876,6 +920,11 @@ impl ToolResultContent {
         ToolResultContent::Text(text.into().into())
     }
 
+    /// Helper constructor for structured JSON tool-result content.
+    pub fn json(value: serde_json::Value) -> Self {
+        ToolResultContent::Json { value }
+    }
+
     /// Helper constructor to make tool result images from a base64-encoded string.
     pub fn image_base64(
         data: impl Into<String>,
@@ -916,93 +965,6 @@ impl ToolResultContent {
             detail,
             additional_params: None,
         })
-    }
-
-    /// Parse a tool output string into appropriate ToolResultContent(s).
-    ///
-    /// Supports three formats:
-    /// 1. Simple text: Any string → `OneOrMany::one(Text)`
-    /// 2. Image JSON: `{"type": "image", "data": "...", "mimeType": "..."}` → `OneOrMany::one(Image)`
-    /// 3. Hybrid JSON: `{"response": {...}, "parts": [...]}` → `OneOrMany::many([Text, Image, ...])`
-    ///
-    /// If JSON parsing fails, treats the entire string as text.
-    pub fn from_tool_output(output: impl Into<String>) -> OneOrMany<ToolResultContent> {
-        let output_str = output.into();
-
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&output_str) {
-            if json.get("response").is_some() || json.get("parts").is_some() {
-                let mut results: Vec<ToolResultContent> = Vec::new();
-
-                if let Some(response) = json.get("response") {
-                    results.push(ToolResultContent::Text(Text::new(response.to_string())));
-                }
-
-                if let Some(parts) = json.get("parts").and_then(|p| p.as_array()) {
-                    for part in parts {
-                        let is_image = part
-                            .get("type")
-                            .and_then(|t| t.as_str())
-                            .is_some_and(|t| t == "image");
-
-                        if !is_image {
-                            continue;
-                        }
-
-                        if let (Some(data), Some(mime_type)) = (
-                            part.get("data").and_then(|v| v.as_str()),
-                            part.get("mimeType").and_then(|v| v.as_str()),
-                        ) {
-                            let data_kind =
-                                if data.starts_with("http://") || data.starts_with("https://") {
-                                    DocumentSourceKind::Url(data.to_string())
-                                } else {
-                                    DocumentSourceKind::Base64(data.to_string())
-                                };
-
-                            results.push(ToolResultContent::Image(Image {
-                                data: data_kind,
-                                media_type: ImageMediaType::from_mime_type(mime_type),
-                                detail: None,
-                                additional_params: None,
-                            }));
-                        }
-                    }
-                }
-
-                if !results.is_empty() {
-                    return OneOrMany::many(results).unwrap_or_else(|_| {
-                        OneOrMany::one(ToolResultContent::Text(output_str.into()))
-                    });
-                }
-            }
-
-            let is_image = json
-                .get("type")
-                .and_then(|v| v.as_str())
-                .is_some_and(|t| t == "image");
-
-            if is_image
-                && let (Some(data), Some(mime_type)) = (
-                    json.get("data").and_then(|v| v.as_str()),
-                    json.get("mimeType").and_then(|v| v.as_str()),
-                )
-            {
-                let data_kind = if data.starts_with("http://") || data.starts_with("https://") {
-                    DocumentSourceKind::Url(data.to_string())
-                } else {
-                    DocumentSourceKind::Base64(data.to_string())
-                };
-
-                return OneOrMany::one(ToolResultContent::Image(Image {
-                    data: data_kind,
-                    media_type: ImageMediaType::from_mime_type(mime_type),
-                    detail: None,
-                    additional_params: None,
-                }));
-            }
-        }
-
-        OneOrMany::one(ToolResultContent::Text(output_str.into()))
     }
 }
 
@@ -1373,7 +1335,9 @@ impl From<MessageError> for CompletionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, Reasoning, ReasoningContent};
+    use serde::{Deserialize, Serialize};
+
+    use super::{Message, Reasoning, ReasoningContent, Text, ToolResultContent};
 
     #[test]
     fn reasoning_constructors_and_accessors_work() {
@@ -1435,5 +1399,53 @@ mod tests {
         let json = serde_json::to_string(&message).expect("serialize");
         let roundtrip: Message = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(roundtrip, message);
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct ExecutorLikeResponse {
+        output: serde_json::Value,
+        logs: Vec<String>,
+        execution_time_ms: u64,
+    }
+
+    #[test]
+    fn tool_result_content_decodes_structured_and_legacy_json() {
+        let response = ExecutorLikeResponse {
+            output: serde_json::json!({"answer": 42}),
+            logs: vec!["computed".to_string()],
+            execution_time_ms: 7,
+        };
+        let value = serde_json::to_value(&response).expect("serialize response");
+
+        let structured = ToolResultContent::json(value.clone());
+        assert_eq!(structured.as_json(), Some(&value));
+        assert_eq!(structured.as_text(), None);
+        assert_eq!(
+            structured
+                .deserialize_json::<ExecutorLikeResponse>()
+                .expect("decode structured response"),
+            response
+        );
+
+        let legacy_json = value.to_string();
+        let legacy_text = ToolResultContent::Text(Text::new(legacy_json.clone()));
+        assert_eq!(legacy_text.as_text(), Some(legacy_json.as_str()));
+        assert_eq!(legacy_text.as_json(), None);
+        assert_eq!(
+            legacy_text
+                .deserialize_json::<ExecutorLikeResponse>()
+                .expect("decode legacy response"),
+            response
+        );
+
+        let image = ToolResultContent::image_url("https://example.com/result.png", None, None);
+        let image_error = image.deserialize_json::<ExecutorLikeResponse>();
+        assert!(image_error.is_err());
+        if let Err(error) = image_error {
+            assert_eq!(
+                error.to_string(),
+                "cannot decode image tool-result content as JSON"
+            );
+        }
     }
 }

@@ -397,7 +397,7 @@ impl StreamedTurnAssembler {
                     let invalid = StreamedInvalidToolCall {
                         tool_call: tool_call.clone(),
                         internal_call_id: internal_call_id.clone(),
-                        args: Some(json_utils::value_to_json_string(
+                        args: Some(json_utils::serialize_json_value(
                             &tool_call.function.arguments,
                         )),
                         executable_tool_names: self.executable_tool_names.clone(),
@@ -670,7 +670,7 @@ impl StreamedTurnAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::hook::InvalidToolCallHookAction;
+    use crate::agent::hook::InvalidToolCallAction;
     use crate::agent::run::{AgentRun, AgentRunStep};
     use crate::completion::PromptError;
     use crate::message::{Text, ToolResultContent, UserContent};
@@ -887,7 +887,7 @@ mod tests {
         assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_tc_1"));
         run.tool_results(vec![UserContent::tool_result(
             "tc_1".to_string(),
-            ToolResultContent::from_tool_output("2".to_string()),
+            OneOrMany::one(ToolResultContent::text("2")),
         )])
         .expect("tool_results should succeed");
 
@@ -945,7 +945,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::retry("use add instead"),
+                InvalidToolCallAction::retry("use add instead"),
             )
             .expect("retry should be accepted");
         assert!(matches!(
@@ -969,6 +969,40 @@ mod tests {
     }
 
     #[test]
+    fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
+        let mut run = AgentRun::new("use the tool");
+        run.next_step().expect("next_step");
+
+        let mut asm = assembler();
+        let invalid = expect_invalid(
+            asm.ingest(&tool_call_item("tc_1", "default_api"))
+                .expect("ingest should succeed"),
+        );
+        let partial = asm.partial_turn(Some("msg_1".to_string()));
+
+        let err = run
+            .resolve_streamed_invalid_tool_call(
+                &partial,
+                &invalid,
+                InvalidToolCallAction::stop("operator stop"),
+            )
+            .expect_err("stop should cancel the run");
+        assert!(matches!(
+            err,
+            PromptError::PromptCancelled { reason, .. } if reason == "operator stop"
+        ));
+
+        let err = run
+            .next_step()
+            .expect_err("a stopped streamed run must remain terminal");
+        assert!(matches!(
+            err,
+            PromptError::PromptCancelled { reason, .. }
+                if reason.contains("next_step called after the run already failed")
+        ));
+    }
+
+    #[test]
     fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
         let mut run = AgentRun::new("use the tool")
             .max_turns(1)
@@ -985,7 +1019,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::retry("use add instead"),
+                InvalidToolCallAction::retry("use add instead"),
             )
             .expect("retry resolution should be accepted");
         assert!(matches!(
@@ -1024,7 +1058,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::skip("not available"),
+                InvalidToolCallAction::skip("not available"),
             )
             .expect("skip should be accepted");
         let StreamedResolution::TurnAbandoned {
@@ -1055,7 +1089,7 @@ mod tests {
             .resolve_streamed_invalid_tool_call(
                 &partial,
                 &invalid,
-                InvalidToolCallHookAction::repair("add"),
+                InvalidToolCallAction::repair("add"),
             )
             .expect("repair should be accepted");
         assert!(matches!(
@@ -1207,7 +1241,7 @@ mod tests {
         restored
             .tool_results(vec![UserContent::tool_result(
                 "tc_1".to_string(),
-                ToolResultContent::from_tool_output("2".to_string()),
+                OneOrMany::one(ToolResultContent::text("2")),
             )])
             .expect("tool_results should succeed");
         assert!(matches!(

@@ -1,12 +1,11 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
+use super::{image::RigImage, json::AwsDocument};
 use rig_core::{
     completion::CompletionError,
     message::{Text, ToolResultContent},
 };
 use serde_json::Value;
-
-use super::{image::RigImage, json::AwsDocument};
 
 pub struct RigToolResultContent(pub ToolResultContent);
 
@@ -22,6 +21,18 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
                 let image = RigImage(image).try_into()?;
                 Ok(aws_bedrock::ToolResultContentBlock::Image(image))
             }
+            ToolResultContent::Json { value } => {
+                // Bedrock's Converse API accepts only an object in the JSON
+                // tool-result field for models such as Nova. Preserve object
+                // outputs unchanged and keep every other JSON type structured
+                // under a stable wrapper instead of falling back to text.
+                let value = match value {
+                    Value::Object(_) => value,
+                    value => serde_json::json!({ "result": value }),
+                };
+                let document: AwsDocument = value.into();
+                Ok(aws_bedrock::ToolResultContentBlock::Json(document.0))
+            }
         }
     }
 }
@@ -36,10 +47,10 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
                 Ok(RigToolResultContent(ToolResultContent::Image(image.0)))
             }
             aws_bedrock::ToolResultContentBlock::Json(document) => {
-                let json: Value = AwsDocument(document).into();
-                Ok(RigToolResultContent(ToolResultContent::Text(Text::new(
-                    json.to_string(),
-                ))))
+                let json: serde_json::Value = AwsDocument(document).into();
+                Ok(RigToolResultContent(ToolResultContent::Json {
+                    value: json,
+                }))
             }
             aws_bedrock::ToolResultContentBlock::Text(text) => Ok(RigToolResultContent(
                 ToolResultContent::Text(Text::new(text)),
@@ -86,6 +97,49 @@ mod tests {
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
         assert!(aws_tool.is_ok());
         assert!(aws_tool.unwrap().is_image())
+    }
+
+    #[test]
+    fn rig_tool_json_maps_to_native_aws_json() {
+        let expected = serde_json::json!({ "answer": -3, "exact": true });
+        let tool = RigToolResultContent(ToolResultContent::Json {
+            value: expected.clone(),
+        });
+
+        let aws_tool: aws_bedrock::ToolResultContentBlock = tool
+            .try_into()
+            .expect("JSON should render at the AWS boundary");
+        let document = match aws_tool {
+            aws_bedrock::ToolResultContentBlock::Json(document) => document,
+            other => panic!("expected Bedrock JSON tool result, got {other:?}"),
+        };
+        let actual: serde_json::Value = crate::types::json::AwsDocument(document).into();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn rig_tool_non_object_json_is_wrapped_for_bedrock() {
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!(true),
+            serde_json::json!(-3),
+            serde_json::json!("literal text"),
+            serde_json::json!([1, 2, 3]),
+        ] {
+            let tool = RigToolResultContent(ToolResultContent::Json {
+                value: value.clone(),
+            });
+
+            let aws_tool: aws_bedrock::ToolResultContentBlock = tool
+                .try_into()
+                .expect("JSON should render at the AWS boundary");
+            let document = match aws_tool {
+                aws_bedrock::ToolResultContentBlock::Json(document) => document,
+                other => panic!("expected Bedrock JSON tool result, got {other:?}"),
+            };
+            let actual: serde_json::Value = crate::types::json::AwsDocument(document).into();
+            assert_eq!(actual, serde_json::json!({ "result": value }));
+        }
     }
 
     #[test]

@@ -84,7 +84,11 @@ impl Tool for SendMessage {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -157,7 +161,11 @@ impl Tool for GetHistory {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut url = format!("https://echochambers.ai/api/rooms/{}/history", args.room_id);
         if let Some(limit) = args.limit {
@@ -202,7 +210,11 @@ impl Tool for GetRoomMetrics {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -242,7 +254,11 @@ impl Tool for GetAgentMetrics {
             }
         })
     }
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -282,7 +298,11 @@ impl Tool for GetMetricsHistory {
             }
         })
     }
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(

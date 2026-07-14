@@ -1185,6 +1185,11 @@ impl TryFrom<message::Message> for Message {
                             message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
                             }
+                            message::ToolResultContent::Json { value } => {
+                                Ok(ToolResultContent::Text {
+                                    text: value.to_string(),
+                                })
+                            }
                             message::ToolResultContent::Image(image) => {
                                 let DocumentSourceKind::Base64(data) = image.data else {
                                     return Err(MessageError::ConversionError(

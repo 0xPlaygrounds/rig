@@ -37,7 +37,6 @@ impl WeatherTool {
 
 impl Tool for WeatherTool {
     const NAME: &'static str = "weather";
-
     type Error = std::io::Error;
     type Args = WeatherArgs;
     type Output = String;
@@ -56,7 +55,11 @@ impl Tool for WeatherTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "The weather in {} is all fire and brimstone",

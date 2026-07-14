@@ -38,7 +38,6 @@ impl WeatherTool {
 
 impl Tool for WeatherTool {
     const NAME: &'static str = "weather";
-
     type Error = std::io::Error;
     type Args = WeatherArgs;
     type Output = String;
@@ -59,6 +58,7 @@ impl Tool for WeatherTool {
 
     fn call(
         &self,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
         self.call_count.fetch_add(1, Ordering::SeqCst);

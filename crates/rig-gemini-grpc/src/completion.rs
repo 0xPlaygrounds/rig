@@ -253,17 +253,22 @@ fn rig_user_content_to_grpc_part(
             part_metadata: None,
         }),
         message::UserContent::ToolResult(result) => {
-            let response_text = match &result.content.first() {
-                message::ToolResultContent::Text(t) => t.text.clone(),
-                message::ToolResultContent::Image(_) => {
-                    return Err(CompletionError::RequestError(
-                        "Tool result content must be text".into(),
-                    ));
-                }
+            let mut values = result
+                .content
+                .into_iter()
+                .map(|content| match content {
+                    message::ToolResultContent::Text(t) => Ok(serde_json::Value::String(t.text)),
+                    message::ToolResultContent::Json { value } => Ok(value),
+                    message::ToolResultContent::Image(_) => Err(CompletionError::RequestError(
+                        "Gemini gRPC does not support images in tool results".into(),
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let result_value = if values.len() == 1 {
+                values.remove(0)
+            } else {
+                serde_json::Value::Array(values)
             };
-
-            let result_value: serde_json::Value = serde_json::from_str(&response_text)
-                .unwrap_or_else(|_| serde_json::json!(response_text));
 
             let response_struct =
                 json_to_prost_struct(serde_json::json!({ "result": result_value }))?;

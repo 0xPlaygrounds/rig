@@ -4,8 +4,8 @@
 //! drive rich multi-turn workflows and assert *structural invariants* of the
 //! merged hook system: `HookContext` identity/turn/streaming, a shared
 //! `Scratchpad` threaded across hooks and turns, `RequestPatch` context
-//! injection + `active_tools` narrowing, chained `RewriteArgs` -> observe ->
-//! `RewriteResult` redaction, and streaming lifecycle ordering / blocking-vs-
+//! injection + `active_tools` narrowing, chained `ToolCallAction::Rewrite` -> observe ->
+//! `ToolResultAction::Rewrite` redaction, and streaming lifecycle ordering / blocking-vs-
 //! streaming parity.
 //!
 //! ## On loose assertions
@@ -24,7 +24,9 @@ use std::sync::Mutex;
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, Flow, HookContext, MultiTurnStreamItem, RequestPatch, StepEvent, StreamingError,
+    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
+    ModelTurnFinished, MultiTurnStreamItem, ObservationAction, RequestPatch, StreamingError,
+    ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
 use rig::client::CompletionClient;
 use rig::completion::{Document, Prompt};
@@ -95,39 +97,61 @@ impl LifecycleRecorder {
     }
 }
 
-impl AgentHook<GeminiModel> for LifecycleRecorder {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        let tag = match event {
-            StepEvent::CompletionCall { .. } => Some("CompletionCall"),
-            StepEvent::CompletionResponse { .. } => Some("CompletionResponse"),
-            StepEvent::ModelTurnFinished { .. } => Some("ModelTurnFinished"),
-            StepEvent::ToolCall { .. } => Some("ToolCall"),
-            StepEvent::ToolResult { .. } => Some("ToolResult"),
-            _ => None,
-        };
-        // Record identity on every event so it is proven stable across the run.
+impl LifecycleRecorder {
+    fn record(&self, ctx: &HookContext, tag: &'static str) {
         self.run_ids
             .lock()
             .expect("run_ids")
             .insert(ctx.run_id().as_str().to_string());
         *self.streaming.lock().expect("streaming") = Some(ctx.is_streaming());
         *self.agent_name.lock().expect("agent_name") = ctx.agent_name().map(str::to_string);
-
-        if matches!(event, StepEvent::ToolCall { .. }) {
-            ctx.scratchpad()
-                .update(|tally: &mut ToolCallTally| tally.0 += 1);
-        }
-
-        if let Some(tag) = tag {
-            self.breadcrumbs
-                .lock()
-                .expect("breadcrumbs")
-                .push(Breadcrumb {
-                    tag,
-                    turn: ctx.turn(),
-                });
-        }
-        Flow::cont()
+        self.breadcrumbs
+            .lock()
+            .expect("breadcrumbs")
+            .push(Breadcrumb {
+                tag,
+                turn: ctx.turn(),
+            });
+    }
+}
+impl AgentHook<GeminiModel> for LifecycleRecorder {
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        self.record(ctx, "CompletionCall");
+        CompletionCallAction::continue_run()
+    }
+    async fn on_completion_response(
+        &self,
+        ctx: &HookContext,
+        _event: CompletionResponseEvent<'_, GeminiModel>,
+    ) -> ObservationAction {
+        self.record(ctx, "CompletionResponse");
+        ObservationAction::continue_run()
+    }
+    async fn on_model_turn_finished(
+        &self,
+        ctx: &HookContext,
+        _event: ModelTurnFinished<'_>,
+    ) -> ObservationAction {
+        self.record(ctx, "ModelTurnFinished");
+        ObservationAction::continue_run()
+    }
+    async fn on_tool_call(&self, ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
+        self.record(ctx, "ToolCall");
+        ctx.scratchpad()
+            .update(|tally: &mut ToolCallTally| tally.0 += 1);
+        ToolCallAction::run()
+    }
+    async fn on_tool_result(
+        &self,
+        ctx: &HookContext,
+        _event: ToolResultEvent<'_>,
+    ) -> ToolResultAction {
+        self.record(ctx, "ToolResult");
+        ToolResultAction::keep()
     }
 }
 
@@ -147,16 +171,18 @@ impl ScratchpadReader {
 }
 
 impl AgentHook<GeminiModel> for ScratchpadReader {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        if matches!(event, StepEvent::ModelTurnFinished { .. }) {
-            let tally = ctx
-                .scratchpad()
-                .get::<ToolCallTally>()
-                .map(|t| t.0)
-                .unwrap_or(0);
-            self.tallies.lock().expect("tallies").push(tally);
-        }
-        Flow::cont()
+    async fn on_model_turn_finished(
+        &self,
+        ctx: &HookContext,
+        _event: ModelTurnFinished<'_>,
+    ) -> ObservationAction {
+        let tally = ctx
+            .scratchpad()
+            .get::<ToolCallTally>()
+            .map(|t| t.0)
+            .unwrap_or(0);
+        self.tallies.lock().expect("tallies").push(tally);
+        ObservationAction::continue_run()
     }
 }
 
@@ -170,22 +196,22 @@ struct InjectContextAndNarrowTools {
 }
 
 impl AgentHook<GeminiModel> for InjectContextAndNarrowTools {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) {
-            let doc = Document {
-                id: self.fact_id.to_string(),
-                text: self.fact_text.to_string(),
-                additional_props: Default::default(),
-            };
-            Flow::patch_request(
-                RequestPatch::new()
-                    .context(doc)
-                    .active_tools(self.allow.iter().copied())
-                    .temperature(0.0),
-            )
-        } else {
-            Flow::cont()
-        }
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let doc = Document {
+            id: self.fact_id.to_string(),
+            text: self.fact_text.to_string(),
+            additional_props: Default::default(),
+        };
+        CompletionCallAction::patch(
+            RequestPatch::new()
+                .context(doc)
+                .active_tools(self.allow.iter().copied())
+                .temperature(0.0),
+        )
     }
 }
 
@@ -198,12 +224,11 @@ struct ForceArgs {
 }
 
 impl AgentHook<GeminiModel> for ForceArgs {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        match event {
-            StepEvent::ToolCall { tool_name, .. } if tool_name == self.tool_name => {
-                Flow::rewrite_args(self.args.clone())
-            }
-            _ => Flow::cont(),
+    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
+        if event.tool_name == self.tool_name {
+            ToolCallAction::rewrite(self.args.clone())
+        } else {
+            ToolCallAction::run()
         }
     }
 }
@@ -216,12 +241,15 @@ struct RedactResult {
 }
 
 impl AgentHook<GeminiModel> for RedactResult {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, GeminiModel>) -> Flow {
-        match event {
-            StepEvent::ToolResult { tool_name, .. } if tool_name == self.tool_name => {
-                Flow::rewrite_result(self.marker)
-            }
-            _ => Flow::cont(),
+    async fn on_tool_result(
+        &self,
+        _ctx: &HookContext,
+        event: ToolResultEvent<'_>,
+    ) -> ToolResultAction {
+        if event.tool_name == self.tool_name {
+            ToolResultAction::rewrite(self.marker)
+        } else {
+            ToolResultAction::keep()
         }
     }
 }
@@ -403,7 +431,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Chained tool lifecycle: RewriteArgs -> observe -> RewriteResult redaction.
+// 3. Chained tool lifecycle: ToolCallAction::Rewrite -> observe -> ToolResultAction::Rewrite.
 // ---------------------------------------------------------------------------
 
 const REDACTION_MARKER: &str = "REDACTED-SUM-ZK7";
@@ -529,8 +557,8 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                         }
                         _ => {}
                     },
-                    Ok(MultiTurnStreamItem::ToolExecutionStart { .. }) => {
-                        events.push("tool_execution_start")
+                    Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
+                        events.push("tool_execution_committed")
                     }
                     Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         ..
@@ -549,20 +577,21 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
             assert!(saw_final, "the stream must yield a FinalResponse");
             assert_nonempty_response(&final_text);
 
-            // Lifecycle ordering: a tool call precedes its execution start, which
+            // Lifecycle ordering: a tool call precedes its execution commit, which
             // precedes its result, which precedes the final response.
             let first = |tag: &str| events.iter().position(|e| *e == tag);
             let tool_call_at = first("tool_call").expect("a complete tool call is surfaced");
-            let exec_start_at = first("tool_execution_start").expect("execution start is surfaced");
+            let exec_commit_at =
+                first("tool_execution_committed").expect("execution commit is surfaced");
             let tool_result_at = first("tool_result").expect("a tool result is surfaced");
             let final_at = first("final_response").expect("a final response is surfaced");
             assert!(
-                tool_call_at < exec_start_at,
-                "the model-emitted tool call must precede its execution start: {events:?}"
+                tool_call_at < exec_commit_at,
+                "the model-emitted tool call must precede its execution commit: {events:?}"
             );
             assert!(
-                exec_start_at <= tool_result_at,
-                "execution start must precede its tool result: {events:?}"
+                exec_commit_at <= tool_result_at,
+                "execution commit must precede its tool result: {events:?}"
             );
             assert!(
                 tool_result_at < final_at,

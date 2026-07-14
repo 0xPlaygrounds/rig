@@ -10,7 +10,7 @@ fn add(
     a: i32,
     /// Second number
     b: i32,
-) -> Result<i32, rig_core::tool::ToolError> {
+) -> Result<i32, rig_core::tool::ToolExecutionError> {
     Ok(a + b)
 }
 
@@ -21,7 +21,7 @@ fn subtract(
     a: i32,
     /// Second number
     b: i32,
-) -> Result<i32, rig_core::tool::ToolError> {
+) -> Result<i32, rig_core::tool::ToolExecutionError> {
     Ok(a - b)
 }
 
@@ -32,7 +32,7 @@ fn multiply(
     a: i32,
     /// Second number
     b: i32,
-) -> Result<i32, rig_core::tool::ToolError> {
+) -> Result<i32, rig_core::tool::ToolExecutionError> {
     Ok(a * b)
 }
 
@@ -43,10 +43,10 @@ fn divide(
     a: i32,
     /// Divisor
     b: i32,
-) -> Result<i32, rig_core::tool::ToolError> {
+) -> Result<i32, rig_core::tool::ToolExecutionError> {
     if b == 0 {
-        Err(rig_core::tool::ToolError::ToolCallError(
-            "Division by zero".into(),
+        Err(rig_core::tool::ToolExecutionError::other(
+            "Division by zero",
         ))
     } else {
         Ok(a / b)
@@ -55,7 +55,8 @@ fn divide(
 
 /// Answer the secret question
 #[rig_tool]
-fn answer_secret_question() -> Result<(bool, bool, bool, bool, bool), rig_core::tool::ToolError> {
+fn answer_secret_question()
+-> Result<(bool, bool, bool, bool, bool), rig_core::tool::ToolExecutionError> {
     Ok((false, false, true, false, false))
 }
 
@@ -64,7 +65,7 @@ fn answer_secret_question() -> Result<(bool, bool, bool, bool, bool), rig_core::
 fn how_many_rs(
     /// The string to search
     s: String,
-) -> Result<usize, rig_core::tool::ToolError> {
+) -> Result<usize, rig_core::tool::ToolExecutionError> {
     Ok(s.chars()
         .filter(|c| *c == 'r' || *c == 'R')
         .collect::<Vec<_>>()
@@ -76,7 +77,7 @@ fn how_many_rs(
 fn sum_numbers(
     /// Numbers to sum
     numbers: Vec<i64>,
-) -> Result<i64, rig_core::tool::ToolError> {
+) -> Result<i64, rig_core::tool::ToolExecutionError> {
     Ok(numbers.iter().sum())
 }
 

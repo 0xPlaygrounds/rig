@@ -1,8 +1,8 @@
-//! Verifies that a `Flow::RewriteResult` hook redacts a tool's output before the
+//! Verifies that a `ToolResultAction::Rewrite` hook redacts a tool's output before the
 //! model sees it, end-to-end through a real Anthropic round-trip.
 //!
 //! The `get_user_record` tool returns a record containing a (fake) SSN. A default
-//! hook redacts the SSN on the `ToolResult` event via `Flow::rewrite_result`, so
+//! hook redacts the SSN on the `ToolResult` event via `ToolResultAction::rewrite`, so
 //! the value the tool actually produced never reaches the model. The tool records
 //! its real output; the assertions check that the tool DID produce the secret but
 //! the model's answer never contains it — and the blocking and streaming tests
@@ -10,7 +10,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, Flow, StepEvent};
+use rig::agent::{AgentHook, ToolResultAction, ToolResultEvent};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers::anthropic;
@@ -77,7 +77,11 @@ impl Tool for GetUserRecord {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         // Constant (id-independent) so the round-trip is deterministic for replay.
         let record = format!("name=Alice; ssn={SECRET_SSN}; status=active");
         self.raw_outputs
@@ -105,19 +109,20 @@ fn redact_ssn(record: &str) -> String {
 
 /// A guardrail hook that redacts the SSN from `get_user_record` output on the
 /// `ToolResult` event, before the model ever sees it — the post-tool redaction
-/// use case `RewriteResult` exists for.
+/// use case `ToolResultAction::Rewrite` exists for.
 struct RedactSsnFromResult;
 
 impl<M: CompletionModel> AgentHook<M> for RedactSsnFromResult {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::ToolResult {
-            tool_name, result, ..
-        } = event
-            && tool_name == GetUserRecord::NAME
-        {
-            return Flow::rewrite_result(redact_ssn(result));
+    async fn on_tool_result(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: ToolResultEvent<'_>,
+    ) -> ToolResultAction {
+        if event.tool_name == GetUserRecord::NAME {
+            ToolResultAction::rewrite(redact_ssn(&event.presentation.render()))
+        } else {
+            ToolResultAction::keep()
         }
-        Flow::cont()
     }
 }
 

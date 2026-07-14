@@ -475,16 +475,20 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                             }
                         }
                         PartKind::FunctionCall(function_call) => {
-                            completion::AssistantContent::ToolCall(
-                                message::ToolCall::new(
+                            let tool_call = message::ToolCall::new(
+                                function_call.name.clone(),
+                                message::ToolFunction::new(
                                     function_call.name.clone(),
-                                    message::ToolFunction::new(
-                                        function_call.name.clone(),
-                                        function_call.args.clone(),
-                                    ),
-                                )
-                                .with_signature(thought_signature.clone()),
+                                    function_call.args.clone(),
+                                ),
                             )
+                            .with_signature(thought_signature.clone());
+                            let tool_call = if let Some(id) = &function_call.id {
+                                tool_call.with_call_id(id.clone())
+                            } else {
+                                tool_call
+                            };
+                            completion::AssistantContent::ToolCall(tool_call)
                         }
                         _ => {
                             return Err(CompletionError::ResponseError(
@@ -802,6 +806,25 @@ pub mod gemini_api_types {
         }
     }
 
+    fn gemini_tool_result_image_mime_type(
+        media_type: Option<&ImageMediaType>,
+    ) -> Result<&'static str, MessageError> {
+        let media_type = media_type.ok_or_else(|| {
+            MessageError::ConversionError(
+                "Image media type is required for Gemini tool results".to_string(),
+            )
+        })?;
+
+        match media_type {
+            ImageMediaType::JPEG | ImageMediaType::PNG | ImageMediaType::WEBP => {
+                Ok(media_type.to_mime_type())
+            }
+            _ => Err(MessageError::ConversionError(format!(
+                "Unsupported image media type {media_type:?} for Gemini tool results; supported types are JPEG, PNG, and WEBP"
+            ))),
+        }
+    }
+
     impl TryFrom<message::UserContent> for Part {
         type Error = message::MessageError;
 
@@ -813,43 +836,35 @@ pub mod gemini_api_types {
                     part: PartKind::Text(text),
                     additional_params: None,
                 }),
-                message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
-                    let mut response_json: Option<serde_json::Value> = None;
+                message::UserContent::ToolResult(message::ToolResult {
+                    id,
+                    call_id,
+                    content,
+                }) => {
+                    let mut response_values = Vec::new();
                     let mut parts: Vec<FunctionResponsePart> = Vec::new();
 
                     for item in content.iter() {
                         match item {
                             message::ToolResultContent::Text(text) => {
-                                let result: serde_json::Value =
-                                    serde_json::from_str(&text.text).unwrap_or_else(|error| {
-                                        tracing::trace!(
-                                            ?error,
-                                            "Tool result is not a valid JSON, treat it as normal string"
-                                        );
-                                        json!(&text.text)
-                                    });
-
-                                response_json = Some(match response_json {
-                                    Some(mut existing) => {
-                                        if let serde_json::Value::Object(ref mut map) = existing {
-                                            map.insert("text".to_string(), result);
-                                        }
-                                        existing
-                                    }
-                                    None => json!({ "result": result }),
-                                });
+                                response_values.push(json!(&text.text));
+                            }
+                            message::ToolResultContent::Json { value } => {
+                                response_values.push(value.clone());
                             }
                             message::ToolResultContent::Image(image) => {
                                 let part = match &image.data {
                                     DocumentSourceKind::Base64(b64) => {
-                                        let mime_type = image
-                                            .media_type
-                                            .as_ref()
-                                            .ok_or(message::MessageError::ConversionError(
-                                                "Image media type is required for Gemini tool results".to_string(),
-                                            ))?
-                                            .to_mime_type();
+                                        let mime_type = gemini_tool_result_image_mime_type(
+                                            image.media_type.as_ref(),
+                                        )?;
 
+                                        // Gemini's Developer API rejects synthetic `$ref` links
+                                        // for inline function-response parts even when their
+                                        // display names match. References are optional, so keep
+                                        // structured output in `response` and media in ordered
+                                        // `parts`, which both streaming and non-streaming models
+                                        // accept.
                                         FunctionResponsePart {
                                             inline_data: Some(FunctionResponseInlineData {
                                                 mime_type: mime_type.to_string(),
@@ -859,19 +874,11 @@ pub mod gemini_api_types {
                                             file_data: None,
                                         }
                                     }
-                                    DocumentSourceKind::Url(url) => {
-                                        let mime_type = image
-                                            .media_type
-                                            .as_ref()
-                                            .map(|mt| mt.to_mime_type().to_string());
-
-                                        FunctionResponsePart {
-                                            inline_data: None,
-                                            file_data: Some(FileData {
-                                                mime_type,
-                                                file_uri: url.clone(),
-                                            }),
-                                        }
+                                    DocumentSourceKind::Url(_) => {
+                                        return Err(message::MessageError::ConversionError(
+                                            "Gemini tool result images must use base64 inline data; URL-backed images are not supported"
+                                                .to_string(),
+                                        ));
                                     }
                                     _ => {
                                         return Err(message::MessageError::ConversionError(
@@ -885,11 +892,23 @@ pub mod gemini_api_types {
                         }
                     }
 
+                    let response_json = if response_values.is_empty() {
+                        None
+                    } else {
+                        let result = if response_values.len() == 1 {
+                            response_values.remove(0)
+                        } else {
+                            serde_json::Value::Array(response_values)
+                        };
+                        Some(json!({ "result": result }))
+                    };
+
                     Ok(Part {
                         thought: Some(false),
                         thought_signature: None,
                         part: PartKind::FunctionResponse(FunctionResponse {
                             name: id,
+                            id: call_id,
                             response: response_json,
                             parts: if parts.is_empty() { None } else { Some(parts) },
                         }),
@@ -1198,6 +1217,7 @@ pub mod gemini_api_types {
                 part: PartKind::FunctionCall(FunctionCall {
                     name: tool_call.function.name,
                     args: tool_call.function.arguments,
+                    id: tool_call.call_id,
                 }),
                 additional_params: None,
             }
@@ -1225,6 +1245,9 @@ pub mod gemini_api_types {
         pub name: String,
         /// Optional. The function parameters and values in JSON object format.
         pub args: serde_json::Value,
+        /// Provider-supplied identifier used to correlate the function response.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
     }
 
     impl From<message::ToolCall> for FunctionCall {
@@ -1232,6 +1255,7 @@ pub mod gemini_api_types {
             Self {
                 name: tool_call.function.name,
                 args: tool_call.function.arguments,
+                id: tool_call.call_id,
             }
         }
     }
@@ -1244,6 +1268,9 @@ pub mod gemini_api_types {
         /// The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes,
         /// with a maximum length of 63.
         pub name: String,
+        /// Provider-supplied identifier from the corresponding function call.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
         /// The function response in JSON object format.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response: Option<serde_json::Value>,
@@ -2579,6 +2606,7 @@ mod tests {
                             part: PartKind::FunctionCall(FunctionCall {
                                 name: "default_api".to_string(),
                                 args: json!({"x": 1}),
+                                id: None,
                             }),
                             additional_params: None,
                         }],
@@ -2689,7 +2717,7 @@ mod tests {
     fn test_message_conversion_tool_call() {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
-            call_id: None,
+            call_id: Some("call-123".to_string()),
             function: message::ToolFunction {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
@@ -2716,9 +2744,39 @@ mod tests {
                 function_call.args.as_object().unwrap().get("arg1").unwrap(),
                 "value1"
             );
+            assert_eq!(function_call.id.as_deref(), Some("call-123"));
         } else {
             panic!("Expected function call part");
         }
+    }
+
+    #[test]
+    fn test_response_function_call_preserves_correlation_id() {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "responseId": "response-123",
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "name": "test_function",
+                            "args": {"arg1": "value1"},
+                            "id": "call-123"
+                        }
+                    }],
+                    "role": "model"
+                },
+                "finishReason": "STOP"
+            }]
+        }))
+        .expect("response should deserialize");
+
+        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+            response.try_into().expect("response should convert");
+        let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
+            panic!("expected a tool call");
+        };
+        assert_eq!(tool_call.id, "test_function");
+        assert_eq!(tool_call.call_id.as_deref(), Some("call-123"));
     }
 
     #[test]
@@ -2960,7 +3018,7 @@ mod tests {
         // Create a tool result with both text and image content
         let tool_result = ToolResult {
             id: "test_tool".to_string(),
-            call_id: None,
+            call_id: Some("call-123".to_string()),
             content: OneOrMany::many(vec![
                 ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
                 ToolResultContent::Image(Image {
@@ -2989,11 +3047,17 @@ mod tests {
         }) = content.parts.first()
         {
             assert_eq!(function_response.name, "test_tool");
+            assert_eq!(function_response.id.as_deref(), Some("call-123"));
 
             // Check that response JSON is present
             assert!(function_response.response.is_some());
             let response = function_response.response.as_ref().unwrap();
-            assert!(response.get("result").is_some());
+            assert_eq!(
+                response,
+                &json!({
+                    "result": r#"{"status": "success"}"#
+                })
+            );
 
             // Check that parts with image data are present
             assert!(function_response.parts.is_some());
@@ -3005,8 +3069,238 @@ mod tests {
             let inline_data = image_part.inline_data.as_ref().unwrap();
             assert_eq!(inline_data.mime_type, "image/png");
             assert!(!inline_data.data.is_empty());
+            assert_eq!(inline_data.display_name, None);
         } else {
             panic!("Expected FunctionResponse part");
+        }
+    }
+
+    #[test]
+    fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
+        use crate::OneOrMany;
+        use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
+
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                id: "ordered_tool".to_string(),
+                call_id: None,
+                content: OneOrMany::many(vec![
+                    ToolResultContent::image_base64("first-image", Some(ImageMediaType::PNG), None),
+                    ToolResultContent::text("between-images"),
+                    ToolResultContent::image_base64(
+                        "second-image",
+                        Some(ImageMediaType::JPEG),
+                        None,
+                    ),
+                ])
+                .expect("mixed tool result content should be non-empty"),
+            })),
+        };
+
+        let content: Content = message.try_into().expect("tool result should convert");
+        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+            panic!("expected a function response");
+        };
+
+        assert_eq!(
+            response.response,
+            Some(json!({ "result": "between-images" }))
+        );
+
+        let parts = response
+            .parts
+            .as_ref()
+            .expect("images should be inline parts");
+        assert_eq!(parts.len(), 2);
+        let first = parts[0].inline_data.as_ref().expect("first inline image");
+        assert_eq!(first.mime_type, "image/png");
+        assert_eq!(first.data, "first-image");
+        assert_eq!(first.display_name, None);
+        let second = parts[1].inline_data.as_ref().expect("second inline image");
+        assert_eq!(second.mime_type, "image/jpeg");
+        assert_eq!(second.data, "second-image");
+        assert_eq!(second.display_name, None);
+    }
+
+    #[test]
+    fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
+        use crate::OneOrMany;
+        use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
+
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                id: "ordered_tool".to_string(),
+                call_id: None,
+                content: OneOrMany::many(vec![
+                    ToolResultContent::json(json!({ "status": "ok" })),
+                    ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
+                ])
+                .expect("mixed tool result content should be non-empty"),
+            })),
+        };
+
+        let content: Content = message.try_into().expect("tool result should convert");
+        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+            panic!("expected a function response");
+        };
+
+        assert_eq!(
+            response.response,
+            Some(json!({ "result": { "status": "ok" } }))
+        );
+        let parts = response
+            .parts
+            .as_ref()
+            .expect("image should be an inline part");
+        assert_eq!(parts.len(), 1);
+        let inline_data = parts[0].inline_data.as_ref().expect("inline image data");
+        assert_eq!(inline_data.data, "image-data");
+        assert_eq!(inline_data.display_name, None);
+    }
+
+    #[test]
+    fn mixed_url_image_and_response_value_is_rejected() {
+        use crate::OneOrMany;
+        use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResultContent};
+
+        let tool_result = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+                id: "url_tool".to_string(),
+                call_id: None,
+                content: OneOrMany::many(vec![
+                    ToolResultContent::Image(Image {
+                        data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
+                        media_type: Some(ImageMediaType::PNG),
+                        detail: None,
+                        additional_params: None,
+                    }),
+                    ToolResultContent::text("after-image"),
+                ])
+                .expect("mixed tool result content should be non-empty"),
+            })),
+        };
+
+        let error = Content::try_from(tool_result)
+            .expect_err("URL-backed tool result images should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("URL-backed images are not supported"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn tool_result_rejects_unsupported_image_media_types() {
+        use crate::OneOrMany;
+        use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
+
+        for media_type in [
+            ImageMediaType::GIF,
+            ImageMediaType::HEIC,
+            ImageMediaType::HEIF,
+            ImageMediaType::SVG,
+        ] {
+            let message = message::Message::User {
+                content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                    id: "image_tool".to_string(),
+                    call_id: None,
+                    content: OneOrMany::one(ToolResultContent::image_base64(
+                        "image-data",
+                        Some(media_type),
+                        None,
+                    )),
+                })),
+            };
+
+            let error = Content::try_from(message)
+                .expect_err("unsupported tool result image type should be rejected");
+            assert!(
+                error
+                    .to_string()
+                    .contains("supported types are JPEG, PNG, and WEBP"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
+        use crate::OneOrMany;
+        use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
+
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                id: "collision_tool".to_string(),
+                call_id: None,
+                content: OneOrMany::many(vec![
+                    ToolResultContent::json(json!({
+                        "literal": {
+                            "$ref": "tool_result_image_0"
+                        }
+                    })),
+                    ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
+                ])
+                .expect("mixed tool result content should be non-empty"),
+            })),
+        };
+
+        let content: Content = message.try_into().expect("tool result should convert");
+        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+            panic!("expected a function response");
+        };
+
+        assert_eq!(
+            response.response,
+            Some(json!({
+                "result": {
+                    "literal": {
+                        "$ref": "tool_result_image_0"
+                    }
+                }
+            }))
+        );
+        assert_eq!(
+            response.parts.as_ref().and_then(|parts| {
+                parts
+                    .first()
+                    .and_then(|part| part.inline_data.as_ref())
+                    .and_then(|part| part.display_name.as_deref())
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn tool_result_literal_text_and_structured_json_remain_distinct() {
+        use crate::OneOrMany;
+        use crate::message::{ToolResult, ToolResultContent};
+
+        let cases = [
+            (
+                ToolResultContent::text(r#"{"status":"ok"}"#),
+                json!({ "result": "{\"status\":\"ok\"}" }),
+            ),
+            (
+                ToolResultContent::json(json!({ "status": "ok" })),
+                json!({ "result": { "status": "ok" } }),
+            ),
+        ];
+
+        for (tool_content, expected) in cases {
+            let message = message::Message::User {
+                content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                    id: "test_tool".to_string(),
+                    call_id: None,
+                    content: OneOrMany::one(tool_content),
+                })),
+            };
+            let content: Content = message.try_into().expect("tool result should convert");
+
+            let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+                panic!("expected a function response");
+            };
+            assert_eq!(response.response.as_ref(), Some(&expected));
         }
     }
 
@@ -3078,8 +3372,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_result_with_url_image() {
-        // Test that a ToolResult with a URL-based image converts to file_data
+    fn test_tool_result_with_url_image_is_rejected() {
         use crate::OneOrMany;
         use crate::message::{
             DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
@@ -3101,30 +3394,14 @@ mod tests {
             content: OneOrMany::one(user_content),
         };
 
-        let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-        assert_eq!(content.role, Some(Role::User));
-        assert_eq!(content.parts.len(), 1);
-
-        if let Some(Part {
-            part: PartKind::FunctionResponse(function_response),
-            ..
-        }) = content.parts.first()
-        {
-            assert_eq!(function_response.name, "screenshot_tool");
-
-            // URL images should have parts with file_data
-            assert!(function_response.parts.is_some());
-            let parts = function_response.parts.as_ref().unwrap();
-            assert_eq!(parts.len(), 1);
-
-            let image_part = &parts[0];
-            assert!(image_part.file_data.is_some());
-            let file_data = image_part.file_data.as_ref().unwrap();
-            assert_eq!(file_data.file_uri, "https://example.com/image.png");
-            assert_eq!(file_data.mime_type.as_ref().unwrap(), "image/png");
-        } else {
-            panic!("Expected FunctionResponse part");
-        }
+        let error =
+            Content::try_from(msg).expect_err("URL-backed tool result images should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("URL-backed images are not supported"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -3259,70 +3536,6 @@ mod tests {
             assert_eq!(text, "Hello");
         } else {
             panic!("Expected user message to be text");
-        }
-    }
-
-    #[test]
-    fn test_from_tool_output_parses_image_json() {
-        // Test the ToolResultContent::from_tool_output helper with image JSON
-        use crate::message::{DocumentSourceKind, ToolResultContent};
-
-        // Test simple image JSON format
-        let image_json = r#"{"type": "image", "data": "base64data==", "mimeType": "image/jpeg"}"#;
-        let result = ToolResultContent::from_tool_output(image_json);
-
-        assert_eq!(result.len(), 1);
-        if let ToolResultContent::Image(img) = result.first() {
-            assert!(matches!(img.data, DocumentSourceKind::Base64(_)));
-            if let DocumentSourceKind::Base64(data) = &img.data {
-                assert_eq!(data, "base64data==");
-            }
-            assert_eq!(img.media_type, Some(crate::message::ImageMediaType::JPEG));
-        } else {
-            panic!("Expected Image content");
-        }
-    }
-
-    #[test]
-    fn test_from_tool_output_parses_hybrid_json() {
-        // Test the ToolResultContent::from_tool_output helper with hybrid response/parts format
-        use crate::message::{DocumentSourceKind, ToolResultContent};
-
-        let hybrid_json = r#"{
-            "response": {"status": "ok", "count": 42},
-            "parts": [
-                {"type": "image", "data": "imgdata1==", "mimeType": "image/png"},
-                {"type": "image", "data": "https://example.com/img.jpg", "mimeType": "image/jpeg"}
-            ]
-        }"#;
-
-        let result = ToolResultContent::from_tool_output(hybrid_json);
-
-        // Should have 3 items: 1 text (response) + 2 images (parts)
-        assert_eq!(result.len(), 3);
-
-        let items: Vec<_> = result.iter().collect();
-
-        // First should be text with the response JSON
-        if let ToolResultContent::Text(text) = &items[0] {
-            assert!(text.text.contains("status"));
-            assert!(text.text.contains("ok"));
-        } else {
-            panic!("Expected Text content first");
-        }
-
-        // Second should be base64 image
-        if let ToolResultContent::Image(img) = &items[1] {
-            assert!(matches!(img.data, DocumentSourceKind::Base64(_)));
-        } else {
-            panic!("Expected Image content second");
-        }
-
-        // Third should be URL image
-        if let ToolResultContent::Image(img) = &items[2] {
-            assert!(matches!(img.data, DocumentSourceKind::Url(_)));
-        } else {
-            panic!("Expected Image content third");
         }
     }
 

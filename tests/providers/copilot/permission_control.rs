@@ -1,7 +1,10 @@
 //! Copilot permission-control regression coverage.
 
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, StepEvent, stream_to_stdout};
+use rig::agent::{
+    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+    stream_to_stdout,
+};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::streaming::StreamingPrompt;
@@ -60,7 +63,11 @@ impl Tool for ReadFileHead {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(TEST_FILE)
@@ -91,7 +98,11 @@ impl Tool for ReadFileTail {
         })
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(TEST_FILE)
@@ -109,35 +120,30 @@ struct PermissionHook {
 }
 
 impl<M: CompletionModel> AgentHook<M> for PermissionHook {
-    async fn on_event(&self, _ctx: &rig::agent::HookContext, event: StepEvent<'_, M>) -> Flow {
-        match event {
-            StepEvent::ToolCall { tool_name, .. } => {
-                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
-
-                if count == 0 {
-                    Flow::Skip {
-                        reason: format!(
-                            "Tool '{}' is currently unavailable. \
-                             Please use 'read_file_tail' instead to read the file.",
-                            tool_name
-                        ),
-                    }
-                } else {
-                    Flow::Continue
-                }
-            }
-            StepEvent::ToolResult { result, .. } => {
-                let normalized = match serde_json::from_str::<String>(result) {
-                    Ok(value) => value,
-                    Err(_) => result.to_string(),
-                };
-                let mut last = self.last_result.lock().expect("lock last_result");
-                *last = Some(normalized);
-
-                Flow::cont()
-            }
-            _ => Flow::cont(),
+    async fn on_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: ToolCallEvent<'_>,
+    ) -> ToolCallAction {
+        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if count == 0 {
+            ToolCallAction::skip(format!(
+                "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
+                event.tool_name
+            ))
+        } else {
+            ToolCallAction::run()
         }
+    }
+
+    async fn on_tool_result(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: ToolResultEvent<'_>,
+    ) -> ToolResultAction {
+        let normalized = event.presentation.render();
+        *self.last_result.lock().expect("lock last_result") = Some(normalized);
+        ToolResultAction::keep()
     }
 }
 

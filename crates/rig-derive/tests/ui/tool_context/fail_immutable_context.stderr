@@ -1,0 +1,5 @@
+error: a `ToolContext` parameter must have type `&mut ToolContext`
+ --> tests/ui/tool_context/fail_immutable_context.rs:8:30
+  |
+8 |     #[rig(context)] context: &ToolContext,
+  |                              ^^^^^^^^^^^^

@@ -1,9 +1,9 @@
 //! MCP (Model Context Protocol) integration via the `rmcp` crate.
 //!
-//! This module provides:
-//! - [`McpTool`]: A wrapper that adapts an `rmcp` tool for use in Rig's tool system.
-//! - [`McpClientHandler`]: A client handler that reacts to `notifications/tools/list_changed`
-//!   by re-fetching the tool list and updating the [`ToolServer`](super::server::ToolServer).
+//! This module provides [`McpClientHandler`], a client handler that reacts to
+//! `notifications/tools/list_changed` by re-fetching the tool list and updating
+//! the [`ToolServer`](super::server::ToolServer). Individual MCP tools are
+//! registered through the agent and tool-server `rmcp_tool` builder methods.
 //!
 //! # Example
 //!
@@ -31,39 +31,56 @@
 //!
 //! # Per-call metadata
 //!
-//! [`McpTool`] forwards an [`rmcp::model::Meta`] (re-exported here as [`Meta`])
-//! placed in a [`ToolCallExtensions`] as the MCP request's `_meta` (SEP-1319) —
-//! the idiomatic channel for per-call values such as auth tokens, session ids,
-//! or A2A `context_id`/`task_id`, which the model never sees:
+//! Rig's MCP adapter forwards an [`rmcp::model::Meta`] (re-exported here as
+//! [`Meta`]) placed in a [`ToolContext`] as the MCP request's `_meta`
+//! (SEP-1319) — the idiomatic channel for per-call values such as auth tokens,
+//! session ids, or A2A `context_id`/`task_id`, which the model never sees:
 //!
 //! ```rust,ignore
 //! use rig_core::tool::rmcp::Meta;
-//! use rig_core::tool::ToolCallExtensions;
+//! use rig_core::tool::ToolContext;
 //!
 //! let mut meta = Meta::new();
 //! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
-//! let mut extensions = ToolCallExtensions::new();
-//! extensions.insert(meta);
-//! let answer = agent.prompt("…").tool_extensions(extensions).await?;
+//! let mut context = ToolContext::new();
+//! context.insert(meta);
+//! let answer = agent.prompt("…").tool_context(context).await?;
 //! ```
+//!
+//! # Response metadata
+//!
+//! MCP responses retain their protocol data in the per-dispatch
+//! [`ToolContext`]. Result hooks can inspect the untouched
+//! [`rmcp::model::CallToolResult`], its `structuredContent` as a
+//! [`serde_json::Value`], and response [`Meta`] with
+//! `event.tool_context.result::<T>()`. These values are host-only; only the
+//! response's ordered presentation content is sent to the model.
 
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use std::time::Duration;
 
 use rmcp::ServiceExt;
-use rmcp::model::ContentBlock;
-use tokio::sync::RwLock;
-
-use crate::completion::ToolDefinition;
-use crate::tool::server::{ToolServerError, ToolServerHandle};
-use crate::tool::{
-    ToolCallExtensions, ToolDyn, ToolError, ToolExecutionResult, ToolFailure, ToolFailureKind,
+use rmcp::model::{
+    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, ListToolsRequest,
+    PaginatedRequestParams, ResourceContents, ServerResult,
 };
+use rmcp::service::PeerRequestOptions;
+use tokio::sync::{Mutex, RwLock};
+
+use crate::OneOrMany;
+use crate::completion::ToolDefinition;
+use crate::message::{ImageMediaType, MimeType, ToolResultContent};
+use crate::tool::server::{ManagedToolToken, ToolServerHandle};
+use crate::tool::{ErasedTool, ToolContext, ToolExecutionError, ToolOutput, ToolResult};
 use crate::wasm_compat::WasmBoxedFuture;
 
-/// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolCallExtensions`] to have
-/// [`McpTool`] forward it as a call's MCP `_meta` (see the module docs).
+/// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolContext`] to have
+/// Rig's MCP registration methods forward it as a call's `_meta`.
 pub use rmcp::model::Meta;
 
 /// Default per-call timeout applied to MCP tools (see issue #1914).
@@ -71,37 +88,40 @@ pub use rmcp::model::Meta;
 /// MCP tool calls await a response that can be silently lost by the transport
 /// (e.g. an rmcp StreamableHttp session re-init dropping an in-flight request),
 /// which would otherwise hang the agent forever. A generous default bounds that
-/// without disrupting normal, long-running tools. Override per tool with
-/// [`McpTool::with_timeout`] (pass `None` to disable, e.g. for tools that may
-/// legitimately run longer than this).
+/// without disrupting normal, long-running tools. The agent and tool-server
+/// `rmcp_tool_with_timeout` builders can override or disable it.
 pub const DEFAULT_MCP_TOOL_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// A Rig tool adapter wrapping an `rmcp` MCP tool.
+/// Default deadline for fetching an MCP server's complete tool list.
 ///
-/// Bridges between the MCP tool protocol and Rig's [`ToolDyn`] trait,
-/// allowing MCP tools to be used seamlessly in Rig agents.
+/// Refreshes are versioned as well as bounded: a slow older fetch may finish,
+/// but it can never roll the registry back after a newer snapshot commits.
+pub const DEFAULT_MCP_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Maximum time spent delivering a best-effort cancellation after a request
+/// has already exceeded its caller-visible deadline.
+const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
+
+/// Crate-private adapter used by Rig's public MCP registration methods.
 #[derive(Clone)]
-pub struct McpTool {
+pub(crate) struct McpTool {
     definition: rmcp::model::Tool,
     client: rmcp::service::ServerSink,
     /// Per-call timeout. When `Some`, an MCP `call_tool` that does not complete
-    /// within this duration resolves to a [`ToolError`] instead of blocking
+    /// within this duration resolves to a [`ToolExecutionError`] instead of blocking
     /// forever (see issue #1914). When `None`, the call is unbounded.
     ///
-    /// On elapse the call is abandoned **locally** (the future is dropped); the
-    /// server is not sent a cancellation, so a still-running tool keeps running
-    /// server-side, and rmcp reclaims the request slot when the session closes.
+    /// On elapse RMCP sends a cancellation notification so both peers can
+    /// release request-scoped resources.
     timeout: Option<Duration>,
 }
 
 impl McpTool {
-    /// Create a new `McpTool` from an MCP tool definition and server sink.
+    /// Create an adapter from an MCP tool definition and server sink.
     ///
     /// Applies [`DEFAULT_MCP_TOOL_TIMEOUT`] so a lost/never-answered response
-    /// cannot hang the agent forever (issue #1914). Use [`McpTool::with_timeout`]
-    /// to change it, or `with_timeout(None)` to disable it for tools that may
-    /// legitimately run longer.
-    pub fn from_mcp_server(
+    /// cannot hang the agent forever (issue #1914).
+    pub(crate) fn from_mcp_server(
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
     ) -> Self {
@@ -115,18 +135,18 @@ impl McpTool {
     /// Set (or clear) the per-call timeout, consuming and returning the tool.
     ///
     /// Pass a [`Duration`] to bound calls, or `None` to make them unbounded.
-    /// On timeout the call resolves to a [`ToolError`] (which the agent loop
+    /// On timeout the call resolves to a [`ToolExecutionError`] (which the agent loop
     /// surfaces to the model as a tool result, so the agent can recover rather
-    /// than hang). Note the timeout abandons the call locally and does **not**
-    /// send a cancellation to the MCP server — see the [`McpTool::timeout`]
-    /// field docs.
-    pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
+    /// than hang). RMCP sends a cancellation notification when the deadline
+    /// elapses.
+    pub(crate) fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
         self.timeout = timeout.into();
         self
     }
 
     /// The per-call timeout, if any.
-    pub fn timeout(&self) -> Option<Duration> {
+    #[cfg(test)]
+    pub(crate) fn timeout(&self) -> Option<Duration> {
         self.timeout
     }
 }
@@ -151,89 +171,158 @@ impl From<rmcp::model::Tool> for ToolDefinition {
     }
 }
 
-/// Error returned by an [`McpTool`] call.
-///
-/// Carries a structured [`ToolFailureKind`] so an MCP timeout, transport
-/// failure, or tool-reported error reaches hooks and telemetry as a classified
-/// [`ToolFailure`] (via [`McpTool`]'s
-/// [`ToolDyn::call_structured`]) instead
-/// of an opaque string.
-#[derive(Debug, thiserror::Error)]
-#[error("MCP tool error: {message}")]
-pub struct McpToolError {
-    message: String,
-    kind: ToolFailureKind,
-}
-
-impl McpToolError {
-    fn new(kind: ToolFailureKind, message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            kind,
-        }
-    }
-
-    /// The structured classification of this MCP error.
-    pub fn kind(&self) -> ToolFailureKind {
-        self.kind
-    }
-
-    /// Convert into a structured [`ToolFailure`] carrying the kind's default
-    /// `retryable` hint (e.g. an MCP timeout is retryable).
-    fn into_failure(self) -> ToolFailure {
-        ToolFailure::of_kind(self.kind, self.message)
-    }
-}
-
-impl From<McpToolError> for ToolError {
-    fn from(e: McpToolError) -> Self {
-        ToolError::ToolCallError(Box::new(e))
-    }
-}
-
 /// Parse the JSON `args` string into MCP call arguments.
 ///
-/// Returns `Ok(None)` for empty input or valid-but-non-object JSON (`null`, an
-/// array, a scalar) — all of which carry no MCP arguments — and `Ok(Some(obj))`
-/// for a JSON object. **Malformed JSON is a hard error** (`Err`): LLMs
-/// occasionally emit invalid JSON, and it must surface as a
-/// [`ToolFailureKind::InvalidArgs`] failure rather than being silently coerced
-/// into a no-argument call that reaches the server.
-fn parse_mcp_arguments(args: &str) -> Result<Option<rmcp::model::JsonObject>, serde_json::Error> {
+/// Argument decoding failure at the MCP object boundary.
+#[derive(Debug, thiserror::Error)]
+enum McpArgumentError {
+    /// Malformed JSON.
+    #[error("invalid JSON: {0}")]
+    Json(#[from] serde_json::Error),
+    /// Valid JSON that cannot be represented by MCP's object-valued arguments.
+    #[error("expected a JSON object or null, got {0}")]
+    NonObject(&'static str),
+}
+
+fn json_value_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+/// Returns no argument map for empty input or explicit JSON `null`, and an MCP
+/// argument map for a JSON object. Other valid JSON shapes are rejected: silently
+/// turning an array or scalar into a no-argument request can execute a different
+/// operation than the model requested.
+fn parse_mcp_arguments(args: &str) -> Result<Option<rmcp::model::JsonObject>, McpArgumentError> {
     let trimmed = args.trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
     let value: serde_json::Value = serde_json::from_str(trimmed)?;
     match value {
+        serde_json::Value::Null => Ok(None),
         serde_json::Value::Object(_) => Ok(Some(serde_json::from_value(value)?)),
-        _ => Ok(None),
+        value => Err(McpArgumentError::NonObject(json_value_kind(&value))),
     }
 }
 
+async fn call_mcp_tool(
+    peer: &rmcp::service::ServerSink,
+    params: rmcp::model::CallToolRequestParams,
+    timeout: Option<Duration>,
+) -> Result<CallToolResult, rmcp::ServiceError> {
+    let deadline = timeout.map(|timeout| (tokio::time::Instant::now() + timeout, timeout));
+    let response = send_mcp_request(
+        peer,
+        ClientRequest::CallToolRequest(CallToolRequest::new(params)),
+        deadline,
+    )
+    .await?;
+
+    match response {
+        ServerResult::CallToolResult(result) => Ok(result),
+        _ => Err(rmcp::ServiceError::UnexpectedResponse),
+    }
+}
+
+async fn send_mcp_request(
+    peer: &rmcp::service::ServerSink,
+    request: ClientRequest,
+    deadline: Option<(tokio::time::Instant, Duration)>,
+) -> Result<ServerResult, rmcp::ServiceError> {
+    let handle = match deadline {
+        Some((deadline, timeout)) => {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(rmcp::ServiceError::Timeout { timeout });
+            }
+            crate::wasm_compat::timeout(
+                remaining,
+                peer.send_cancellable_request(request, PeerRequestOptions::no_options()),
+            )
+            .await
+            .map_err(|_| rmcp::ServiceError::Timeout { timeout })??
+        }
+        None => {
+            peer.send_cancellable_request(request, PeerRequestOptions::no_options())
+                .await?
+        }
+    };
+
+    let Some((deadline, timeout)) = deadline else {
+        return handle.await_response().await;
+    };
+    let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+    let mut handle = handle;
+    match crate::wasm_compat::timeout(remaining, &mut handle.rx).await {
+        Ok(response) => response.map_err(|_| rmcp::ServiceError::TransportClosed)?,
+        Err(_) => {
+            cancel_timed_out_request(handle);
+            Err(rmcp::ServiceError::Timeout { timeout })
+        }
+    }
+}
+
+/// Keep cancellation delivery out of the caller's deadline. RMCP's cancellation
+/// notification uses the same bounded outbound queue as requests, so awaiting it
+/// inline could exceed the timeout precisely when that queue is saturated. The
+/// detached delivery is itself bounded so a stalled transport cannot retain one
+/// task and request handle for every timed-out call indefinitely.
+fn cancel_timed_out_request(handle: rmcp::service::RequestHandle<rmcp::service::RoleClient>) {
+    let cancellation = async move {
+        bounded_best_effort_cancellation(
+            handle.cancel(Some(
+                rmcp::service::RequestHandle::<rmcp::service::RoleClient>::REQUEST_TIMEOUT_REASON
+                    .to_owned(),
+            )),
+            MCP_CANCELLATION_GRACE_PERIOD,
+        )
+        .await;
+    };
+
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    tokio::spawn(cancellation);
+
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    wasm_bindgen_futures::spawn_local(cancellation);
+}
+
+async fn bounded_best_effort_cancellation(
+    cancellation: impl std::future::Future<Output = Result<(), rmcp::ServiceError>>,
+    grace_period: Duration,
+) {
+    let _ = crate::wasm_compat::timeout(grace_period, cancellation).await;
+}
+
 impl McpTool {
-    /// Shared executor for [`ToolDyn::call`] and [`ToolDyn::call_with_extensions`].
+    /// Execute one MCP request.
     ///
     /// `meta`, when present, is attached as the MCP request's `_meta`
     /// (SEP-1319) — the idiomatic channel for per-call metadata such as auth
     /// tokens, session ids, or A2A `context_id`/`task_id`. It is supplied by a
     /// caller that places an [`rmcp::model::Meta`] into the
-    /// [`ToolCallExtensions`]; otherwise the call behaves exactly as before.
-    fn execute(
+    /// [`ToolContext`]; otherwise the call behaves exactly as before.
+    fn execute_mcp(
         &self,
         args: String,
         meta: Option<rmcp::model::Meta>,
-    ) -> WasmBoxedFuture<'_, Result<String, McpToolError>> {
+    ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
         let name = self.definition.name.clone();
 
         Box::pin(async move {
             // Validate the JSON arguments before contacting the server: malformed
             // JSON must surface as an InvalidArgs failure, not a silent no-arg call.
-            let arguments = parse_mcp_arguments(&args).map_err(|err| {
-                McpToolError::new(
-                    ToolFailureKind::InvalidArgs,
-                    format!("MCP tool '{name}' received invalid JSON arguments: {err}"),
-                )
+            let arguments = parse_mcp_arguments(&args).map_err(|error| {
+                ToolExecutionError::invalid_args(format!(
+                    "MCP tool '{name}' received invalid arguments: {error}"
+                ))
+                .with_source(error)
             })?;
             let mut request = arguments
                 .map(|arguments| {
@@ -242,116 +331,154 @@ impl McpTool {
                 .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
             request.meta = meta;
 
-            let call = self.client.call_tool(request);
-            // Bound the call so a never-answered request (see issue #1914)
-            // becomes a recoverable error instead of an unbounded await.
-            let call_result = match self.timeout {
-                Some(timeout) => {
-                    crate::wasm_compat::timeout(timeout, call)
-                        .await
-                        .map_err(|_| {
-                            McpToolError::new(
-                                ToolFailureKind::Timeout,
-                                format!(
-                                    "MCP tool '{}' timed out after {timeout:?}",
-                                    self.definition.name
-                                ),
-                            )
-                        })?
-                }
-                None => call.await,
-            };
-            // A transport/service error before the tool produced a result.
-            let result = call_result.map_err(|e| {
-                McpToolError::new(
-                    ToolFailureKind::Provider,
-                    format!("Tool returned an error: {e}"),
-                )
-            })?;
-
-            if let Some(true) = result.is_error {
-                let error_msg = result
-                    .content
-                    .into_iter()
-                    .map(|x| x.as_text().map(|y| y.text.clone()))
-                    .collect::<Option<Vec<String>>>();
-
-                // The MCP tool ran and reported its own error result — a handled
-                // tool failure rather than a transport/timeout condition.
-                let error_message = error_msg.map(|x| x.join("\n"));
-                if let Some(error_message) = error_message {
-                    return Err(McpToolError::new(ToolFailureKind::Other, error_message));
-                } else {
-                    return Err(McpToolError::new(
-                        ToolFailureKind::Other,
-                        "No message returned".to_string(),
-                    ));
-                }
-            };
-
-            let mut content = String::new();
-
-            for item in result.content {
-                let chunk = match item {
-                    ContentBlock::Text(raw) => raw.text,
-                    ContentBlock::Image(raw) => {
-                        format!("data:{};base64,{}", raw.mime_type, raw.data)
-                    }
-                    ContentBlock::Resource(raw) => match raw.resource {
-                        rmcp::model::ResourceContents::TextResourceContents {
-                            uri,
-                            mime_type,
-                            text,
-                            ..
-                        } => {
-                            format!(
-                                "{mime_type}{uri}:{text}",
-                                mime_type =
-                                    mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
-                            )
-                        }
-                        rmcp::model::ResourceContents::BlobResourceContents {
-                            uri,
-                            mime_type,
-                            blob,
-                            ..
-                        } => format!(
-                            "{mime_type}{uri}:{blob}",
-                            mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
-                        ),
-                        thing => {
-                            return Err(McpToolError::new(
-                                ToolFailureKind::Other,
-                                format!(
-                                    "MCP tool returned unsupported resource contents: {thing:?}"
-                                ),
-                            ));
-                        }
+            match call_mcp_tool(&self.client, request, self.timeout).await {
+                Ok(result) => Ok(result),
+                Err(
+                    error @ rmcp::ServiceError::Timeout {
+                        timeout: elapsed_timeout,
                     },
-                    ContentBlock::Audio(_) => {
-                        return Err(McpToolError::new(
-                            ToolFailureKind::Other,
-                            "MCP tool returned audio content, which Rig does not support yet"
-                                .to_string(),
-                        ));
-                    }
-                    thing => {
-                        return Err(McpToolError::new(
-                            ToolFailureKind::Other,
-                            format!("MCP tool returned unsupported content: {thing:?}"),
-                        ));
-                    }
-                };
-
-                content.push_str(&chunk);
+                ) => {
+                    let timeout = self.timeout.unwrap_or(elapsed_timeout);
+                    Err(ToolExecutionError::timeout(format!(
+                        "MCP tool '{}' timed out after {timeout:?}",
+                        self.definition.name
+                    ))
+                    .with_source(error))
+                }
+                // A transport/service error before the tool produced a result.
+                Err(error) => Err(ToolExecutionError::provider(format!(
+                    "MCP tool '{}' request failed: {error}",
+                    self.definition.name
+                ))
+                .with_source(error)),
             }
-
-            Ok(content)
         })
     }
 }
 
-impl ToolDyn for McpTool {
+fn mcp_content_block_as_json(
+    content: &ContentBlock,
+) -> Result<ToolResultContent, ToolExecutionError> {
+    serde_json::to_value(content)
+        .map(ToolResultContent::json)
+        .map_err(|error| {
+            ToolExecutionError::provider(format!(
+                "failed to preserve an MCP content block as JSON: {error}"
+            ))
+            .with_source(error)
+        })
+}
+
+fn mcp_content_block_to_tool_content(
+    content: &ContentBlock,
+) -> Result<ToolResultContent, ToolExecutionError> {
+    match content {
+        ContentBlock::Text(text) => Ok(ToolResultContent::text(text.text.clone())),
+        ContentBlock::Image(image) => match ImageMediaType::from_mime_type(&image.mime_type) {
+            Some(media_type) => Ok(ToolResultContent::image_base64(
+                image.data.clone(),
+                Some(media_type),
+                None,
+            )),
+            None => mcp_content_block_as_json(content),
+        },
+        ContentBlock::Resource(resource) => match &resource.resource {
+            // Rig has no resource-content variant. Serializing the complete MCP
+            // block keeps its URI, MIME type, metadata, annotations, and body
+            // together instead of presenting only the body to the model.
+            ResourceContents::TextResourceContents { .. } => mcp_content_block_as_json(content),
+            ResourceContents::BlobResourceContents {
+                mime_type, blob, ..
+            } => match mime_type
+                .as_deref()
+                .and_then(ImageMediaType::from_mime_type)
+            {
+                Some(media_type) => Ok(ToolResultContent::image_base64(
+                    blob.clone(),
+                    Some(media_type),
+                    None,
+                )),
+                _ => mcp_content_block_as_json(content),
+            },
+            _ => mcp_content_block_as_json(content),
+        },
+        ContentBlock::ResourceLink(_) | ContentBlock::Audio(_) => {
+            mcp_content_block_as_json(content)
+        }
+        // ContentBlock is non-exhaustive. Preserve future protocol variants in
+        // full rather than replacing them with a lossy placeholder.
+        _ => mcp_content_block_as_json(content),
+    }
+}
+
+/// Build the model presentation without flattening or reparsing MCP blocks.
+fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutionError> {
+    let structured = result.structured_content.as_ref();
+    let canonical_fallback = structured.map(serde_json::Value::to_string);
+    let mut replaced_fallback = false;
+    let mut mapped = Vec::with_capacity(result.content.len());
+
+    for block in &result.content {
+        let fallback_structured = if !replaced_fallback {
+            match (block, canonical_fallback.as_deref(), structured) {
+                (ContentBlock::Text(text), Some(fallback), Some(structured))
+                    if text.text == fallback =>
+                {
+                    Some(structured)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some(structured) = fallback_structured {
+            // rmcp's `structured`/`structured_error` constructors include this
+            // text block solely for older clients. Replace it in place with the
+            // typed value; do not duplicate it as model-visible text.
+            mapped.push(ToolResultContent::json(structured.clone()));
+            replaced_fallback = true;
+        } else {
+            mapped.push(mcp_content_block_to_tool_content(block)?);
+        }
+    }
+
+    if let Some(structured) = structured
+        && !replaced_fallback
+    {
+        // A server may provide genuine text/rich content in addition to its
+        // structured result. Keep every real block and place the typed value
+        // first deterministically; only the canonical compatibility text is
+        // replaced rather than duplicated.
+        mapped.insert(0, ToolResultContent::json(structured.clone()));
+    }
+
+    let mut mapped = mapped.into_iter();
+    if let Some(first) = mapped.next() {
+        let mut ordered = OneOrMany::one(first);
+        for block in mapped {
+            ordered.push(block);
+        }
+        return Ok(ToolOutput::content(ordered));
+    }
+
+    if result.is_error == Some(true) {
+        Ok(ToolOutput::text("the MCP tool reported an error"))
+    } else {
+        Ok(ToolOutput::text(""))
+    }
+}
+
+fn preserve_mcp_result(context: &mut ToolContext, result: &CallToolResult) {
+    if let Some(structured) = result.structured_content.clone() {
+        context.insert_result(structured);
+    }
+    if let Some(meta) = result.meta.clone() {
+        context.insert_result(meta);
+    }
+    context.insert_result(result.clone());
+}
+
+impl ErasedTool for McpTool {
     fn name(&self) -> String {
         self.definition.name.to_string()
     }
@@ -368,42 +495,39 @@ impl ToolDyn for McpTool {
         self.definition.schema_as_json_value()
     }
 
-    fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
-        Box::pin(async move { self.execute(args, None).await.map_err(ToolError::from) })
+    fn is_live(&self) -> bool {
+        !self.client.is_transport_closed()
     }
 
-    /// Forwards an [`rmcp::model::Meta`] from the [`ToolCallExtensions`], if present,
-    /// as the MCP request's `_meta`. This lets callers attach per-call metadata
-    /// (auth, session, A2A `context_id`/`task_id`) to MCP tool invocations
-    /// without exposing it to the model. Absent a `Meta`, behaves like
-    /// [`call`](ToolDyn::call).
-    fn call_with_extensions<'a>(
+    fn execute<'a>(
         &'a self,
         args: String,
-        extensions: &'a ToolCallExtensions,
-    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
-        let meta = extensions.get::<rmcp::model::Meta>().cloned();
-        Box::pin(async move { self.execute(args, meta).await.map_err(ToolError::from) })
-    }
-
-    /// Surfaces MCP failures as structured outcomes: a per-call timeout (issue
-    /// #1914) becomes a [`Timeout`](ToolFailureKind::Timeout) failure, a
-    /// transport error a [`Provider`](ToolFailureKind::Provider) failure, and a
-    /// tool-reported error result an [`Other`](ToolFailureKind::Other) failure —
-    /// all with the MCP error text as the model-visible output.
-    fn call_structured<'a>(
-        &'a self,
-        args: String,
-        extensions: &'a ToolCallExtensions,
-    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
-        let meta = extensions.get::<rmcp::model::Meta>().cloned();
+        context: &'a mut ToolContext,
+    ) -> WasmBoxedFuture<'a, ToolResult> {
+        let meta = context.get::<rmcp::model::Meta>().cloned();
         Box::pin(async move {
-            match self.execute(args, meta).await {
-                Ok(output) => ToolExecutionResult::success(output),
-                Err(err) => {
-                    let failure = err.into_failure();
-                    ToolExecutionResult::failed(failure.message.clone(), failure)
+            match self.execute_mcp(args, meta).await {
+                Ok(result) => {
+                    let is_error = result.is_error == Some(true);
+                    preserve_mcp_result(context, &result);
+                    let output = match mcp_result_output(&result) {
+                        Ok(output) => output,
+                        Err(error) => return ToolResult::failed(error),
+                    };
+
+                    if is_error {
+                        ToolResult::failed(
+                            ToolExecutionError::other(format!(
+                                "MCP tool '{}' reported an execution error",
+                                self.definition.name
+                            ))
+                            .with_model_output(output),
+                        )
+                    } else {
+                        ToolResult::success(output)
+                    }
                 }
+                Err(error) => ToolResult::failed(error),
             }
         })
     }
@@ -420,10 +544,24 @@ pub enum McpClientError {
     #[error("Failed to fetch MCP tool list: {0}")]
     ToolFetchError(#[from] rmcp::ServiceError),
 
-    /// Failed to update the tool server with new tools.
-    #[error("Tool server error: {0}")]
-    ToolServerError(#[from] ToolServerError),
+    /// The server did not finish returning its tool list before the deadline.
+    #[error("Timed out fetching MCP tool list after {0:?}")]
+    ToolFetchTimeout(Duration),
 }
+
+#[derive(Default)]
+struct ManagedToolsState {
+    registrations: HashMap<String, ManagedToolToken>,
+    committed_refresh: u64,
+}
+
+#[derive(Default)]
+struct RefreshActivity {
+    active: usize,
+    dirty: bool,
+}
+
+const MAX_CONCURRENT_REFRESHES: usize = 2;
 
 /// An MCP client handler that automatically re-fetches the tool list when the
 /// server sends a `notifications/tools/list_changed` notification.
@@ -431,9 +569,9 @@ pub enum McpClientError {
 /// This handler implements [`rmcp::ClientHandler`] and bridges the MCP
 /// notification lifecycle with Rig's [`ToolServer`](super::server::ToolServer).
 /// When the MCP server's available tools change, this handler:
-/// 1. Removes previously registered MCP tools from the tool server
-/// 2. Re-fetches the full tool list from the MCP server
-/// 3. Registers the updated tools with the tool server
+/// 1. Re-fetches the full tool list from the MCP server
+/// 2. Replaces or removes registrations still owned by this handler
+/// 3. Leaves newer local and peer-handler same-name registrations intact
 ///
 /// # Usage
 ///
@@ -454,9 +592,16 @@ pub struct McpClientHandler {
     /// Per-call timeout applied to every MCP tool this handler registers
     /// (see issue #1914). Defaults to [`DEFAULT_MCP_TOOL_TIMEOUT`].
     timeout: Option<Duration>,
-    /// Tracks which tool names were registered by this handler so they
-    /// can be removed and replaced on list-change notifications.
-    managed_tool_names: Arc<RwLock<Vec<String>>>,
+    /// Deadline for initial and list-changed tool-list fetches.
+    refresh_timeout: Duration,
+    /// Tracks the exact registry generation installed for each tool. Refreshes
+    /// only mutate a name while this generation remains current, so a newer
+    /// local or peer-handler registration cannot be deleted or overwritten.
+    managed_tools: Arc<RwLock<ManagedToolsState>>,
+    /// Bounds notification-driven list fetches and coalesces excess signals.
+    refresh_activity: Arc<Mutex<RefreshActivity>>,
+    /// Monotonic identity assigned when each tool-list fetch begins.
+    next_refresh: Arc<AtomicU64>,
 }
 
 impl McpClientHandler {
@@ -470,22 +615,133 @@ impl McpClientHandler {
             client_info,
             tool_server_handle,
             timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
-            managed_tool_names: Arc::new(RwLock::new(Vec::new())),
+            refresh_timeout: DEFAULT_MCP_REFRESH_TIMEOUT,
+            managed_tools: Arc::new(RwLock::new(ManagedToolsState::default())),
+            refresh_activity: Arc::new(Mutex::new(RefreshActivity::default())),
+            next_refresh: Arc::new(AtomicU64::new(0)),
         }
     }
 
     /// Set (or clear) the per-call timeout applied to every MCP tool this handler
     /// registers. Pass a [`Duration`] to bound calls, or `None` to disable.
     ///
-    /// See [`McpTool::with_timeout`].
+    /// This applies the same setting to every tool managed by the handler.
     pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
         self.timeout = timeout.into();
         self
     }
 
-    /// Build an [`McpTool`], applying this handler's configured timeout.
+    /// Set the deadline for initial and list-changed tool-list fetches.
+    pub fn with_refresh_timeout(mut self, timeout: Duration) -> Self {
+        self.refresh_timeout = timeout;
+        self
+    }
+
+    /// Build the internal MCP adapter with this handler's configured timeout.
     fn build_tool(&self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> McpTool {
         McpTool::from_mcp_server(tool, client).with_timeout(self.timeout)
+    }
+
+    fn begin_refresh(&self) -> u64 {
+        self.next_refresh.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    async fn fetch_tools(
+        &self,
+        peer: &rmcp::service::ServerSink,
+    ) -> Result<Vec<Arc<dyn ErasedTool>>, McpClientError> {
+        let deadline = tokio::time::Instant::now() + self.refresh_timeout;
+        let mut tools = Vec::new();
+        let mut cursor = None;
+
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(McpClientError::ToolFetchTimeout(self.refresh_timeout));
+            }
+            let mut params = PaginatedRequestParams::default();
+            params.cursor = cursor;
+            let response = send_mcp_request(
+                peer,
+                ClientRequest::ListToolsRequest(ListToolsRequest::with_param(params)),
+                Some((deadline, self.refresh_timeout)),
+            )
+            .await
+            .map_err(|error| match error {
+                rmcp::ServiceError::Timeout { .. } => {
+                    McpClientError::ToolFetchTimeout(self.refresh_timeout)
+                }
+                error => McpClientError::ToolFetchError(error),
+            })?;
+            let page = match response {
+                ServerResult::ListToolsResult(page) => page,
+                _ => {
+                    return Err(McpClientError::ToolFetchError(
+                        rmcp::ServiceError::UnexpectedResponse,
+                    ));
+                }
+            };
+            tools.extend(page.tools);
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+
+        Ok(tools
+            .into_iter()
+            .map(|tool| Arc::new(self.build_tool(tool, peer.clone())) as Arc<dyn ErasedTool>)
+            .collect())
+    }
+
+    async fn try_start_refresh(&self) -> bool {
+        let mut activity = self.refresh_activity.lock().await;
+        if activity.active >= MAX_CONCURRENT_REFRESHES {
+            activity.dirty = true;
+            false
+        } else {
+            activity.active += 1;
+            true
+        }
+    }
+
+    async fn finish_or_restart_refresh(&self) -> bool {
+        let mut activity = self.refresh_activity.lock().await;
+        if activity.dirty {
+            activity.dirty = false;
+            true
+        } else {
+            activity.active -= 1;
+            false
+        }
+    }
+
+    async fn commit_initial(&self, refresh: u64, tools: Vec<Arc<dyn ErasedTool>>) {
+        let mut managed = self.managed_tools.write().await;
+        if refresh <= managed.committed_refresh {
+            tracing::debug!(refresh, "discarding stale initial MCP tool list");
+            return;
+        }
+        managed.registrations = self
+            .tool_server_handle
+            .add_managed_erased_tools(tools)
+            .await;
+        managed.committed_refresh = refresh;
+    }
+
+    async fn commit_refresh(&self, refresh: u64, tools: Vec<Arc<dyn ErasedTool>>) -> bool {
+        let mut managed = self.managed_tools.write().await;
+        if refresh <= managed.committed_refresh {
+            tracing::debug!(refresh, "discarding stale MCP tool-list response");
+            return false;
+        }
+        let expected = managed.registrations.clone();
+        managed.registrations = self
+            .tool_server_handle
+            .reconcile_managed_erased_tools(expected, tools)
+            .await;
+        managed.committed_refresh = refresh;
+        true
     }
 
     /// Connect to an MCP server, fetch the initial tool list, and register
@@ -498,8 +754,7 @@ impl McpClientHandler {
     ///
     /// # Errors
     ///
-    /// Returns [`McpClientError`] if the connection fails, the initial tool fetch
-    /// fails, or tool registration with the tool server fails.
+    /// Returns [`McpClientError`] if the connection or initial tool fetch fails.
     pub async fn connect<T, E, A>(
         self,
         transport: T,
@@ -512,19 +767,10 @@ impl McpClientHandler {
             .await
             .map_err(|e| McpClientError::ConnectionError(e.to_string()))?;
 
-        let tools = service.peer().list_all_tools().await?;
-
-        {
-            let handler = service.service();
-            let mut managed = handler.managed_tool_names.write().await;
-
-            for tool in tools {
-                let tool_name = tool.name.to_string();
-                let mcp_tool = handler.build_tool(tool, service.peer().clone());
-                handler.tool_server_handle.add_tool(mcp_tool).await?;
-                managed.push(tool_name);
-            }
-        }
+        let handler = service.service();
+        let refresh = handler.begin_refresh();
+        let tools = handler.fetch_tools(service.peer()).await?;
+        handler.commit_initial(refresh, tools).await;
 
         Ok(service)
     }
@@ -539,67 +785,627 @@ impl rmcp::handler::client::ClientHandler for McpClientHandler {
         &self,
         context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
     ) {
-        let tools = match context.peer.list_all_tools().await {
-            Ok(tools) => tools,
-            Err(e) => {
-                tracing::error!("Failed to re-fetch MCP tool list: {e}");
-                return;
-            }
-        };
-
-        let mut managed = self.managed_tool_names.write().await;
-
-        for name in managed.drain(..) {
-            if let Err(e) = self.tool_server_handle.remove_tool(&name).await {
-                tracing::warn!("Failed to remove MCP tool '{name}' during refresh: {e}");
-            }
+        if !self.try_start_refresh().await {
+            return;
         }
 
-        for tool in tools {
-            let tool_name = tool.name.to_string();
-            let mcp_tool = self.build_tool(tool, context.peer.clone());
-            match self.tool_server_handle.add_tool(mcp_tool).await {
-                Ok(()) => {
-                    managed.push(tool_name);
+        loop {
+            let refresh = self.begin_refresh();
+            // Network IO is deliberately outside the ownership lock. Up to two
+            // fetches may overlap so a newer snapshot can bypass one stalled
+            // request; further notifications coalesce into one follow-up fetch.
+            match self.fetch_tools(&context.peer).await {
+                Ok(tools) => {
+                    if self.commit_refresh(refresh, tools).await {
+                        let tool_count = self.managed_tools.read().await.registrations.len();
+                        tracing::info!(tool_count, "MCP tool list refreshed successfully");
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("Failed to register MCP tool '{tool_name}': {e}");
-                }
+                Err(error) => tracing::error!("Failed to re-fetch MCP tool list: {error}"),
+            }
+
+            if !self.finish_or_restart_refresh().await {
+                break;
             }
         }
-
-        tracing::info!(
-            tool_count = managed.len(),
-            "MCP tool list refreshed successfully"
-        );
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::time::Duration;
+    use std::{
+        future::pending,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::Duration,
+    };
 
-    use rmcp::handler::client::ClientHandler;
     use rmcp::model::*;
     use rmcp::service::RequestContext;
     use rmcp::{RoleServer, ServerHandler, ServiceExt};
     use serde_json::json;
-    use tokio::sync::RwLock;
+    use tokio::{
+        sync::{Notify, RwLock},
+        task::JoinHandle,
+    };
 
-    use super::McpClientHandler;
-    use crate::tool::server::ToolServer;
+    use super::*;
+    use crate::message::ToolResultContent as RigToolResultContent;
+    use crate::tool::{
+        ToolErrorKind,
+        server::{ToolServer, ToolServerHandle},
+    };
 
-    /// An MCP server whose tool list can be swapped at runtime.
+    #[derive(Clone)]
+    enum Scenario {
+        Success,
+        StructuredSuccess,
+        StructuredOnly,
+        Hang,
+        ServiceError,
+        ToolReportedError,
+        ImageToolReportedError,
+    }
+
+    #[derive(Clone)]
+    struct ScenarioServer {
+        scenario: Scenario,
+        seen: Arc<RwLock<Option<Meta>>>,
+        cancelled: Arc<Notify>,
+    }
+
+    impl ServerHandler for ScenarioServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("rig-mcp-test", "0.1.0"))
+        }
+
+        async fn call_tool(
+            &self,
+            _request: CallToolRequestParams,
+            context: RequestContext<RoleServer>,
+        ) -> Result<CallToolResult, ErrorData> {
+            *self.seen.write().await = Some(context.meta.clone());
+            match self.scenario {
+                Scenario::Success => Ok(CallToolResult::success(vec![ContentBlock::text("ok")])),
+                Scenario::StructuredSuccess => {
+                    let mut response = CallToolResult::success(vec![
+                        ContentBlock::text("before"),
+                        ContentBlock::image("aGVsbG8=", "image/png"),
+                        ContentBlock::text("after"),
+                    ]);
+                    response.structured_content = Some(json!({
+                        "answer": 42,
+                        "source": "fixture"
+                    }));
+                    let mut meta = Meta::new();
+                    meta.0.insert("response-id".into(), json!("response-123"));
+                    response.meta = Some(meta);
+                    Ok(response)
+                }
+                Scenario::StructuredOnly => {
+                    let mut response = CallToolResult::structured(json!({"answer": 42}));
+                    response.content.clear();
+                    Ok(response)
+                }
+                Scenario::Hang => {
+                    context.ct.cancelled().await;
+                    self.cancelled.notify_one();
+                    Err(ErrorData::internal_error("fixture request cancelled", None))
+                }
+                Scenario::ServiceError => {
+                    Err(ErrorData::internal_error("fixture service failed", None))
+                }
+                Scenario::ToolReportedError => Ok(CallToolResult::error(vec![ContentBlock::text(
+                    "tool reported exact failure",
+                )])),
+                Scenario::ImageToolReportedError => {
+                    Ok(CallToolResult::error(vec![ContentBlock::image(
+                        "ZXJyb3ItaW1hZ2U=",
+                        "image/png",
+                    )]))
+                }
+            }
+        }
+    }
+
+    struct Fixture {
+        handle: ToolServerHandle,
+        seen: Arc<RwLock<Option<Meta>>>,
+        cancelled: Arc<Notify>,
+        _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
+        server_task: JoinHandle<()>,
+    }
+
+    async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
+        let seen = Arc::new(RwLock::new(None));
+        let cancelled = Arc::new(Notify::new());
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+        let server = ScenarioServer {
+            scenario,
+            seen: seen.clone(),
+            cancelled: cancelled.clone(),
+        };
+        let server_task = tokio::spawn(async move {
+            let running = server
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server start");
+            running.waiting().await.expect("server error");
+        });
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect");
+        let definition = Tool::new(
+            "fixture_tool".to_string(),
+            "fixture".to_string(),
+            Arc::new(serde_json::Map::new()),
+        );
+        let handle = ToolServer::new()
+            .rmcp_tool_with_timeout(definition, client.peer().clone(), timeout)
+            .run();
+        Fixture {
+            handle,
+            seen,
+            cancelled,
+            _client: client,
+            server_task,
+        }
+    }
+
+    async fn execute(fixture: &Fixture, args: &str, context: &mut ToolContext) -> ToolResult {
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            fixture.handle.execute("fixture_tool", args, context),
+        )
+        .await
+        .expect("MCP dispatch exceeded the outer safety timeout")
+    }
+
+    #[tokio::test]
+    async fn best_effort_cancellation_drops_stalled_delivery_after_grace_period() {
+        struct DropProbe(Arc<AtomicBool>);
+
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let dropped = Arc::new(AtomicBool::new(false));
+        let drop_probe = DropProbe(dropped.clone());
+        let stalled = async move {
+            let _drop_probe = drop_probe;
+            pending::<Result<(), rmcp::ServiceError>>().await
+        };
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            bounded_best_effort_cancellation(stalled, Duration::from_millis(10)),
+        )
+        .await
+        .expect("best-effort cancellation exceeded its grace period");
+
+        assert!(dropped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn model_presentation_preserves_unrepresentable_mcp_blocks_as_json() {
+        let blocks = vec![
+            ContentBlock::resource(ResourceContents::TextResourceContents {
+                uri: "file:///reports/summary.txt".to_string(),
+                mime_type: Some("text/plain".to_string()),
+                text: "full report".to_string(),
+                meta: None,
+            }),
+            ContentBlock::resource(ResourceContents::BlobResourceContents {
+                uri: "file:///reports/raw.bin".to_string(),
+                mime_type: Some("application/octet-stream".to_string()),
+                blob: "AAEC".to_string(),
+                meta: None,
+            }),
+            ContentBlock::audio("UklGRg==", "audio/wav"),
+            ContentBlock::resource_link(
+                Resource::new("file:///reports/linked.txt", "linked.txt")
+                    .with_mime_type("text/plain"),
+            ),
+            ContentBlock::image("YXZpZg==", "image/avif"),
+            ContentBlock::resource(ResourceContents::BlobResourceContents {
+                uri: "file:///images/chart.avif".to_string(),
+                mime_type: Some("image/avif".to_string()),
+                blob: "YmxvYi1hdmlm".to_string(),
+                meta: None,
+            }),
+        ];
+        let expected = blocks
+            .iter()
+            .map(|block| {
+                RigToolResultContent::json(
+                    serde_json::to_value(block).expect("MCP block is JSON serializable"),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let result = CallToolResult::success(blocks);
+        let content = mcp_result_output(&result)
+            .expect("MCP content mapping")
+            .into_content()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(content, expected);
+        assert!(matches!(
+            &content[0],
+            RigToolResultContent::Json { value }
+                if value["resource"]["uri"] == "file:///reports/summary.txt"
+                    && value["resource"]["mimeType"] == "text/plain"
+                    && value["resource"]["text"] == "full report"
+        ));
+        assert!(matches!(
+            &content[1],
+            RigToolResultContent::Json { value }
+                if value["resource"]["uri"] == "file:///reports/raw.bin"
+                    && value["resource"]["mimeType"] == "application/octet-stream"
+                    && value["resource"]["blob"] == "AAEC"
+        ));
+        assert!(matches!(
+            &content[2],
+            RigToolResultContent::Json { value }
+                if value["mimeType"] == "audio/wav" && value["data"] == "UklGRg=="
+        ));
+        assert!(matches!(
+            &content[4],
+            RigToolResultContent::Json { value }
+                if value["mimeType"] == "image/avif" && value["data"] == "YXZpZg=="
+        ));
+        assert!(matches!(
+            &content[5],
+            RigToolResultContent::Json { value }
+                if value["resource"]["uri"] == "file:///images/chart.avif"
+                    && value["resource"]["mimeType"] == "image/avif"
+                    && value["resource"]["blob"] == "YmxvYi1hdmlm"
+        ));
+    }
+
+    #[test]
+    fn image_resource_blob_maps_to_an_image_block() {
+        let result = CallToolResult::success(vec![ContentBlock::resource(
+            ResourceContents::BlobResourceContents {
+                uri: "file:///images/chart.png".to_string(),
+                mime_type: Some("image/png".to_string()),
+                blob: "aW1hZ2U=".to_string(),
+                meta: None,
+            },
+        )]);
+
+        assert_eq!(
+            mcp_result_output(&result).expect("MCP content mapping"),
+            ToolOutput::one(RigToolResultContent::image_base64(
+                "aW1hZ2U=",
+                Some(ImageMediaType::PNG),
+                None,
+            ))
+        );
+    }
+
+    #[test]
+    fn string_valued_structured_content_remains_json() {
+        let mut result = CallToolResult::structured(json!("forty-two"));
+        result.content.clear();
+
+        assert_eq!(
+            mcp_result_output(&result).expect("MCP content mapping"),
+            ToolOutput::json(json!("forty-two"))
+        );
+    }
+
+    #[test]
+    fn structured_constructors_replace_their_canonical_text_fallback() {
+        let value = json!({"answer": 42});
+        for result in [
+            CallToolResult::structured(value.clone()),
+            CallToolResult::structured_error(value.clone()),
+        ] {
+            assert_eq!(
+                mcp_result_output(&result).expect("MCP structured output"),
+                ToolOutput::json(value.clone())
+            );
+        }
+    }
+
+    #[test]
+    fn structured_content_is_kept_alongside_real_rich_blocks() {
+        let value = json!({"answer": 42});
+        let mut result = CallToolResult::structured(value.clone());
+        result
+            .content
+            .push(ContentBlock::image("aW1hZ2U=", "image/png"));
+        result
+            .content
+            .push(ContentBlock::text("human-readable note"));
+
+        let mut expected = OneOrMany::one(RigToolResultContent::json(value));
+        expected.push(RigToolResultContent::image_base64(
+            "aW1hZ2U=",
+            Some(ImageMediaType::PNG),
+            None,
+        ));
+        expected.push(RigToolResultContent::text("human-readable note"));
+        assert_eq!(
+            mcp_result_output(&result).expect("MCP structured rich output"),
+            ToolOutput::content(expected)
+        );
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_forwards_context_meta() {
+        let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
+        let mut meta = Meta::new();
+        meta.0.insert("authorization".into(), json!("Bearer test"));
+        let mut context = ToolContext::new();
+        context.insert(meta);
+
+        let result = execute(&fixture, "{}", &mut context).await;
+        assert!(result.is_success());
+        assert_eq!(
+            fixture
+                .seen
+                .read()
+                .await
+                .as_ref()
+                .expect("server observed metadata")
+                .0
+                .get("authorization"),
+            Some(&json!("Bearer test"))
+        );
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_classifies_timeout() {
+        let fixture = fixture(Scenario::Hang, Some(Duration::from_millis(25))).await;
+        let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
+        assert!(result.is_error_kind(ToolErrorKind::Timeout));
+        assert_eq!(
+            result.output().as_text(),
+            Some("MCP tool 'fixture_tool' timed out after 25ms")
+        );
+        tokio::time::timeout(Duration::from_secs(1), fixture.cancelled.notified())
+            .await
+            .expect("the timed-out MCP request should be cancelled at the peer");
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_classifies_service_error_and_preserves_source() {
+        let fixture = fixture(Scenario::ServiceError, Some(Duration::from_secs(1))).await;
+        let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
+        let error = result.error().expect("structured MCP service error");
+        assert_eq!(error.kind(), ToolErrorKind::Provider);
+        assert!(error.is::<rmcp::ServiceError>());
+        assert!(error.message().contains("fixture service failed"));
+        let output = result.output().render();
+        assert!(output.contains("MCP tool 'fixture_tool' request failed"));
+        assert!(output.contains("fixture service failed"));
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_preserves_tool_reported_error_message() {
+        let fixture = fixture(Scenario::ToolReportedError, Some(Duration::from_secs(1))).await;
+        let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
+        assert!(result.is_error_kind(ToolErrorKind::Other));
+        assert_eq!(
+            result.output(),
+            &ToolOutput::one(RigToolResultContent::text("tool reported exact failure"))
+        );
+        assert_eq!(
+            result.error().map(ToolExecutionError::message),
+            Some("MCP tool 'fixture_tool' reported an execution error")
+        );
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_preserves_non_text_tool_error_content() {
+        let fixture = fixture(
+            Scenario::ImageToolReportedError,
+            Some(Duration::from_secs(1)),
+        )
+        .await;
+        let mut context = ToolContext::new();
+        let result = execute(&fixture, "{}", &mut context).await;
+
+        assert!(result.is_error_kind(ToolErrorKind::Other));
+        assert_eq!(
+            result.output(),
+            &ToolOutput::one(RigToolResultContent::image_base64(
+                "ZXJyb3ItaW1hZ2U=",
+                Some(ImageMediaType::PNG),
+                None,
+            ))
+        );
+        let raw = context
+            .result::<CallToolResult>()
+            .expect("raw MCP error result metadata");
+        assert_eq!(raw.is_error, Some(true));
+        assert!(matches!(raw.content.as_slice(), [ContentBlock::Image(_)]));
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_preserves_ordered_content_and_response_metadata() {
+        let fixture = fixture(Scenario::StructuredSuccess, Some(Duration::from_secs(1))).await;
+        let mut context = ToolContext::new();
+        let result = execute(&fixture, "{}", &mut context).await;
+
+        let mut expected_content = OneOrMany::one(RigToolResultContent::json(json!({
+            "answer": 42,
+            "source": "fixture"
+        })));
+        expected_content.push(RigToolResultContent::text("before"));
+        expected_content.push(RigToolResultContent::image_base64(
+            "aGVsbG8=",
+            Some(ImageMediaType::PNG),
+            None,
+        ));
+        expected_content.push(RigToolResultContent::text("after"));
+        assert_eq!(result.output(), &ToolOutput::content(expected_content));
+
+        let raw = context
+            .result::<CallToolResult>()
+            .expect("raw MCP result metadata");
+        assert_eq!(raw.content.len(), 3);
+        assert_eq!(
+            raw.structured_content,
+            Some(json!({"answer": 42, "source": "fixture"}))
+        );
+        assert_eq!(
+            context.result::<serde_json::Value>(),
+            Some(&json!({"answer": 42, "source": "fixture"}))
+        );
+        assert_eq!(
+            context
+                .result::<Meta>()
+                .and_then(|meta| meta.0.get("response-id")),
+            Some(&json!("response-123"))
+        );
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_uses_structured_content_when_blocks_are_empty() {
+        let fixture = fixture(Scenario::StructuredOnly, Some(Duration::from_secs(1))).await;
+        let mut context = ToolContext::new();
+        let result = execute(&fixture, "{}", &mut context).await;
+
+        assert_eq!(result.output(), &ToolOutput::json(json!({"answer": 42})));
+        assert_eq!(
+            context.result::<serde_json::Value>(),
+            Some(&json!({"answer": 42}))
+        );
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_classifies_invalid_json_and_preserves_source() {
+        let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
+        let result = execute(&fixture, "{", &mut ToolContext::new()).await;
+        let error = result.error().expect("structured argument error");
+        assert_eq!(error.kind(), ToolErrorKind::InvalidArgs);
+        assert!(matches!(
+            error.downcast_ref::<McpArgumentError>(),
+            Some(McpArgumentError::Json(_))
+        ));
+        let output = result.output().render();
+        assert!(output.contains("MCP tool 'fixture_tool' received invalid arguments"));
+        assert!(output.contains("invalid JSON"));
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_rejects_non_object_arguments() {
+        let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
+        for args in [r#"[1,2]"#, r#""text""#, "7", "true"] {
+            let result = execute(&fixture, args, &mut ToolContext::new()).await;
+            assert!(
+                result.is_error_kind(ToolErrorKind::InvalidArgs),
+                "{args} must not be coerced into an argument-less MCP call"
+            );
+        }
+
+        // Empty input and explicit null remain the documented no-argument forms.
+        for args in ["", "null"] {
+            let result = execute(&fixture, args, &mut ToolContext::new()).await;
+            assert!(
+                result.is_success(),
+                "{args:?} should remain a no-argument call"
+            );
+        }
+        fixture.server_task.abort();
+    }
+}
+
+#[cfg(test)]
+mod migrated_tests {
+    use super::{MAX_CONCURRENT_REFRESHES, McpClientError, McpClientHandler};
+    use crate::tool::{DynamicTool, ToolOutput, server::ToolServer};
+    use rmcp::{
+        RoleServer, ServerHandler, ServiceExt, handler::client::ClientHandler, model::*,
+        service::RequestContext,
+    };
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
+    use tokio::sync::{Notify, RwLock};
+
     #[derive(Clone)]
     struct DynamicToolServer {
         tools: Arc<RwLock<Vec<Tool>>>,
     }
-
     impl DynamicToolServer {
         fn new(tools: Vec<Tool>) -> Self {
             Self {
                 tools: Arc::new(RwLock::new(tools)),
+            }
+        }
+        async fn set_tools(&self, tools: Vec<Tool>) {
+            *self.tools.write().await = tools;
+        }
+    }
+    impl ServerHandler for DynamicToolServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("test-dynamic-server", "0.1.0"))
+        }
+        async fn list_tools(
+            &self,
+            _: Option<PaginatedRequestParams>,
+            _: RequestContext<RoleServer>,
+        ) -> Result<ListToolsResult, ErrorData> {
+            Ok(ListToolsResult::with_all_items(
+                self.tools.read().await.clone(),
+            ))
+        }
+        async fn call_tool(
+            &self,
+            request: CallToolRequestParams,
+            _: RequestContext<RoleServer>,
+        ) -> Result<CallToolResult, ErrorData> {
+            Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                "called {}",
+                request.name
+            ))]))
+        }
+    }
+
+    #[derive(Clone)]
+    struct OrderedRefreshServer {
+        tools: Arc<RwLock<Vec<Tool>>>,
+        list_calls: Arc<AtomicUsize>,
+        first_refresh_started: Arc<Notify>,
+        release_first_refresh: Arc<Notify>,
+        first_refresh_returned: Arc<Notify>,
+    }
+
+    impl OrderedRefreshServer {
+        fn new(tools: Vec<Tool>) -> Self {
+            Self {
+                tools: Arc::new(RwLock::new(tools)),
+                list_calls: Arc::new(AtomicUsize::new(0)),
+                first_refresh_started: Arc::new(Notify::new()),
+                release_first_refresh: Arc::new(Notify::new()),
+                first_refresh_returned: Arc::new(Notify::new()),
             }
         }
 
@@ -608,31 +1414,49 @@ mod tests {
         }
     }
 
-    impl ServerHandler for DynamicToolServer {
+    impl ServerHandler for OrderedRefreshServer {
         fn get_info(&self) -> ServerInfo {
             ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
                 .with_protocol_version(ProtocolVersion::LATEST)
-                .with_server_info(Implementation::new("test-dynamic-server", "0.1.0"))
+                .with_server_info(Implementation::new("test-ordered-refresh-server", "0.1.0"))
         }
 
         async fn list_tools(
             &self,
-            _request: Option<PaginatedRequestParams>,
-            _context: RequestContext<RoleServer>,
+            _: Option<PaginatedRequestParams>,
+            _: RequestContext<RoleServer>,
         ) -> Result<ListToolsResult, ErrorData> {
+            let call = self.list_calls.fetch_add(1, Ordering::SeqCst);
             let tools = self.tools.read().await.clone();
+
+            // Call zero is connect's initial fetch. Hold the first notification's
+            // stale snapshot so a second notification is concurrent with it.
+            if call == 1 {
+                self.first_refresh_started.notify_one();
+                self.release_first_refresh.notified().await;
+                self.first_refresh_returned.notify_one();
+            }
+
             Ok(ListToolsResult::with_all_items(tools))
         }
+    }
 
-        async fn call_tool(
+    #[derive(Clone)]
+    struct HangingListServer;
+
+    impl ServerHandler for HangingListServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("test-hanging-list-server", "0.1.0"))
+        }
+
+        async fn list_tools(
             &self,
-            request: CallToolRequestParams,
-            _context: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
-            Ok(CallToolResult::success(vec![ContentBlock::text(format!(
-                "called {}",
-                request.name
-            ))]))
+            _: Option<PaginatedRequestParams>,
+            _: RequestContext<RoleServer>,
+        ) -> Result<ListToolsResult, ErrorData> {
+            std::future::pending().await
         }
     }
 
@@ -644,692 +1468,537 @@ mod tests {
         )
     }
 
-    /// An MCP server that advertises one tool whose `call_tool` handler never
-    /// returns, so no `CallToolResult` is ever sent back to the client.
-    ///
-    /// This models the failure in <https://github.com/0xPlaygrounds/rig/issues/1914>:
-    /// in the wild, rmcp 1.7.0's StreamableHttp transport can drop an in-flight
-    /// tool response during transparent session re-initialization (server
-    /// returns HTTP 404 -> the worker calls `streams.abort_all()`, cancelling
-    /// the SSE task carrying the outstanding response -> `JoinError::Cancelled`).
-    /// The request is then permanently orphaned: it never receives a response
-    /// and never errors. A handler that simply never returns produces the same
-    /// observable client-side behavior, deterministically and without a network.
-    #[derive(Clone)]
-    struct HangingToolServer;
+    fn make_dynamic_tool(name: &str, description: &str) -> DynamicTool {
+        DynamicTool::new(
+            name,
+            description,
+            serde_json::json!({"type": "object", "properties": {}}),
+            |_context, _args| Box::pin(async { Ok(ToolOutput::text("local")) }),
+        )
+    }
 
-    impl ServerHandler for HangingToolServer {
-        fn get_info(&self) -> ServerInfo {
-            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-                .with_protocol_version(ProtocolVersion::LATEST)
-                .with_server_info(Implementation::new("hanging-server", "0.1.0"))
-        }
-
-        async fn list_tools(
-            &self,
-            _request: Option<PaginatedRequestParams>,
-            _context: RequestContext<RoleServer>,
-        ) -> Result<ListToolsResult, ErrorData> {
-            Ok(ListToolsResult::with_all_items(vec![make_tool(
-                "hang_forever",
-                "A tool whose handler never returns",
-            )]))
-        }
-
-        async fn call_tool(
-            &self,
-            _request: CallToolRequestParams,
-            _context: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
-            // Never resolves: the crux of the reproduction. No response is ever
-            // sent, so the client's `call_tool` future (and therefore rig's
-            // `McpTool::call`) never completes.
-            std::future::pending::<Result<CallToolResult, ErrorData>>().await
-        }
+    async fn connect<S>(
+        server: S,
+        handle: crate::tool::server::ToolServerHandle,
+    ) -> (
+        rmcp::service::RunningService<rmcp::RoleClient, McpClientHandler>,
+        tokio::task::JoinHandle<rmcp::service::RunningService<rmcp::RoleServer, S>>,
+    )
+    where
+        S: ServerHandler,
+    {
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let server_task =
+            tokio::spawn(async move { server.serve((sfc, s2c)).await.expect("server start") });
+        let service = McpClientHandler::new(ClientInfo::default(), handle)
+            .connect((cfs, c2s))
+            .await
+            .expect("connect");
+        (service, server_task)
     }
 
     #[tokio::test]
-    async fn test_mcp_client_handler_initial_tool_registration() {
-        let initial_tools = vec![
-            make_tool("tool_a", "First tool"),
-            make_tool("tool_b", "Second tool"),
-        ];
-
-        let server = DynamicToolServer::new(initial_tools);
-        let tool_server_handle = ToolServer::new().run();
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_clone = server.clone();
-        tokio::spawn(async move {
-            let _service = server_clone
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            _service.waiting().await.expect("server error");
-        });
-
-        let client_info = ClientInfo::default();
-        let handler = McpClientHandler::new(client_info, tool_server_handle.clone());
-
-        let _mcp_service = handler
-            .connect((client_from_server, client_to_server))
-            .await
-            .expect("connect failed");
-
-        let defs = tool_server_handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(defs.len(), 2);
-
-        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
-        assert!(names.contains(&"tool_a"));
-        assert!(names.contains(&"tool_b"));
+    async fn client_handler_registers_initial_tools() {
+        let server = DynamicToolServer::new(vec![
+            make_tool("tool_a", "First"),
+            make_tool("tool_b", "Second"),
+        ]);
+        let handle = ToolServer::new().run();
+        let (client, task) = connect(server, handle.clone()).await;
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
+            vec!["tool_a", "tool_b"]
+        );
+        client.cancel().await.unwrap();
+        task.abort();
     }
 
     #[tokio::test]
-    async fn test_mcp_client_handler_refreshes_on_tool_list_changed() {
-        let initial_tools = vec![make_tool("alpha", "Alpha tool")];
+    async fn disconnected_handler_tools_are_retired_on_snapshot() {
+        let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
+        let handle = ToolServer::new().run();
+        let (client, task) = connect(server, handle.clone()).await;
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
 
-        let server = DynamicToolServer::new(initial_tools);
-        let tool_server_handle = ToolServer::new().run();
+        client.cancel().await.unwrap();
 
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert!(
+            defs.is_empty(),
+            "a disconnected sole owner must not remain provider-visible"
+        );
+        task.abort();
+    }
 
-        let server_clone = server.clone();
-        let server_service_handle = tokio::spawn(async move {
-            server_clone
-                .serve((server_from_client, server_to_client))
+    #[tokio::test]
+    async fn disconnected_handler_tools_are_retired_on_direct_dispatch() {
+        let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
+        let handle = ToolServer::new().run();
+        let (client, task) = connect(server, handle.clone()).await;
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+
+        client.cancel().await.unwrap();
+
+        let result = handle
+            .execute("tool_a", "{}", &mut crate::tool::ToolContext::new())
+            .await;
+        assert_eq!(
+            result.error().expect("disconnected tool must fail").kind(),
+            crate::tool::ToolErrorKind::NotFound
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn initial_tool_fetch_is_bounded_by_the_refresh_timeout() {
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let server_task = tokio::spawn(async move {
+            HangingListServer
+                .serve((sfc, s2c))
                 .await
-                .expect("server failed to start")
+                .expect("server start")
         });
-
-        let client_info = ClientInfo::default();
-        let handler = McpClientHandler::new(client_info, tool_server_handle.clone());
-
-        let _mcp_service = handler
-            .connect((client_from_server, client_to_server))
-            .await
-            .expect("connect failed");
-
-        // Verify initial state
-        let defs = tool_server_handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, "alpha");
-
-        // Update the server's tool list
-        server
-            .set_tools(vec![
-                make_tool("beta", "Beta tool"),
-                make_tool("gamma", "Gamma tool"),
-            ])
+        let refresh_timeout = Duration::from_millis(25);
+        let result = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run())
+            .with_refresh_timeout(refresh_timeout)
+            .connect((cfs, c2s))
             .await;
 
-        // Send the notification from the server side
-        let server_service = server_service_handle.await.unwrap();
-        server_service
+        assert!(matches!(
+            result,
+            Err(McpClientError::ToolFetchTimeout(timeout)) if timeout == refresh_timeout
+        ));
+        server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn refresh_activity_is_bounded_and_coalesces_excess_notifications() {
+        let handler = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run());
+
+        assert!(handler.try_start_refresh().await);
+        assert!(handler.try_start_refresh().await);
+        assert!(!handler.try_start_refresh().await);
+        {
+            let activity = handler.refresh_activity.lock().await;
+            assert_eq!(activity.active, MAX_CONCURRENT_REFRESHES);
+            assert!(activity.dirty);
+        }
+
+        assert!(handler.finish_or_restart_refresh().await);
+        assert!(!handler.finish_or_restart_refresh().await);
+        assert!(!handler.finish_or_restart_refresh().await);
+        let activity = handler.refresh_activity.lock().await;
+        assert_eq!(activity.active, 0);
+        assert!(!activity.dirty);
+    }
+
+    #[tokio::test]
+    async fn client_handler_refreshes_on_tool_list_changed() {
+        let server = DynamicToolServer::new(vec![make_tool("alpha", "Alpha")]);
+        let handle = ToolServer::new().run();
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let copy = server.clone();
+        let task = tokio::spawn(async move { copy.serve((sfc, s2c)).await.expect("server start") });
+        let client = McpClientHandler::new(ClientInfo::default(), handle.clone())
+            .connect((cfs, c2s))
+            .await
+            .unwrap();
+        assert_eq!(handle.get_tool_defs(None).await.unwrap()[0].name, "alpha");
+        server
+            .set_tools(vec![make_tool("beta", "Beta"), make_tool("gamma", "Gamma")])
+            .await;
+        let running = task.await.unwrap();
+        running.peer().notify_tool_list_changed().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs.len() == 2 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("refresh");
+        let names = handle
+            .get_tool_defs(None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["beta", "gamma"]);
+        client.cancel().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn concurrent_refreshes_cannot_roll_back_a_newer_tool_list() {
+        let server = OrderedRefreshServer::new(vec![make_tool("stale", "Stale snapshot")]);
+        let server_control = server.clone();
+        let handle = ToolServer::new().run();
+        let (client, server_task) = connect(server, handle.clone()).await;
+        let running_server = server_task.await.unwrap();
+
+        running_server
             .peer()
             .notify_tool_list_changed()
             .await
-            .expect("failed to send notification");
+            .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            server_control.first_refresh_started.notified(),
+        )
+        .await
+        .expect("first refresh fetch started");
 
-        // The handler processes the notification asynchronously, so give it
-        // a moment to re-fetch and re-register tools.
-        tokio::time::sleep(Duration::from_millis(200)).await;
-
-        let defs = tool_server_handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(defs.len(), 2);
-
-        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
-        assert!(names.contains(&"beta"), "expected 'beta' in {names:?}");
-        assert!(names.contains(&"gamma"), "expected 'gamma' in {names:?}");
-        // The old tool must be gone
         assert!(
-            !names.contains(&"alpha"),
-            "expected 'alpha' to be removed, found {names:?}"
+            client.service().managed_tools.try_write().is_ok(),
+            "a hung network fetch must not hold the managed-registry lock"
         );
+
+        server_control
+            .set_tools(vec![make_tool("newest", "Newest snapshot")])
+            .await;
+        running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs.len() == 1 && defs[0].name == "newest" {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("newest refresh committed while the older fetch remained hung");
+
+        // Let the stale response arrive after the newer snapshot committed. Its
+        // lower refresh version must be discarded rather than rolling back.
+        server_control.release_first_refresh.notify_one();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            server_control.first_refresh_returned.notified(),
+        )
+        .await
+        .expect("delayed refresh response returned");
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].name, "newest");
+
+        assert_eq!(server_control.list_calls.load(Ordering::SeqCst), 3);
+        client.cancel().await.unwrap();
     }
 
     #[tokio::test]
-    async fn test_mcp_client_handler_get_info_delegates() {
-        let client_info = ClientInfo::new(
+    async fn refresh_rebuilds_owned_tools_in_latest_server_order() {
+        let server =
+            DynamicToolServer::new(vec![make_tool("alpha", "Alpha"), make_tool("beta", "Beta")]);
+        let server_control = server.clone();
+        let handle = ToolServer::new().run();
+        let (client, server_task) = connect(server, handle.clone()).await;
+        server_control
+            .set_tools(vec![
+                make_tool("beta", "Beta refreshed"),
+                make_tool("gamma", "Gamma"),
+                make_tool("alpha", "Alpha refreshed"),
+            ])
+            .await;
+        let running_server = server_task.await.unwrap();
+        running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                let names = defs
+                    .iter()
+                    .map(|definition| definition.name.as_str())
+                    .collect::<Vec<_>>();
+                if names == ["beta", "gamma", "alpha"] && defs[0].description == "Beta refreshed" {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("latest MCP order committed");
+        client.cancel().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn one_refresh_reclaims_a_name_after_a_peer_owner_disappears() {
+        let handle = ToolServer::new().run();
+        let first_server = DynamicToolServer::new(vec![make_tool("shared", "First owner")]);
+        let first_control = first_server.clone();
+        let (first_client, first_server_task) = connect(first_server, handle.clone()).await;
+        let first_running_server = first_server_task.await.unwrap();
+
+        let second_server = DynamicToolServer::new(vec![make_tool("shared", "Second owner")]);
+        let second_control = second_server.clone();
+        let (second_client, second_server_task) = connect(second_server, handle.clone()).await;
+        let second_running_server = second_server_task.await.unwrap();
+        assert_eq!(
+            handle.get_tool_defs(None).await.unwrap()[0].description,
+            "Second owner"
+        );
+
+        second_control.set_tools(Vec::new()).await;
+        second_running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if handle.get_tool_defs(None).await.unwrap().is_empty() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("second owner removed its registration");
+
+        // The first handler still has a stale generation token for `shared`.
+        // One full-list refresh must reclaim the now-empty slot rather than
+        // requiring a second notification to converge.
+        first_control
+            .set_tools(vec![make_tool("shared", "First owner refreshed")])
+            .await;
+        first_running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs.len() == 1 && defs[0].description == "First owner refreshed" {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("one refresh reclaimed the empty slot");
+
+        second_client.cancel().await.unwrap();
+        first_client.cancel().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn refresh_does_not_replace_a_newer_local_registration() {
+        let server = DynamicToolServer::new(vec![make_tool("alpha", "MCP alpha")]);
+        let server_control = server.clone();
+        let handle = ToolServer::new().run();
+        let (client, server_task) = connect(server, handle.clone()).await;
+
+        handle
+            .add_dynamic_tool(make_dynamic_tool("alpha", "Local alpha"))
+            .await;
+        server_control
+            .set_tools(vec![make_tool("refresh_complete", "Refresh sentinel")])
+            .await;
+        let running_server = server_task.await.unwrap();
+        running_server
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs
+                    .iter()
+                    .any(|definition| definition.name == "refresh_complete")
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("MCP refresh completed");
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        let alpha = defs
+            .iter()
+            .find(|definition| definition.name == "alpha")
+            .expect("alpha remains registered");
+        assert_eq!(alpha.description, "Local alpha");
+
+        let result = handle
+            .execute("alpha", "{}", &mut crate::tool::ToolContext::new())
+            .await;
+        assert_eq!(result.output(), &ToolOutput::text("local"));
+        client.cancel().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn one_handler_refresh_protects_live_peer_and_reclaims_after_disconnect() {
+        let server_a = DynamicToolServer::new(vec![make_tool("alpha", "Handler A")]);
+        let server_a_control = server_a.clone();
+        let server_b = DynamicToolServer::new(vec![make_tool("alpha", "Handler B")]);
+        let handle = ToolServer::new().run();
+
+        let (client_a, server_task_a) = connect(server_a, handle.clone()).await;
+        let (client_b, server_task_b) = connect(server_b, handle.clone()).await;
+
+        server_a_control
+            .set_tools(vec![
+                make_tool("alpha", "Refreshed handler A"),
+                make_tool("a_refresh_complete", "Refresh sentinel"),
+            ])
+            .await;
+        let running_server_a = server_task_a.await.unwrap();
+        let _running_server_b = server_task_b.await.unwrap();
+        running_server_a
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs
+                    .iter()
+                    .any(|definition| definition.name == "a_refresh_complete")
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("handler A refresh completed");
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        let alpha = defs
+            .iter()
+            .find(|definition| definition.name == "alpha")
+            .expect("alpha remains registered");
+        assert_eq!(alpha.description, "Handler B");
+
+        // Once B disconnects, its generation must no longer shield the dead
+        // registration from A. Otherwise the registry keeps advertising B and
+        // execution fails with `Transport closed` indefinitely.
+        client_b.cancel().await.unwrap();
+        server_a_control
+            .set_tools(vec![make_tool("alpha", "Reclaimed handler A")])
+            .await;
+        running_server_a
+            .peer()
+            .notify_tool_list_changed()
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let defs = handle.get_tool_defs(None).await.unwrap();
+                if defs
+                    .iter()
+                    .any(|definition| definition.description == "Reclaimed handler A")
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("handler A reclaimed the disconnected peer's registration");
+
+        let result = handle
+            .execute("alpha", "{}", &mut crate::tool::ToolContext::new())
+            .await;
+        assert!(
+            result.is_success(),
+            "reclaimed tool should execute: {result:?}"
+        );
+
+        client_a.cancel().await.unwrap();
+    }
+
+    #[test]
+    fn client_handler_get_info_delegates() {
+        let info = ClientInfo::new(
             ClientCapabilities::default(),
             Implementation::new("test-client", "1.0.0"),
         );
-
-        let tool_server_handle = ToolServer::new().run();
-        let handler = McpClientHandler::new(client_info.clone(), tool_server_handle);
-
+        let handler = McpClientHandler::new(info, ToolServer::new().run());
         let returned = handler.get_info();
         assert_eq!(returned.client_info.name, "test-client");
         assert_eq!(returned.client_info.version, "1.0.0");
     }
 
     #[tokio::test]
-    async fn mcp_tool_exposes_flattened_metadata() {
-        use super::McpTool;
-        use crate::tool::{ToolDyn, tool_definition};
-
-        let mut schema = serde_json::Map::new();
-        schema.insert("type".to_string(), json!("object"));
-        schema.insert(
-            "properties".to_string(),
-            json!({ "query": { "type": "string" } }),
-        );
-        let server_tool = Tool::new(
-            "search_docs".to_string(),
-            "Search the docs".to_string(),
-            Arc::new(schema),
-        );
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-        let server = DynamicToolServer::new(vec![server_tool.clone()]);
-        let server_task = tokio::spawn(async move {
-            let running = server
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
+    async fn mcp_tool_preserves_provider_definition() {
+        let tool = make_tool("search_docs", "Search the docs");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let task = tokio::spawn(async move {
+            let running = server.serve((sfc, s2c)).await.unwrap();
+            running.waiting().await.unwrap();
         });
-
-        let client = ClientInfo::default()
-            .serve((client_from_server, client_to_server))
-            .await
-            .expect("client connect failed");
-        let mcp_tool = McpTool::from_mcp_server(server_tool, client.peer().clone());
-        let definition = tool_definition(&mcp_tool);
-
-        assert_eq!(mcp_tool.name(), "search_docs");
-        assert_eq!(definition.name, "search_docs");
-        assert_eq!(definition.description, "Search the docs");
-        assert_eq!(
-            definition.parameters["properties"]["query"]["type"],
-            "string"
-        );
-
-        client.cancel().await.expect("client cancel failed");
-        server_task.abort();
-    }
-
-    /// Documents the unbounded escape hatch and the underlying issue #1914 hazard.
-    ///
-    /// `McpTool::call` awaits `self.client.call_tool(request)`; if the MCP request
-    /// is orphaned (no response, no error — e.g. an rmcp StreamableHttp session
-    /// re-init dropping an in-flight request), that `.await` never completes and
-    /// the agent loop wedges (the loop turns a tool *error* into a tool result,
-    /// but cannot recover from a call that never returns). That is exactly why
-    /// the default now applies [`DEFAULT_MCP_TOOL_TIMEOUT`].
-    ///
-    /// Here we opt **out** with `with_timeout(None)` and show the call stays
-    /// unbounded (does not resolve within the window). The outer `timeout` exists
-    /// only so this test terminates; it elapsing is the *intended* unbounded
-    /// behavior of the disabled-timeout path, not a bug. The bounded paths are
-    /// covered by `mcp_tool_call_with_timeout_errors_instead_of_hanging`.
-    #[tokio::test]
-    async fn mcp_tool_call_without_timeout_is_unbounded() {
-        use super::McpTool;
-        use crate::tool::ToolDyn;
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_task = tokio::spawn(async move {
-            let running = HangingToolServer
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
-        });
-
-        // A bare client (`ClientInfo` implements `ClientHandler`); `.peer()` is
-        // the `ServerSink` that rig stores inside every `McpTool`.
-        let client = ClientInfo::default()
-            .serve((client_from_server, client_to_server))
-            .await
-            .expect("client connect failed");
-
-        let tools = client
-            .peer()
-            .list_all_tools()
-            .await
-            .expect("list_tools failed");
-        assert_eq!(tools.len(), 1, "expected exactly one advertised tool");
-
-        // `from_mcp_server` applies the generous default out of the box...
-        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone());
-        assert_eq!(mcp_tool.timeout(), Some(super::DEFAULT_MCP_TOOL_TIMEOUT));
-        // ...and callers can explicitly disable it to opt into unbounded behavior.
-        let mcp_tool = mcp_tool.with_timeout(None);
-        assert_eq!(mcp_tool.timeout(), None);
-
-        let timed =
-            tokio::time::timeout(Duration::from_millis(150), mcp_tool.call("{}".to_string())).await;
-
-        assert!(
-            timed.is_err(),
-            "with the timeout disabled, McpTool::call must stay unbounded; got {:?}",
-            timed.ok(),
-        );
-
-        server_task.abort();
-    }
-
-    /// Regression test for the fix to <https://github.com/0xPlaygrounds/rig/issues/1914>.
-    ///
-    /// With a per-call timeout configured, `McpTool::call` against a server that
-    /// never responds resolves to a `ToolError` (which the agent loop surfaces
-    /// to the model) instead of hanging forever. The outer `timeout` is only a
-    /// safety net so a regression cannot wedge the test runner; the inner 200ms
-    /// timeout fires first.
-    #[tokio::test]
-    async fn mcp_tool_call_with_timeout_errors_instead_of_hanging() {
-        use super::McpTool;
-        use crate::tool::ToolDyn;
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_task = tokio::spawn(async move {
-            let running = HangingToolServer
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
-        });
-
-        let client = ClientInfo::default()
-            .serve((client_from_server, client_to_server))
-            .await
-            .expect("client connect failed");
-
-        let tools = client
-            .peer()
-            .list_all_tools()
-            .await
-            .expect("list_tools failed");
-
-        // The fix: a per-call timeout bounds the otherwise-unbounded await.
-        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone())
-            .with_timeout(Duration::from_millis(200));
-
-        let timed =
-            tokio::time::timeout(Duration::from_secs(5), mcp_tool.call("{}".to_string())).await;
-
-        let result = timed.expect(
-            "regression: McpTool::call hung past the safety timeout; the per-call \
-             timeout did not fire (issue #1914 fix is broken)",
-        );
-        let err =
-            result.expect_err("call should resolve to an error when the server never responds");
-        // "timed out" mirrors the McpToolError format string in McpTool::call.
-        assert!(
-            err.to_string().contains("timed out"),
-            "expected a timeout error, got: {err}"
-        );
-
-        server_task.abort();
-    }
-
-    /// Success path with a timeout *configured*: a responsive tool resolves with
-    /// its result (exercising the `Some(timeout)` arm of `McpTool::call` and the
-    /// `wasm_compat::timeout` "completed" branch, with a real `CallToolResult`
-    /// flowing through content parsing). Also guards that the bound in the
-    /// hanging-server tests is meaningful — a healthy call returns well inside it.
-    #[tokio::test]
-    async fn mcp_tool_call_returns_promptly_for_responsive_server() {
-        use super::McpTool;
-        use crate::tool::ToolDyn;
-
-        let server = DynamicToolServer::new(vec![make_tool("ping", "responds immediately")]);
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_clone = server.clone();
-        let server_task = tokio::spawn(async move {
-            let running = server_clone
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
-        });
-
-        let client = ClientInfo::default()
-            .serve((client_from_server, client_to_server))
-            .await
-            .expect("client connect failed");
-
-        let tools = client
-            .peer()
-            .list_all_tools()
-            .await
-            .expect("list_tools failed");
-        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone())
-            .with_timeout(Duration::from_secs(2));
-
-        let timed =
-            tokio::time::timeout(Duration::from_secs(5), mcp_tool.call("{}".to_string())).await;
-
-        let result = timed
-            .expect("responsive tool should resolve within the safety window")
-            .expect("tool call should succeed");
-        assert!(result.contains("ping"), "unexpected tool output: {result}");
-
-        server_task.abort();
-    }
-
-    /// `McpClientHandler::with_timeout` is applied to every tool it registers:
-    /// calling a registered tool from the shared `ToolServerHandle` (the path the
-    /// agent loop uses) surfaces a timeout error instead of hanging.
-    #[tokio::test]
-    async fn mcp_client_handler_with_timeout_bounds_registered_tools() {
-        let tool_server_handle = ToolServer::new().run();
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_task = tokio::spawn(async move {
-            let running = HangingToolServer
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
-        });
-
-        let handler = McpClientHandler::new(ClientInfo::default(), tool_server_handle.clone())
-            .with_timeout(Duration::from_millis(200));
-        let _mcp_service = handler
-            .connect((client_from_server, client_to_server))
-            .await
-            .expect("connect failed");
-
-        // Call through the shared handle exactly as the agent loop does.
-        let timed = tokio::time::timeout(
-            Duration::from_secs(5),
-            tool_server_handle.call_tool("hang_forever", "{}"),
-        )
-        .await;
-
-        let result = timed.expect("handler-registered tool hung past the safety timeout");
-        let err = result.expect_err("call should time out when the server never responds");
-        assert!(
-            err.to_string().contains("timed out"),
-            "expected a timeout error, got: {err}"
-        );
-
-        server_task.abort();
-    }
-
-    /// `ToolServer::rmcp_tool_with_timeout` bounds the registered tool: calling it
-    /// through the `ToolServerHandle` surfaces a timeout error instead of hanging.
-    #[tokio::test]
-    async fn tool_server_rmcp_tool_with_timeout_bounds_calls() {
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_task = tokio::spawn(async move {
-            let running = HangingToolServer
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
-        });
-
-        let client = ClientInfo::default()
-            .serve((client_from_server, client_to_server))
-            .await
-            .expect("client connect failed");
-
-        // The tool definition is constructed directly; the peer routes the call
-        // to the hanging server, which never responds.
+        let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
         let handle = ToolServer::new()
-            .rmcp_tool_with_timeout(
-                make_tool("hang_forever", "never returns"),
-                client.peer().clone(),
-                Duration::from_millis(200),
-            )
+            .rmcp_tool(tool, client.peer().clone())
+            .run();
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].name, "search_docs");
+        assert_eq!(defs[0].description, "Search the docs");
+        client.cancel().await.unwrap();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert!(
+            defs.is_empty(),
+            "a disconnected directly registered MCP tool must not remain provider-visible"
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn disconnected_directly_registered_mcp_tool_is_retired_on_dispatch() {
+        let tool = make_tool("search_docs", "Search the docs");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let task = tokio::spawn(async move {
+            let running = server.serve((sfc, s2c)).await.unwrap();
+            running.waiting().await.unwrap();
+        });
+        let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
+        let handle = ToolServer::new()
+            .rmcp_tool(tool, client.peer().clone())
             .run();
 
-        let timed = tokio::time::timeout(
-            Duration::from_secs(5),
-            handle.call_tool("hang_forever", "{}"),
-        )
-        .await;
+        client.cancel().await.unwrap();
 
-        let result = timed.expect("ToolServer-registered tool hung past the safety timeout");
-        let err = result.expect_err("call should time out when the server never responds");
-        assert!(
-            err.to_string().contains("timed out"),
-            "expected a timeout error, got: {err}"
+        let result = handle
+            .execute("search_docs", "{}", &mut crate::tool::ToolContext::new())
+            .await;
+        assert_eq!(
+            result.error().expect("disconnected tool must fail").kind(),
+            crate::tool::ToolErrorKind::NotFound
         );
-
-        server_task.abort();
-    }
-
-    /// An MCP server that records the `_meta` of the last `call_tool` request, so
-    /// a test can assert what metadata reached the server.
-    #[derive(Clone)]
-    struct MetaCapturingServer {
-        seen_meta: Arc<RwLock<Option<Meta>>>,
-    }
-
-    impl ServerHandler for MetaCapturingServer {
-        fn get_info(&self) -> ServerInfo {
-            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-                .with_protocol_version(ProtocolVersion::LATEST)
-                .with_server_info(Implementation::new("meta-capturing-server", "0.1.0"))
-        }
-
-        async fn list_tools(
-            &self,
-            _request: Option<PaginatedRequestParams>,
-            _context: RequestContext<RoleServer>,
-        ) -> Result<ListToolsResult, ErrorData> {
-            Ok(ListToolsResult::with_all_items(vec![make_tool(
-                "echo_meta",
-                "records the request _meta",
-            )]))
-        }
-
-        async fn call_tool(
-            &self,
-            _request: CallToolRequestParams,
-            context: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
-            // rmcp's router moves the request's `_meta` into `RequestContext.meta`
-            // (a `std::mem::swap`), so the forwarded metadata lands here.
-            *self.seen_meta.write().await = Some(context.meta.clone());
-            Ok(CallToolResult::success(vec![ContentBlock::text("ok")]))
-        }
-    }
-
-    /// `McpTool::call_with_extensions` forwards an [`rmcp::model::Meta`] placed in the
-    /// [`ToolCallExtensions`] as the request's `_meta`, so callers can attach per-call
-    /// auth/session metadata to MCP tool invocations (the A2A use-case).
-    #[tokio::test]
-    async fn mcp_tool_forwards_meta_from_context() {
-        use super::McpTool;
-        use crate::tool::{ToolCallExtensions, ToolDyn};
-
-        let seen_meta = Arc::new(RwLock::new(None));
-        let server = MetaCapturingServer {
-            seen_meta: seen_meta.clone(),
-        };
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_clone = server.clone();
-        let server_task = tokio::spawn(async move {
-            let running = server_clone
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
-        });
-
-        let client = ClientInfo::default()
-            .serve((client_from_server, client_to_server))
-            .await
-            .expect("client connect failed");
-
-        let tools = client
-            .peer()
-            .list_all_tools()
-            .await
-            .expect("list_tools failed");
-        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone());
-
-        // Caller-supplied per-call metadata, the kind an A2A integration carries.
-        let mut meta = Meta::new();
-        meta.0
-            .insert("authorization".to_string(), json!("Bearer xyz"));
-        let mut extensions = ToolCallExtensions::new();
-        extensions.insert(meta);
-
-        let out = mcp_tool
-            .call_with_extensions("{}".to_string(), &extensions)
-            .await
-            .expect("call should succeed");
-        assert_eq!(out, "ok");
-
-        let received = seen_meta
-            .read()
-            .await
-            .clone()
-            .expect("server should have observed a request");
-        assert_eq!(received.0.get("authorization"), Some(&json!("Bearer xyz")));
-
-        // Without a Meta in the context, the caller metadata is not forwarded.
-        *seen_meta.write().await = None;
-        let empty_ctx = ToolCallExtensions::new();
-        let out = mcp_tool
-            .call_with_extensions("{}".to_string(), &empty_ctx)
-            .await
-            .expect("call should succeed");
-        assert_eq!(out, "ok");
-        let received = seen_meta
-            .read()
-            .await
-            .clone()
-            .expect("server should have observed a request");
-        assert!(
-            received.0.get("authorization").is_none(),
-            "no caller metadata should be forwarded when the context carries none"
-        );
-
-        server_task.abort();
-    }
-
-    /// `parse_mcp_arguments` distinguishes malformed JSON (a hard error) from
-    /// valid-but-argument-free inputs (empty / `null` / non-object) which map to
-    /// `None`, while a JSON object round-trips.
-    #[test]
-    fn parse_mcp_arguments_classifies_inputs() {
-        use super::parse_mcp_arguments;
-
-        assert!(parse_mcp_arguments("").expect("empty is no-args").is_none());
-        assert!(
-            parse_mcp_arguments("   ")
-                .expect("whitespace is no-args")
-                .is_none()
-        );
-        assert!(
-            parse_mcp_arguments("null")
-                .expect("null is no-args")
-                .is_none()
-        );
-        assert!(
-            parse_mcp_arguments("[1,2]")
-                .expect("array is no-args")
-                .is_none()
-        );
-        assert!(parse_mcp_arguments("{}").expect("empty object").is_some());
-        let obj = parse_mcp_arguments("{\"a\":1}")
-            .expect("valid object")
-            .expect("object present");
-        assert_eq!(obj.get("a"), Some(&json!(1)));
-
-        // Malformed JSON is a hard error, not a silent no-arg call.
-        assert!(parse_mcp_arguments("{not valid json").is_err());
-        assert!(parse_mcp_arguments("{\"a\":").is_err());
-    }
-
-    /// Malformed JSON arguments are classified as [`ToolFailureKind::InvalidArgs`]
-    /// and short-circuit **before** the MCP server is contacted — proven by
-    /// pointing the tool at a server that never responds and asserting the call
-    /// returns fast with a structured invalid-args outcome instead of hanging.
-    #[tokio::test]
-    async fn mcp_tool_invalid_json_args_short_circuit_as_invalid_args() {
-        use super::McpTool;
-        use crate::tool::{ToolCallExtensions, ToolDyn, ToolFailureKind, ToolOutcome};
-
-        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
-        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
-
-        let server_task = tokio::spawn(async move {
-            let running = HangingToolServer
-                .serve((server_from_client, server_to_client))
-                .await
-                .expect("server failed to start");
-            running.waiting().await.expect("server error");
-        });
-
-        let client = ClientInfo::default()
-            .serve((client_from_server, client_to_server))
-            .await
-            .expect("client connect failed");
-
-        let tools = client
-            .peer()
-            .list_all_tools()
-            .await
-            .expect("list_tools failed");
-
-        // A generous per-call timeout: if invalid args wrongly reached the hanging
-        // server, the call would take this long; the safety timeout below is much
-        // shorter, so the test fails fast on a regression rather than short-circuiting.
-        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone())
-            .with_timeout(Duration::from_secs(30));
-
-        let structured = tokio::time::timeout(
-            Duration::from_secs(2),
-            mcp_tool.call_structured("{not valid json".to_string(), &ToolCallExtensions::new()),
-        )
-        .await
-        .expect(
-            "invalid JSON args must be classified before contacting the (hanging) server; \
-             the call reached the server and hung",
-        );
-
-        match &structured.outcome {
-            ToolOutcome::Error(failure) => {
-                assert_eq!(
-                    failure.kind,
-                    ToolFailureKind::InvalidArgs,
-                    "malformed MCP args must classify as InvalidArgs, got {:?}",
-                    failure.kind
-                );
-            }
-            other => panic!("expected an InvalidArgs error outcome, got {other:?}"),
-        }
-        assert!(
-            structured.model_output.contains("invalid JSON"),
-            "the model-visible output should explain the parse failure, got {:?}",
-            structured.model_output
-        );
-
-        // The string `call` path surfaces the same failure as a `ToolError`.
-        let err = tokio::time::timeout(
-            Duration::from_secs(2),
-            mcp_tool.call("{not valid json".to_string()),
-        )
-        .await
-        .expect("invalid JSON args must short-circuit on the string path too")
-        .expect_err("malformed args must be an error");
-        assert!(err.to_string().contains("invalid JSON"), "got: {err}");
-
-        server_task.abort();
+        task.abort();
     }
 }

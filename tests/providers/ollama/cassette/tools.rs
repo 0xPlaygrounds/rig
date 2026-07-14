@@ -53,7 +53,11 @@ impl Tool for RepeatTool {
         serde_json::to_value(schemars::schema_for!(RepeatArgs)).unwrap_or_default()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let times = args.times.unwrap_or(2) as usize;
         Ok(vec![args.text.as_str(); times].join(" "))
@@ -122,7 +126,11 @@ impl Tool for AddTool {
         serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(args.a + args.b)
     }
@@ -147,7 +155,11 @@ impl Tool for MultiplyTool {
         serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(args.a * args.b)
     }

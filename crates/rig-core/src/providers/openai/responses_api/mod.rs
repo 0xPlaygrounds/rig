@@ -277,9 +277,108 @@ pub struct ToolResult {
     /// The call ID of a tool (this should be linked to the call ID for a tool call, otherwise an error will be received)
     call_id: String,
     /// The result of a tool call.
-    output: String,
+    output: ToolResultOutput,
     /// The status of a tool call (if used in a completion request, this should always be Completed)
     status: ToolStatus,
+}
+
+/// Responses API function-call output, which accepts either plain text or an
+/// ordered list of rich input blocks.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ToolResultOutput {
+    /// A plain textual function result.
+    Text(String),
+    /// Ordered rich input blocks for a multimodal function result.
+    Content(Vec<ToolResultOutputContent>),
+}
+
+/// Rich content supported by a Responses API function-call output.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolResultOutputContent {
+    /// Textual function-output content.
+    InputText {
+        /// The text presented to the model.
+        text: String,
+    },
+    /// Image function-output content.
+    InputImage {
+        /// A public URL or base64 data URL, mutually exclusive with `file_id`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        image_url: Option<String>,
+        /// An uploaded OpenAI file identifier, mutually exclusive with
+        /// `image_url`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_id: Option<String>,
+        /// Provider image-detail preference.
+        #[serde(default)]
+        detail: ImageDetail,
+    },
+}
+
+fn responses_tool_result_output(
+    content: OneOrMany<message::ToolResultContent>,
+) -> Result<ToolResultOutput, MessageError> {
+    let mut text_output = Vec::new();
+    let mut rich_output = Vec::new();
+    let mut has_image = false;
+
+    for content in content {
+        match content {
+            message::ToolResultContent::Text(Text { text, .. }) => {
+                text_output.push(text.clone());
+                rich_output.push(ToolResultOutputContent::InputText { text });
+            }
+            message::ToolResultContent::Json { value } => {
+                let text = value.to_string();
+                text_output.push(text.clone());
+                rich_output.push(ToolResultOutputContent::InputText { text });
+            }
+            message::ToolResultContent::Image(message::Image {
+                data,
+                media_type,
+                detail,
+                ..
+            }) => {
+                has_image = true;
+                let (image_url, file_id) = match data {
+                    DocumentSourceKind::Base64(data) => {
+                        let media_type = media_type.ok_or_else(|| {
+                            MessageError::ConversionError(
+                                "A media type is required for base64 tool-result images".into(),
+                            )
+                        })?;
+                        (
+                            Some(format!(
+                                "data:{media_type};base64,{data}",
+                                media_type = media_type.to_mime_type()
+                            )),
+                            None,
+                        )
+                    }
+                    DocumentSourceKind::Url(url) => (Some(url), None),
+                    DocumentSourceKind::FileId(file_id) => (None, Some(file_id)),
+                    unsupported => {
+                        return Err(MessageError::ConversionError(format!(
+                            "Unsupported tool-result image source: {unsupported}"
+                        )));
+                    }
+                };
+                rich_output.push(ToolResultOutputContent::InputImage {
+                    image_url,
+                    file_id,
+                    detail: detail.unwrap_or_default(),
+                });
+            }
+        }
+    }
+
+    if has_image {
+        Ok(ToolResultOutput::Content(rich_output))
+    } else {
+        Ok(ToolResultOutput::Text(text_output.join("\n")))
+    }
 }
 
 impl From<Message> for InputItem {
@@ -359,26 +458,18 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 ..
                             },
                         ) => {
-                            for tool_result_content in tool_content {
-                                let crate::completion::message::ToolResultContent::Text(Text {
-                                    text,
-                                    ..
-                                }) = tool_result_content
-                                else {
-                                    return Err(CompletionError::ProviderError(
-                                        "The OpenAI Responses API only supports text tool results"
-                                            .to_string(),
-                                    ));
-                                };
-                                items.push(InputItem {
-                                    role: None,
-                                    input: InputContent::FunctionCallOutput(ToolResult {
-                                        call_id: require_call_id(call_id.clone(), "Tool result")?,
-                                        output: text,
-                                        status: ToolStatus::Completed,
-                                    }),
-                                });
-                            }
+                            let output =
+                                responses_tool_result_output(tool_content).map_err(|error| {
+                                    CompletionError::ProviderError(error.to_string())
+                                })?;
+                            items.push(InputItem {
+                                role: None,
+                                input: InputContent::FunctionCallOutput(ToolResult {
+                                    call_id: require_call_id(call_id, "Tool result")?,
+                                    output,
+                                    status: ToolStatus::Completed,
+                                }),
+                            });
                         }
                         crate::message::UserContent::Document(Document {
                             data: DocumentSourceKind::FileId(file_id),
@@ -2298,7 +2389,7 @@ pub enum Message {
     #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
-        output: String,
+        output: ToolResultOutput,
     },
 }
 
@@ -2406,6 +2497,138 @@ pub enum UserContent {
     },
 }
 
+fn flush_responses_user_content(
+    messages: &mut Vec<Message>,
+    pending: &mut Vec<UserContent>,
+) -> Result<(), MessageError> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+
+    let content = OneOrMany::many(std::mem::take(pending)).map_err(|_| {
+        MessageError::ConversionError(
+            "User message did not contain OpenAI Responses-compatible content".to_string(),
+        )
+    })?;
+    messages.push(Message::User {
+        content,
+        name: None,
+    });
+    Ok(())
+}
+
+fn responses_user_content(content: message::UserContent) -> Result<UserContent, MessageError> {
+    match content {
+        message::UserContent::Text(message::Text { text, .. }) => {
+            Ok(UserContent::InputText { text })
+        }
+        message::UserContent::Image(message::Image {
+            data,
+            detail,
+            media_type,
+            ..
+        }) => {
+            let url = match data {
+                DocumentSourceKind::Base64(data) => {
+                    let media_type = media_type
+                        .map(|media_type| media_type.to_mime_type().to_string())
+                        .unwrap_or_default();
+                    format!("data:{media_type};base64,{data}")
+                }
+                DocumentSourceKind::Url(url) => url,
+                DocumentSourceKind::Raw(_) => {
+                    return Err(MessageError::ConversionError(
+                        "Raw files not supported, encode as base64 first".into(),
+                    ));
+                }
+                doc => {
+                    return Err(MessageError::ConversionError(format!(
+                        "Unsupported document type: {doc}"
+                    )));
+                }
+            };
+
+            Ok(UserContent::InputImage {
+                image_url: url,
+                detail: detail.unwrap_or_default(),
+            })
+        }
+        message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::FileId(file_id),
+            ..
+        }) => Ok(UserContent::InputFile {
+            file_id: Some(file_id),
+            file_url: None,
+            file_data: None,
+            filename: None,
+        }),
+        message::UserContent::Document(message::Document {
+            media_type: Some(DocumentMediaType::PDF),
+            data,
+            ..
+        }) => {
+            let (file_data, file_url, filename) = match data {
+                DocumentSourceKind::Base64(data) => (
+                    Some(format!("data:application/pdf;base64,{data}")),
+                    None,
+                    Some("document.pdf".to_string()),
+                ),
+                DocumentSourceKind::Url(url) => (None, Some(url), None),
+                DocumentSourceKind::Raw(_) => {
+                    return Err(MessageError::ConversionError(
+                        "Raw files not supported, encode as base64 first".into(),
+                    ));
+                }
+                doc => {
+                    return Err(MessageError::ConversionError(format!(
+                        "Unsupported document type: {doc}"
+                    )));
+                }
+            };
+
+            Ok(UserContent::InputFile {
+                file_id: None,
+                file_url,
+                file_data,
+                filename,
+            })
+        }
+        message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::Base64(text),
+            ..
+        }) => Ok(UserContent::InputText { text }),
+        message::UserContent::Audio(message::Audio {
+            data: DocumentSourceKind::Base64(data),
+            media_type,
+            ..
+        }) => Ok(UserContent::Audio {
+            input_audio: InputAudio {
+                data,
+                format: media_type.unwrap_or(AudioMediaType::MP3),
+            },
+        }),
+        message::UserContent::Audio(_) => Err(MessageError::ConversionError(
+            "Audio must be base64 encoded data".into(),
+        )),
+        _ => Err(MessageError::ConversionError(
+            "Unsupported user content for OpenAI Responses API".into(),
+        )),
+    }
+}
+
+fn responses_tool_result(tool_result: message::ToolResult) -> Result<Message, MessageError> {
+    let output = responses_tool_result_output(tool_result.content)?;
+
+    Ok(Message::ToolResult {
+        tool_call_id: tool_result.call_id.ok_or_else(|| {
+            MessageError::ConversionError(
+                "Tool result `call_id` is required for OpenAI Responses API".into(),
+            )
+        })?,
+        output,
+    })
+}
+
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
@@ -2416,164 +2639,21 @@ impl TryFrom<message::Message> for Vec<Message> {
                 name: None,
             }]),
             message::Message::User { content } => {
-                let (tool_results, other_content): (Vec<_>, Vec<_>) = content
-                    .into_iter()
-                    .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+                let mut messages = Vec::new();
+                let mut pending = Vec::new();
 
-                // If there are messages with both tool results and user content, openai will only
-                //  handle tool results. It's unlikely that there will be both.
-                if !tool_results.is_empty() {
-                    tool_results
-                        .into_iter()
-                        .map(|content| match content {
-                            message::UserContent::ToolResult(message::ToolResult {
-                                call_id,
-                                content,
-                                ..
-                            }) => Ok::<_, message::MessageError>(Message::ToolResult {
-                                tool_call_id: call_id.ok_or_else(|| {
-                                    MessageError::ConversionError(
-                                        "Tool result `call_id` is required for OpenAI Responses API"
-                                            .into(),
-                                    )
-                                })?,
-                                output: {
-                                    let res = content.first();
-                                    match res {
-                                        completion::message::ToolResultContent::Text(Text {
-                                            text,
-                                            ..
-                                        }) => text,
-                                        _ => return  Err(MessageError::ConversionError("This API only currently supports text tool results".into()))
-                                    }
-                                },
-                            }),
-                            _ => Err(MessageError::ConversionError(
-                                "expected tool result content while converting Responses API input"
-                                    .into(),
-                            )),
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                } else {
-                    let other_content = other_content
-                        .into_iter()
-                        .map(|content| match content {
-                            message::UserContent::Text(message::Text { text, .. }) => {
-                                Ok(UserContent::InputText { text })
-                            }
-                            message::UserContent::Image(message::Image {
-                                data,
-                                detail,
-                                media_type,
-                                ..
-                            }) => {
-                                let url = match data {
-                                    DocumentSourceKind::Base64(data) => {
-                                        let media_type = if let Some(media_type) = media_type {
-                                            media_type.to_mime_type().to_string()
-                                        } else {
-                                            String::new()
-                                        };
-                                        format!("data:{media_type};base64,{data}")
-                                    }
-                                    DocumentSourceKind::Url(url) => url,
-                                    DocumentSourceKind::Raw(_) => {
-                                        return Err(MessageError::ConversionError(
-                                            "Raw files not supported, encode as base64 first"
-                                                .into(),
-                                        ));
-                                    }
-                                    doc => {
-                                        return Err(MessageError::ConversionError(format!(
-                                            "Unsupported document type: {doc}"
-                                        )));
-                                    }
-                                };
-
-                                Ok(UserContent::InputImage {
-                                    image_url: url,
-                                    detail: detail.unwrap_or_default(),
-                                })
-                            }
-                            message::UserContent::Document(message::Document {
-                                data: DocumentSourceKind::FileId(file_id),
-                                ..
-                            }) => Ok(UserContent::InputFile {
-                                file_id: Some(file_id),
-                                file_url: None,
-                                file_data: None,
-                                filename: None,
-                            }),
-                            message::UserContent::Document(message::Document {
-                                media_type: Some(DocumentMediaType::PDF),
-                                data,
-                                ..
-                            }) => {
-                                let (file_data, file_url, filename) = match data {
-                                    DocumentSourceKind::Base64(data) => (
-                                        Some(format!("data:application/pdf;base64,{data}")),
-                                        None,
-                                        Some("document.pdf".to_string()),
-                                    ),
-                                    DocumentSourceKind::Url(url) => (None, Some(url), None),
-                                    DocumentSourceKind::Raw(_) => {
-                                        return Err(MessageError::ConversionError(
-                                            "Raw files not supported, encode as base64 first"
-                                                .into(),
-                                        ));
-                                    }
-                                    doc => {
-                                        return Err(MessageError::ConversionError(format!(
-                                            "Unsupported document type: {doc}"
-                                        )));
-                                    }
-                                };
-
-                                Ok(UserContent::InputFile {
-                                    file_id: None,
-                                    file_url,
-                                    file_data,
-                                    filename,
-                                })
-                            }
-                            message::UserContent::Document(message::Document {
-                                data: DocumentSourceKind::Base64(text),
-                                ..
-                            }) => Ok(UserContent::InputText { text }),
-                            message::UserContent::Audio(message::Audio {
-                                data: DocumentSourceKind::Base64(data),
-                                media_type,
-                                ..
-                            }) => Ok(UserContent::Audio {
-                                input_audio: InputAudio {
-                                    data,
-                                    format: match media_type {
-                                        Some(media_type) => media_type,
-                                        None => AudioMediaType::MP3,
-                                    },
-                                },
-                            }),
-                            message::UserContent::Audio(_) => Err(MessageError::ConversionError(
-                                "Audio must be base64 encoded data".into(),
-                            )),
-                            _ => Err(MessageError::ConversionError(
-                                "Unsupported user content for OpenAI Responses API".into(),
-                            )),
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    let other_content = OneOrMany::many(other_content).map_err(|_| {
-                        MessageError::ConversionError(
-                            "User message did not contain OpenAI Responses-compatible content"
-                                .to_string(),
-                        )
-                    })?;
-
-                    Ok(vec![Message::User {
-                        content: other_content,
-                        name: None,
-                    }])
+                for content in content {
+                    match content {
+                        message::UserContent::ToolResult(tool_result) => {
+                            flush_responses_user_content(&mut messages, &mut pending)?;
+                            messages.push(responses_tool_result(tool_result)?);
+                        }
+                        content => pending.push(responses_user_content(content)?),
+                    }
                 }
+
+                flush_responses_user_content(&mut messages, &mut pending)?;
+                Ok(messages)
             }
             message::Message::Assistant {
                 content,
@@ -2697,6 +2777,162 @@ mod tests {
                 "required": ["location"]
             }),
         }
+    }
+
+    fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
+        message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+                id: "result-id".to_string(),
+                call_id: Some("call-id".to_string()),
+                content: OneOrMany::one(content),
+            })),
+        }
+    }
+
+    #[test]
+    fn mixed_user_content_preserves_order_around_tool_results() {
+        let input = message::Message::User {
+            content: OneOrMany::many(vec![
+                message::UserContent::text("before"),
+                message::UserContent::tool_result_with_call_id(
+                    "result-id",
+                    "call-id".to_string(),
+                    OneOrMany::one(message::ToolResultContent::text("tool output")),
+                ),
+                message::UserContent::text("after"),
+            ])
+            .expect("mixed content should be non-empty"),
+        };
+
+        let messages = Vec::<Message>::try_from(input).expect("message conversion");
+
+        assert!(matches!(
+            messages.as_slice(),
+            [
+                Message::User { content: before, .. },
+                Message::ToolResult { tool_call_id, .. },
+                Message::User { content: after, .. },
+            ] if matches!(before.first(), UserContent::InputText { text } if text == "before")
+                && tool_call_id == "call-id"
+                && matches!(after.first(), UserContent::InputText { text } if text == "after")
+        ));
+    }
+
+    #[test]
+    fn tool_result_literal_text_and_structured_json_render_without_reparsing() {
+        let cases = [
+            (
+                message::ToolResultContent::text(r#"{"status":"ok"}"#),
+                r#"{"status":"ok"}"#.to_string(),
+            ),
+            (
+                message::ToolResultContent::json(json!({ "status": "ok" })),
+                r#"{"status":"ok"}"#.to_string(),
+            ),
+        ];
+
+        for (content, expected) in cases {
+            let input = rig_tool_result(content);
+
+            let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
+            assert!(matches!(
+                messages.as_slice(),
+                [Message::ToolResult {
+                    output: ToolResultOutput::Text(output),
+                    ..
+                }] if output == &expected
+            ));
+
+            let items: Vec<InputItem> = input.try_into().expect("input item conversion");
+            assert!(matches!(
+                items.as_slice(),
+                [InputItem {
+                    input: InputContent::FunctionCallOutput(ToolResult {
+                        output: ToolResultOutput::Text(output),
+                        ..
+                    }),
+                    ..
+                }] if output == &expected
+            ));
+        }
+    }
+
+    #[test]
+    fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
+        let content = OneOrMany::many(vec![
+            message::ToolResultContent::text("before"),
+            message::ToolResultContent::image_base64(
+                "aW1hZ2U=",
+                Some(message::ImageMediaType::PNG),
+                None,
+            ),
+            message::ToolResultContent::json(json!({ "after": true })),
+        ])
+        .expect("mixed tool output is non-empty");
+        let input = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+                id: "result-id".to_string(),
+                call_id: Some("call-id".to_string()),
+                content,
+            })),
+        };
+
+        let assert_output = |output: &ToolResultOutput| {
+            assert!(matches!(
+                output,
+                ToolResultOutput::Content(content)
+                    if matches!(content.as_slice(), [
+                        ToolResultOutputContent::InputText { text: before },
+                        ToolResultOutputContent::InputImage { image_url, .. },
+                        ToolResultOutputContent::InputText { text: after },
+                    ] if before == "before"
+                        && image_url.as_deref() == Some("data:image/png;base64,aW1hZ2U=")
+                        && after == r#"{"after":true}"#)
+            ));
+        };
+
+        let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
+        match messages.as_slice() {
+            [Message::ToolResult { output, .. }] => assert_output(output),
+            other => panic!("expected one rich tool result, got {other:?}"),
+        }
+
+        let items: Vec<InputItem> = input.try_into().expect("input item conversion");
+        match items.as_slice() {
+            [
+                InputItem {
+                    input: InputContent::FunctionCallOutput(ToolResult { output, .. }),
+                    ..
+                },
+            ] => assert_output(output),
+            other => panic!("expected one rich function output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_file_id_image_uses_the_native_wire_field() {
+        let input = rig_tool_result(message::ToolResultContent::Image(message::Image {
+            data: message::DocumentSourceKind::FileId("file-image-123".to_string()),
+            media_type: None,
+            detail: None,
+            additional_params: None,
+        }));
+
+        let items: Vec<InputItem> = input.try_into().expect("input item conversion");
+        let wire = serde_json::to_value(&items[0]).expect("serialize input item");
+        assert_eq!(
+            wire,
+            json!({
+                "type": "function_call_output",
+                "call_id": "call-id",
+                "output": [{
+                    "type": "input_image",
+                    "file_id": "file-image-123",
+                    "detail": "auto"
+                }],
+                "status": "completed"
+            })
+        );
     }
 
     fn weather_tool_request() -> completion::CompletionRequest {

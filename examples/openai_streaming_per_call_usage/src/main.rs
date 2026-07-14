@@ -45,7 +45,6 @@ struct ProjectStatusTool;
 
 impl Tool for ProjectStatusTool {
     const NAME: &'static str = "lookup_project_status";
-
     type Error = ProjectStatusError;
     type Args = ProjectStatusArgs;
     type Output = String;
@@ -67,7 +66,11 @@ impl Tool for ProjectStatusTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "{} is approved for release after the final usage metrics check.",
             args.ticket
@@ -121,11 +124,10 @@ async fn main() -> Result<()> {
             }) => {
                 println!("\n\nmodel requested tool: {}", tool_call.function.name);
             }
-            // Rig has started *executing* a tool (after hook checks) — distinct
-            // from the model's tool call above, and never emitted for a dropped or
-            // hook-skipped call.
-            MultiTurnStreamItem::ToolExecutionStart { tool_call, .. } => {
-                println!("rig executing tool: {}", tool_call.function.name);
+            // Rig executed and atomically committed this tool call after its
+            // batch settled. Live start/result observation belongs in hooks.
+            MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
+                println!("rig committed tool execution: {}", tool_call.function.name);
             }
             MultiTurnStreamItem::StreamUserItem(_) => {
                 println!("tool result sent back to model");

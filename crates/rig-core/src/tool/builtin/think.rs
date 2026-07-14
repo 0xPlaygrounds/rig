@@ -10,7 +10,7 @@ pub struct ThinkArgs {
     pub thought: String,
 }
 
-/// Error type for the Think tool
+/// Error type for the Think tool.
 #[derive(Debug, thiserror::Error)]
 #[error("Think tool error: {0}")]
 pub struct ThinkError(String);
@@ -29,7 +29,6 @@ pub struct ThinkTool;
 
 impl Tool for ThinkTool {
     const NAME: &'static str = "think";
-
     type Error = ThinkError;
     type Args = ThinkArgs;
     type Output = String;
@@ -54,7 +53,11 @@ impl Tool for ThinkTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut crate::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         // The think tool doesn't actually do anything except echo back the thought
         // This is intentional - it's just a space for the model to reason through problems
         Ok(args.thought)
@@ -86,7 +89,10 @@ mod tests {
             thought: "I need to verify the user's identity before proceeding".to_string(),
         };
 
-        let result = tool.call(args).await.unwrap();
+        let result = tool
+            .call(&mut crate::tool::ToolContext::new(), args)
+            .await
+            .unwrap();
         assert_eq!(
             result,
             "I need to verify the user's identity before proceeding"

@@ -371,7 +371,7 @@ struct SubmitError;
 
 impl<T> Tool for SubmitTool<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     const NAME: &'static str = SUBMIT_TOOL_NAME;
     type Error = SubmitError;
@@ -386,7 +386,11 @@ where
         json!(schema_for!(T))
     }
 
-    async fn call(&self, data: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut crate::tool::ToolContext,
+        data: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(data)
     }
 }

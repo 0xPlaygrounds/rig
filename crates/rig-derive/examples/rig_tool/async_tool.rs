@@ -1,7 +1,7 @@
 use rig_core::client::{CompletionClient, ProviderClient};
 use rig_core::completion::Prompt;
 use rig_core::providers;
-use rig_core::tool::ToolError;
+use rig_core::tool::ToolExecutionError;
 use rig_derive::rig_tool;
 use std::time::Duration;
 
@@ -12,7 +12,7 @@ async fn async_operation(
     input: String,
     /// Delay in milliseconds before returning result
     delay_ms: u64,
-) -> Result<String, ToolError> {
+) -> Result<String, ToolExecutionError> {
     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
     Ok(format!(

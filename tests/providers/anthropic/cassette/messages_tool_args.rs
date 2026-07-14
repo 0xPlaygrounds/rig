@@ -72,7 +72,11 @@ impl Tool for PlanTrip {
         plan_trip_parameters()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "Booked {} for {} day(s), {} room(s) at {}, with {} planned activities. \
              Confirmation code SAKURA-77.",

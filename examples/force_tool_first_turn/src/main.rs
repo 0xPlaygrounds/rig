@@ -1,7 +1,7 @@
 //! # Forcing a tool on the first turn: a `RequestPatch` footgun and its fix
 //!
-//! A hook can steer a single model turn by returning [`Flow::patch_request`] on
-//! the [`StepEvent::CompletionCall`] event. A common wish is "make the model call
+//! A hook can steer a single model turn by returning [`CompletionCallAction::patch`] on
+//! the [`CompletionCallEvent`] event. A common wish is "make the model call
 //! a tool *first*", done by patching `tool_choice = Required`.
 //!
 //! **The footgun.** A [`RequestPatch`] is **per-turn and non-sticky**: the
@@ -21,7 +21,7 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig::agent::{AgentHook, Flow, HookContext, RequestPatch, StepEvent};
+use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt, PromptError};
 use rig::message::ToolChoice;
@@ -72,7 +72,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -88,14 +92,12 @@ impl<M> AgentHook<M> for ForceToolEveryTurn
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if matches!(event, StepEvent::CompletionCall { .. }) {
-            // BUG: re-applied every turn. The model is forced to call a tool on
-            // every turn and can never produce a final text answer, so the run
-            // loops until `max_turns`.
-            return Flow::patch_request(RequestPatch::new().tool_choice(ToolChoice::Required));
-        }
-        Flow::cont()
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required))
     }
 }
 
@@ -110,14 +112,16 @@ impl<M> AgentHook<M> for ForceToolOnFirstTurn
 where
     M: CompletionModel,
 {
-    async fn on_event(&self, ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        // Gate the per-turn patch on the turn index. On turn 1 we force the tool;
-        // on later turns we return `Continue`, so the request inherits the agent's
-        // baseline `tool_choice` and the model is free to answer.
-        if matches!(event, StepEvent::CompletionCall { .. }) && ctx.turn() == 1 {
-            return Flow::patch_request(RequestPatch::new().tool_choice(ToolChoice::Required));
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        if ctx.turn() == 1 {
+            CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required))
+        } else {
+            CompletionCallAction::continue_run()
         }
-        Flow::cont()
     }
 }
 

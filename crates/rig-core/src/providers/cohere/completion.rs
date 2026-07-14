@@ -389,9 +389,17 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::ToolResultContent::Text(text) => {
                                 Ok(ToolResultContent::Text { text: text.text })
                             }
-                            _ => Err(message::MessageError::ConversionError(
-                                "Only text tool result content is supported by Cohere".to_owned(),
-                            )),
+                            message::ToolResultContent::Json { value } => {
+                                Ok(ToolResultContent::Text {
+                                    text: value.to_string(),
+                                })
+                            }
+                            message::ToolResultContent::Image(_) => {
+                                Err(message::MessageError::ConversionError(
+                                    "Only text tool result content is supported by Cohere"
+                                        .to_owned(),
+                                ))
+                            }
                         })?,
                     }),
                     _ => Err(message::MessageError::ConversionError(
@@ -507,10 +515,10 @@ impl TryFrom<Message> for message::Message {
                     Ok(match content {
                         ToolResultContent::Text { text } => message::ToolResultContent::text(text),
                         ToolResultContent::Document { document } => {
-                            message::ToolResultContent::text(
-                                serde_json::to_string(&document.data).map_err(|e| {
+                            message::ToolResultContent::json(
+                                serde_json::to_value(document.data).map_err(|e| {
                                     message::MessageError::ConversionError(
-                                        format!("Failed to convert tool result document content into text: {e}"),
+                                        format!("Failed to convert tool result document content into JSON: {e}"),
                                     )
                                 })?,
                             )

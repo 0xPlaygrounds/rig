@@ -13,9 +13,9 @@ use anyhow::{Result, bail};
 use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Completion;
-use rig::message::{AssistantContent, Message, ToolCall, ToolChoice};
+use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::{Tool, ToolOutput, ToolSet};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -53,7 +53,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -82,7 +86,11 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -108,8 +116,17 @@ fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
         .join("\n")
 }
 
-fn tool_result_message(tool_call: &ToolCall, output: String) -> Message {
-    Message::tool_result_with_call_id(tool_call.id.clone(), tool_call.call_id.clone(), output)
+fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
+    let content = output.into_content();
+    let result = match &tool_call.call_id {
+        Some(call_id) => {
+            UserContent::tool_result_with_call_id(tool_call.id.clone(), call_id.clone(), content)
+        }
+        None => UserContent::tool_result(tool_call.id.clone(), content),
+    };
+    Message::User {
+        content: OneOrMany::one(result),
+    }
 }
 
 #[tokio::main]
@@ -169,10 +186,19 @@ async fn main() -> Result<()> {
 
         for tool_call in &tool_calls {
             let args = serde_json::to_string(&tool_call.function.arguments)?;
-            let output = local_tools
-                .call(&tool_call.function.name, args.clone())
-                .await?;
-            println!("  {}({args}) -> {}", tool_call.function.name, output);
+            let result = local_tools
+                .execute(
+                    &tool_call.function.name,
+                    args.clone(),
+                    &mut rig::tool::ToolContext::new(),
+                )
+                .await;
+            let output = result.output().clone();
+            println!(
+                "  {}({args}) -> {}",
+                tool_call.function.name,
+                output.render()
+            );
             history.push(tool_result_message(tool_call, output));
         }
 

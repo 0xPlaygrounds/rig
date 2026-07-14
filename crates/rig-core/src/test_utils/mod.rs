@@ -21,8 +21,8 @@ pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use model_listing::MockModelLister;
 pub use streaming::{MockResponse, MockStreamEvent};
 pub use tools::{
-    BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockControlledTool, MockDeniedTool,
-    MockExampleTool, MockExtensionsProbeTool, MockFailingTool, MockFailure, MockHandledFailureTool,
+    BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockContextProbeTool, MockControlledTool,
+    MockDeniedTool, MockExampleTool, MockFailingTool, MockFailure, MockHandledFailureTool,
     MockImageGeneratorTool, MockImageOutputTool, MockMetadataTool, MockObjectOutputTool,
     MockOperationArgs, MockRequestId, MockStringOutputTool, MockSubtractTool, MockToolError,
     MockToolIndex, SessionId, mock_math_toolset,

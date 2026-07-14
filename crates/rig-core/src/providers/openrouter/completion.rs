@@ -1012,58 +1012,60 @@ fn document_filename(media_type: Option<&DocumentMediaType>) -> Option<String> {
 fn user_contents_to_messages(
     value: OneOrMany<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
-    let (tool_results, other_content): (Vec<_>, Vec<_>) = value
-        .into_iter()
-        .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+    fn flush_user_content(
+        messages: &mut Vec<Message>,
+        pending: &mut Vec<UserContent>,
+    ) -> Result<(), message::MessageError> {
+        if pending.is_empty() {
+            return Ok(());
+        }
 
-    // If there are messages with both tool results and user content, we handle
-    // tool results first. It's unlikely that there will be both.
-    if !tool_results.is_empty() {
-        tool_results
-            .into_iter()
-            .map(|content| match content {
-                message::UserContent::ToolResult(tool_result) => Ok(Message::ToolResult {
-                    // Prefer the provider-issued call id, matching the
-                    // assistant echo (shared From<message::ToolCall>).
-                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
-                    content: openai::completion::ToolResultContentValue::String(
-                        tool_result
-                            .content
-                            .into_iter()
-                            .map(|c| match c {
-                                message::ToolResultContent::Text(message::Text {
-                                    text, ..
-                                }) => text,
-                                message::ToolResultContent::Image(_) => {
-                                    "[Image content not supported in tool results]".to_string()
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                    ),
-                }),
-                _ => Err(message::MessageError::ConversionError(
-                    "expected tool result content while converting OpenRouter input".into(),
-                )),
-            })
-            .collect::<Result<Vec<_>, _>>()
-    } else {
-        let user_content: Vec<UserContent> = other_content
-            .into_iter()
-            .map(user_content_to_openai)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let content = OneOrMany::many(user_content).map_err(|_| {
+        let content = OneOrMany::many(std::mem::take(pending)).map_err(|_| {
             message::MessageError::ConversionError(
                 "OpenRouter user message did not contain any non-tool content".into(),
             )
         })?;
-
-        Ok(vec![Message::User {
+        messages.push(Message::User {
             content,
             name: None,
-        }])
+        });
+        Ok(())
     }
+
+    let mut messages = Vec::new();
+    let mut pending = Vec::new();
+
+    for content in value {
+        match content {
+            message::UserContent::ToolResult(tool_result) => {
+                flush_user_content(&mut messages, &mut pending)?;
+                let content = tool_result
+                    .content
+                    .into_iter()
+                    .map(|content| match content {
+                        message::ToolResultContent::Text(message::Text { text, .. }) => Ok(text),
+                        message::ToolResultContent::Json { value } => Ok(value.to_string()),
+                        message::ToolResultContent::Image(_) => {
+                            Err(message::MessageError::ConversionError(
+                                "OpenRouter does not support images in tool results".into(),
+                            ))
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join("\n");
+                messages.push(Message::ToolResult {
+                    // Prefer the provider-issued call id, matching the
+                    // assistant echo (shared From<message::ToolCall>).
+                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
+                    content: openai::completion::ToolResultContentValue::String(content),
+                });
+            }
+            content => pending.push(user_content_to_openai(content)?),
+        }
+    }
+
+    flush_user_content(&mut messages, &mut pending)?;
+    Ok(messages)
 }
 
 // ================================================================
@@ -1520,6 +1522,33 @@ mod tests {
     use super::*;
     use crate::message::{AudioMediaType, ImageDetail, VideoMediaType};
     use serde_json::json;
+
+    #[test]
+    fn mixed_user_content_preserves_order_around_tool_results() {
+        let content = OneOrMany::many(vec![
+            message::UserContent::text("before"),
+            message::UserContent::tool_result_with_call_id(
+                "result-id",
+                "call-id".to_string(),
+                OneOrMany::one(message::ToolResultContent::text("tool output")),
+            ),
+            message::UserContent::text("after"),
+        ])
+        .expect("mixed content should be non-empty");
+
+        let messages = user_contents_to_messages(content).expect("message conversion");
+
+        assert!(matches!(
+            messages.as_slice(),
+            [
+                Message::User { content: before, .. },
+                Message::ToolResult { tool_call_id, .. },
+                Message::User { content: after, .. },
+            ] if matches!(before.first(), UserContent::Text { text } if text == "before")
+                && tool_call_id == "call-id"
+                && matches!(after.first(), UserContent::Text { text } if text == "after")
+        ));
+    }
 
     #[test]
     fn test_openrouter_request_uses_request_model_override() {

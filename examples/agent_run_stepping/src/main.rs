@@ -7,7 +7,7 @@
 //! because the machine is fully serializable between steps — pause a run while
 //! tool calls are pending and resume it later (even in another process).
 //!
-//! ## Part 2 — high-level [`AgentRunner`] with hooks
+//! ## Part 2 — high-level [`rig::agent::AgentRunner`] with hooks
 //!
 //! For the common case you don't need that level of control: attach an
 //! [`AgentHook`] to observe tool calls (and every other event) without
@@ -21,10 +21,12 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::{AgentHook, Flow, HookContext, InvalidToolCallHookAction, StepEvent};
+use rig::agent::{
+    AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
+};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Completion, CompletionModel};
-use rig::message::{ToolResultContent, UserContent};
+use rig::message::UserContent;
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -63,7 +65,11 @@ impl Tool for Add {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -76,14 +82,9 @@ impl Tool for Add {
 struct ToolLoggerHook;
 
 impl<M: CompletionModel> AgentHook<M> for ToolLoggerHook {
-    async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        if let StepEvent::ToolCall {
-            tool_name, args, ..
-        } = event
-        {
-            println!("[hook] tool call: {tool_name}({args})");
-        }
-        Flow::cont()
+    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
+        println!("[hook] tool call: {}({})", event.tool_name, event.args);
+        ToolCallAction::run()
     }
 }
 
@@ -130,7 +131,7 @@ async fn main() -> Result<()> {
                     eprintln!("model called unknown tool `{}`", context.tool_name);
                     // Preserve the agent loop's default fail-fast behavior; a
                     // driver could instead retry, repair, or skip here.
-                    outcome = run.resolve_invalid_tool_call(InvalidToolCallHookAction::fail())?;
+                    outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
                 }
             }
             AgentRunStep::CallTools { .. } => {
@@ -155,10 +156,14 @@ async fn main() -> Result<()> {
                     let name = &call.tool_call.function.name;
                     let args = call.tool_call.function.arguments.to_string();
                     println!("→ executing {name}({args})");
-                    let output = agent.tool_server_handle.call_tool(name, &args).await?;
+                    let mut context = rig::tool::ToolContext::new();
+                    let result = agent
+                        .tool_server_handle
+                        .execute(name, &args, &mut context)
+                        .await;
                     results.push(UserContent::tool_result(
                         call.tool_call.id.clone(),
-                        ToolResultContent::from_tool_output(output),
+                        result.output().clone().into_content(),
                     ));
                 }
                 run_resumed.tool_results(results)?;

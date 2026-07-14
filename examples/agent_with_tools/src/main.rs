@@ -1,4 +1,4 @@
-//! Demonstrates registering boxed tools on an agent.
+//! Demonstrates registering runtime-defined tools on an agent.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
@@ -6,9 +6,8 @@ use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolDyn};
+use rig::tool::{DynamicTool, ToolOutput};
 use serde::Deserialize;
-use serde::Serialize;
 use serde_json::json;
 
 #[derive(Deserialize)]
@@ -17,70 +16,45 @@ struct OperationArgs {
     y: i32,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-struct MathError;
-
-#[derive(Deserialize, Serialize)]
-struct Add;
-
-impl Tool for Add {
-    const NAME: &'static str = "add";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Add x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The first number to add" },
-                "y": { "type": "number", "description": "The second number to add" }
+fn runtime_tools() -> Vec<DynamicTool> {
+    let parameters = json!({
+        "type": "object",
+        "properties": {
+            "x": { "type": "integer" },
+            "y": { "type": "integer" }
+        },
+        "required": ["x", "y"]
+    });
+    vec![
+        DynamicTool::new(
+            "add",
+            "Add x and y",
+            parameters.clone(),
+            |_context, args| {
+                Box::pin(async move {
+                    let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
+                        rig::tool::ToolExecutionError::invalid_args(error.to_string())
+                            .with_source(error)
+                    })?;
+                    Ok(ToolOutput::json(json!(args.x + args.y)))
+                })
             },
-            "required": ["x", "y"]
-        })
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        Ok(args.x + args.y)
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-struct Subtract;
-
-impl Tool for Subtract {
-    const NAME: &'static str = "subtract";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Subtract y from x (i.e.: x - y)".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The number to subtract from" },
-                "y": { "type": "number", "description": "The number to subtract" }
+        ),
+        DynamicTool::new(
+            "subtract",
+            "Subtract y from x",
+            parameters,
+            |_context, args| {
+                Box::pin(async move {
+                    let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
+                        rig::tool::ToolExecutionError::invalid_args(error.to_string())
+                            .with_source(error)
+                    })?;
+                    Ok(ToolOutput::json(json!(args.x - args.y)))
+                })
             },
-            "required": ["x", "y"]
-        })
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        Ok(args.x - args.y)
-    }
-}
-
-fn boxed_tools() -> Vec<Box<dyn ToolDyn>> {
-    vec![Box::new(Add), Box::new(Subtract)]
+        ),
+    ]
 }
 
 #[tokio::main]
@@ -91,7 +65,7 @@ async fn main() -> Result<()> {
             "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",
         )
-        .tools(boxed_tools())
+        .dynamic_tools(runtime_tools())
         .max_tokens(1024)
         .default_max_turns(2)
         .build();

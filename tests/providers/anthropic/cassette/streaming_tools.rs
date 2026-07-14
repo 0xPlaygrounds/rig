@@ -213,7 +213,11 @@ impl Tool for OutOfOrderAlphaSignal {
         AlphaSignal.parameters()
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
@@ -236,7 +240,11 @@ impl Tool for OutOfOrderBetaSignal {
         BetaSignal.parameters()
     }
 
-    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }
@@ -270,8 +278,8 @@ async fn collect_concurrent_tool_observation<R>(
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
             }
-            Ok(MultiTurnStreamItem::ToolExecutionStart { .. }) => {
-                observation.events.push("tool_execution_start");
+            Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
+                observation.events.push("tool_execution_committed");
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,

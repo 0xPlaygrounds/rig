@@ -11,7 +11,8 @@ use rig::agent::run::{
     StreamedTurnEvent,
 };
 use rig::agent::{
-    AgentHook, Flow, InvalidToolCallHookAction, MultiTurnStreamItem, StepEvent, StreamingError,
+    AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
+    ToolCall as ToolCallEvent, ToolCallAction,
 };
 use rig::client::CompletionClient;
 use rig::completion::{GetTokenUsage, PromptError, Usage};
@@ -50,7 +51,7 @@ async fn run_streamed_turn(
     history: Vec<Message>,
     executable: &BTreeSet<String>,
     allowed: &BTreeSet<String>,
-    on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallHookAction,
+    on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallAction,
     collected_text: &mut String,
 ) -> Result<TurnEnd, PromptError> {
     let mut stream = agent
@@ -268,7 +269,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
                 &nothing_allowed,
                 |invalid| {
                     assert_eq!(invalid.tool_call.function.name, "add");
-                    InvalidToolCallHookAction::fail()
+                    InvalidToolCallAction::fail()
                 },
                 &mut streamed_text,
             )
@@ -329,7 +330,7 @@ async fn streamed_repair_continues_the_same_stream() {
                             &machine_names,
                             |invalid| {
                                 assert_eq!(invalid.tool_call.function.name, "add");
-                                InvalidToolCallHookAction::repair("sum")
+                                InvalidToolCallAction::repair("sum")
                             },
                             &mut streamed_text,
                         )
@@ -420,7 +421,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                             |invalid| {
                                 assert!(expect_abandon, "only the first turn restricts tools");
                                 assert_eq!(invalid.tool_call.function.name, "add");
-                                InvalidToolCallHookAction::skip(SKIP_REASON)
+                                InvalidToolCallAction::skip(SKIP_REASON)
                             },
                             &mut streamed_text,
                         )
@@ -518,17 +519,12 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 struct CancelOnToolCall;
 
 impl AgentHook<gemini::completion::CompletionModel> for CancelOnToolCall {
-    async fn on_event(
+    async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: StepEvent<'_, gemini::completion::CompletionModel>,
-    ) -> Flow {
-        match event {
-            StepEvent::ToolCall { .. } => Flow::Terminate {
-                reason: "cancelled by test hook".to_string(),
-            },
-            _ => Flow::cont(),
-        }
+        _event: ToolCallEvent<'_>,
+    ) -> ToolCallAction {
+        ToolCallAction::stop("cancelled by test hook")
     }
 }
 

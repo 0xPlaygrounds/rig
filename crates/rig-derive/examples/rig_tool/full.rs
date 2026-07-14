@@ -10,15 +10,15 @@ fn string_processor(
     text: String,
     /// The operation to perform (uppercase, lowercase, reverse)
     operation: String,
-) -> Result<String, rig_core::tool::ToolError> {
+) -> Result<String, rig_core::tool::ToolExecutionError> {
     let result = match operation.as_str() {
         "uppercase" => text.to_uppercase(),
         "lowercase" => text.to_lowercase(),
         "reverse" => text.chars().rev().collect(),
         _ => {
-            return Err(rig_core::tool::ToolError::ToolCallError(
-                format!("Unknown operation: {operation}").into(),
-            ));
+            return Err(rig_core::tool::ToolExecutionError::other(format!(
+                "Unknown operation: {operation}"
+            )));
         }
     };
 
