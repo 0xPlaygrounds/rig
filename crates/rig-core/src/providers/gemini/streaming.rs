@@ -248,9 +248,19 @@ where
                                     thought_signature,
                                     ..
                                 } => {
+                                    let tool_call = streaming::RawStreamingToolCall::new(
+                                        function_call.name.clone(),
+                                        function_call.name,
+                                        function_call.args,
+                                    )
+                                    .with_signature(thought_signature);
+                                    let tool_call = if let Some(id) = function_call.id {
+                                        tool_call.with_call_id(id)
+                                    } else {
+                                        tool_call
+                                    };
                                     yield Ok(streaming::RawStreamingChoice::ToolCall(
-                                        streaming::RawStreamingToolCall::new(function_call.name.clone(), function_call.name.clone(), function_call.args.clone())
-                                            .with_signature(thought_signature)
+                                        tool_call
                                     ));
                                 },
                                 part => {
@@ -481,13 +491,15 @@ mod tests {
                         {
                             "functionCall": {
                                 "name": "get_weather",
-                                "args": {"city": "San Francisco"}
+                                "args": {"city": "San Francisco"},
+                                "id": "call-weather"
                             }
                         },
                         {
                             "functionCall": {
                                 "name": "get_temperature",
-                                "args": {"location": "New York"}
+                                "args": {"location": "New York"},
+                                "id": "call-temperature"
                             }
                         }
                     ],
@@ -517,6 +529,7 @@ mod tests {
         } = &content.parts[0]
         {
             assert_eq!(call.name, "get_weather");
+            assert_eq!(call.id.as_deref(), Some("call-weather"));
         } else {
             panic!("Expected function call at index 0");
         }
@@ -528,6 +541,7 @@ mod tests {
         } = &content.parts[1]
         {
             assert_eq!(call.name, "get_temperature");
+            assert_eq!(call.id.as_deref(), Some("call-temperature"));
         } else {
             panic!("Expected function call at index 1");
         }

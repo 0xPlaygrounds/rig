@@ -9497,6 +9497,7 @@ dependencies = [
  "async-stream",
  "aws-config",
  "aws-sdk-bedrockruntime",
+ "aws-smithy-eventstream",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "axum 0.8.9",

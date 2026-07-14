@@ -11,7 +11,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"metrics":{"latencyMs":449},"output":{"message":{"content":[{"text":"<thinking>The User wants to subtract 5 from 2. I can use the subtract tool for this operation.</thinking>\n"},{"toolUse":{"input":{"x":2,"y":5},"name":"subtract","toolUseId":"tooluse_REDACTED_1"}}],"role":"assistant"}},"stopReason":"tool_use","usage":{"inputTokens":514,"outputTokens":45,"serverToolUsage":{},"totalTokens":559}}'
+  body: '{"metrics":{"latencyMs":712},"output":{"message":{"content":[{"text":"<thinking>The User wants to perform a subtraction operation. The tool to use is ''subtract''. The ''x'' parameter will be 2 and ''y'' will be 5. I will call this tool to get the result.</thinking>\n"},{"toolUse":{"input":{"x":2,"y":5},"name":"subtract","toolUseId":"tooluse_REDACTED_1"}}],"role":"assistant"}},"stopReason":"tool_use","usage":{"inputTokens":514,"outputTokens":70,"serverToolUsage":{},"totalTokens":584}}'
 ---
 when:
   path: /model/amazon.nova-lite-v1%3A0/converse
@@ -20,10 +20,10 @@ when:
   header:
   - name: content-type
     value: application/json
-  body: '{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"Calculate 2 - 5."}],"role":"user"},{"content":[{"text":"<thinking>The User wants to subtract 5 from 2. I can use the subtract tool for this operation.</thinking>\n"},{"toolUse":{"input":{"x":2,"y":5},"name":"subtract","toolUseId":"tooluse_REDACTED_1"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"json":-3}],"toolUseId":"tooluse_REDACTED_1"}}],"role":"user"}],"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"toolConfig":{"tools":[{"toolSpec":{"description":"Add x and y together","inputSchema":{"json":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"name":"add"}},{"toolSpec":{"description":"Subtract y from x (i.e.: x - y)","inputSchema":{"json":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"name":"subtract"}}]}}'
+  body: '{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"Calculate 2 - 5."}],"role":"user"},{"content":[{"text":"<thinking>The User wants to perform a subtraction operation. The tool to use is ''subtract''. The ''x'' parameter will be 2 and ''y'' will be 5. I will call this tool to get the result.</thinking>\n"},{"toolUse":{"input":{"x":2,"y":5},"name":"subtract","toolUseId":"tooluse_REDACTED_1"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"json":{"result":-3}}],"toolUseId":"tooluse_REDACTED_1"}}],"role":"user"}],"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"toolConfig":{"tools":[{"toolSpec":{"description":"Add x and y together","inputSchema":{"json":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"name":"add"}},{"toolSpec":{"description":"Subtract y from x (i.e.: x - y)","inputSchema":{"json":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"name":"subtract"}}]}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"metrics":{"latencyMs":455},"output":{"message":{"content":[{"text":"<thinking>The subtract tool has provided the result of the operation 2 - 5, which is -3.</thinking>\n\nThe result of 2 - 5 is **-3**."}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":586,"outputTokens":41,"serverToolUsage":{},"totalTokens":627}}'
+  body: '{"metrics":{"latencyMs":501},"output":{"message":{"content":[{"text":"<thinking>The tool ''subtract'' has returned a result of -3. This is the result of the subtraction operation 2 - 5.</thinking>\n\nThe result of 2 - 5 is -3."}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":614,"outputTokens":45,"serverToolUsage":{},"totalTokens":659}}'

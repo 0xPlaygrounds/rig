@@ -475,16 +475,20 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                             }
                         }
                         PartKind::FunctionCall(function_call) => {
-                            completion::AssistantContent::ToolCall(
-                                message::ToolCall::new(
+                            let tool_call = message::ToolCall::new(
+                                function_call.name.clone(),
+                                message::ToolFunction::new(
                                     function_call.name.clone(),
-                                    message::ToolFunction::new(
-                                        function_call.name.clone(),
-                                        function_call.args.clone(),
-                                    ),
-                                )
-                                .with_signature(thought_signature.clone()),
+                                    function_call.args.clone(),
+                                ),
                             )
+                            .with_signature(thought_signature.clone());
+                            let tool_call = if let Some(id) = &function_call.id {
+                                tool_call.with_call_id(id.clone())
+                            } else {
+                                tool_call
+                            };
+                            completion::AssistantContent::ToolCall(tool_call)
                         }
                         _ => {
                             return Err(CompletionError::ResponseError(
@@ -519,11 +523,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
 
 pub mod gemini_api_types {
     use crate::telemetry::ProviderResponseExt;
-    use std::{
-        collections::{HashMap, HashSet},
-        convert::Infallible,
-        str::FromStr,
-    };
+    use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
     // =================================================================
     // Gemini API Types
@@ -806,25 +806,6 @@ pub mod gemini_api_types {
         }
     }
 
-    fn collect_json_ref_names(value: &Value, names: &mut HashSet<String>) {
-        match value {
-            Value::Object(object) => {
-                if let Some(Value::String(name)) = object.get("$ref") {
-                    names.insert(name.clone());
-                }
-                for value in object.values() {
-                    collect_json_ref_names(value, names);
-                }
-            }
-            Value::Array(values) => {
-                for value in values {
-                    collect_json_ref_names(value, names);
-                }
-            }
-            _ => {}
-        }
-    }
-
     fn gemini_tool_result_image_mime_type(
         media_type: Option<&ImageMediaType>,
     ) -> Result<&'static str, MessageError> {
@@ -855,25 +836,13 @@ pub mod gemini_api_types {
                     part: PartKind::Text(text),
                     additional_params: None,
                 }),
-                message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
-                    let has_response_value = content.iter().any(|item| {
-                        matches!(
-                            item,
-                            message::ToolResultContent::Text(_)
-                                | message::ToolResultContent::Json { .. }
-                        )
-                    });
-
-                    let mut reserved_display_names = HashSet::new();
-                    for item in content.iter() {
-                        if let message::ToolResultContent::Json { value } = item {
-                            collect_json_ref_names(value, &mut reserved_display_names);
-                        }
-                    }
-
+                message::UserContent::ToolResult(message::ToolResult {
+                    id,
+                    call_id,
+                    content,
+                }) => {
                     let mut response_values = Vec::new();
                     let mut parts: Vec<FunctionResponsePart> = Vec::new();
-                    let mut inline_image_index = 0;
 
                     for item in content.iter() {
                         match item {
@@ -890,28 +859,17 @@ pub mod gemini_api_types {
                                             image.media_type.as_ref(),
                                         )?;
 
-                                        let display_name = has_response_value.then(|| {
-                                            let display_name = loop {
-                                                let candidate = format!(
-                                                    "tool_result_image_{inline_image_index}"
-                                                );
-                                                inline_image_index += 1;
-                                                if reserved_display_names.insert(candidate.clone())
-                                                {
-                                                    break candidate;
-                                                }
-                                            };
-                                            response_values.push(json!({
-                                                "$ref": display_name
-                                            }));
-                                            display_name
-                                        });
-
+                                        // Gemini's Developer API rejects synthetic `$ref` links
+                                        // for inline function-response parts even when their
+                                        // display names match. References are optional, so keep
+                                        // structured output in `response` and media in ordered
+                                        // `parts`, which both streaming and non-streaming models
+                                        // accept.
                                         FunctionResponsePart {
                                             inline_data: Some(FunctionResponseInlineData {
                                                 mime_type: mime_type.to_string(),
                                                 data: b64.clone(),
-                                                display_name,
+                                                display_name: None,
                                             }),
                                             file_data: None,
                                         }
@@ -950,6 +908,7 @@ pub mod gemini_api_types {
                         thought_signature: None,
                         part: PartKind::FunctionResponse(FunctionResponse {
                             name: id,
+                            id: call_id,
                             response: response_json,
                             parts: if parts.is_empty() { None } else { Some(parts) },
                         }),
@@ -1258,6 +1217,7 @@ pub mod gemini_api_types {
                 part: PartKind::FunctionCall(FunctionCall {
                     name: tool_call.function.name,
                     args: tool_call.function.arguments,
+                    id: tool_call.call_id,
                 }),
                 additional_params: None,
             }
@@ -1285,6 +1245,9 @@ pub mod gemini_api_types {
         pub name: String,
         /// Optional. The function parameters and values in JSON object format.
         pub args: serde_json::Value,
+        /// Provider-supplied identifier used to correlate the function response.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
     }
 
     impl From<message::ToolCall> for FunctionCall {
@@ -1292,6 +1255,7 @@ pub mod gemini_api_types {
             Self {
                 name: tool_call.function.name,
                 args: tool_call.function.arguments,
+                id: tool_call.call_id,
             }
         }
     }
@@ -1304,6 +1268,9 @@ pub mod gemini_api_types {
         /// The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes,
         /// with a maximum length of 63.
         pub name: String,
+        /// Provider-supplied identifier from the corresponding function call.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
         /// The function response in JSON object format.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response: Option<serde_json::Value>,
@@ -2639,6 +2606,7 @@ mod tests {
                             part: PartKind::FunctionCall(FunctionCall {
                                 name: "default_api".to_string(),
                                 args: json!({"x": 1}),
+                                id: None,
                             }),
                             additional_params: None,
                         }],
@@ -2749,7 +2717,7 @@ mod tests {
     fn test_message_conversion_tool_call() {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
-            call_id: None,
+            call_id: Some("call-123".to_string()),
             function: message::ToolFunction {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
@@ -2776,9 +2744,39 @@ mod tests {
                 function_call.args.as_object().unwrap().get("arg1").unwrap(),
                 "value1"
             );
+            assert_eq!(function_call.id.as_deref(), Some("call-123"));
         } else {
             panic!("Expected function call part");
         }
+    }
+
+    #[test]
+    fn test_response_function_call_preserves_correlation_id() {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "responseId": "response-123",
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "name": "test_function",
+                            "args": {"arg1": "value1"},
+                            "id": "call-123"
+                        }
+                    }],
+                    "role": "model"
+                },
+                "finishReason": "STOP"
+            }]
+        }))
+        .expect("response should deserialize");
+
+        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+            response.try_into().expect("response should convert");
+        let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
+            panic!("expected a tool call");
+        };
+        assert_eq!(tool_call.id, "test_function");
+        assert_eq!(tool_call.call_id.as_deref(), Some("call-123"));
     }
 
     #[test]
@@ -3020,7 +3018,7 @@ mod tests {
         // Create a tool result with both text and image content
         let tool_result = ToolResult {
             id: "test_tool".to_string(),
-            call_id: None,
+            call_id: Some("call-123".to_string()),
             content: OneOrMany::many(vec![
                 ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
                 ToolResultContent::Image(Image {
@@ -3049,6 +3047,7 @@ mod tests {
         }) = content.parts.first()
         {
             assert_eq!(function_response.name, "test_tool");
+            assert_eq!(function_response.id.as_deref(), Some("call-123"));
 
             // Check that response JSON is present
             assert!(function_response.response.is_some());
@@ -3056,10 +3055,7 @@ mod tests {
             assert_eq!(
                 response,
                 &json!({
-                    "result": [
-                        r#"{"status": "success"}"#,
-                        { "$ref": "tool_result_image_0" }
-                    ]
+                    "result": r#"{"status": "success"}"#
                 })
             );
 
@@ -3073,17 +3069,14 @@ mod tests {
             let inline_data = image_part.inline_data.as_ref().unwrap();
             assert_eq!(inline_data.mime_type, "image/png");
             assert!(!inline_data.data.is_empty());
-            assert_eq!(
-                inline_data.display_name.as_deref(),
-                Some("tool_result_image_0")
-            );
+            assert_eq!(inline_data.display_name, None);
         } else {
             panic!("Expected FunctionResponse part");
         }
     }
 
     #[test]
-    fn mixed_inline_images_and_text_preserve_canonical_order_with_refs() {
+    fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
         use crate::OneOrMany;
         use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
@@ -3111,13 +3104,7 @@ mod tests {
 
         assert_eq!(
             response.response,
-            Some(json!({
-                "result": [
-                    { "$ref": "tool_result_image_0" },
-                    "between-images",
-                    { "$ref": "tool_result_image_1" }
-                ]
-            }))
+            Some(json!({ "result": "between-images" }))
         );
 
         let parts = response
@@ -3125,24 +3112,18 @@ mod tests {
             .as_ref()
             .expect("images should be inline parts");
         assert_eq!(parts.len(), 2);
-        assert_eq!(
-            parts[0]
-                .inline_data
-                .as_ref()
-                .and_then(|part| part.display_name.as_deref()),
-            Some("tool_result_image_0")
-        );
-        assert_eq!(
-            parts[1]
-                .inline_data
-                .as_ref()
-                .and_then(|part| part.display_name.as_deref()),
-            Some("tool_result_image_1")
-        );
+        let first = parts[0].inline_data.as_ref().expect("first inline image");
+        assert_eq!(first.mime_type, "image/png");
+        assert_eq!(first.data, "first-image");
+        assert_eq!(first.display_name, None);
+        let second = parts[1].inline_data.as_ref().expect("second inline image");
+        assert_eq!(second.mime_type, "image/jpeg");
+        assert_eq!(second.data, "second-image");
+        assert_eq!(second.display_name, None);
     }
 
     #[test]
-    fn mixed_inline_image_and_json_preserve_structured_value_and_ref_order() {
+    fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
         use crate::OneOrMany;
         use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
@@ -3165,13 +3146,16 @@ mod tests {
 
         assert_eq!(
             response.response,
-            Some(json!({
-                "result": [
-                    { "status": "ok" },
-                    { "$ref": "tool_result_image_0" }
-                ]
-            }))
+            Some(json!({ "result": { "status": "ok" } }))
         );
+        let parts = response
+            .parts
+            .as_ref()
+            .expect("image should be an inline part");
+        assert_eq!(parts.len(), 1);
+        let inline_data = parts[0].inline_data.as_ref().expect("inline image data");
+        assert_eq!(inline_data.data, "image-data");
+        assert_eq!(inline_data.display_name, None);
     }
 
     #[test]
@@ -3241,7 +3225,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
+    fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
         use crate::OneOrMany;
         use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
@@ -3269,14 +3253,11 @@ mod tests {
         assert_eq!(
             response.response,
             Some(json!({
-                "result": [
-                    {
-                        "literal": {
-                            "$ref": "tool_result_image_0"
-                        }
-                    },
-                    { "$ref": "tool_result_image_1" }
-                ]
+                "result": {
+                    "literal": {
+                        "$ref": "tool_result_image_0"
+                    }
+                }
             }))
         );
         assert_eq!(
@@ -3286,7 +3267,7 @@ mod tests {
                     .and_then(|part| part.inline_data.as_ref())
                     .and_then(|part| part.display_name.as_deref())
             }),
-            Some("tool_result_image_1")
+            None
         );
     }
 

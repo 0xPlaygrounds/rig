@@ -5,6 +5,7 @@ use rig_core::{
     completion::CompletionError,
     message::{Text, ToolResultContent},
 };
+use serde_json::Value;
 
 pub struct RigToolResultContent(pub ToolResultContent);
 
@@ -21,6 +22,14 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
                 Ok(aws_bedrock::ToolResultContentBlock::Image(image))
             }
             ToolResultContent::Json { value } => {
+                // Bedrock's Converse API accepts only an object in the JSON
+                // tool-result field for models such as Nova. Preserve object
+                // outputs unchanged and keep every other JSON type structured
+                // under a stable wrapper instead of falling back to text.
+                let value = match value {
+                    Value::Object(_) => value,
+                    value => serde_json::json!({ "result": value }),
+                };
                 let document: AwsDocument = value.into();
                 Ok(aws_bedrock::ToolResultContentBlock::Json(document.0))
             }
@@ -109,20 +118,28 @@ mod tests {
     }
 
     #[test]
-    fn rig_tool_json_string_remains_distinct_from_text() {
-        let tool = RigToolResultContent(ToolResultContent::Json {
-            value: serde_json::json!("literal text"),
-        });
+    fn rig_tool_non_object_json_is_wrapped_for_bedrock() {
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!(true),
+            serde_json::json!(-3),
+            serde_json::json!("literal text"),
+            serde_json::json!([1, 2, 3]),
+        ] {
+            let tool = RigToolResultContent(ToolResultContent::Json {
+                value: value.clone(),
+            });
 
-        let aws_tool: aws_bedrock::ToolResultContentBlock = tool
-            .try_into()
-            .expect("JSON string should render at the AWS boundary");
-        let document = match aws_tool {
-            aws_bedrock::ToolResultContentBlock::Json(document) => document,
-            other => panic!("expected Bedrock JSON tool result, got {other:?}"),
-        };
-        let actual: serde_json::Value = crate::types::json::AwsDocument(document).into();
-        assert_eq!(actual, serde_json::json!("literal text"));
+            let aws_tool: aws_bedrock::ToolResultContentBlock = tool
+                .try_into()
+                .expect("JSON should render at the AWS boundary");
+            let document = match aws_tool {
+                aws_bedrock::ToolResultContentBlock::Json(document) => document,
+                other => panic!("expected Bedrock JSON tool result, got {other:?}"),
+            };
+            let actual: serde_json::Value = crate::types::json::AwsDocument(document).into();
+            assert_eq!(actual, serde_json::json!({ "result": value }));
+        }
     }
 
     #[test]

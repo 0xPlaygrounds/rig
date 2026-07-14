@@ -5,6 +5,8 @@
 //! fixtures. Record mode overwrites existing cassette files.
 #![allow(dead_code)]
 
+use aws_smithy_eventstream::frame::{read_message_from, write_message_to};
+use aws_smithy_types::event_stream::Message as EventStreamMessage;
 use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
@@ -1831,12 +1833,33 @@ impl CassetteScrubber {
                 let Ok(bytes) = decode_body(body, BodyEncoding::Base64) else {
                     return body.to_string();
                 };
-                let Ok(text) = std::str::from_utf8(&bytes) else {
-                    return body.to_string();
-                };
-                BASE64_STANDARD.encode(self.scrub_body(text))
+                if let Ok(text) = std::str::from_utf8(&bytes) {
+                    return BASE64_STANDARD.encode(self.scrub_body(text));
+                }
+
+                self.scrub_event_stream_body(bytes)
+                    .map(|bytes| BASE64_STANDARD.encode(bytes))
+                    .unwrap_or_else(|| body.to_string())
             }
         }
+    }
+
+    fn scrub_event_stream_body(&mut self, bytes: Vec<u8>) -> Option<Vec<u8>> {
+        let mut input = Bytes::from(bytes);
+        let mut output = Vec::new();
+
+        while !input.is_empty() {
+            let message = read_message_from(&mut input).ok()?;
+            let payload = std::str::from_utf8(message.payload()).ok()?;
+            let scrubbed_payload = self.scrub_body(payload);
+            let scrubbed = EventStreamMessage::new_from_parts(
+                message.headers().to_vec(),
+                scrubbed_payload.into_bytes(),
+            );
+            write_message_to(&scrubbed, &mut output).ok()?;
+        }
+
+        Some(output)
     }
 
     fn scrub_body(&mut self, body: &str) -> String {
@@ -2959,6 +2982,41 @@ mod tests {
 
         assert_eq!(recorded.encoding, BodyEncoding::Base64);
         assert_eq!(recorded.body.as_deref(), Some("AJ+Slg=="));
+    }
+
+    #[test]
+    fn scrubber_reframes_binary_event_stream_payloads() {
+        let generated_id = "tooluse_123456789";
+        let message = EventStreamMessage::new(format!(
+            r#"{{"contentBlockStart":{{"start":{{"toolUse":{{"toolUseId":"{generated_id}"}}}}}}}}"#
+        ));
+        let mut event_stream = Vec::new();
+        write_message_to(&message, &mut event_stream).expect("event stream should encode");
+        let cassette = format!(
+            "when:\n  path: /model/test/converse-stream\n  method: POST\nthen:\n  status: 200\n  body: {}\n  body_encoding: base64\n",
+            BASE64_STANDARD.encode(event_stream)
+        );
+
+        let scrubbed = scrub_cassette_contents(&cassette);
+        assert!(!scrubbed.contains(generated_id));
+        assert!(
+            cassette_safety_failures(Path::new("fixture.yaml"), &scrubbed).is_empty(),
+            "scrubbed event stream should pass cassette safety"
+        );
+
+        let interaction = parse_cassette_interactions(Path::new("fixture.yaml"), &scrubbed)
+            .into_iter()
+            .next()
+            .expect("cassette interaction");
+        let encoded = interaction.then.body.expect("response body");
+        let mut reframed = Bytes::from(
+            BASE64_STANDARD
+                .decode(encoded)
+                .expect("base64 body should decode"),
+        );
+        let message = read_message_from(&mut reframed).expect("event stream should remain valid");
+        let payload = std::str::from_utf8(message.payload()).expect("JSON payload should be UTF-8");
+        assert!(payload.contains("tooluse_REDACTED_1"));
     }
 
     #[test]
