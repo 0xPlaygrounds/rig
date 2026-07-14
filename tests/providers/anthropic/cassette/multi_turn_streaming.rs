@@ -15,6 +15,10 @@ use crate::support::{
     assert_mentions_expected_number, collect_stream_observation,
 };
 
+#[derive(Debug, thiserror::Error)]
+#[error("math error")]
+struct MathError;
+
 #[derive(Deserialize, JsonSchema)]
 struct OperationArgs {
     x: i32,
@@ -33,7 +37,7 @@ impl Add {
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -49,7 +53,7 @@ impl Tool for Add {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -67,7 +71,7 @@ impl Subtract {
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -83,7 +87,7 @@ impl Tool for Subtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
@@ -101,7 +105,7 @@ impl Multiply {
 
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -117,7 +121,7 @@ impl Tool for Multiply {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x * args.y)
     }
@@ -135,7 +139,7 @@ impl Divide {
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -151,7 +155,7 @@ impl Tool for Divide {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x / args.y)
     }

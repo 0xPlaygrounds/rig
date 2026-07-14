@@ -39,6 +39,10 @@ pub(crate) const FORCE_TOOLS_PREAMBLE: &str = "You are a calculator assistant. Y
 /// 1x1 red pixel PNG used for image tool-result fixtures.
 pub(crate) const RED_PIXEL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
+#[derive(Debug, thiserror::Error)]
+#[error("math error")]
+pub(crate) struct MathError;
+
 /// Cloneable execution counter shared between a tool fixture and its test.
 #[derive(Clone, Default)]
 pub(crate) struct CallCounter(Arc<AtomicUsize>);
@@ -86,7 +90,7 @@ pub(crate) struct CountingAdd {
 
 impl Tool for CountingAdd {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -102,7 +106,7 @@ impl Tool for CountingAdd {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x + args.y)
     }
@@ -116,7 +120,7 @@ pub(crate) struct CountingSubtract {
 
 impl Tool for CountingSubtract {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -132,7 +136,7 @@ impl Tool for CountingSubtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x - args.y)
     }
@@ -152,7 +156,7 @@ pub(crate) const PING_OUTPUT: &str = "pong-crimson-7423";
 
 impl Tool for CountingPing {
     const NAME: &'static str = "ping";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -172,7 +176,7 @@ impl Tool for CountingPing {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(PING_OUTPUT.to_string())
     }
@@ -200,7 +204,7 @@ pub(crate) struct CodewordLookup {
 
 impl Tool for CodewordLookup {
     const NAME: &'static str = "lookup_codeword";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = CodewordError;
     type Args = CodewordArgs;
     type Output = String;
 
@@ -222,14 +226,18 @@ impl Tool for CodewordLookup {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         match args.team.as_str() {
             "blue" => Ok(BLUE_CODEWORD.to_string()),
-            _ => Err(rig::tool::ToolExecutionError::other(CODEWORD_GUIDANCE)
-                .with_model_feedback(CODEWORD_GUIDANCE)
-                .with_source(CodewordError(CODEWORD_GUIDANCE.to_string()))),
+            _ => Err(CodewordError(CODEWORD_GUIDANCE.to_string())),
         }
+    }
+
+    fn map_error(&self, error: Self::Error) -> rig::tool::ToolExecutionError {
+        rig::tool::ToolExecutionError::other(error.to_string())
+            .with_model_feedback(CODEWORD_GUIDANCE)
+            .with_source(error)
     }
 }
 
@@ -249,7 +257,7 @@ pub(crate) struct StrictRegister {
 
 impl Tool for StrictRegister {
     const NAME: &'static str = "register_guests";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = StrictRegisterArgs;
     type Output = String;
 
@@ -274,7 +282,7 @@ impl Tool for StrictRegister {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(format!("registered {} guests", args.seats))
     }
@@ -289,7 +297,7 @@ pub(crate) struct MottoTool;
 
 impl Tool for MottoTool {
     const NAME: &'static str = "fetch_motto";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -305,7 +313,7 @@ impl Tool for MottoTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(MOTTO_OUTPUT.to_string())
     }
 }
@@ -333,7 +341,7 @@ impl ConfigTool {
 
 impl Tool for ConfigTool {
     const NAME: &'static str = "fetch_config";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EmptyArgs;
     type Output = ConfigOutput;
 
@@ -349,7 +357,7 @@ impl Tool for ConfigTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(ConfigOutput {
             service: "cassette-lab".to_string(),
             max_retries: 3,
@@ -363,7 +371,7 @@ pub(crate) struct BadgeImageTool;
 
 impl Tool for BadgeImageTool {
     const NAME: &'static str = "fetch_badge_image";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EmptyArgs;
     type Output = ToolOutput;
 
@@ -379,7 +387,7 @@ impl Tool for BadgeImageTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(ToolOutput::content(OneOrMany::one(
             ToolResultContent::image_base64(RED_PIXEL_PNG_BASE64, Some(ImageMediaType::PNG), None),
         )))
@@ -528,7 +536,7 @@ macro_rules! embeddable_operation {
 
         impl Tool for $name {
             const NAME: &'static str = $tool_name;
-            type Error = rig::tool::ToolExecutionError;
+            type Error = MathError;
             type Args = OperationArgs;
             type Output = i64;
 
@@ -544,7 +552,7 @@ macro_rules! embeddable_operation {
                 &self,
                 _context: &mut rig::tool::ToolContext,
                 args: Self::Args,
-            ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+            ) -> Result<Self::Output, Self::Error> {
                 self.counter.bump();
                 let op: fn(i64, i64) -> i64 = $op;
                 Ok(op(args.x, args.y))

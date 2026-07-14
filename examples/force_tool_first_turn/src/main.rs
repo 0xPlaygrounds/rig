@@ -44,12 +44,16 @@ struct AddArgs {
     y: i64,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("math error")]
+struct MathError;
+
 #[derive(Clone)]
 struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = AddArgs;
     type Output = i64;
 
@@ -72,7 +76,7 @@ impl Tool for Add {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }

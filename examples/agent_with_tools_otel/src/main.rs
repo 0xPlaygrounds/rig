@@ -25,11 +25,15 @@ struct OperationArgs {
     y: i32,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Math error")]
+struct MathError;
+
 #[derive(Deserialize, Serialize)]
 struct Adder;
 impl Tool for Adder {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -58,7 +62,7 @@ impl Tool for Adder {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
@@ -70,7 +74,7 @@ struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -99,7 +103,7 @@ impl Tool for Subtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         // Sleep for 1 microsecond to allow simulating a more compute-heavy tool

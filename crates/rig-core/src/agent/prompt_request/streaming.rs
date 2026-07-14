@@ -1552,9 +1552,10 @@ mod migrated_tests {
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
-        MockContextProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, SessionId,
+        MockContextProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, MockToolError,
+        SessionId,
     };
-    use crate::tool::{Tool, ToolContext, ToolExecutionError};
+    use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
     use serde::Deserialize;
     use std::collections::{BTreeSet, HashMap};
@@ -1988,7 +1989,7 @@ mod migrated_tests {
 
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = CountingOperationArgs;
         type Output = i32;
 
@@ -2004,7 +2005,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(args.x + args.y)
         }
@@ -2012,7 +2013,7 @@ mod migrated_tests {
 
     impl Tool for CountingSubtractTool {
         const NAME: &'static str = "subtract";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = CountingOperationArgs;
         type Output = i32;
 
@@ -2028,7 +2029,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(args.x - args.y)
         }

@@ -28,9 +28,13 @@ fn streaming_tool_params() -> serde_json::Value {
 #[derive(Debug)]
 struct HybridImageTool;
 
+#[derive(Debug, thiserror::Error)]
+#[error("hybrid image tool error")]
+struct HybridImageToolError;
+
 impl Tool for HybridImageTool {
     const NAME: &'static str = "render_reference_image";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = HybridImageToolError;
     type Args = serde_json::Value;
     type Output = ToolOutput;
 
@@ -50,7 +54,7 @@ impl Tool for HybridImageTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let mut content = OneOrMany::one(ToolResultContent::json(json!({
             "instruction": "Use the image part to answer the user's question."
         })));

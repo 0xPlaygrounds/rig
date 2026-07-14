@@ -35,6 +35,10 @@ struct NotifyArgs {
     msg: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("notify error")]
+struct NotifyError;
+
 fn notify_tool_definition() -> ToolDefinition {
     ToolDefinition {
         name: Notify::NAME.to_string(),
@@ -64,7 +68,7 @@ impl Notify {
 
 impl Tool for Notify {
     const NAME: &'static str = "notify";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = NotifyError;
     type Args = NotifyArgs;
     type Output = String;
 
@@ -80,7 +84,7 @@ impl Tool for Notify {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!("sent: {}", args.msg))
     }

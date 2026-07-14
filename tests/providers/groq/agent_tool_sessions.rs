@@ -132,9 +132,13 @@ struct EchoArgs {
     text: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("session tool error")]
+struct SessionToolError;
+
 impl Tool for PingEmpty {
     const NAME: &'static str = "ping_empty";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = SessionToolError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -154,7 +158,7 @@ impl Tool for PingEmpty {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok("EMPTY-OK".to_string())
     }
@@ -162,7 +166,7 @@ impl Tool for PingEmpty {
 
 impl Tool for InspectManifest {
     const NAME: &'static str = "inspect_manifest";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = SessionToolError;
     type Args = ManifestArgs;
     type Output = String;
 
@@ -204,7 +208,7 @@ impl Tool for InspectManifest {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "MANIFEST-OK project={} steps={} retries={}",
@@ -217,7 +221,7 @@ impl Tool for InspectManifest {
 
 impl Tool for JoinLabels {
     const NAME: &'static str = "join_labels";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = SessionToolError;
     type Args = JoinArgs;
     type Output = String;
 
@@ -240,7 +244,7 @@ impl Tool for JoinLabels {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
     }
@@ -248,7 +252,7 @@ impl Tool for JoinLabels {
 
 impl Tool for OptionalNullableProbe {
     const NAME: &'static str = "optional_nullable_probe";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = SessionToolError;
     type Args = OptionalNullableArgs;
     type Output = String;
 
@@ -272,7 +276,7 @@ impl Tool for OptionalNullableProbe {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "OPTIONAL-OK name={} note={} nullable={}",
@@ -285,7 +289,7 @@ impl Tool for OptionalNullableProbe {
 
 impl Tool for EscapeEcho {
     const NAME: &'static str = "escape_echo";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = SessionToolError;
     type Args = EchoArgs;
     type Output = String;
 
@@ -305,7 +309,7 @@ impl Tool for EscapeEcho {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("ESCAPE-OK {}", args.text))
     }

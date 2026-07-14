@@ -57,12 +57,16 @@ struct OperationArgs {
     y: i32,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Math error")]
+struct MathError;
+
 #[derive(Deserialize, Serialize)]
 struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -90,7 +94,7 @@ impl Tool for Add {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
@@ -101,7 +105,7 @@ struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -129,7 +133,7 @@ impl Tool for Subtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }
@@ -140,7 +144,7 @@ struct Multiply;
 
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -168,7 +172,7 @@ impl Tool for Multiply {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
         Ok(result)
     }
@@ -179,7 +183,7 @@ struct Divide;
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -207,7 +211,7 @@ impl Tool for Divide {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;
         Ok(result)
     }

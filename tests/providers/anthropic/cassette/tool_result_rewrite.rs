@@ -35,6 +35,10 @@ struct LookupArgs {
     user_id: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("lookup error")]
+struct LookupError;
+
 /// A tool that returns a record containing a sensitive field, recording its real
 /// output so the test can assert the tool produced the secret even though the
 /// model never sees it.
@@ -55,7 +59,7 @@ impl GetUserRecord {
 
 impl Tool for GetUserRecord {
     const NAME: &'static str = "get_user_record";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = LookupError;
     type Args = LookupArgs;
     type Output = String;
 
@@ -77,7 +81,7 @@ impl Tool for GetUserRecord {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         // Constant (id-independent) so the round-trip is deterministic for replay.
         let record = format!("name=Alice; ssn={SECRET_SSN}; status=active");
         self.raw_outputs

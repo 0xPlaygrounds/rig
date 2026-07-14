@@ -28,6 +28,10 @@ use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
+#[derive(Debug, thiserror::Error)]
+#[error("tool failed: {0}")]
+struct ToolError(String);
+
 #[derive(Deserialize)]
 struct SearchArgs {
     query: String,
@@ -37,7 +41,7 @@ struct SearchWeb;
 
 impl Tool for SearchWeb {
     const NAME: &'static str = "search_web";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = SearchArgs;
     type Output = String;
 
@@ -57,7 +61,7 @@ impl Tool for SearchWeb {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         println!("   🔎 [search_web] -> {}", args.query);
         Ok(format!("top result for '{}': $1000 is plenty.", args.query))
     }
@@ -73,7 +77,7 @@ struct TransferFunds;
 
 impl Tool for TransferFunds {
     const NAME: &'static str = "transfer_funds";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = TransferArgs;
     type Output = String;
 
@@ -96,7 +100,7 @@ impl Tool for TransferFunds {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))
     }

@@ -31,6 +31,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::{self, Write};
 
+#[derive(Debug, thiserror::Error)]
+#[error("project status lookup failed")]
+struct ProjectStatusError;
+
 #[derive(Debug, Deserialize)]
 struct ProjectStatusArgs {
     ticket: String,
@@ -41,7 +45,7 @@ struct ProjectStatusTool;
 
 impl Tool for ProjectStatusTool {
     const NAME: &'static str = "lookup_project_status";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ProjectStatusError;
     type Args = ProjectStatusArgs;
     type Output = String;
 
@@ -66,7 +70,7 @@ impl Tool for ProjectStatusTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "{} is approved for release after the final usage metrics check.",
             args.ticket

@@ -127,7 +127,7 @@ pub(crate) struct Adder;
 
 impl Tool for Adder {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -146,7 +146,7 @@ impl Tool for Adder {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -156,7 +156,7 @@ pub(crate) struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -175,7 +175,7 @@ impl Tool for Subtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -185,7 +185,7 @@ pub(crate) struct AlphaSignal;
 
 impl Tool for AlphaSignal {
     const NAME: &'static str = "lookup_harbor_label";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -205,7 +205,7 @@ impl Tool for AlphaSignal {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
 }
@@ -215,7 +215,7 @@ pub(crate) struct BetaSignal;
 
 impl Tool for BetaSignal {
     const NAME: &'static str = "lookup_orchard_label";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -235,7 +235,7 @@ impl Tool for BetaSignal {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }
 }

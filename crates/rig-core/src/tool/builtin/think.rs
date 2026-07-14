@@ -10,6 +10,11 @@ pub struct ThinkArgs {
     pub thought: String,
 }
 
+/// Error type for the Think tool.
+#[derive(Debug, thiserror::Error)]
+#[error("Think tool error: {0}")]
+pub struct ThinkError(String);
+
 /// The Think tool allows agents to stop and think in complex tool use situations.
 ///
 /// This tool provides a dedicated space for structured thinking during complex tasks,
@@ -24,7 +29,7 @@ pub struct ThinkTool;
 
 impl Tool for ThinkTool {
     const NAME: &'static str = "think";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ThinkError;
     type Args = ThinkArgs;
     type Output = String;
 
@@ -52,7 +57,7 @@ impl Tool for ThinkTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         // The think tool doesn't actually do anything except echo back the thought
         // This is intentional - it's just a space for the model to reason through problems
         Ok(args.thought)

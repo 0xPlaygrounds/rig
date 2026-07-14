@@ -41,6 +41,10 @@ struct WeatherArgs {
     units: Option<String>,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("weather error")]
+struct WeatherError;
+
 /// A tool that records the arguments it observed so the test can assert the
 /// rewritten arguments — not the model's original ones — reached execution.
 #[derive(Clone, Default)]
@@ -56,7 +60,7 @@ impl GetWeather {
 
 impl Tool for GetWeather {
     const NAME: &'static str = "get_weather";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = WeatherError;
     type Args = WeatherArgs;
     type Output = String;
 
@@ -81,7 +85,7 @@ impl Tool for GetWeather {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.lock().expect("calls lock").push(ObservedCall {
             location: args.location.clone(),
             units: args.units.clone(),

@@ -33,6 +33,10 @@ use serde_json::json;
 // Two side-effecting tools worth gating behind human approval.
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, thiserror::Error)]
+#[error("tool failed: {0}")]
+struct ToolError(String);
+
 #[derive(Deserialize)]
 struct SendEmailArgs {
     to: String,
@@ -44,7 +48,7 @@ struct SendEmail;
 
 impl Tool for SendEmail {
     const NAME: &'static str = "send_email";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = SendEmailArgs;
     type Output = String;
 
@@ -68,7 +72,7 @@ impl Tool for SendEmail {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         // A real implementation would hit an email API here.
         println!(
             "   📧 [send_email] -> {} (subject: {:?}, {} chars)",
@@ -89,7 +93,7 @@ struct DeleteFile;
 
 impl Tool for DeleteFile {
     const NAME: &'static str = "delete_file";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = DeleteFileArgs;
     type Output = String;
 
@@ -111,7 +115,7 @@ impl Tool for DeleteFile {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         // A real implementation would delete the file here.
         println!("   🗑️  [delete_file] -> {}", args.path);
         Ok(format!("deleted {}", args.path))

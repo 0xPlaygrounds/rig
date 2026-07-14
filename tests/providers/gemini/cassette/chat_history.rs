@@ -18,6 +18,10 @@ use crate::reasoning::{self, WeatherTool};
 
 const STRESS_EXPECTED_FINAL: &str = "NOVA-200-142-LIME";
 
+#[derive(Debug, thiserror::Error)]
+#[error("stress calculator error")]
+struct StressCalculatorError;
+
 #[derive(Deserialize)]
 struct StressMathArgs {
     x: i32,
@@ -36,7 +40,7 @@ impl StressAdd {
 
 impl Tool for StressAdd {
     const NAME: &'static str = "stress_add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = StressCalculatorError;
     type Args = StressMathArgs;
     type Output = i32;
 
@@ -59,7 +63,7 @@ impl Tool for StressAdd {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -77,7 +81,7 @@ impl StressSubtract {
 
 impl Tool for StressSubtract {
     const NAME: &'static str = "stress_subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = StressCalculatorError;
     type Args = StressMathArgs;
     type Output = i32;
 
@@ -100,7 +104,7 @@ impl Tool for StressSubtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }

@@ -767,7 +767,8 @@ mod tests {
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockContextProbeTool, MockOperationArgs, MockSubtractTool, MockTurn, SessionId,
+            MockContextProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
+            SessionId,
         },
         tool::{Tool, ToolContext},
     };
@@ -963,7 +964,7 @@ mod tests {
 
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = MockOperationArgs;
         type Output = i32;
 
@@ -979,7 +980,7 @@ mod tests {
             &self,
             _context: &mut crate::tool::ToolContext,
             _args: Self::Args,
-        ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(0)
         }

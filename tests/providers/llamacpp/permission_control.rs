@@ -46,7 +46,7 @@ struct ReadFileHead;
 
 impl Tool for ReadFileHead {
     const NAME: &'static str = "read_file_head";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = FileError;
     type Args = ReadFileArgs;
     type Output = String;
 
@@ -65,12 +65,12 @@ impl Tool for ReadFileHead {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(TEST_FILE)
             .output()
-            .map_err(|_| rig::tool::ToolExecutionError::from_error(FileError))?;
+            .map_err(|_| FileError)?;
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
@@ -81,7 +81,7 @@ struct ReadFileTail;
 
 impl Tool for ReadFileTail {
     const NAME: &'static str = "read_file_tail";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = FileError;
     type Args = ReadFileArgs;
     type Output = String;
 
@@ -100,12 +100,12 @@ impl Tool for ReadFileTail {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(TEST_FILE)
             .output()
-            .map_err(|_| rig::tool::ToolExecutionError::from_error(FileError))?;
+            .map_err(|_| FileError)?;
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }

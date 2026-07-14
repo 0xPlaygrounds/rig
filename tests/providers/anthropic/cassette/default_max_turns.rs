@@ -27,7 +27,7 @@ struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -47,7 +47,7 @@ impl Tool for Add {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -57,7 +57,7 @@ struct Divide;
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -77,11 +77,9 @@ impl Tool for Divide {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         if args.y == 0 {
-            return Err(rig::tool::ToolExecutionError::from_error(
-                MathError::DivisionByZero,
-            ));
+            return Err(MathError::DivisionByZero);
         }
 
         Ok(args.x / args.y)

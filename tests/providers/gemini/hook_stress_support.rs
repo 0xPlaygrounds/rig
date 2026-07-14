@@ -29,6 +29,10 @@ pub(crate) const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUS
      in order, using the result of each step as an input to the next. Once you have the final tool \
      result, reply with the final numeric answer in plain text.";
 
+#[derive(Debug, thiserror::Error)]
+#[error("math error")]
+pub(crate) struct MathError;
+
 /// Forces independent tool use (no dependency) so the model may batch calls.
 pub(crate) const INDEPENDENT_TOOLS_PREAMBLE: &str = "You are a calculator assistant. You MUST use \
      the provided tools for every arithmetic operation instead of computing results yourself. Once \
@@ -64,7 +68,7 @@ pub(crate) struct CountingMultiply {
 
 impl Tool for CountingMultiply {
     const NAME: &'static str = "multiply";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i64;
 
@@ -87,7 +91,7 @@ impl Tool for CountingMultiply {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x * args.y)
     }

@@ -43,6 +43,10 @@ use std::collections::BTreeSet;
 // One read-only tool and one side-effecting tool worth gating.
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, thiserror::Error)]
+#[error("tool failed: {0}")]
+struct ToolError(String);
+
 #[derive(Deserialize)]
 struct BalanceArgs {
     account: String,
@@ -52,7 +56,7 @@ struct GetBalance;
 
 impl Tool for GetBalance {
     const NAME: &'static str = "get_balance";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = BalanceArgs;
     type Output = String;
 
@@ -72,7 +76,7 @@ impl Tool for GetBalance {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         println!("   💰 [get_balance] -> {}", args.account);
         Ok(format!("account {} balance: $1000", args.account))
     }
@@ -88,7 +92,7 @@ struct TransferFunds;
 
 impl Tool for TransferFunds {
     const NAME: &'static str = "transfer_funds";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = TransferArgs;
     type Output = String;
 
@@ -111,7 +115,7 @@ impl Tool for TransferFunds {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         // A real implementation would move money here.
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))

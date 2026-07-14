@@ -19,6 +19,10 @@ struct OperationArgs {
 
 #[derive(Debug, thiserror::Error)]
 #[error("Math error")]
+struct MathError;
+
+#[derive(Debug, thiserror::Error)]
+#[error("Math error")]
 struct InitError;
 
 #[derive(Deserialize, Serialize)]
@@ -26,7 +30,7 @@ struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -53,7 +57,7 @@ impl Tool for Add {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
@@ -74,7 +78,7 @@ impl ToolEmbedding for Add {
 struct Subtract;
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
     fn description(&self) -> String {
@@ -101,7 +105,7 @@ impl Tool for Subtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }

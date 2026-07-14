@@ -15,12 +15,16 @@ struct OperationArgs {
     y: f64,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Math error")]
+struct MathError;
+
 #[derive(Deserialize, Serialize)]
 struct Adder;
 
 impl Tool for Adder {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = f64;
 
@@ -43,7 +47,7 @@ impl Tool for Adder {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -53,7 +57,7 @@ struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = f64;
 
@@ -76,7 +80,7 @@ impl Tool for Subtract {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }

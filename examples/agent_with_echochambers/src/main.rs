@@ -48,7 +48,7 @@ struct SendMessage {
 
 impl Tool for SendMessage {
     const NAME: &'static str = "send_message";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = EchoChamberError;
     type Args = SendMessageArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {
@@ -88,15 +88,13 @@ impl Tool for SendMessage {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             "x-api-key",
-            HeaderValue::from_str(&self.api_key).map_err(|e| {
-                rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-            })?,
+            HeaderValue::from_str(&self.api_key).map_err(|e| EchoChamberError(e.to_string()))?,
         );
 
         // Format content with quotes as shown in the JavaScript example
@@ -116,22 +114,20 @@ impl Tool for SendMessage {
             }))
             .send()
             .await
-            .map_err(|e| {
-                rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-            })?;
+            .map_err(|e| EchoChamberError(e.to_string()))?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.map_err(|e| {
-                rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-            })?;
-            return Err(rig::tool::ToolExecutionError::from_error(EchoChamberError(
-                format!("API error: {error_text}"),
-            )));
+            let error_text = response
+                .text()
+                .await
+                .map_err(|e| EchoChamberError(e.to_string()))?;
+            return Err(EchoChamberError(format!("API error: {error_text}")));
         }
 
-        let data = response.json().await.map_err(|e| {
-            rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-        })?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -142,7 +138,7 @@ struct GetHistory;
 
 impl Tool for GetHistory {
     const NAME: &'static str = "get_history";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = EchoChamberError;
     type Args = GetHistoryArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {
@@ -169,18 +165,21 @@ impl Tool for GetHistory {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut url = format!("https://echochambers.ai/api/rooms/{}/history", args.room_id);
         if let Some(limit) = args.limit {
             url = format!("{url}?limit={limit}");
         }
-        let response = client.get(&url).send().await.map_err(|e| {
-            rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-        })?;
-        let data = response.json().await.map_err(|e| {
-            rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-        })?;
+        let response = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -191,7 +190,7 @@ struct GetRoomMetrics;
 
 impl Tool for GetRoomMetrics {
     const NAME: &'static str = "get_room_metrics";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
 
@@ -215,7 +214,7 @@ impl Tool for GetRoomMetrics {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -224,12 +223,11 @@ impl Tool for GetRoomMetrics {
             ))
             .send()
             .await
-            .map_err(|e| {
-                rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-            })?;
-        let data = response.json().await.map_err(|e| {
-            rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-        })?;
+            .map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -238,7 +236,7 @@ impl Tool for GetRoomMetrics {
 struct GetAgentMetrics;
 impl Tool for GetAgentMetrics {
     const NAME: &'static str = "get_agent_metrics";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {
@@ -260,7 +258,7 @@ impl Tool for GetAgentMetrics {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -269,12 +267,11 @@ impl Tool for GetAgentMetrics {
             ))
             .send()
             .await
-            .map_err(|e| {
-                rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-            })?;
-        let data = response.json().await.map_err(|e| {
-            rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-        })?;
+            .map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }
@@ -283,7 +280,7 @@ impl Tool for GetAgentMetrics {
 struct GetMetricsHistory;
 impl Tool for GetMetricsHistory {
     const NAME: &'static str = "get_metrics_history";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = EchoChamberError;
     type Args = GetMetricsArgs;
     type Output = serde_json::Value;
     fn description(&self) -> String {
@@ -305,7 +302,7 @@ impl Tool for GetMetricsHistory {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -314,12 +311,11 @@ impl Tool for GetMetricsHistory {
             ))
             .send()
             .await
-            .map_err(|e| {
-                rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-            })?;
-        let data = response.json().await.map_err(|e| {
-            rig::tool::ToolExecutionError::from_error(EchoChamberError(e.to_string()))
-        })?;
+            .map_err(|e| EchoChamberError(e.to_string()))?;
+        let data = response
+            .json()
+            .await
+            .map_err(|e| EchoChamberError(e.to_string()))?;
         Ok(data)
     }
 }

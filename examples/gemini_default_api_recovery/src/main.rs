@@ -94,12 +94,16 @@ impl ExecutorResponse {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("JavaScript tool error")]
+struct JavaScriptToolError;
+
 #[derive(Clone)]
 struct JavaScript;
 
 impl Tool for JavaScript {
     const NAME: &'static str = "JavaScript";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = JavaScriptToolError;
     type Args = JavaScriptProgram;
     type Output = ExecutorResponse;
 
@@ -115,7 +119,7 @@ impl Tool for JavaScript {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(ExecutorResponse::ok(json!({
             "id": "collection-canary-id",
             "title": "Canary Collection",

@@ -1137,7 +1137,7 @@ mod migrated_tests {
     use crate::message::{DocumentSourceKind, ToolResultContent};
     use crate::test_utils::{
         MockExampleTool, MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool,
-        mock_math_toolset,
+        MockToolError, mock_math_toolset,
     };
     use serde_json::json;
 
@@ -1500,7 +1500,7 @@ mod migrated_tests {
 
         impl Tool for NoArgTool {
             const NAME: &'static str = "no_arg_tool";
-            type Error = rig::tool::ToolExecutionError;
+            type Error = MockToolError;
             type Args = NoRequiredArgs;
             type Output = String;
 
@@ -1516,7 +1516,7 @@ mod migrated_tests {
                 &self,
                 _context: &mut ToolContext,
                 args: Self::Args,
-            ) -> Result<Self::Output, ToolExecutionError> {
+            ) -> Result<Self::Output, Self::Error> {
                 Ok(args.label.unwrap_or_else(|| "default".to_string()))
             }
         }

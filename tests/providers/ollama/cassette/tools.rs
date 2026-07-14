@@ -19,6 +19,10 @@ use super::super::support::with_ollama_cassette;
 
 const MODEL: &str = "qwen3:4b";
 
+#[derive(Debug, thiserror::Error)]
+#[error("tool error")]
+struct ToolError;
+
 // --- a tool with an Option<T> arg (mirrors repo-tagger read_file's max_bytes) ---
 
 #[derive(Deserialize, JsonSchema)]
@@ -36,7 +40,7 @@ struct RepeatTool {
 
 impl Tool for RepeatTool {
     const NAME: &'static str = "repeat_text";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = RepeatArgs;
     type Output = String;
 
@@ -53,7 +57,7 @@ impl Tool for RepeatTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let times = args.times.unwrap_or(2) as usize;
         Ok(vec![args.text.as_str(); times].join(" "))
@@ -110,7 +114,7 @@ struct AddTool {
 
 impl Tool for AddTool {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = BinOpArgs;
     type Output = i64;
 
@@ -126,7 +130,7 @@ impl Tool for AddTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(args.a + args.b)
     }
@@ -139,7 +143,7 @@ struct MultiplyTool {
 
 impl Tool for MultiplyTool {
     const NAME: &'static str = "multiply";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolError;
     type Args = BinOpArgs;
     type Output = i64;
 
@@ -155,7 +159,7 @@ impl Tool for MultiplyTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(args.a * args.b)
     }

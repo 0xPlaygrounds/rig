@@ -33,8 +33,12 @@ impl ToolSchema {
     /// ```rust
     /// use rig_core::{
     ///     embeddings::ToolSchema,
-    ///     tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError},
+    ///     tool::{Tool, ToolContext, ToolEmbedding},
     /// };
+    ///
+    /// #[derive(Debug, thiserror::Error)]
+    /// #[error("Nothing error")]
+    /// struct NothingError;
     ///
     /// #[derive(Debug, thiserror::Error)]
     /// #[error("Init error")]
@@ -46,7 +50,7 @@ impl ToolSchema {
     ///
     ///     type Args = ();
     ///     type Output = ();
-    ///     type Error = ToolExecutionError;
+    ///     type Error = NothingError;
     ///
     ///     fn description(&self) -> String {
     ///         "nothing".to_string()
@@ -56,7 +60,7 @@ impl ToolSchema {
     ///         serde_json::json!({})
     ///     }
     ///
-    ///     async fn call(&self, _context: &mut ToolContext, _args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
+    ///     async fn call(&self, _context: &mut ToolContext, _args: Self::Args) -> Result<Self::Output, Self::Error> {
     ///         Ok(())
     ///     }
     /// }

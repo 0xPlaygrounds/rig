@@ -1202,7 +1202,7 @@ mod migrated_tests {
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-        MockSubtractTool, MockTurn,
+        MockSubtractTool, MockToolError, MockTurn,
     };
     use crate::tool::{
         Tool, ToolContext, ToolExecutionError, ToolSet,
@@ -2897,7 +2897,7 @@ mod migrated_tests {
 
     impl Tool for OutOfOrderTool {
         const NAME: &'static str = "add";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = MockOperationArgs;
         type Output = i32;
 
@@ -2913,7 +2913,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             _args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             let nth = self.order.fetch_add(1, SeqCst);
             if nth == 0 {
                 // First call: cannot finish until a later call releases us.
@@ -3303,7 +3303,7 @@ mod migrated_tests {
 
     impl Tool for DrainProbeTool {
         const NAME: &'static str = "add";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
 
@@ -3319,7 +3319,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             self.started.fetch_add(1, SeqCst);
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(2) {
                 // Signal that the slow sibling has started, then stay pending so
@@ -3616,7 +3616,7 @@ mod migrated_tests {
 
     impl Tool for RecordingArgsTool {
         const NAME: &'static str = "add";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
 
@@ -3632,7 +3632,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             let x = args.get("x").and_then(serde_json::Value::as_i64);
             if let Some(x) = x {
                 self.called.lock().expect("called").push(x);
@@ -3763,7 +3763,7 @@ mod migrated_tests {
     }
     impl Tool for SignalOnRunTool {
         const NAME: &'static str = "add";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = i32;
         fn description(&self) -> String {
@@ -3777,7 +3777,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(1) {
                 self.a_ran.fetch_add(1, SeqCst);
                 self.a_done.notify_one();
@@ -4140,7 +4140,7 @@ mod migrated_tests {
     }
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = MockOperationArgs;
         type Output = i32;
         fn description(&self) -> String {
@@ -4153,7 +4153,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, SeqCst);
             MockAddTool.call(_context, args).await
         }
@@ -6412,7 +6412,7 @@ mod migrated_tests {
 
     impl Tool for FinalResultTool {
         const NAME: &'static str = "final_result";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = MockToolError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -6428,7 +6428,7 @@ mod migrated_tests {
             &self,
             _context: &mut ToolContext,
             _args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        ) -> Result<Self::Output, Self::Error> {
             Ok("real final_result output".to_string())
         }
     }

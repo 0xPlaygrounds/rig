@@ -14,6 +14,7 @@ use serde_json::json;
 
 use super::super::agent_run_support::tool_result_texts;
 use super::super::support::with_gemini_cassette;
+use super::super::tools_support::MathError;
 use crate::support::assert_nonempty_response;
 
 #[derive(Deserialize, Serialize)]
@@ -32,7 +33,7 @@ struct PlanTrip;
 
 impl Tool for PlanTrip {
     const NAME: &'static str = "plan_trip";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = TripArgs;
     type Output = String;
 
@@ -75,7 +76,7 @@ impl Tool for PlanTrip {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "itinerary booked: {} travellers to {} by {} via {}",
             args.travellers,
@@ -98,7 +99,7 @@ struct EchoArgs {
 
 impl Tool for LegacyEcho {
     const NAME: &'static str = "echo";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EchoArgs;
     type Output = String;
 
@@ -120,7 +121,7 @@ impl Tool for LegacyEcho {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(format!("legacy:{}", args.text))
     }
 }
@@ -130,7 +131,7 @@ struct ModernEcho;
 
 impl Tool for ModernEcho {
     const NAME: &'static str = "echo";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = EchoArgs;
     type Output = String;
 
@@ -152,7 +153,7 @@ impl Tool for ModernEcho {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(format!("modern:{}", args.text))
     }
 }

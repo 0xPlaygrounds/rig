@@ -29,12 +29,16 @@ const XAI_STATUS_TOOL_OUTPUT: &str = "azure";
 #[derive(Deserialize, Serialize)]
 struct NoArgs {}
 
+#[derive(Debug, thiserror::Error)]
+#[error("status tool error")]
+struct StatusToolError;
+
 #[derive(Deserialize, Serialize)]
 struct StatusWordTool;
 
 impl Tool for StatusWordTool {
     const NAME: &'static str = "get_status_word";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = StatusToolError;
     type Args = NoArgs;
     type Output = String;
 
@@ -54,7 +58,7 @@ impl Tool for StatusWordTool {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(XAI_STATUS_TOOL_OUTPUT.to_string())
     }
 }

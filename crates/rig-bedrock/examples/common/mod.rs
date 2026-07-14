@@ -1,3 +1,8 @@
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+};
+
 use rig_core::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -8,11 +13,22 @@ pub struct OperationArgs {
     y: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MathError {}
+
+impl Display for MathError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Math error")
+    }
+}
+
+impl Error for MathError {}
+
 #[derive(Deserialize, Serialize)]
 pub struct Adder;
 impl Tool for Adder {
     const NAME: &'static str = "add";
-    type Error = rig_core::tool::ToolExecutionError;
+    type Error = MathError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -40,7 +56,7 @@ impl Tool for Adder {
         &self,
         _context: &mut rig_core::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig_core::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }

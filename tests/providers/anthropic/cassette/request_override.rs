@@ -40,6 +40,10 @@ struct TimeArgs {
     timezone: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("tool error")]
+struct ToolErr;
+
 /// `get_weather` — the only tool the override leaves advertised on turn 1.
 #[derive(Clone, Default)]
 struct GetWeather {
@@ -48,7 +52,7 @@ struct GetWeather {
 
 impl Tool for GetWeather {
     const NAME: &'static str = "get_weather";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolErr;
     type Args = WeatherArgs;
     type Output = String;
 
@@ -68,7 +72,7 @@ impl Tool for GetWeather {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "It is 18 degrees Celsius and clear in {}.",
@@ -84,7 +88,7 @@ struct GetTime;
 
 impl Tool for GetTime {
     const NAME: &'static str = "get_time";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = ToolErr;
     type Args = TimeArgs;
     type Output = String;
 
@@ -104,7 +108,7 @@ impl Tool for GetTime {
         &self,
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok("12:00".to_string())
     }
 }

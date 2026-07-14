@@ -24,8 +24,8 @@ pub use tools::{
     BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockContextProbeTool, MockControlledTool,
     MockDeniedTool, MockExampleTool, MockFailingTool, MockFailure, MockHandledFailureTool,
     MockImageGeneratorTool, MockImageOutputTool, MockMetadataTool, MockObjectOutputTool,
-    MockOperationArgs, MockRequestId, MockStringOutputTool, MockSubtractTool, MockToolIndex,
-    SessionId, mock_math_toolset,
+    MockOperationArgs, MockRequestId, MockStringOutputTool, MockSubtractTool, MockToolError,
+    MockToolIndex, SessionId, mock_math_toolset,
 };
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,

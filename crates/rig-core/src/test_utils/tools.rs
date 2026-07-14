@@ -13,6 +13,11 @@ use crate::{
     wasm_compat::WasmCompatSend,
 };
 
+/// Shared error type for mock tools.
+#[derive(Debug, thiserror::Error)]
+#[error("Mock tool error")]
+pub struct MockToolError;
+
 /// Arguments for arithmetic mock tools.
 #[derive(Deserialize)]
 pub struct MockOperationArgs {
@@ -26,7 +31,7 @@ pub struct MockAddTool;
 
 impl Tool for MockAddTool {
     const NAME: &'static str = "add";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = MockOperationArgs;
     type Output = i32;
 
@@ -55,7 +60,7 @@ impl Tool for MockAddTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -132,7 +137,7 @@ pub struct MockSubtractTool;
 
 impl Tool for MockSubtractTool {
     const NAME: &'static str = "subtract";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = MockOperationArgs;
     type Output = i32;
 
@@ -161,7 +166,7 @@ impl Tool for MockSubtractTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -180,7 +185,7 @@ pub struct MockStringOutputTool;
 
 impl Tool for MockStringOutputTool {
     const NAME: &'static str = "string_output";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -199,7 +204,7 @@ impl Tool for MockStringOutputTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok("Hello\nWorld".to_string())
     }
 }
@@ -210,7 +215,7 @@ pub struct MockImageOutputTool;
 
 impl Tool for MockImageOutputTool {
     const NAME: &'static str = "image_output";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = ToolOutput;
 
@@ -229,7 +234,7 @@ impl Tool for MockImageOutputTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(ToolOutput::content(OneOrMany::one(
             ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
         )))
@@ -242,7 +247,7 @@ pub struct MockImageGeneratorTool;
 
 impl Tool for MockImageGeneratorTool {
     const NAME: &'static str = "generate_test_image";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = ToolOutput;
 
@@ -262,7 +267,7 @@ impl Tool for MockImageGeneratorTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(ToolOutput::content(OneOrMany::one(
             ToolResultContent::image_base64(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
@@ -279,7 +284,7 @@ pub struct MockObjectOutputTool;
 
 impl Tool for MockObjectOutputTool {
     const NAME: &'static str = "object_output";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = serde_json::Value;
 
@@ -298,7 +303,7 @@ impl Tool for MockObjectOutputTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok(json!({
             "status": "ok",
             "count": 42
@@ -311,7 +316,7 @@ pub struct MockExampleTool;
 
 impl Tool for MockExampleTool {
     const NAME: &'static str = "example_tool";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = ();
     type Output = String;
 
@@ -331,7 +336,7 @@ impl Tool for MockExampleTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         _input: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         Ok("Example answer".to_string())
     }
 }
@@ -352,7 +357,7 @@ impl MockBarrierTool {
 
 impl Tool for MockBarrierTool {
     const NAME: &'static str = "barrier_tool";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -368,7 +373,7 @@ impl Tool for MockBarrierTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.barrier.wait().await;
         Ok("done".to_string())
     }
@@ -395,7 +400,7 @@ impl MockControlledTool {
 
 impl Tool for MockControlledTool {
     const NAME: &'static str = "controlled";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = i32;
 
@@ -411,7 +416,7 @@ impl Tool for MockControlledTool {
         &self,
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, crate::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         self.started.notify_one();
         self.allow_finish.notified().await;
         Ok(42)
@@ -512,7 +517,7 @@ impl MockFailingTool {
 
 impl Tool for MockFailingTool {
     const NAME: &'static str = "flaky_tool";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockFailure;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -528,15 +533,17 @@ impl Tool for MockFailingTool {
         &self,
         _context: &mut ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
-        let error =
-            ToolExecutionError::new(self.kind, MockFailure.to_string()).with_source(MockFailure);
-        let error = match self.kind {
+    ) -> Result<Self::Output, Self::Error> {
+        Err(MockFailure)
+    }
+
+    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+        let error = ToolExecutionError::new(self.kind, error.to_string()).with_source(error);
+        match self.kind {
             ToolErrorKind::NotFound => error.with_http_status(404),
             ToolErrorKind::RateLimited => error.with_http_status(429),
             _ => error,
-        };
-        Err(error)
+        }
     }
 }
 
@@ -546,7 +553,7 @@ pub struct MockHandledFailureTool;
 
 impl Tool for MockHandledFailureTool {
     const NAME: &'static str = "lookup";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -562,10 +569,15 @@ impl Tool for MockHandledFailureTool {
         &self,
         _context: &mut ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
-        Err(ToolExecutionError::not_found("record id 42 is missing")
+    ) -> Result<Self::Output, Self::Error> {
+        Err(MockToolError)
+    }
+
+    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+        ToolExecutionError::not_found("record id 42 is missing")
             .with_http_status(404)
-            .with_model_feedback("no record found for id 42; try a different id"))
+            .with_model_feedback("no record found for id 42; try a different id")
+            .with_source(error)
     }
 }
 
@@ -575,7 +587,7 @@ pub struct MockDeniedTool;
 
 impl Tool for MockDeniedTool {
     const NAME: &'static str = "guarded";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -591,11 +603,14 @@ impl Tool for MockDeniedTool {
         &self,
         _context: &mut ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
-        Err(
-            ToolExecutionError::refused("operator authorization policy rejected the request")
-                .with_model_feedback("access to this resource is not permitted"),
-        )
+    ) -> Result<Self::Output, Self::Error> {
+        Err(MockToolError)
+    }
+
+    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+        ToolExecutionError::refused("operator authorization policy rejected the request")
+            .with_model_feedback("access to this resource is not permitted")
+            .with_source(error)
     }
 }
 
@@ -611,7 +626,7 @@ pub struct MockMetadataTool;
 
 impl Tool for MockMetadataTool {
     const NAME: &'static str = "with_meta";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = MockToolError;
     type Args = serde_json::Value;
     type Output = String;
 
@@ -627,7 +642,7 @@ impl Tool for MockMetadataTool {
         &self,
         context: &mut ToolContext,
         _args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         context.insert_result(MockRequestId("req-7".to_string()));
         Ok("done".to_string())
     }

@@ -26,7 +26,7 @@ struct TranslatorArgs {
 impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     const NAME: &'static str = TRANSLATOR_TOOL_NAME;
 
-    type Error = rig::tool::ToolExecutionError;
+    type Error = PromptError;
 
     type Args = TranslatorArgs;
     type Output = String;
@@ -53,14 +53,14 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
         &self,
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, rig::tool::ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let mut empty_history = Vec::<Message>::new();
         match self.0.chat(&args.prompt, &mut empty_history).await {
             Ok(response) => {
                 println!("Translated prompt: {response}");
                 Ok(response)
             }
-            Err(e) => Err(rig::tool::ToolExecutionError::from_error(e)),
+            Err(e) => Err(e),
         }
     }
 }
