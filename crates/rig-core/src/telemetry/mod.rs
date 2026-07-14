@@ -3,7 +3,13 @@
 //! agents with the correct tracing style so you can emit the right traces for platforms like Langfuse,
 //! and more.
 
-use crate::completion::GetTokenUsage;
+use crate::OneOrMany;
+use crate::completion::{AssistantContent, GetTokenUsage, Message};
+use crate::message::{
+    DocumentSourceKind, Image, MimeType, Reasoning, ReasoningContent, ToolResult,
+    ToolResultContent, UserContent,
+};
+use base64::Engine;
 use serde::Serialize;
 
 macro_rules! new_completion_span {
@@ -66,7 +72,7 @@ pub struct CompletionSpanBuilder<'a> {
     provider: &'a str,
     request_model: &'a str,
     operation: CompletionOperation,
-    system_instructions: Option<&'a str>,
+    system_instructions: Option<String>,
 }
 
 impl<'a> CompletionSpanBuilder<'a> {
@@ -80,9 +86,14 @@ impl<'a> CompletionSpanBuilder<'a> {
         }
     }
 
-    /// Set the system instructions sent with the request.
-    pub fn system_instructions(mut self, system_instructions: Option<&'a str>) -> Self {
-        self.system_instructions = system_instructions;
+    /// Set the system instructions sent with the request when sensitive content
+    /// telemetry has been explicitly enabled.
+    pub fn system_instructions(
+        mut self,
+        system_instructions: Option<&'a str>,
+        record_content: bool,
+    ) -> Self {
+        self.system_instructions = system_instructions_json(system_instructions, record_content);
         self
     }
 
@@ -96,50 +107,319 @@ impl<'a> CompletionSpanBuilder<'a> {
             current.record("gen_ai.operation.name", self.operation.as_str());
             current.record("gen_ai.provider.name", self.provider);
             current.record("gen_ai.request.model", self.request_model);
-            if let Some(system_instructions) = self.system_instructions {
+            if let Some(system_instructions) = self.system_instructions.as_deref() {
                 current.record("gen_ai.system_instructions", system_instructions);
             }
             return current;
         }
 
         let operation = self.operation.as_str();
+        let system_instructions = self.system_instructions.as_deref();
         match self.operation {
             CompletionOperation::Chat => new_completion_span!(
                 "chat",
                 self.provider,
                 self.request_model,
                 operation,
-                self.system_instructions
+                system_instructions
             ),
             CompletionOperation::ChatStreaming => new_completion_span!(
                 "chat_streaming",
                 self.provider,
                 self.request_model,
                 operation,
-                self.system_instructions
+                system_instructions
             ),
             CompletionOperation::GenerateContent => new_completion_span!(
                 "generate_content",
                 self.provider,
                 self.request_model,
                 operation,
-                self.system_instructions
+                system_instructions
             ),
             CompletionOperation::Interactions => new_completion_span!(
                 "interactions",
                 self.provider,
                 self.request_model,
                 operation,
-                self.system_instructions
+                system_instructions
             ),
             CompletionOperation::InteractionsStreaming => new_completion_span!(
                 "interactions_streaming",
                 self.provider,
                 self.request_model,
                 operation,
-                self.system_instructions
+                system_instructions
             ),
         }
+    }
+}
+
+#[derive(Serialize)]
+struct TelemetryChatMessage {
+    role: &'static str,
+    parts: Vec<TelemetryPart>,
+}
+
+#[derive(Serialize)]
+struct TelemetryOutputMessage {
+    role: &'static str,
+    parts: Vec<TelemetryPart>,
+    finish_reason: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum TelemetryPart {
+    Text {
+        content: String,
+    },
+    ToolCall {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        name: String,
+        arguments: serde_json::Value,
+    },
+    ToolCallResponse {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        response: serde_json::Value,
+    },
+    Reasoning {
+        content: String,
+    },
+    Uri {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
+        modality: &'static str,
+        uri: String,
+    },
+    File {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
+        modality: &'static str,
+        file_id: String,
+    },
+    Blob {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
+        modality: &'static str,
+        content: String,
+    },
+}
+
+fn media_part<T>(
+    data: &DocumentSourceKind,
+    media_type: Option<&T>,
+    modality: &'static str,
+) -> Option<TelemetryPart>
+where
+    T: MimeType,
+{
+    let mime_type = media_type.map(|media_type| media_type.to_mime_type().to_string());
+    match data {
+        DocumentSourceKind::Url(uri) => Some(TelemetryPart::Uri {
+            mime_type,
+            modality,
+            uri: uri.clone(),
+        }),
+        DocumentSourceKind::FileId(file_id) => Some(TelemetryPart::File {
+            mime_type,
+            modality,
+            file_id: file_id.clone(),
+        }),
+        DocumentSourceKind::Base64(content) => Some(TelemetryPart::Blob {
+            mime_type,
+            modality,
+            content: content.clone(),
+        }),
+        DocumentSourceKind::Raw(content) => Some(TelemetryPart::Blob {
+            mime_type,
+            modality,
+            content: base64::engine::general_purpose::STANDARD.encode(content),
+        }),
+        DocumentSourceKind::String(content) => Some(TelemetryPart::Text {
+            content: content.clone(),
+        }),
+        DocumentSourceKind::Unknown => None,
+    }
+}
+
+fn image_part(image: &Image) -> Option<TelemetryPart> {
+    media_part(&image.data, image.media_type.as_ref(), "image")
+}
+
+fn reasoning_parts(reasoning: &Reasoning) -> Vec<TelemetryPart> {
+    reasoning
+        .content
+        .iter()
+        .map(|content| {
+            let content = match content {
+                ReasoningContent::Text { text, .. } | ReasoningContent::Summary(text) => text,
+                ReasoningContent::Encrypted(content) => content,
+                ReasoningContent::Redacted { data } => data,
+            };
+            TelemetryPart::Reasoning {
+                content: content.clone(),
+            }
+        })
+        .collect()
+}
+
+fn tool_result_response(result: &ToolResult) -> serde_json::Value {
+    let mut content = result
+        .content
+        .iter()
+        .filter_map(|content| match content {
+            ToolResultContent::Text(text) => Some(serde_json::Value::String(text.text.clone())),
+            ToolResultContent::Json { value } => Some(value.clone()),
+            ToolResultContent::Image(image) => {
+                image_part(image).and_then(|part| serde_json::to_value(part).ok())
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if content.len() == 1 {
+        content.pop().unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::Value::Array(content)
+    }
+}
+
+fn user_parts(content: &OneOrMany<UserContent>) -> Vec<TelemetryPart> {
+    content
+        .iter()
+        .filter_map(|content| match content {
+            UserContent::Text(text) => Some(TelemetryPart::Text {
+                content: text.text.clone(),
+            }),
+            UserContent::ToolResult(result) => Some(TelemetryPart::ToolCallResponse {
+                id: Some(result.id.clone()),
+                response: tool_result_response(result),
+            }),
+            UserContent::Image(image) => image_part(image),
+            UserContent::Audio(audio) => {
+                media_part(&audio.data, audio.media_type.as_ref(), "audio")
+            }
+            UserContent::Video(video) => {
+                media_part(&video.data, video.media_type.as_ref(), "video")
+            }
+            UserContent::Document(document) => {
+                media_part(&document.data, document.media_type.as_ref(), "document")
+            }
+        })
+        .collect()
+}
+
+fn assistant_parts(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryPart> {
+    content
+        .iter()
+        .flat_map(|content| match content {
+            AssistantContent::Text(text) => vec![TelemetryPart::Text {
+                content: text.text.clone(),
+            }],
+            AssistantContent::ToolCall(tool_call) => vec![TelemetryPart::ToolCall {
+                id: Some(tool_call.id.clone()),
+                name: tool_call.function.name.clone(),
+                arguments: tool_call.function.arguments.clone(),
+            }],
+            AssistantContent::Reasoning(reasoning) => reasoning_parts(reasoning),
+            AssistantContent::Image(image) => image_part(image).into_iter().collect(),
+        })
+        .collect()
+}
+
+fn input_messages(messages: &[Message]) -> Vec<TelemetryChatMessage> {
+    messages
+        .iter()
+        .map(|message| match message {
+            Message::System { content } => TelemetryChatMessage {
+                role: "system",
+                parts: vec![TelemetryPart::Text {
+                    content: content.clone(),
+                }],
+            },
+            Message::User { content } => TelemetryChatMessage {
+                role: "user",
+                parts: user_parts(content),
+            },
+            Message::Assistant { content, .. } => TelemetryChatMessage {
+                role: "assistant",
+                parts: assistant_parts(content),
+            },
+        })
+        .collect()
+}
+
+fn output_messages(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryOutputMessage> {
+    let finish_reason = if content
+        .iter()
+        .any(|content| matches!(content, AssistantContent::ToolCall(_)))
+    {
+        "tool_call"
+    } else {
+        // Rig's normalized assistant content does not retain provider finish
+        // reasons such as length or content filtering. Avoid claiming a clean
+        // stop when the actual reason is unavailable.
+        "unknown"
+    };
+    vec![TelemetryOutputMessage {
+        role: "assistant",
+        parts: assistant_parts(content),
+        finish_reason,
+    }]
+}
+
+pub(crate) fn system_instructions_json(
+    instructions: Option<&str>,
+    enabled: bool,
+) -> Option<String> {
+    if !enabled {
+        return None;
+    }
+
+    instructions.and_then(|instructions| {
+        serde_json::to_string(&vec![TelemetryPart::Text {
+            content: instructions.to_string(),
+        }])
+        .ok()
+    })
+}
+
+/// Records serialized model input messages on `gen_ai.input.messages` when
+/// content telemetry is explicitly enabled.
+///
+/// Message content can contain prompts, retrieved context, tool results, and
+/// other sensitive or high-cardinality data. Keep this disabled unless the
+/// caller has explicitly opted in for debugging/observability.
+pub(crate) fn record_model_input(span: &tracing::Span, messages: &[Message], enabled: bool) {
+    if !enabled || span.is_disabled() {
+        return;
+    }
+
+    if let Ok(messages) = serde_json::to_string(&input_messages(messages)) {
+        span.record("gen_ai.input.messages", messages);
+    }
+}
+
+/// Records serialized model output messages on `gen_ai.output.messages` when
+/// content telemetry is explicitly enabled.
+///
+/// Message content can contain model responses, tool calls, and other sensitive
+/// or high-cardinality data. Keep this disabled unless the caller has explicitly
+/// opted in for debugging/observability.
+pub(crate) fn record_model_output(
+    span: &tracing::Span,
+    content: &OneOrMany<AssistantContent>,
+    enabled: bool,
+) {
+    if !enabled || span.is_disabled() {
+        return;
+    }
+
+    let messages = output_messages(content);
+    if let Ok(messages) = serde_json::to_string(&messages) {
+        span.record("gen_ai.output.messages", messages);
     }
 }
 
@@ -232,7 +512,8 @@ impl SpanCombinator for tracing::Span {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::{GetTokenUsage, Usage};
+    use crate::completion::{AssistantContent, GetTokenUsage, Message, Usage};
+    use serde_json::json;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
     use tracing::{Id, Subscriber};
@@ -246,6 +527,73 @@ mod tests {
         fn token_usage(&self) -> Usage {
             self.0
         }
+    }
+
+    #[test]
+    fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
+        assert_eq!(
+            system_instructions_json(Some("follow policy"), true).as_deref(),
+            Some(r#"[{"type":"text","content":"follow policy"}]"#)
+        );
+        assert_eq!(system_instructions_json(Some("secret"), false), None);
+
+        let input = input_messages(&[
+            Message::system("follow policy"),
+            Message::user("hello"),
+            Message::tool_result("call_1", "sunny"),
+        ]);
+        assert_eq!(
+            serde_json::to_value(input).expect("semantic-convention input DTOs serialize"),
+            json!([
+                {
+                    "role": "system",
+                    "parts": [{"type": "text", "content": "follow policy"}]
+                },
+                {
+                    "role": "user",
+                    "parts": [{"type": "text", "content": "hello"}]
+                },
+                {
+                    "role": "user",
+                    "parts": [{
+                        "type": "tool_call_response",
+                        "id": "call_1",
+                        "response": "sunny"
+                    }]
+                }
+            ])
+        );
+
+        let output = OneOrMany::one(AssistantContent::tool_call(
+            "call_1",
+            "weather",
+            json!({"city": "Paris"}),
+        ));
+        assert_eq!(
+            serde_json::to_value(output_messages(&output))
+                .expect("semantic-convention output DTOs serialize"),
+            json!([{
+                "role": "assistant",
+                "parts": [{
+                    "type": "tool_call",
+                    "id": "call_1",
+                    "name": "weather",
+                    "arguments": {"city": "Paris"}
+                }],
+                "finish_reason": "tool_call"
+            }])
+        );
+
+        let text_output = OneOrMany::one(AssistantContent::text("done"));
+        assert_eq!(
+            serde_json::to_value(output_messages(&text_output))
+                .expect("semantic-convention text output DTOs serialize"),
+            json!([{
+                "role": "assistant",
+                "parts": [{"type": "text", "content": "done"}],
+                "finish_reason": "unknown"
+            }])
+        );
     }
 
     #[derive(Clone, Default)]
@@ -404,7 +752,7 @@ mod tests {
             });
             tracing::subscriber::with_default(subscriber, || {
                 let span = CompletionSpanBuilder::new("openai", "gpt-5", operation)
-                    .system_instructions(Some("system prompt"))
+                    .system_instructions(Some("system prompt"), true)
                     .build();
                 assert!(!span.is_disabled());
             });
@@ -422,7 +770,10 @@ mod tests {
                 ("gen_ai.operation.name", expected_name),
                 ("gen_ai.provider.name", "openai"),
                 ("gen_ai.request.model", "gpt-5"),
-                ("gen_ai.system_instructions", "system prompt"),
+                (
+                    "gen_ai.system_instructions",
+                    r#"[{"type":"text","content":"system prompt"}]"#,
+                ),
             ] {
                 assert!(
                     contains_string(&span.initial_values, field, value),
@@ -507,7 +858,7 @@ mod tests {
                 "claude-sonnet",
                 CompletionOperation::ChatStreaming,
             )
-            .system_instructions(Some("provider system"))
+            .system_instructions(Some("provider system"), true)
             .build();
             assert_eq!(span.id(), agent_chat.id());
         });
@@ -522,7 +873,10 @@ mod tests {
             ("gen_ai.operation.name", "chat_streaming"),
             ("gen_ai.provider.name", "anthropic"),
             ("gen_ai.request.model", "claude-sonnet"),
-            ("gen_ai.system_instructions", "provider system"),
+            (
+                "gen_ai.system_instructions",
+                r#"[{"type":"text","content":"provider system"}]"#,
+            ),
         ] {
             assert!(contains_string(&span.recorded_values, field, value));
         }

@@ -75,14 +75,18 @@ use super::UNKNOWN_AGENT_NAME;
 /// name; every other field is identical across the two surfaces, so it lives
 /// here once instead of being copy-pasted into each `TurnSource::open_chat_span`.
 macro_rules! build_chat_span {
-    ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {
+    ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {{
+        let system_instructions = $crate::telemetry::system_instructions_json(
+            $effective_preamble,
+            $runner.record_telemetry_content,
+        );
         ::tracing::info_span!(
             target: "rig::agent_chat",
             parent: ::tracing::Span::current(),
             $name,
             gen_ai.operation.name = $operation,
             gen_ai.agent.name = $runner.agent_name_or_default(),
-            gen_ai.system_instructions = $effective_preamble,
+            gen_ai.system_instructions = system_instructions.as_deref(),
             gen_ai.provider.name = ::tracing::field::Empty,
             gen_ai.request.model = ::tracing::field::Empty,
             gen_ai.response.id = ::tracing::field::Empty,
@@ -96,7 +100,7 @@ macro_rules! build_chat_span {
             gen_ai.input.messages = ::tracing::field::Empty,
             gen_ai.output.messages = ::tracing::field::Empty,
         )
-    };
+    }};
 }
 pub(crate) use build_chat_span;
 
@@ -178,6 +182,7 @@ where
     pub(crate) temperature: Option<f64>,
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
+    pub(crate) record_telemetry_content: bool,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
@@ -210,6 +215,7 @@ where
             temperature: agent.temperature,
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
+            record_telemetry_content: agent.record_telemetry_content,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
             dynamic_context: agent.dynamic_context.clone(),
@@ -264,6 +270,20 @@ where
         T: Into<Message>,
     {
         self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Opt in or out of recording sensitive request, response, and tool content
+    /// on GenAI telemetry spans for this run.
+    ///
+    /// Defaults to the agent's setting, which defaults to `false`. Enabling this
+    /// can expose prompts, retrieved context, tool results, model responses, and
+    /// other sensitive or high-cardinality data through OpenTelemetry span
+    /// attributes, which can increase observability backend storage and query
+    /// costs. Only enable it when content telemetry is acceptable for this run.
+    /// Structural metadata and token usage remain available when disabled.
+    pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
+        self.record_telemetry_content = enabled;
         self
     }
 
@@ -369,13 +389,16 @@ pub(crate) fn build_agent_run(
 pub(crate) fn acquire_agent_span(
     agent_name: &str,
     preamble: Option<&str>,
+    record_content: bool,
 ) -> (tracing::Span, bool) {
     if tracing::Span::current().is_disabled() {
+        let system_instructions =
+            crate::telemetry::system_instructions_json(preamble, record_content);
         let span = info_span!(
             "invoke_agent",
             gen_ai.operation.name = "invoke_agent",
             gen_ai.agent.name = agent_name,
-            gen_ai.system_instructions = preamble,
+            gen_ai.system_instructions = system_instructions.as_deref(),
             gen_ai.prompt = tracing::field::Empty,
             gen_ai.completion = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
@@ -483,10 +506,9 @@ pub(crate) struct ToolCallOutcome {
 /// `error_history` builds a cancellation error if a hook terminates the run.
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
 pub(crate) async fn run_single_tool<M>(
-    hooks: &HookStack<M>,
+    runner: &AgentRunner<M>,
     ctx: &HookContext,
     tool_snapshot: &ToolRegistrySnapshot,
-    tool_context: &ToolContext,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
@@ -494,6 +516,9 @@ pub(crate) async fn run_single_tool<M>(
 where
     M: CompletionModel,
 {
+    let hooks = &runner.hooks;
+    let tool_context = &runner.tool_context;
+    let record_content = runner.record_telemetry_content;
     let tool_name = &tool_call.function.name;
     // `mut` so a tool-call hook can rewrite the arguments the tool
     // runs with (the model's emitted arguments are otherwise used verbatim).
@@ -502,7 +527,9 @@ where
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
     tool_span.record("gen_ai.tool.call.id", &tool_call.id);
-    tool_span.record("gen_ai.tool.call.arguments", &args);
+    if record_content {
+        tool_span.record("gen_ai.tool.call.arguments", &args);
+    }
 
     // Resolve the `ToolCall` hook chain. A proceeding chain carries any
     // `ToolCallAction::Rewrite` in the action itself (→ `ProceedWith`); a chain that a
@@ -526,7 +553,9 @@ where
     // `ToolResult` reports — and the span reflect the effective arguments.
     if let Some(rewritten) = salvaged_rewrite.as_ref() {
         args = json_utils::serialize_json_value(rewritten);
-        tool_span.record("gen_ai.tool.call.arguments", &args);
+        if record_content {
+            tool_span.record("gen_ai.tool.call.arguments", &args);
+        }
         tracing::debug!(
             tool_name = tool_name,
             "tool-call arguments rewritten by a hook"
@@ -560,7 +589,9 @@ where
             // downstream `ToolResult` event, reflect what the tool actually
             // received rather than what the model emitted.
             args = json_utils::serialize_json_value(&replacement);
-            tool_span.record("gen_ai.tool.call.arguments", &args);
+            if record_content {
+                tool_span.record("gen_ai.tool.call.arguments", &args);
+            }
             tracing::debug!(
                 tool_name = tool_name,
                 "tool-call arguments rewritten by a hook"
@@ -618,7 +649,9 @@ where
             reason,
         )),
         ToolResultDecision::Replace(replacement) => {
-            tool_span.record("gen_ai.tool.call.result", replacement.render());
+            if record_content {
+                tool_span.record("gen_ai.tool.call.result", replacement.render());
+            }
             Ok(ToolCallOutcome {
                 content: tool_result_output(
                     tool_call.id.clone(),
@@ -629,7 +662,9 @@ where
             })
         }
         ToolResultDecision::Keep => {
-            tool_span.record("gen_ai.tool.call.result", exec.output().render());
+            if record_content {
+                tool_span.record("gen_ai.tool.call.result", exec.output().render());
+            }
             let content = tool_result_output(
                 tool_call.id.clone(),
                 tool_call.call_id.clone(),
@@ -681,12 +716,14 @@ pub(crate) struct UnaryTurnSource {
     /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
     /// `UnaryTurnSource: Sync` — which `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
+    record_telemetry_content: bool,
 }
 
 impl UnaryTurnSource {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(record_telemetry_content: bool) -> Self {
         Self {
             current_span_id: AtomicU64::new(0),
+            record_telemetry_content,
         }
     }
 
@@ -772,6 +809,12 @@ where
                     ModelTurnOutcome::Continue {
                         response_hook_suppressed,
                     } => {
+                        if runner.record_telemetry_content
+                            && let Some(choice) = run.accepted_turn_choice()
+                        {
+                            crate::telemetry::record_model_output(&chat_span, &choice, true);
+                        }
+
                         if !response_hook_suppressed {
                             // The medium-specific raw response event fires first,
                             // then the normalized per-turn event. Both are
@@ -848,7 +891,9 @@ where
         // fields go through the same recorder the streaming surface uses; the
         // blocking surface additionally records the final completion text.
         if created_agent_span {
-            agent_span.record("gen_ai.completion", &response.output);
+            if self.record_telemetry_content {
+                agent_span.record("gen_ai.completion", &response.output);
+            }
             record_usage_on_span(agent_span, response.usage);
         }
     }
@@ -868,10 +913,15 @@ where
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
     pub async fn run(self) -> Result<PromptResponse, PromptError> {
-        let (agent_span, created_agent_span) =
-            acquire_agent_span(self.agent_name_or_default(), self.preamble.as_deref());
+        let (agent_span, created_agent_span) = acquire_agent_span(
+            self.agent_name_or_default(),
+            self.preamble.as_deref(),
+            self.record_telemetry_content,
+        );
 
-        if let Some(text) = self.prompt.rag_text() {
+        if self.record_telemetry_content
+            && let Some(text) = self.prompt.rag_text()
+        {
             agent_span.record("gen_ai.prompt", text);
         }
 
@@ -896,9 +946,10 @@ where
         // engine yields; the engine is driven under the caller's ambient span
         // (no `instrument`), keeping the agent span detached and the chat/tool
         // spans on the blocking `follows_from` chain.
+        let record_telemetry_content = self.record_telemetry_content;
         let driver = drive_agent(
             self,
-            UnaryTurnSource::new(),
+            UnaryTurnSource::new(record_telemetry_content),
             run,
             agent_span,
             created_agent_span,
@@ -2463,6 +2514,7 @@ mod migrated_tests {
         /// otherwise cache `Interest::never` for these callsites).
         async fn warm_blocking_callsites() {
             let agent = AgentBuilder::new(tool_then_text_model())
+                .record_content_telemetry(true)
                 .tool(MockAddTool)
                 .build();
             let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
@@ -2482,6 +2534,7 @@ mod migrated_tests {
             captured.clear();
 
             let agent = AgentBuilder::new(tool_then_text_model())
+                .record_content_telemetry(true)
                 .tool(MockAddTool)
                 .build();
             let response = agent
@@ -2712,6 +2765,7 @@ mod migrated_tests {
                 MockTurn::text("ok"),
             ]);
             let response = AgentBuilder::new(model)
+                .record_content_telemetry(true)
                 .tool(RawOutputTool)
                 .add_hook(RedactResultHook)
                 .build()

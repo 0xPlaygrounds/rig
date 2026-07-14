@@ -476,6 +476,15 @@ impl AgentRun {
         &self.new_messages
     }
 
+    /// Canonical content for the accepted model turn awaiting advancement.
+    pub(crate) fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
+        let RunState::AwaitingAdvance(turn) = &self.state else {
+            return None;
+        };
+
+        OneOrMany::from_iter_optional(turn.items.clone())
+    }
+
     /// The full conversation: input history followed by [`Self::messages`].
     pub fn full_history(&self) -> Vec<Message> {
         build_full_history(self.chat_history.as_deref(), self.new_messages.clone())

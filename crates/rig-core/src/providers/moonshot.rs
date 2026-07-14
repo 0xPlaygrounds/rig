@@ -411,6 +411,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let body = prepared_body(request, "kimi-k2-thinking");
@@ -445,6 +446,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let body = prepared_body(request, "kimi-k2-thinking");
@@ -469,6 +471,7 @@ mod tests {
             }),
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
@@ -500,6 +503,7 @@ mod tests {
             tool_choice: Some(ToolChoice::Required),
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let body = prepared_body(request, "kimi-k2.5");

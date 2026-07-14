@@ -110,6 +110,8 @@ where
     static_context: Vec<Document>,
     /// Additional parameters to be passed to the model
     additional_params: Option<serde_json::Value>,
+    /// Whether to record sensitive request, response, and tool content on telemetry spans.
+    record_telemetry_content: bool,
     /// Maximum number of tokens for the completion
     max_tokens: Option<u64>,
     /// List of vector store, with the sample number
@@ -221,6 +223,20 @@ where
         self
     }
 
+    /// Opt in or out of recording sensitive request, response, and tool content
+    /// on GenAI telemetry spans for requests made by this agent.
+    ///
+    /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
+    /// tool results, model responses, and other sensitive or high-cardinality data
+    /// through OpenTelemetry span attributes, which can increase observability
+    /// backend storage and query costs. Only enable it when content telemetry is
+    /// acceptable for this agent. Structural metadata and token usage remain
+    /// available when this is disabled.
+    pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
+        self.record_telemetry_content = enabled;
+        self
+    }
+
     /// Set the output schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub fn output_schema<T>(mut self) -> Self
@@ -301,6 +317,7 @@ where
             temperature: None,
             max_tokens: None,
             additional_params: None,
+            record_telemetry_content: false,
             dynamic_context: vec![],
             tool_choice: None,
             default_max_turns: None,
@@ -334,6 +351,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -365,6 +383,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -401,6 +420,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -499,6 +519,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -540,6 +561,7 @@ where
             preamble: self.preamble,
             static_context: self.static_context,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
@@ -572,6 +594,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
@@ -600,6 +623,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle: self.tool_state.handle,
@@ -713,6 +737,7 @@ where
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,

@@ -146,6 +146,7 @@ where
         CompletionError,
     > {
         let preamble = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
@@ -209,7 +210,7 @@ where
             &resolved_model,
             CompletionOperation::Chat,
         )
-        .system_instructions(preamble.as_deref())
+        .system_instructions(preamble.as_deref(), record_telemetry_content)
         .build();
 
         let client = self.client.clone();

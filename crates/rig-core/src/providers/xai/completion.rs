@@ -202,10 +202,11 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request =
             XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
         let span = CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref())
+            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
             .build();
 
         if enabled!(Level::TRACE) {
@@ -332,6 +333,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))

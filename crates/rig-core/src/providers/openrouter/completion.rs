@@ -1563,6 +1563,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let openrouter_request =
@@ -1593,6 +1594,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
@@ -1622,6 +1624,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let openrouter_request =
@@ -1692,6 +1695,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: Some(schema),
+            record_telemetry_content: false,
         };
 
         let openrouter_request =
@@ -1747,6 +1751,7 @@ mod tests {
                     .to_json(),
             ),
             output_schema: Some(schema),
+            record_telemetry_content: false,
         };
 
         let openrouter_request =
@@ -3533,6 +3538,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         }
     }
 

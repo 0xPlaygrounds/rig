@@ -98,13 +98,14 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let system_instructions = request.preamble.clone();
+        let record_telemetry_content = request.record_telemetry_content;
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
             "cohere",
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
         let params = json_utils::merge(
@@ -169,7 +170,6 @@ where
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
                                 let span = tracing::Span::current();
                                 span.record_token_usage(&delta.usage);
-
                                 final_usage = Some(delta.usage.clone());
                                 break;
                             },

@@ -1943,6 +1943,7 @@ where
         completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse<Ext::Response>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
@@ -1959,14 +1960,13 @@ where
             &request.model,
             CompletionOperation::Chat,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
         let mut request_body = serde_json::to_value(&request)?;
         self.client
             .ext()
             .finalize_request_body_with_options(&mut request_body, options)?;
-
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
@@ -1998,7 +1998,6 @@ where
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
                         span.record_token_usage(&response.get_usage());
-
                         if enabled!(Level::TRACE) {
                             tracing::trace!(
                                 target: "rig::completions",
@@ -2222,6 +2221,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2252,6 +2252,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2337,6 +2338,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2546,6 +2548,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2576,6 +2579,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2609,6 +2613,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let result = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2659,6 +2664,7 @@ mod tests {
                 }))
                 .expect("schema should deserialize"),
             ),
+            record_telemetry_content: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2729,6 +2735,7 @@ mod tests {
                 }))
                 .expect("schema should deserialize"),
             ),
+            record_telemetry_content: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {

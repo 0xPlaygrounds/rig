@@ -504,10 +504,11 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
 
         let span = CompletionSpanBuilder::new("chatgpt", &request.model, CompletionOperation::Chat)
-            .system_instructions(request.instructions.as_deref())
+            .system_instructions(request.instructions.as_deref(), record_telemetry_content)
             .build();
 
         tracing_futures::Instrument::instrument(
@@ -549,6 +550,7 @@ where
         StreamingCompletionResponse<responses_api::streaming::StreamingCompletionResponse>,
         CompletionError,
     > {
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
 
         if enabled!(Level::TRACE) {
@@ -578,7 +580,7 @@ where
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(request.instructions.as_deref())
+        .system_instructions(request.instructions.as_deref(), record_telemetry_content)
         .build();
 
         let client = self.client.clone();
@@ -705,6 +707,7 @@ data: [DONE]"#;
                 tool_choice: None,
                 additional_params: None,
                 output_schema: None,
+                record_telemetry_content: false,
             })
             .expect("request")
     }
@@ -754,6 +757,7 @@ data: [DONE]"#;
 
         let request = model
             .create_request(completion::CompletionRequest {
+                record_telemetry_content: false,
                 model: None,
                 preamble: Some("Respond tersely.".to_string()),
                 chat_history: OneOrMany::one(completion::Message::user("hello")),
@@ -791,6 +795,7 @@ data: [DONE]"#;
                 tool_choice: None,
                 additional_params: None,
                 output_schema: None,
+                record_telemetry_content: false,
             })
             .expect("request");
 

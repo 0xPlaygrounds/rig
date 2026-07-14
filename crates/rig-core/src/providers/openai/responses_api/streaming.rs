@@ -862,6 +862,7 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
@@ -886,7 +887,7 @@ where
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);

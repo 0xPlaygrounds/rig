@@ -42,6 +42,21 @@ macro_rules! forward_prompt_setters {
             self
         }
 
+        /// Opt in or out of recording sensitive request, response, and tool
+        /// content on GenAI telemetry spans for this request.
+        ///
+        /// Defaults to the agent's setting, which defaults to `false`. Enabling
+        /// this can expose prompts, retrieved context, tool results, model
+        /// responses, and other sensitive or high-cardinality data through
+        /// OpenTelemetry span attributes, which can increase observability
+        /// backend storage and query costs. Only enable it when content
+        /// telemetry is acceptable for this request. Structural metadata and
+        /// token usage remain available when disabled.
+        pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
+            self.$recv = self.$recv.record_content_telemetry(enabled);
+            self
+        }
+
         /// Set the conversation id used to load and persist memory for this request.
         ///
         /// Overrides any default conversation id set on the agent. If memory is not

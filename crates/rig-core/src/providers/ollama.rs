@@ -628,9 +628,10 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let span = CompletionSpanBuilder::new("ollama", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref())
+            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
             .build();
 
         if tracing::enabled!(tracing::Level::TRACE) {
@@ -694,13 +695,14 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
         let system_instructions = request.preamble.clone();
+        let record_telemetry_content = request.record_telemetry_content;
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
             "ollama",
             &request.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref())
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
         request.stream = true;
 
@@ -1731,6 +1733,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1797,6 +1800,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1863,6 +1867,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1929,6 +1934,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1995,6 +2001,7 @@ mod tests {
                 "num_ctx": 4096
             })),
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2025,6 +2032,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2090,6 +2098,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: Some(schema),
+            record_telemetry_content: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -2133,6 +2142,7 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
