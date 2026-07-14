@@ -34,6 +34,7 @@ struct StatusWordTool;
 
 impl Tool for StatusWordTool {
     const NAME: &'static str = "get_status_word";
+    type Error = rig::tool::ToolExecutionError;
     type Args = NoArgs;
     type Output = String;
 

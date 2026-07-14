@@ -48,6 +48,7 @@ struct GetWeather {
 
 impl Tool for GetWeather {
     const NAME: &'static str = "get_weather";
+    type Error = rig::tool::ToolExecutionError;
     type Args = WeatherArgs;
     type Output = String;
 
@@ -83,6 +84,7 @@ struct GetTime;
 
 impl Tool for GetTime {
     const NAME: &'static str = "get_time";
+    type Error = rig::tool::ToolExecutionError;
     type Args = TimeArgs;
     type Output = String;
 

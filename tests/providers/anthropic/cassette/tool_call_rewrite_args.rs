@@ -56,6 +56,7 @@ impl GetWeather {
 
 impl Tool for GetWeather {
     const NAME: &'static str = "get_weather";
+    type Error = rig::tool::ToolExecutionError;
     type Args = WeatherArgs;
     type Output = String;
 

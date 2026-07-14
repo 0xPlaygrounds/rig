@@ -552,7 +552,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // Extract return type and get Output and Error types from Result<T, E>
     let return_type = &input_fn.sig.output;
-    let (output_type, _error_type) = match result_type_tokens(return_type) {
+    let (output_type, error_type) = match result_type_tokens(return_type) {
         Ok(types) => types,
         Err(error) => return error.into_compile_error().into(),
     };
@@ -690,9 +690,8 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 &self,
                 _context: &mut #rig_core::tool::ToolContext,
                 args: Self::Args,
-            ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
+            ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*).await
-                    .map_err(#rig_core::tool::ToolExecutionError::from_error)
             }
         }
     } else {
@@ -701,9 +700,8 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 &self,
                 _context: &mut #rig_core::tool::ToolContext,
                 args: Self::Args,
-            ) -> Result<Self::Output, #rig_core::tool::ToolExecutionError> {
+            ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*)
-                    .map_err(#rig_core::tool::ToolExecutionError::from_error)
             }
         }
     };
@@ -726,6 +724,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             type Args = #params_struct_name;
             type Output = #output_type;
+            type Error = #error_type;
 
             fn description(&self) -> String {
                 #tool_description.to_string()

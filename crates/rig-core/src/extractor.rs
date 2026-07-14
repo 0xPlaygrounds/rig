@@ -370,6 +370,7 @@ where
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     const NAME: &'static str = SUBMIT_TOOL_NAME;
+    type Error = rig::tool::ToolExecutionError;
     type Args = T;
     type Output = T;
 

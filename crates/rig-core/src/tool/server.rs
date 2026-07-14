@@ -618,6 +618,7 @@ mod tests {
 
     impl Tool for NamedTool {
         const NAME: &'static str = "registered_named";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -645,6 +646,7 @@ mod tests {
 
     impl Tool for ReplacementTool {
         const NAME: &'static str = "replacement";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -1070,6 +1072,7 @@ mod tests {
 
     impl crate::tool::Tool for ContextReader {
         const NAME: &'static str = "context_reader";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -1139,6 +1142,7 @@ mod tests {
 
     impl Tool for PendingTool {
         const NAME: &'static str = "pending";
+        type Error = rig::tool::ToolExecutionError;
         type Args = ();
         type Output = ();
 

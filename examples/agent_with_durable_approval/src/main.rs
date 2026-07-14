@@ -52,6 +52,7 @@ struct GetBalance;
 
 impl Tool for GetBalance {
     const NAME: &'static str = "get_balance";
+    type Error = rig::tool::ToolExecutionError;
     type Args = BalanceArgs;
     type Output = String;
 
@@ -87,6 +88,7 @@ struct TransferFunds;
 
 impl Tool for TransferFunds {
     const NAME: &'static str = "transfer_funds";
+    type Error = rig::tool::ToolExecutionError;
     type Args = TransferArgs;
     type Output = String;
 

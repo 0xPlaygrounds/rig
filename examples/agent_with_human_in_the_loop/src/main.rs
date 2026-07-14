@@ -44,6 +44,7 @@ struct SendEmail;
 
 impl Tool for SendEmail {
     const NAME: &'static str = "send_email";
+    type Error = rig::tool::ToolExecutionError;
     type Args = SendEmailArgs;
     type Output = String;
 
@@ -88,6 +89,7 @@ struct DeleteFile;
 
 impl Tool for DeleteFile {
     const NAME: &'static str = "delete_file";
+    type Error = rig::tool::ToolExecutionError;
     type Args = DeleteFileArgs;
     type Output = String;
 

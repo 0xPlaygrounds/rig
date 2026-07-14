@@ -557,8 +557,8 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                         }
                         _ => {}
                     },
-                    Ok(MultiTurnStreamItem::ToolExecutionStart { .. }) => {
-                        events.push("tool_execution_start")
+                    Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
+                        events.push("tool_execution_committed")
                     }
                     Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         ..
@@ -577,20 +577,21 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
             assert!(saw_final, "the stream must yield a FinalResponse");
             assert_nonempty_response(&final_text);
 
-            // Lifecycle ordering: a tool call precedes its execution start, which
+            // Lifecycle ordering: a tool call precedes its execution commit, which
             // precedes its result, which precedes the final response.
             let first = |tag: &str| events.iter().position(|e| *e == tag);
             let tool_call_at = first("tool_call").expect("a complete tool call is surfaced");
-            let exec_start_at = first("tool_execution_start").expect("execution start is surfaced");
+            let exec_commit_at =
+                first("tool_execution_committed").expect("execution commit is surfaced");
             let tool_result_at = first("tool_result").expect("a tool result is surfaced");
             let final_at = first("final_response").expect("a final response is surfaced");
             assert!(
-                tool_call_at < exec_start_at,
-                "the model-emitted tool call must precede its execution start: {events:?}"
+                tool_call_at < exec_commit_at,
+                "the model-emitted tool call must precede its execution commit: {events:?}"
             );
             assert!(
-                exec_start_at <= tool_result_at,
-                "execution start must precede its tool result: {events:?}"
+                exec_commit_at <= tool_result_at,
+                "execution commit must precede its tool result: {events:?}"
             );
             assert!(
                 tool_result_at < final_at,

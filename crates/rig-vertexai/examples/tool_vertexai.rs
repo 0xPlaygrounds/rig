@@ -17,6 +17,7 @@ struct Adder;
 
 impl Tool for Adder {
     const NAME: &'static str = "add";
+    type Error = rig_core::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 

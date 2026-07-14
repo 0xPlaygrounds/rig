@@ -64,6 +64,7 @@ pub(crate) struct CountingMultiply {
 
 impl Tool for CountingMultiply {
     const NAME: &'static str = "multiply";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i64;
 

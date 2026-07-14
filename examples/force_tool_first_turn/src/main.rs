@@ -49,6 +49,7 @@ struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = AddArgs;
     type Output = i64;
 

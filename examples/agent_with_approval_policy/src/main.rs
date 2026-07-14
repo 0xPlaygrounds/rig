@@ -37,6 +37,7 @@ struct SearchWeb;
 
 impl Tool for SearchWeb {
     const NAME: &'static str = "search_web";
+    type Error = rig::tool::ToolExecutionError;
     type Args = SearchArgs;
     type Output = String;
 
@@ -72,6 +73,7 @@ struct TransferFunds;
 
 impl Tool for TransferFunds {
     const NAME: &'static str = "transfer_funds";
+    type Error = rig::tool::ToolExecutionError;
     type Args = TransferArgs;
     type Output = String;
 

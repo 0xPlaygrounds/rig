@@ -281,7 +281,7 @@ where
     /// For the streaming path: the driver emits *all* of a turn's `ToolCall`
     /// stream items eagerly (in call order) when the model turn commits, then —
     /// only after the whole tool batch settles successfully — surfaces the
-    /// per-tool `ToolExecutionStart` and `ToolResult` stream items in **call
+    /// per-tool `ToolExecutionCommitted` and `ToolResult` stream items in **call
     /// order** (never completion order), for the tools whose body actually ran.
     /// The persisted message history is unchanged.
     ///
@@ -453,12 +453,12 @@ pub(crate) enum ToolExecution {
     /// The tool's body ran. Carries the **effective** tool call — the model's
     /// call with any [`ToolCallAction::Rewrite`] hook
     /// rewrite applied — so the driver can surface it in the
-    /// [`ToolExecutionStart`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionStart)
+    /// [`ToolExecutionCommitted`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionCommitted)
     /// event (what actually ran, not the model's original arguments). Boxed to
     /// keep this enum small (a `ToolCall` is large next to the empty `Skipped`).
     Executed(Box<ToolCall>),
     /// A tool-call hook returned [`ToolCallAction::Skip`]: the
-    /// body did not run, so no execution-start is surfaced — but the skip result
+    /// body did not run, so no execution-commit is surfaced — but the skip result
     /// is still delivered to the model (and surfaced as a `ToolResult`).
     Skipped,
 }
@@ -537,7 +537,7 @@ where
     // otherwise the tool executes into a structured `ToolResult`.
     // `effective_args` is what the tool actually ran with (the model's, a hook's
     // `ToolCallAction::Rewrite` replacement, or a salvaged rewrite) — surfaced in the
-    // execution-start event so a redaction rewrite does not leak. Unused for a skip.
+    // execution-commit event so a redaction rewrite does not leak. Unused for a skip.
     let mut skipped: Option<ToolResult> = None;
     let effective_args: serde_json::Value = match tool_call_decision(action) {
         ToolCallDecision::Terminate(reason) => {
@@ -571,7 +571,7 @@ where
     };
 
     // Resolve the structured execution result and how the call surfaced. A skip
-    // produces no execution-start event; a real execution carries the effective
+    // produces no execution-commit event; a real execution carries the effective
     // tool call (the model's call with any `ToolCallAction::Rewrite` applied).
     let (exec, execution, dispatch_context) = match skipped {
         Some(exec) => (exec, ToolExecution::Skipped, tool_context.for_dispatch()),
@@ -964,6 +964,7 @@ mod tests {
 
     impl Tool for SnapshotMutatingTool {
         const NAME: &'static str = "snapshot_mutator";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -1015,6 +1016,7 @@ mod tests {
 
     impl Tool for MetadataFailingTool {
         const NAME: &'static str = "flaky_tool";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -2087,12 +2089,9 @@ mod migrated_tests {
         }
 
         // Result metadata a tool attaches reaches the hook but never appears in the
-        // model-visible output.
+        // model-visible output on either execution surface.
         #[tokio::test]
         async fn success_result_metadata_reaches_hook_but_not_model() {
-            let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-            let model_output: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-
             struct MetadataProbe {
                 seen: Arc<Mutex<Option<String>>>,
                 model_output: Arc<Mutex<Option<String>>>,
@@ -2119,34 +2118,63 @@ mod migrated_tests {
                 }
             }
 
-            AgentBuilder::new(model_one_tool_then_text("with_meta"))
-                .tool(MockMetadataTool)
-                .add_hook(MetadataProbe {
+            async fn run_surface(streaming: bool) -> (Option<String>, String) {
+                let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                let model_output: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                let probe = MetadataProbe {
                     seen: seen.clone(),
                     model_output: model_output.clone(),
-                })
-                .build()
-                .runner("go")
-                .max_turns(3)
-                .run()
-                .await
-                .expect("run should succeed");
+                };
 
-            assert_eq!(
-                *seen.lock().expect("seen"),
-                Some("req-7".to_string()),
-                "the tool's result metadata must reach the hook"
-            );
-            let output = model_output
-                .lock()
-                .expect("model_output")
-                .clone()
-                .expect("output");
-            assert_eq!(output, "done");
-            assert!(
-                !output.contains("req-7"),
-                "result metadata must never leak into the model-visible output"
-            );
+                if streaming {
+                    let mut stream =
+                        AgentBuilder::new(stream_model_one_tool_then_text("with_meta"))
+                            .tool(MockMetadataTool)
+                            .add_hook(probe)
+                            .build()
+                            .runner("go")
+                            .max_turns(3)
+                            .stream()
+                            .await;
+                    while let Some(item) = stream.next().await {
+                        if let Err(error) = item {
+                            panic!("stream item errored: {error}");
+                        }
+                    }
+                } else {
+                    AgentBuilder::new(model_one_tool_then_text("with_meta"))
+                        .tool(MockMetadataTool)
+                        .add_hook(probe)
+                        .build()
+                        .runner("go")
+                        .max_turns(3)
+                        .run()
+                        .await
+                        .expect("run should succeed");
+                }
+
+                let seen_value = seen.lock().expect("seen").clone();
+                let output = model_output
+                    .lock()
+                    .expect("model_output")
+                    .clone()
+                    .expect("output");
+                (seen_value, output)
+            }
+
+            for streaming in [false, true] {
+                let (seen, output) = run_surface(streaming).await;
+                assert_eq!(
+                    seen,
+                    Some("req-7".to_string()),
+                    "the tool's result metadata must reach the hook (streaming={streaming})"
+                );
+                assert_eq!(output, "done");
+                assert!(
+                    !output.contains("req-7"),
+                    "result metadata must never leak into model output (streaming={streaming})"
+                );
+            }
         }
 
         // (6) A `ToolResultAction::Rewrite` hook redacts the model-visible text, but a later
@@ -2580,6 +2608,7 @@ mod migrated_tests {
         struct RawOutputTool;
         impl crate::tool::Tool for RawOutputTool {
             const NAME: &'static str = "raw_output";
+            type Error = rig::tool::ToolExecutionError;
             type Args = serde_json::Value;
             type Output = String;
             fn description(&self) -> String {
@@ -2868,6 +2897,7 @@ mod migrated_tests {
 
     impl Tool for OutOfOrderTool {
         const NAME: &'static str = "add";
+        type Error = rig::tool::ToolExecutionError;
         type Args = MockOperationArgs;
         type Output = i32;
 
@@ -3175,7 +3205,7 @@ mod migrated_tests {
     /// The stream-item taxonomy and ordering: the driver emits *all* of a turn's
     /// **model** tool-call items ([`StreamedAssistantContent::ToolCall`], one per
     /// call the model made) first, then — after the whole tool batch settles —
-    /// the per-tool **execution** items (`ToolExecutionStart` then the
+    /// the per-tool **execution** items (`ToolExecutionCommitted` then the
     /// `ToolResult`) in call order. This holds identically at every concurrency
     /// (the batch is atomic on both the sequential and concurrent paths).
     #[tokio::test]
@@ -3206,7 +3236,9 @@ mod migrated_tests {
                     MultiTurnStreamItem::StreamAssistantItem(
                         StreamedAssistantContent::ToolCall { .. },
                     ) => markers.push("model-call"),
-                    MultiTurnStreamItem::ToolExecutionStart { .. } => markers.push("exec-start"),
+                    MultiTurnStreamItem::ToolExecutionCommitted { .. } => {
+                        markers.push("exec-commit")
+                    }
                     MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         ..
                     }) => markers.push("result"),
@@ -3221,9 +3253,9 @@ mod migrated_tests {
         let expected = vec![
             "model-call",
             "model-call",
-            "exec-start",
+            "exec-commit",
             "result",
-            "exec-start",
+            "exec-commit",
             "result",
         ];
         assert_eq!(markers(1).await, expected);
@@ -3271,6 +3303,7 @@ mod migrated_tests {
 
     impl Tool for DrainProbeTool {
         const NAME: &'static str = "add";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = i32;
 
@@ -3583,6 +3616,7 @@ mod migrated_tests {
 
     impl Tool for RecordingArgsTool {
         const NAME: &'static str = "add";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = i32;
 
@@ -3729,6 +3763,7 @@ mod migrated_tests {
     }
     impl Tool for SignalOnRunTool {
         const NAME: &'static str = "add";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = i32;
         fn description(&self) -> String {
@@ -3774,8 +3809,8 @@ mod migrated_tests {
 
     /// Atomic concurrent batch: when the batch terminates, even a sibling that
     /// completed **successfully** before the terminating sibling produces no
-    /// `ToolExecutionStart` and no `ToolResult` stream item (no orphan
-    /// execution-start), and its result is not committed. The `x == 1` tool runs
+    /// `ToolExecutionCommitted` and no `ToolResult` stream item (no orphan
+    /// execution-commit), and its result is not committed. The `x == 1` tool runs
     /// to completion (its side effect happens) and signals; the `x == 2` tool's
     /// hook then terminates.
     #[tokio::test]
@@ -3808,13 +3843,13 @@ mod migrated_tests {
             .stream()
             .await;
 
-        let (exec_starts, results, saw_error, saw_final) =
+        let (exec_commits, results, saw_error, saw_final) =
             tokio::time::timeout(std::time::Duration::from_secs(5), async move {
-                let (mut exec_starts, mut results, mut saw_error, mut saw_final) =
+                let (mut exec_commits, mut results, mut saw_error, mut saw_final) =
                     (0, 0, false, false);
                 while let Some(item) = stream.next().await {
                     match item {
-                        Ok(MultiTurnStreamItem::ToolExecutionStart { .. }) => exec_starts += 1,
+                        Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => exec_commits += 1,
                         Ok(MultiTurnStreamItem::StreamUserItem(
                             StreamedUserContent::ToolResult { .. },
                         )) => results += 1,
@@ -3823,7 +3858,7 @@ mod migrated_tests {
                         Err(_) => saw_error = true,
                     }
                 }
-                (exec_starts, results, saw_error, saw_final)
+                (exec_commits, results, saw_error, saw_final)
             })
             .await
             .expect("the concurrent tool drive must not hang");
@@ -3834,8 +3869,8 @@ mod migrated_tests {
             "a terminated run must not yield a final response"
         );
         assert_eq!(
-            exec_starts, 0,
-            "a terminated batch surfaces no ToolExecutionStart (no orphan start events)"
+            exec_commits, 0,
+            "a terminated batch surfaces no ToolExecutionCommitted events"
         );
         assert_eq!(
             results, 0,
@@ -3849,11 +3884,11 @@ mod migrated_tests {
     }
 
     /// The model tool-call event carries the model's **original** arguments; the
-    /// execution-start event carries the **effective** (hook-rewritten) arguments
+    /// execution-commit event carries the **effective** (hook-rewritten) arguments
     /// — so a `ToolCallAction::Rewrite` (e.g. a redaction) is reflected in what
     /// actually ran, not leaked as the original.
     #[tokio::test]
-    async fn stream_tool_execution_start_carries_effective_rewritten_args() {
+    async fn stream_tool_execution_committed_carries_effective_rewritten_args() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
@@ -3881,7 +3916,7 @@ mod migrated_tests {
                     tool_call,
                     ..
                 }) => model_args = Some(tool_call.function.arguments),
-                MultiTurnStreamItem::ToolExecutionStart { tool_call, .. } => {
+                MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                     exec_args = Some(tool_call.function.arguments)
                 }
                 _ => {}
@@ -3895,15 +3930,15 @@ mod migrated_tests {
         assert_eq!(
             exec_args,
             Some(json!({"x": 2, "y": 40})),
-            "the execution-start event carries the hook-rewritten (effective) arguments"
+            "the execution-commit event carries the hook-rewritten (effective) arguments"
         );
     }
 
     /// A `ToolCall` hook `ToolCallAction::Skip` surfaces the skip result as a `ToolResult`
     /// (the model sees it, and it is committed to history) but produces **no**
-    /// `ToolExecutionStart` — nothing actually ran.
+    /// `ToolExecutionCommitted` — nothing actually ran.
     #[tokio::test]
-    async fn stream_hook_skip_surfaces_result_without_execution_start() {
+    async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         struct SkipHook;
         impl<M: CompletionModel> AgentHook<M> for SkipHook {
             async fn on_tool_call(
@@ -3941,13 +3976,13 @@ mod migrated_tests {
             .stream()
             .await;
 
-        let mut exec_starts = 0;
+        let mut exec_commits = 0;
         let mut results = 0;
         let mut final_response = None;
         let mut stream = stream;
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                MultiTurnStreamItem::ToolExecutionStart { .. } => exec_starts += 1,
+                MultiTurnStreamItem::ToolExecutionCommitted { .. } => exec_commits += 1,
                 MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
                     results += 1
                 }
@@ -3958,8 +3993,8 @@ mod migrated_tests {
 
         assert_eq!(calls.load(SeqCst), 0, "a skipped tool's body never runs");
         assert_eq!(
-            exec_starts, 0,
-            "a hook-skipped tool produces no execution-start"
+            exec_commits, 0,
+            "a hook-skipped tool produces no execution-commit"
         );
         assert_eq!(
             results, 1,
@@ -4105,6 +4140,7 @@ mod migrated_tests {
     }
     impl Tool for CountingAddTool {
         const NAME: &'static str = "add";
+        type Error = rig::tool::ToolExecutionError;
         type Args = MockOperationArgs;
         type Output = i32;
         fn description(&self) -> String {
@@ -5133,6 +5169,7 @@ mod migrated_tests {
 
     impl Tool for EchoStringArgs {
         const NAME: &'static str = "echo_string_args";
+        type Error = rig::tool::ToolExecutionError;
         type Args = String;
         type Output = String;
 
@@ -5162,6 +5199,7 @@ mod migrated_tests {
 
     impl Tool for FirstGenerationTool {
         const NAME: &'static str = "generation_pinned";
+        type Error = rig::tool::ToolExecutionError;
         type Args = FirstGenerationArgs;
         type Output = String;
 
@@ -5196,6 +5234,7 @@ mod migrated_tests {
 
     impl Tool for SecondGenerationTool {
         const NAME: &'static str = FirstGenerationTool::NAME;
+        type Error = rig::tool::ToolExecutionError;
         type Args = SecondGenerationArgs;
         type Output = String;
 
@@ -6373,6 +6412,7 @@ mod migrated_tests {
 
     impl Tool for FinalResultTool {
         const NAME: &'static str = "final_result";
+        type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 

@@ -81,6 +81,7 @@ struct SystemProbe;
 
 impl Tool for SystemProbe {
     const NAME: &'static str = "system_probe";
+    type Error = ProbeError;
     type Args = ProbeArgs;
     type Output = String;
 
@@ -102,11 +103,27 @@ impl Tool for SystemProbe {
         })
     }
 
+    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+        match error {
+            error @ ProbeError::DiskIo => ToolExecutionError::other(error.to_string())
+                .with_model_feedback("the requested disk operation failed")
+                .with_code("EIO")
+                .with_retryable(false)
+                .with_source(error),
+            error @ ProbeError::NetworkUnreachable => {
+                ToolExecutionError::network(error.to_string())
+                    .with_model_feedback("the backup service is unreachable; try again later")
+                    .with_code("ENETUNREACH")
+                    .with_source(error)
+            }
+        }
+    }
+
     async fn call(
         &self,
         context: &mut ToolContext,
         args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
+    ) -> Result<Self::Output, Self::Error> {
         let (error, site) = match args.operation {
             Operation::ReadDisk => (
                 ProbeError::DiskIo,
@@ -124,20 +141,7 @@ impl Tool for SystemProbe {
             ),
         };
         context.insert_result(site);
-
-        let message = error.to_string();
-        let execution_error = match error {
-            ProbeError::DiskIo => ToolExecutionError::other(message)
-                .with_model_feedback("the requested disk operation failed")
-                .with_code("EIO")
-                .with_retryable(false)
-                .with_source(ProbeError::DiskIo),
-            ProbeError::NetworkUnreachable => ToolExecutionError::network(message)
-                .with_model_feedback("the backup service is unreachable; try again later")
-                .with_code("ENETUNREACH")
-                .with_source(ProbeError::NetworkUnreachable),
-        };
-        Err(execution_error)
+        Err(error)
     }
 }
 

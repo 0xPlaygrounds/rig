@@ -83,9 +83,10 @@ impl std::fmt::Display for ToolErrorKind {
 ///
 /// It carries normalized policy fields, separate operator-facing diagnostics
 /// and model-visible output, and an optional concrete source that can be
-/// downcast. The diagnostic message is also the model-visible output by default
-/// so argument and execution failures remain actionable. Use
-/// [`Self::redact_model_feedback`] when diagnostics contain secrets, or
+/// downcast. Explicit constructors use the diagnostic message as model-visible
+/// output so deliberately authored validation failures remain actionable.
+/// [`Self::from_error`] instead treats an arbitrary source as operator-only and
+/// exposes safe kind-level feedback. Use [`Self::with_model_feedback`] or
 /// [`Self::with_model_output`] to provide a purpose-built presentation.
 #[derive(Clone)]
 pub struct ToolExecutionError {
@@ -177,7 +178,12 @@ impl ToolExecutionError {
         Self::new(ToolErrorKind::Other, message)
     }
 
-    /// Build an `Other` error from a concrete source, preserving it for downcast.
+    /// Build a safely presented `Other` error from a concrete source.
+    ///
+    /// The source's display string remains available as the operator-facing
+    /// [`Self::message`] and the source remains downcastable, but the model sees
+    /// only the stable feedback for [`ToolErrorKind::Other`]. Passing an existing
+    /// `ToolExecutionError` preserves its classification and presentation.
     pub fn from_error<E>(error: E) -> Self
     where
         E: Error + WasmCompatSend + WasmCompatSync + 'static,
@@ -189,7 +195,7 @@ impl ToolExecutionError {
                 Ok(error) => *error,
                 Err(source) => {
                     let message = source.to_string();
-                    let mut error = Self::other(message);
+                    let mut error = Self::other(message).redact_model_feedback();
                     error.source = Some(Arc::from(source));
                     error
                 }
@@ -202,7 +208,7 @@ impl ToolExecutionError {
                 Ok(error) => *error,
                 Err(source) => {
                     let message = source.to_string();
-                    let mut error = Self::other(message);
+                    let mut error = Self::other(message).redact_model_feedback();
                     error.source = Some(Arc::from(source));
                     error
                 }
@@ -226,8 +232,10 @@ impl ToolExecutionError {
     /// Replace potentially sensitive diagnostics with stable, kind-specific
     /// model feedback.
     ///
-    /// Error messages are model-visible by default to keep failures actionable.
-    /// Call this explicitly when the operator diagnostic may contain secrets.
+    /// Explicit error constructors make messages model-visible by default to
+    /// keep failures actionable. Call this when an explicitly constructed
+    /// error's operator diagnostic may contain secrets; [`Self::from_error`]
+    /// already uses this safe presentation for arbitrary source errors.
     pub fn redact_model_feedback(mut self) -> Self {
         self.model_output = Box::new(ToolOutput::text(self.kind.default_model_feedback()));
         self
@@ -645,7 +653,8 @@ mod migrated_tests {
         let wrapped = ToolExecutionError::from_error(Boom);
         assert_eq!(wrapped.kind(), ToolErrorKind::Other);
         assert!(wrapped.is::<Boom>());
-        assert_eq!(wrapped.model_feedback(), Some("boom"));
+        assert_eq!(wrapped.message(), "boom");
+        assert_eq!(wrapped.model_feedback(), Some("the tool failed"));
     }
 
     #[test]

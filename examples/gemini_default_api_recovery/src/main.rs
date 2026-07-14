@@ -99,6 +99,7 @@ struct JavaScript;
 
 impl Tool for JavaScript {
     const NAME: &'static str = "JavaScript";
+    type Error = rig::tool::ToolExecutionError;
     type Args = JavaScriptProgram;
     type Output = ExecutorResponse;
 

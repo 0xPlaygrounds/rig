@@ -233,6 +233,43 @@ pub enum ToolResultContent {
     },
 }
 
+impl ToolResultContent {
+    /// Borrow literal text content.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(&text.text),
+            Self::Image(_) | Self::Json { .. } => None,
+        }
+    }
+
+    /// Borrow structured JSON content.
+    pub fn as_json(&self) -> Option<&serde_json::Value> {
+        match self {
+            Self::Json { value } => Some(value),
+            Self::Text(_) | Self::Image(_) => None,
+        }
+    }
+
+    /// Deserialize JSON content into a typed value.
+    ///
+    /// Structured JSON is decoded directly. Literal text is parsed only because
+    /// the caller explicitly requested JSON decoding, which supports transcripts
+    /// recorded before structured tool output was preserved canonically. This
+    /// helper never changes the content sent to a model or provider.
+    pub fn deserialize_json<T>(&self) -> Result<T, serde_json::Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self {
+            Self::Json { value } => serde_json::from_value(value.clone()),
+            Self::Text(text) => serde_json::from_str(&text.text),
+            Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
+                "cannot decode image tool-result content as JSON",
+            )),
+        }
+    }
+}
+
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
@@ -1298,7 +1335,9 @@ impl From<MessageError> for CompletionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, Reasoning, ReasoningContent};
+    use serde::{Deserialize, Serialize};
+
+    use super::{Message, Reasoning, ReasoningContent, Text, ToolResultContent};
 
     #[test]
     fn reasoning_constructors_and_accessors_work() {
@@ -1360,5 +1399,53 @@ mod tests {
         let json = serde_json::to_string(&message).expect("serialize");
         let roundtrip: Message = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(roundtrip, message);
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct ExecutorLikeResponse {
+        output: serde_json::Value,
+        logs: Vec<String>,
+        execution_time_ms: u64,
+    }
+
+    #[test]
+    fn tool_result_content_decodes_structured_and_legacy_json() {
+        let response = ExecutorLikeResponse {
+            output: serde_json::json!({"answer": 42}),
+            logs: vec!["computed".to_string()],
+            execution_time_ms: 7,
+        };
+        let value = serde_json::to_value(&response).expect("serialize response");
+
+        let structured = ToolResultContent::json(value.clone());
+        assert_eq!(structured.as_json(), Some(&value));
+        assert_eq!(structured.as_text(), None);
+        assert_eq!(
+            structured
+                .deserialize_json::<ExecutorLikeResponse>()
+                .expect("decode structured response"),
+            response
+        );
+
+        let legacy_json = value.to_string();
+        let legacy_text = ToolResultContent::Text(Text::new(legacy_json.clone()));
+        assert_eq!(legacy_text.as_text(), Some(legacy_json.as_str()));
+        assert_eq!(legacy_text.as_json(), None);
+        assert_eq!(
+            legacy_text
+                .deserialize_json::<ExecutorLikeResponse>()
+                .expect("decode legacy response"),
+            response
+        );
+
+        let image = ToolResultContent::image_url("https://example.com/result.png", None, None);
+        let image_error = image.deserialize_json::<ExecutorLikeResponse>();
+        assert!(image_error.is_err());
+        if let Err(error) = image_error {
+            assert_eq!(
+                error.to_string(),
+                "cannot decode image tool-result content as JSON"
+            );
+        }
     }
 }

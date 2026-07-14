@@ -127,6 +127,7 @@ pub(crate) struct Adder;
 
 impl Tool for Adder {
     const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -155,6 +156,7 @@ pub(crate) struct Subtract;
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -183,6 +185,7 @@ pub(crate) struct AlphaSignal;
 
 impl Tool for AlphaSignal {
     const NAME: &'static str = "lookup_harbor_label";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = String;
 
@@ -212,6 +215,7 @@ pub(crate) struct BetaSignal;
 
 impl Tool for BetaSignal {
     const NAME: &'static str = "lookup_orchard_label";
+    type Error = rig::tool::ToolExecutionError;
     type Args = EmptyArgs;
     type Output = String;
 

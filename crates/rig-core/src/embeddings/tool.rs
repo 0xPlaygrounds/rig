@@ -46,6 +46,7 @@ impl ToolSchema {
     ///
     ///     type Args = ();
     ///     type Output = ();
+    ///     type Error = ToolExecutionError;
     ///
     ///     fn description(&self) -> String {
     ///         "nothing".to_string()
@@ -115,6 +116,8 @@ mod tests {
 
     impl Tool for NamedTool {
         const NAME: &'static str = "static_name";
+
+        type Error = rig::tool::ToolExecutionError;
 
         type Args = ();
         type Output = ();

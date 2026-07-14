@@ -36,6 +36,7 @@ struct RepeatTool {
 
 impl Tool for RepeatTool {
     const NAME: &'static str = "repeat_text";
+    type Error = rig::tool::ToolExecutionError;
     type Args = RepeatArgs;
     type Output = String;
 
@@ -109,6 +110,7 @@ struct AddTool {
 
 impl Tool for AddTool {
     const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = BinOpArgs;
     type Output = i64;
 
@@ -137,6 +139,7 @@ struct MultiplyTool {
 
 impl Tool for MultiplyTool {
     const NAME: &'static str = "multiply";
+    type Error = rig::tool::ToolExecutionError;
     type Args = BinOpArgs;
     type Output = i64;
 

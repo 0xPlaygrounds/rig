@@ -27,6 +27,7 @@ struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 
@@ -56,6 +57,7 @@ struct Divide;
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
+    type Error = rig::tool::ToolExecutionError;
     type Args = OperationArgs;
     type Output = i32;
 

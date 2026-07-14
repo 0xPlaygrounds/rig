@@ -53,6 +53,7 @@ struct PlanTrip;
 
 impl Tool for PlanTrip {
     const NAME: &'static str = "plan_trip";
+    type Error = rig::tool::ToolExecutionError;
     type Args = PlanTripArgs;
     type Output = String;
 

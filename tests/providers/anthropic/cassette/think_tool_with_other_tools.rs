@@ -37,6 +37,7 @@ impl Calculator {
 
 impl Tool for Calculator {
     const NAME: &'static str = "calculator";
+    type Error = rig::tool::ToolExecutionError;
     type Args = CalculatorArgs;
     type Output = f64;
 
@@ -206,6 +207,7 @@ impl DatabaseLookup {
 
 impl Tool for DatabaseLookup {
     const NAME: &'static str = "database_lookup";
+    type Error = rig::tool::ToolExecutionError;
     type Args = DatabaseLookupArgs;
     type Output = String;
 

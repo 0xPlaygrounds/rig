@@ -197,6 +197,7 @@ where
     T: VectorStoreIndex<Filter = F>,
 {
     const NAME: &'static str = "search_vector_store";
+    type Error = rig::tool::ToolExecutionError;
     type Args = VectorSearchRequest<F>;
     type Output = Vec<VectorStoreOutput>;
 
