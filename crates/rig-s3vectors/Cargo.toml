@@ -9,7 +9,11 @@ license = "MIT"
 workspace = true
 
 [dependencies]
-aws-sdk-s3vectors = "1.1.0"
+# Disable the generated defaults because they include AWS's legacy Hyper 0.14 connector.
+aws-sdk-s3vectors = { version = "1.1.0", default-features = false, features = [
+  "default-https-client",
+  "rt-tokio",
+] }
 aws-smithy-types = { workspace = true, features = [
   "serde-deserialize",
   "serde-serialize",

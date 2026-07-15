@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(aws)* Stop enabling the AWS SDK's legacy Rustls connector in the Bedrock and S3 Vectors integrations, removing vulnerable `rustls-webpki` 0.101 from their active dependency graphs while retaining the modern default HTTPS client.
+
 ### Changed
 
 - *(tool)* [**breaking**] Replace the parallel tool-execution APIs with one structured path. Typed tools now implement only `Tool::call(&mut ToolContext, Args) -> Result<Output, Error>`; author-facing errors remain typed until private runtime erasure normalizes them into `ToolExecutionError`, `ToolContext` carries inbound values and host-only result metadata, `ToolResult` is the single runtime observation, and `ToolSet::execute` / `ToolServerHandle::execute` are the dispatch surfaces. Event-specific hook action types make invalid event/action combinations unrepresentable.

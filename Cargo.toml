@@ -284,7 +284,6 @@ websocket-rustls = ["rig-core/websocket-rustls"]
 websocket-native-tls = ["rig-core/websocket-native-tls"]
 rustls = [
   "rig-core/rustls",
-  "rig-bedrock?/bedrock-rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
   "rig-helixdb?/rustls",
   "rig-lancedb?/rig-rustls",
