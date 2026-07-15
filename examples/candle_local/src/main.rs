@@ -20,10 +20,10 @@ async fn main() -> anyhow::Result<()> {
         prompt
     };
 
-    let model = LlamaModel::from_safetensors(ModelData {
+    let model = LlamaModel::from_gguf(ModelData {
         config: std::fs::read(model_dir.join("config.json"))?,
         tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
-        weights: std::fs::read(model_dir.join("model.safetensors"))?,
+        weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
     let agent = AgentBuilder::new(model)
         .preamble("You are a concise and helpful assistant.")

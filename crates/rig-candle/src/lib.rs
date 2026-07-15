@@ -1,7 +1,8 @@
 //! Local, CPU-only Llama-family inference for Rig, backed by Candle.
 //!
-//! Models are loaded entirely from owned byte buffers. This crate performs no
-//! filesystem or network access. On `wasm32-unknown-unknown`, inference runs
+//! Models are loaded entirely from caller-provided owned or borrowed byte
+//! buffers. This crate performs no filesystem or network access. On
+//! `wasm32-unknown-unknown`, inference runs
 //! synchronously inside the completion future; browser applications should own
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!
@@ -27,10 +28,10 @@
 //! # }
 //! ```
 //!
-//! The crate accepts one unsharded, non-quantized Hugging Face safetensors
-//! checkpoint and a Llama 3 instruct tokenizer. Loading validates the complete
-//! tensor layout, supported floating-point dtypes, model dimensions, vocabulary,
-//! configured token IDs, and Llama 3 formatting tokens before Candle is invoked.
+//! The crate accepts either one unsharded Hugging Face safetensors checkpoint or
+//! a SmolLM2-360M-Instruct Q4_K_M GGUF checkpoint. It detects and validates Llama 3 or SmolLM2 instruct
+//! control tokens, renders their formats explicitly, and does not execute
+//! tokenizer-provided templates.
 //!
 //! Request `max_tokens` and `temperature` override builder defaults. The
 //! Candle-specific `additional_params` keys are `top_k`, `top_p`, `seed`,
@@ -47,22 +48,23 @@
 //! boundary. WASM does not use native synchronization or threads and collects its
 //! synchronously generated events before exposing them as a compatible stream.
 //!
-//! Tools, structured output, multimodal content, quantized formats, accelerators,
-//! shards, tokenizer chat templates, and downloads are unsupported.
+//! Tools, structured output, multimodal content, accelerators, shards, arbitrary
+//! tokenizer chat templates, and downloads are unsupported.
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 #[cfg(not(target_family = "wasm"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use candle_core::quantized::{GgmlDType, gguf_file};
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::generation::{LogitsProcessor, Sampling};
 use candle_transformers::models::llama::{
     Cache, Config, Llama, Llama3RopeType, LlamaConfig, LlamaEosToks,
 };
+use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama;
 use candle_transformers::utils::apply_repeat_penalty;
 #[cfg(not(target_family = "wasm"))]
 use futures::Stream;
@@ -81,11 +83,17 @@ use tokenizers::{
     DecoderWrapper, ModelWrapper, NormalizerWrapper, PostProcessorWrapper, PreTokenizerWrapper,
     Tokenizer,
 };
+use web_time::{Duration, Instant};
 
 const BEGIN_OF_TEXT: &str = "<|begin_of_text|>";
 const START_HEADER: &str = "<|start_header_id|>";
 const END_HEADER: &str = "<|end_header_id|>";
 const END_OF_TURN: &str = "<|eot_id|>";
+const IM_START: &str = "<|im_start|>";
+const IM_END: &str = "<|im_end|>";
+const SMOLLM2_DEFAULT_SYSTEM_PROMPT: &str =
+    "You are a helpful AI assistant named SmolLM, trained by Hugging Face";
+const QUANTIZED_LLAMA_CONTEXT_LIMIT: usize = 4096;
 const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
 #[cfg(not(target_family = "wasm"))]
 const STREAM_CHANNEL_CAPACITY: usize = 8;
@@ -132,15 +140,53 @@ impl Default for GenerationConfig {
     }
 }
 
-/// Owned Hugging Face model artifacts for exactly one unsharded checkpoint.
+/// Owned model artifacts for exactly one unsharded checkpoint.
 #[derive(Debug)]
 pub struct ModelData {
     /// Contents of `config.json`.
     pub config: Vec<u8>,
     /// Contents of `tokenizer.json`.
     pub tokenizer: Vec<u8>,
-    /// Contents of one `model.safetensors` file.
+    /// Contents of one safetensors or GGUF checkpoint, as identified by [`ModelArtifacts`].
     pub weights: Vec<u8>,
+}
+
+/// Borrowed GGUF artifacts for zero-copy loading from embedded/static bytes.
+#[derive(Debug, Clone, Copy)]
+pub struct GgufModelData<'a> {
+    /// Contents of `config.json`.
+    pub config: &'a [u8],
+    /// Contents of `tokenizer.json`.
+    pub tokenizer: &'a [u8],
+    /// Contents of one GGUF checkpoint.
+    pub weights: &'a [u8],
+}
+
+/// Byte-backed checkpoint format supplied to [`LlamaModel`].
+#[derive(Debug)]
+pub enum ModelArtifacts {
+    /// One unsharded Hugging Face safetensors checkpoint.
+    Safetensors(ModelData),
+    /// A GGUF checkpoint containing quantized Llama-family tensors.
+    Gguf(ModelData),
+}
+
+/// Prompt/model family recognized from validated tokenizer metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelFamily {
+    /// Meta Llama 3 instruct control-token format.
+    Llama3,
+    /// Hugging Face SmolLM2 instruct (ChatML-style) format.
+    SmolLm2,
+}
+
+/// Quantized tensor encoding detected in a GGUF checkpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Quantization {
+    /// Mixed GGUF tensors whose primary matrix encoding is Q4_K.
+    Q4K,
 }
 
 /// Why a local Candle completion failed.
@@ -164,6 +210,25 @@ pub enum CandleError {
     /// The tokenizer bytes could not be loaded.
     #[error("invalid tokenizer: {0}")]
     TokenizerLoading(String),
+    /// The tokenizer metadata does not identify a supported prompt family.
+    #[error("unsupported model family: {0}")]
+    UnsupportedModelFamily(String),
+    /// An explicitly selected model family disagrees with validated artifacts.
+    #[error("selected model family {selected:?} does not match detected family {detected:?}")]
+    ModelFamilyMismatch {
+        /// Family requested by the caller.
+        selected: ModelFamily,
+        /// Family detected from the tokenizer.
+        detected: ModelFamily,
+    },
+    /// Independently supplied model artifacts disagree with one another.
+    #[error("{artifact} does not match the selected model artifacts: {reason}")]
+    ArtifactMismatch {
+        /// Artifact or metadata field that disagreed.
+        artifact: &'static str,
+        /// Human-readable mismatch details.
+        reason: String,
+    },
     /// The tokenizer vocabulary does not agree with the model configuration.
     #[error("tokenizer vocabulary size {actual} does not match config.vocab_size {expected}")]
     TokenizerVocabularyMismatch {
@@ -172,13 +237,13 @@ pub enum CandleError {
         /// Vocabulary size reported by the tokenizer, including added tokens.
         actual: usize,
     },
-    /// A Llama 3 prompt-format token is absent from the tokenizer.
-    #[error("tokenizer is missing required Llama 3 special token `{token}`")]
+    /// A selected prompt-format token is absent from the tokenizer.
+    #[error("tokenizer is missing required prompt-format special token `{token}`")]
     MissingSpecialToken {
         /// Required special-token string.
         token: &'static str,
     },
-    /// A Llama 3 formatting token exists but is not registered as special.
+    /// A prompt-format token exists but is not registered as special.
     #[error("tokenizer token `{token}` must be registered as a special token")]
     SpecialTokenNotMarked {
         /// Formatting token that must be treated atomically by the tokenizer.
@@ -203,6 +268,15 @@ pub enum CandleError {
     /// The safetensors checkpoint was malformed or incompatible with the configuration.
     #[error("invalid or incompatible safetensors checkpoint: {0}")]
     InvalidCheckpoint(String),
+    /// A GGUF checkpoint was malformed or inconsistent with its configuration.
+    #[error("invalid or incompatible GGUF checkpoint: {0}")]
+    InvalidQuantizedCheckpoint(String),
+    /// The GGUF checkpoint does not use a supported production quantization.
+    #[error("unsupported GGUF quantization: {0}")]
+    UnsupportedQuantization(String),
+    /// A message contains content that the selected text-only prompt renderer cannot represent.
+    #[error("unsupported prompt content: {0}")]
+    UnsupportedPromptContent(&'static str),
     /// A tensor required by the configured Llama architecture was absent.
     #[error("checkpoint is missing expected tensor `{0}`")]
     MissingTensor(String),
@@ -225,7 +299,7 @@ pub enum CandleError {
         dtype: String,
     },
     /// Neither the configuration nor tokenizer supplied a usable stop token.
-    #[error("unable to determine a valid EOS or Llama 3 end-of-turn token")]
+    #[error("unable to determine a valid EOS or model end-of-turn token")]
     MissingStopToken,
     /// Candle could not load the model tensors.
     #[error("Candle model loading failed: {0}")]
@@ -277,7 +351,7 @@ pub enum CandleError {
     UnsupportedFeature(String),
     /// `CompletionModel::make` cannot load a byte-backed model.
     #[error(
-        "`CompletionModel::make` is unsupported for rig-candle; use `LlamaModel::from_safetensors` or `LlamaModel::builder`"
+        "`CompletionModel::make` is unsupported for rig-candle; use a byte-backed `LlamaModel` constructor or builder"
     )]
     UnsupportedMake,
     /// A native blocking inference task could not be joined.
@@ -300,7 +374,7 @@ impl From<CandleError> for CompletionError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
-    /// A configured EOS or Llama 3 end-of-turn token was sampled.
+    /// A configured EOS or family-specific end-of-turn token was sampled.
     Eos,
     /// The configured maximum output length was reached.
     MaxTokens,
@@ -349,7 +423,9 @@ enum ModelState {
 }
 
 struct LoadedModel {
-    model: Llama,
+    model: LoadedWeights,
+    family: ModelFamily,
+    quantization: Option<Quantization>,
     tokenizer: Tokenizer,
     config: Config,
     stop_tokens: HashSet<u32>,
@@ -358,6 +434,11 @@ struct LoadedModel {
     concurrency: Arc<tokio::sync::Semaphore>,
     #[cfg(all(test, not(target_family = "wasm")))]
     test_control: Option<Arc<TestControl>>,
+}
+
+enum LoadedWeights {
+    Safetensors(Llama),
+    Gguf(QuantizedLlama),
 }
 
 #[cfg(all(test, not(target_family = "wasm")))]
@@ -439,7 +520,7 @@ impl TestControl {
     }
 }
 
-/// A cheaply cloneable, CPU-only Llama completion model.
+/// A cheaply cloneable, CPU-only Llama-family completion model.
 #[derive(Clone)]
 pub struct LlamaModel {
     state: ModelState,
@@ -447,7 +528,8 @@ pub struct LlamaModel {
 
 /// Builder for loading a [`LlamaModel`] and customizing generation defaults.
 pub struct LlamaModelBuilder {
-    data: ModelData,
+    artifacts: ModelArtifacts,
+    family: Option<ModelFamily>,
     generation: GenerationConfig,
     max_concurrent_requests: usize,
 }
@@ -458,17 +540,67 @@ impl LlamaModel {
         Self::builder(data).build()
     }
 
+    /// Loads a model from config, tokenizer, and a byte-backed GGUF checkpoint.
+    pub fn from_gguf(data: ModelData) -> Result<Self, CandleError> {
+        Self::builder_from_artifacts(ModelArtifacts::Gguf(data)).build()
+    }
+
+    /// Loads GGUF artifacts from borrowed bytes without copying the checkpoint buffer.
+    ///
+    /// This is intended for `include_bytes!` and other long-lived buffers where
+    /// the GGUF bytes are needed only while Candle constructs its owned tensors.
+    pub fn from_gguf_bytes(data: GgufModelData<'_>) -> Result<Self, CandleError> {
+        let generation = GenerationConfig::default();
+        validate_generation(&generation, None)?;
+        let loaded = load_gguf_model(data, None, generation, DEFAULT_MAX_CONCURRENT_REQUESTS)?;
+        Ok(Self {
+            state: ModelState::Ready(Arc::new(loaded)),
+        })
+    }
+
+    /// Loads a model from explicitly typed byte-backed artifacts.
+    pub fn from_artifacts(artifacts: ModelArtifacts) -> Result<Self, CandleError> {
+        Self::builder_from_artifacts(artifacts).build()
+    }
+
     /// Starts a byte-backed model builder.
     pub fn builder(data: ModelData) -> LlamaModelBuilder {
+        Self::builder_from_artifacts(ModelArtifacts::Safetensors(data))
+    }
+
+    /// Starts a builder from explicitly typed byte-backed artifacts.
+    pub fn builder_from_artifacts(artifacts: ModelArtifacts) -> LlamaModelBuilder {
         LlamaModelBuilder {
-            data,
+            artifacts,
+            family: None,
             generation: GenerationConfig::default(),
             max_concurrent_requests: DEFAULT_MAX_CONCURRENT_REQUESTS,
+        }
+    }
+
+    /// Returns the validated prompt/model family, or `None` for an unloaded `make` placeholder.
+    pub fn model_family(&self) -> Option<ModelFamily> {
+        match &self.state {
+            ModelState::Ready(loaded) => Some(loaded.family),
+            ModelState::UnsupportedMake => None,
+        }
+    }
+
+    /// Returns the detected checkpoint quantization, if the model is quantized.
+    pub fn quantization(&self) -> Option<Quantization> {
+        match &self.state {
+            ModelState::Ready(loaded) => loaded.quantization,
+            ModelState::UnsupportedMake => None,
         }
     }
 }
 
 impl LlamaModelBuilder {
+    /// Selects a prompt family and requires it to match the tokenizer metadata.
+    pub fn model_family(mut self, family: ModelFamily) -> Self {
+        self.family = Some(family);
+        self
+    }
     /// Sets the default maximum generated token count.
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
         self.generation.max_tokens = max_tokens;
@@ -526,7 +658,12 @@ impl LlamaModelBuilder {
         if self.max_concurrent_requests == 0 {
             return Err(CandleError::InvalidConcurrencyLimit);
         }
-        let loaded = load_model(self.data, self.generation, self.max_concurrent_requests)?;
+        let loaded = load_model_with_family(
+            self.artifacts,
+            self.family,
+            self.generation,
+            self.max_concurrent_requests,
+        )?;
         Ok(LlamaModel {
             state: ModelState::Ready(Arc::new(loaded)),
         })
@@ -541,34 +678,47 @@ fn require_nonempty(bytes: &[u8], artifact: &'static str) -> Result<(), CandleEr
     }
 }
 
-fn load_model(
-    data: ModelData,
+fn load_model_with_family(
+    artifacts: ModelArtifacts,
+    selected_family: Option<ModelFamily>,
     generation: GenerationConfig,
     _max_concurrent_requests: usize,
 ) -> Result<LoadedModel, CandleError> {
+    let data = match artifacts {
+        ModelArtifacts::Safetensors(data) => data,
+        ModelArtifacts::Gguf(data) => {
+            return load_gguf_model(
+                GgufModelData {
+                    config: &data.config,
+                    tokenizer: &data.tokenizer,
+                    weights: &data.weights,
+                },
+                selected_family,
+                generation,
+                _max_concurrent_requests,
+            );
+        }
+    };
     require_nonempty(&data.config, "config")?;
     require_nonempty(&data.tokenizer, "tokenizer")?;
     require_nonempty(&data.weights, "weights")?;
 
-    let llama_config: LlamaConfig = serde_json::from_slice(&data.config)
-        .map_err(|error| CandleError::Configuration(error.to_string()))?;
-    let config = llama_config.into_config(false);
-    validate_model_config(&config)?;
-
-    let tokenizer = Tokenizer::from_bytes(&data.tokenizer)
-        .map_err(|error| CandleError::TokenizerLoading(error.to_string()))?;
-    validate_tokenizer(&config, &tokenizer)?;
-    let stop_tokens = resolve_stop_tokens(&config, &tokenizer)?;
-    validate_checkpoint(&data.weights, &config)?;
+    let (config, tokenizer, detected_family, stop_tokens) =
+        prepare_model(&data.config, &data.tokenizer, selected_family)?;
 
     let device = Device::Cpu;
+    validate_checkpoint(&data.weights, &config)?;
     let builder = VarBuilder::from_buffered_safetensors(data.weights, DType::F32, &device)
         .map_err(|error| CandleError::InvalidCheckpoint(error.to_string()))?;
-    let model = Llama::load(builder, &config)
-        .map_err(|error| CandleError::ModelLoading(error.to_string()))?;
+    let model = LoadedWeights::Safetensors(
+        Llama::load(builder, &config)
+            .map_err(|error| CandleError::ModelLoading(error.to_string()))?,
+    );
 
     Ok(LoadedModel {
         model,
+        family: detected_family,
+        quantization: None,
         tokenizer,
         config,
         stop_tokens,
@@ -578,6 +728,77 @@ fn load_model(
         #[cfg(all(test, not(target_family = "wasm")))]
         test_control: None,
     })
+}
+
+fn load_gguf_model(
+    data: GgufModelData<'_>,
+    selected_family: Option<ModelFamily>,
+    generation: GenerationConfig,
+    _max_concurrent_requests: usize,
+) -> Result<LoadedModel, CandleError> {
+    require_nonempty(data.config, "config")?;
+    require_nonempty(data.tokenizer, "tokenizer")?;
+    require_nonempty(data.weights, "weights")?;
+    let (mut config, tokenizer, family, stop_tokens) =
+        prepare_model(data.config, data.tokenizer, selected_family)?;
+    let device = Device::Cpu;
+    let model = load_gguf(data.weights, &config, &tokenizer, family, &device)?;
+    config.max_position_embeddings = config
+        .max_position_embeddings
+        .min(QUANTIZED_LLAMA_CONTEXT_LIMIT);
+    Ok(LoadedModel {
+        model: LoadedWeights::Gguf(model),
+        family,
+        quantization: Some(Quantization::Q4K),
+        tokenizer,
+        config,
+        stop_tokens,
+        generation,
+        #[cfg(not(target_family = "wasm"))]
+        concurrency: Arc::new(tokio::sync::Semaphore::new(_max_concurrent_requests)),
+        #[cfg(all(test, not(target_family = "wasm")))]
+        test_control: None,
+    })
+}
+
+fn prepare_model(
+    config_bytes: &[u8],
+    tokenizer_bytes: &[u8],
+    selected_family: Option<ModelFamily>,
+) -> Result<(Config, Tokenizer, ModelFamily, HashSet<u32>), CandleError> {
+    let llama_config: LlamaConfig = serde_json::from_slice(config_bytes)
+        .map_err(|error| CandleError::Configuration(error.to_string()))?;
+    let config = llama_config.into_config(false);
+    validate_model_config(&config)?;
+    let tokenizer = Tokenizer::from_bytes(tokenizer_bytes)
+        .map_err(|error| CandleError::TokenizerLoading(error.to_string()))?;
+    let detected_family = detect_model_family(&tokenizer)?;
+    if let Some(selected) = selected_family
+        && selected != detected_family
+    {
+        return Err(CandleError::ModelFamilyMismatch {
+            selected,
+            detected: detected_family,
+        });
+    }
+    validate_family_config(config_bytes, &config, detected_family)?;
+    validate_tokenizer(&config, &tokenizer, detected_family)?;
+    let stop_tokens = resolve_stop_tokens(&config, &tokenizer, detected_family)?;
+    Ok((config, tokenizer, detected_family, stop_tokens))
+}
+
+#[cfg(test)]
+fn load_model(
+    data: ModelData,
+    generation: GenerationConfig,
+    max_concurrent_requests: usize,
+) -> Result<LoadedModel, CandleError> {
+    load_model_with_family(
+        ModelArtifacts::Safetensors(data),
+        None,
+        generation,
+        max_concurrent_requests,
+    )
 }
 
 fn validate_model_config(config: &Config) -> Result<(), CandleError> {
@@ -686,6 +907,90 @@ fn validate_model_config(config: &Config) -> Result<(), CandleError> {
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+struct ModelIdentity {
+    #[serde(default)]
+    architectures: Vec<String>,
+    model_type: Option<String>,
+    hidden_act: Option<String>,
+    attention_bias: Option<bool>,
+    mlp_bias: Option<bool>,
+    rope_interleaved: Option<bool>,
+}
+
+fn validate_family_config(
+    config_bytes: &[u8],
+    config: &Config,
+    family: ModelFamily,
+) -> Result<(), CandleError> {
+    let identity: ModelIdentity = serde_json::from_slice(config_bytes)
+        .map_err(|error| CandleError::Configuration(error.to_string()))?;
+    if identity
+        .model_type
+        .as_deref()
+        .is_some_and(|model_type| model_type != "llama")
+        || (!identity.architectures.is_empty()
+            && !identity
+                .architectures
+                .iter()
+                .any(|architecture| architecture == "LlamaForCausalLM"))
+    {
+        return Err(CandleError::UnsupportedModelFamily(
+            "configuration must declare the LlamaForCausalLM architecture".to_string(),
+        ));
+    }
+    if family == ModelFamily::SmolLm2 {
+        if identity.model_type.as_deref() != Some("llama")
+            || !identity
+                .architectures
+                .iter()
+                .any(|architecture| architecture == "LlamaForCausalLM")
+            || identity.hidden_act.as_deref() != Some("silu")
+            || identity.attention_bias != Some(false)
+            || identity.mlp_bias != Some(false)
+            || identity.rope_interleaved != Some(false)
+        {
+            return Err(CandleError::ArtifactMismatch {
+                artifact: "config.json",
+                reason: "SmolLM2 requires LlamaForCausalLM with SiLU, bias-free projections, and non-interleaved RoPE metadata".to_string(),
+            });
+        }
+        let expected = [
+            ("hidden_size", config.hidden_size, 960),
+            ("intermediate_size", config.intermediate_size, 2560),
+            ("vocab_size", config.vocab_size, 49152),
+            ("num_hidden_layers", config.num_hidden_layers, 32),
+            ("num_attention_heads", config.num_attention_heads, 15),
+            ("num_key_value_heads", config.num_key_value_heads, 5),
+            (
+                "max_position_embeddings",
+                config.max_position_embeddings,
+                8192,
+            ),
+        ];
+        for (field, actual, required) in expected {
+            if actual != required {
+                return Err(CandleError::ArtifactMismatch {
+                    artifact: "config.json",
+                    reason: format!(
+                        "SmolLM2-360M-Instruct requires {field}={required}, found {actual}"
+                    ),
+                });
+            }
+        }
+        if !config.tie_word_embeddings
+            || config.rms_norm_eps != 1e-5
+            || config.rope_theta != 100_000.0
+        {
+            return Err(CandleError::ArtifactMismatch {
+                artifact: "config.json",
+                reason: "SmolLM2-360M-Instruct requires tied embeddings, rms_norm_eps=1e-5, and rope_theta=100000".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn validate_positive_finite(field: &'static str, value: f32) -> Result<(), CandleError> {
     if !value.is_finite() || value <= 0.0 {
         return Err(CandleError::InvalidConfigurationValue {
@@ -696,7 +1001,30 @@ fn validate_positive_finite(field: &'static str, value: f32) -> Result<(), Candl
     Ok(())
 }
 
-fn validate_tokenizer(config: &Config, tokenizer: &Tokenizer) -> Result<(), CandleError> {
+fn detect_model_family(tokenizer: &Tokenizer) -> Result<ModelFamily, CandleError> {
+    let llama3 = [BEGIN_OF_TEXT, START_HEADER, END_HEADER, END_OF_TURN]
+        .iter()
+        .all(|token| tokenizer.token_to_id(token).is_some());
+    let smollm2 = [IM_START, IM_END]
+        .iter()
+        .all(|token| tokenizer.token_to_id(token).is_some());
+    match (llama3, smollm2) {
+        (true, false) => Ok(ModelFamily::Llama3),
+        (false, true) => Ok(ModelFamily::SmolLm2),
+        (true, true) => Err(CandleError::UnsupportedModelFamily(
+            "tokenizer ambiguously contains both Llama 3 and SmolLM2 control tokens".to_string(),
+        )),
+        (false, false) => Err(CandleError::UnsupportedModelFamily(
+            "tokenizer contains neither the Llama 3 nor SmolLM2 control-token set".to_string(),
+        )),
+    }
+}
+
+fn validate_tokenizer(
+    config: &Config,
+    tokenizer: &Tokenizer,
+    family: ModelFamily,
+) -> Result<(), CandleError> {
     let actual = tokenizer.get_vocab_size(true);
     if actual != config.vocab_size {
         return Err(CandleError::TokenizerVocabularyMismatch {
@@ -724,7 +1052,11 @@ fn validate_tokenizer(config: &Config, tokenizer: &Tokenizer) -> Result<(), Cand
         }
         None => {}
     }
-    for token in [BEGIN_OF_TEXT, START_HEADER, END_HEADER, END_OF_TURN] {
+    let required: &[&'static str] = match family {
+        ModelFamily::Llama3 => &[BEGIN_OF_TEXT, START_HEADER, END_HEADER, END_OF_TURN],
+        ModelFamily::SmolLm2 => &[IM_START, IM_END],
+    };
+    for &token in required {
         let id = tokenizer
             .token_to_id(token)
             .ok_or(CandleError::MissingSpecialToken { token })?;
@@ -732,6 +1064,37 @@ fn validate_tokenizer(config: &Config, tokenizer: &Tokenizer) -> Result<(), Cand
         if !tokenizer.get_added_vocabulary().is_special_token(token) {
             return Err(CandleError::SpecialTokenNotMarked { token });
         }
+    }
+    let (start_token, end_token) = match family {
+        ModelFamily::Llama3 => (BEGIN_OF_TEXT, END_OF_TURN),
+        ModelFamily::SmolLm2 => (IM_START, IM_END),
+    };
+    let start_id = tokenizer
+        .token_to_id(start_token)
+        .ok_or(CandleError::MissingSpecialToken { token: start_token })?;
+    if let Some(configured) = config.bos_token_id
+        && configured != start_id
+    {
+        return Err(CandleError::ArtifactMismatch {
+            artifact: "bos_token_id",
+            reason: format!(
+                "configured ID {configured} does not match {start_token} ID {start_id}"
+            ),
+        });
+    }
+    let end_id = tokenizer
+        .token_to_id(end_token)
+        .ok_or(CandleError::MissingSpecialToken { token: end_token })?;
+    let configured_end_matches = match &config.eos_token_id {
+        Some(LlamaEosToks::Single(configured)) => *configured == end_id,
+        Some(LlamaEosToks::Multiple(configured)) => configured.contains(&end_id),
+        None => true,
+    };
+    if !configured_end_matches {
+        return Err(CandleError::ArtifactMismatch {
+            artifact: "eos_token_id",
+            reason: format!("configured EOS IDs do not contain {end_token} ID {end_id}"),
+        });
     }
     Ok(())
 }
@@ -750,6 +1113,7 @@ fn validate_token_id(token: &str, id: u32, vocab_size: usize) -> Result<(), Cand
 fn resolve_stop_tokens(
     config: &Config,
     tokenizer: &Tokenizer,
+    family: ModelFamily,
 ) -> Result<HashSet<u32>, CandleError> {
     let mut tokens = HashSet::new();
     match &config.eos_token_id {
@@ -761,7 +1125,11 @@ fn resolve_stop_tokens(
         }
         None => {}
     }
-    if let Some(token) = tokenizer.token_to_id(END_OF_TURN) {
+    let end_of_turn = match family {
+        ModelFamily::Llama3 => END_OF_TURN,
+        ModelFamily::SmolLm2 => IM_END,
+    };
+    if let Some(token) = tokenizer.token_to_id(end_of_turn) {
         tokens.insert(token);
     }
     if tokens.is_empty() {
@@ -769,6 +1137,309 @@ fn resolve_stop_tokens(
     } else {
         Ok(tokens)
     }
+}
+
+fn load_gguf(
+    weights: &[u8],
+    config: &Config,
+    tokenizer: &Tokenizer,
+    family: ModelFamily,
+    device: &Device,
+) -> Result<QuantizedLlama, CandleError> {
+    let mut reader = std::io::Cursor::new(weights);
+    let content = gguf_file::Content::read(&mut reader)
+        .map_err(|error| CandleError::InvalidQuantizedCheckpoint(error.to_string()))?;
+    match content.metadata.get("general.architecture") {
+        Some(gguf_file::Value::String(architecture)) if architecture == "llama" => {}
+        Some(value) => {
+            return Err(CandleError::InvalidQuantizedCheckpoint(format!(
+                "general.architecture must be `llama`, found {value:?}"
+            )));
+        }
+        None => {
+            return Err(CandleError::InvalidQuantizedCheckpoint(
+                "missing general.architecture metadata".to_string(),
+            ));
+        }
+    }
+    if family != ModelFamily::SmolLm2 {
+        return Err(CandleError::UnsupportedModelFamily(
+            "Q4_K_M GGUF loading currently supports SmolLM2-360M-Instruct only".to_string(),
+        ));
+    }
+    match content.metadata.get("general.file_type") {
+        // GGML file type 15 is Q4_K_M. Small matrices legitimately use
+        // auxiliary F32/Q5/Q6/Q8 encodings in this mixed quantization.
+        Some(gguf_file::Value::U32(15)) => {}
+        Some(value) => {
+            return Err(CandleError::UnsupportedQuantization(format!(
+                "general.file_type must identify Q4_K_M (15), found {value:?}"
+            )));
+        }
+        None => {
+            return Err(CandleError::InvalidQuantizedCheckpoint(
+                "missing general.file_type metadata".to_string(),
+            ));
+        }
+    }
+    if metadata_usize(&content, "general.quantization_version")? != 2 {
+        return Err(CandleError::UnsupportedQuantization(
+            "Q4_K_M checkpoint must use GGML quantization version 2".to_string(),
+        ));
+    }
+    validate_gguf_metadata(&content, config, tokenizer)?;
+    validate_gguf_tensors(&content, config)?;
+    QuantizedLlama::from_gguf(content, &mut reader, device)
+        .map_err(|error| CandleError::ModelLoading(error.to_string()))
+}
+
+fn validate_gguf_metadata(
+    content: &gguf_file::Content,
+    config: &Config,
+    tokenizer: &Tokenizer,
+) -> Result<(), CandleError> {
+    let expected = [
+        ("llama.vocab_size", config.vocab_size),
+        ("llama.embedding_length", config.hidden_size),
+        ("llama.feed_forward_length", config.intermediate_size),
+        ("llama.block_count", config.num_hidden_layers),
+        ("llama.attention.head_count", config.num_attention_heads),
+        ("llama.attention.head_count_kv", config.num_key_value_heads),
+        ("llama.context_length", config.max_position_embeddings),
+        (
+            "llama.rope.dimension_count",
+            config.hidden_size / config.num_attention_heads,
+        ),
+    ];
+    for (key, expected) in expected {
+        let actual = metadata_usize(content, key)?;
+        if actual != expected {
+            return Err(CandleError::ArtifactMismatch {
+                artifact: "model.gguf",
+                reason: format!("metadata `{key}` is {actual}, but config requires {expected}"),
+            });
+        }
+    }
+    for (key, actual, expected) in [
+        (
+            "llama.rope.freq_base",
+            metadata_f64(content, "llama.rope.freq_base")?,
+            config.rope_theta as f64,
+        ),
+        (
+            "llama.attention.layer_norm_rms_epsilon",
+            metadata_f64(content, "llama.attention.layer_norm_rms_epsilon")?,
+            config.rms_norm_eps,
+        ),
+    ] {
+        if (actual - expected).abs() > 1e-5 * expected.abs().max(f64::MIN_POSITIVE) {
+            return Err(CandleError::ArtifactMismatch {
+                artifact: "model.gguf",
+                reason: format!("metadata `{key}` is {actual}, but config requires {expected}"),
+            });
+        }
+    }
+    require_metadata_string(content, "general.basename", "smollm2")?;
+    require_metadata_string(content, "tokenizer.ggml.model", "gpt2")?;
+    require_metadata_string(content, "tokenizer.ggml.pre", "smollm")?;
+    let tokens = match content.metadata.get("tokenizer.ggml.tokens") {
+        Some(gguf_file::Value::Array(tokens)) => tokens,
+        Some(value) => {
+            return Err(CandleError::InvalidQuantizedCheckpoint(format!(
+                "metadata `tokenizer.ggml.tokens` must be an array, found {value:?}"
+            )));
+        }
+        None => {
+            return Err(CandleError::InvalidQuantizedCheckpoint(
+                "missing `tokenizer.ggml.tokens` metadata".to_string(),
+            ));
+        }
+    };
+    if tokens.len() != config.vocab_size {
+        return Err(CandleError::ArtifactMismatch {
+            artifact: "model.gguf",
+            reason: format!(
+                "GGUF tokenizer has {} tokens, but config requires {}",
+                tokens.len(),
+                config.vocab_size
+            ),
+        });
+    }
+    for (id, value) in tokens.iter().enumerate() {
+        let gguf_token = match value {
+            gguf_file::Value::String(token) => token,
+            value => {
+                return Err(CandleError::InvalidQuantizedCheckpoint(format!(
+                    "tokenizer.ggml.tokens[{id}] must be a string, found {value:?}"
+                )));
+            }
+        };
+        let id = u32::try_from(id).map_err(|_| {
+            CandleError::InvalidQuantizedCheckpoint(
+                "GGUF tokenizer index does not fit in u32".to_string(),
+            )
+        })?;
+        if tokenizer.id_to_token(id).as_deref() != Some(gguf_token.as_str()) {
+            return Err(CandleError::ArtifactMismatch {
+                artifact: "tokenizer.json",
+                reason: format!("token ID {id} does not match the GGUF tokenizer vocabulary"),
+            });
+        }
+    }
+    for (key, token) in [
+        ("tokenizer.ggml.bos_token_id", IM_START),
+        ("tokenizer.ggml.eos_token_id", IM_END),
+    ] {
+        let actual = metadata_usize(content, key)?;
+        let expected = tokenizer
+            .token_to_id(token)
+            .ok_or(CandleError::MissingSpecialToken { token })? as usize;
+        if actual != expected {
+            return Err(CandleError::ArtifactMismatch {
+                artifact: "model.gguf",
+                reason: format!("metadata `{key}` is {actual}, but tokenizer requires {expected}"),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn metadata_usize(content: &gguf_file::Content, key: &str) -> Result<usize, CandleError> {
+    let value = content.metadata.get(key).ok_or_else(|| {
+        CandleError::InvalidQuantizedCheckpoint(format!("missing `{key}` metadata"))
+    })?;
+    match value {
+        gguf_file::Value::U32(value) => Ok(*value as usize),
+        gguf_file::Value::U64(value) => usize::try_from(*value).map_err(|_| {
+            CandleError::InvalidQuantizedCheckpoint(format!(
+                "metadata `{key}` does not fit in usize"
+            ))
+        }),
+        value => Err(CandleError::InvalidQuantizedCheckpoint(format!(
+            "metadata `{key}` must be an unsigned integer, found {value:?}"
+        ))),
+    }
+}
+
+fn metadata_f64(content: &gguf_file::Content, key: &str) -> Result<f64, CandleError> {
+    match content.metadata.get(key) {
+        Some(gguf_file::Value::F32(value)) => Ok(f64::from(*value)),
+        Some(gguf_file::Value::F64(value)) => Ok(*value),
+        Some(value) => Err(CandleError::InvalidQuantizedCheckpoint(format!(
+            "metadata `{key}` must be floating point, found {value:?}"
+        ))),
+        None => Err(CandleError::InvalidQuantizedCheckpoint(format!(
+            "missing `{key}` metadata"
+        ))),
+    }
+}
+
+fn require_metadata_string(
+    content: &gguf_file::Content,
+    key: &str,
+    expected: &str,
+) -> Result<(), CandleError> {
+    match content.metadata.get(key) {
+        Some(gguf_file::Value::String(actual)) if actual.eq_ignore_ascii_case(expected) => Ok(()),
+        Some(value) => Err(CandleError::ArtifactMismatch {
+            artifact: "model.gguf",
+            reason: format!("metadata `{key}` must be `{expected}`, found {value:?}"),
+        }),
+        None => Err(CandleError::InvalidQuantizedCheckpoint(format!(
+            "missing `{key}` metadata"
+        ))),
+    }
+}
+
+fn validate_gguf_tensors(content: &gguf_file::Content, config: &Config) -> Result<(), CandleError> {
+    let allowed = |dtype| {
+        matches!(
+            dtype,
+            GgmlDType::F32 | GgmlDType::Q4K | GgmlDType::Q5_0 | GgmlDType::Q6K | GgmlDType::Q8_0
+        )
+    };
+    for (name, tensor) in &content.tensor_infos {
+        if !allowed(tensor.ggml_dtype) {
+            return Err(CandleError::UnsupportedQuantization(format!(
+                "tensor `{name}` uses unsupported {:?} in a Q4_K_M checkpoint",
+                tensor.ggml_dtype
+            )));
+        }
+    }
+    if !content
+        .tensor_infos
+        .values()
+        .any(|tensor| tensor.ggml_dtype == GgmlDType::Q4K)
+    {
+        return Err(CandleError::UnsupportedQuantization(
+            "checkpoint contains no Q4_K tensors; rig-candle supports the Q4_K_M tensor mix"
+                .to_string(),
+        ));
+    }
+    validate_gguf_tensor(
+        content,
+        "token_embd.weight",
+        &[config.vocab_size, config.hidden_size],
+    )?;
+    validate_gguf_tensor(content, "output_norm.weight", &[config.hidden_size])?;
+    if !config.tie_word_embeddings || content.tensor_infos.contains_key("output.weight") {
+        validate_gguf_tensor(
+            content,
+            "output.weight",
+            &[config.vocab_size, config.hidden_size],
+        )?;
+    }
+    let head_dim = config.hidden_size / config.num_attention_heads;
+    let kv_size = head_dim * config.num_key_value_heads;
+    for layer in 0..config.num_hidden_layers {
+        let prefix = format!("blk.{layer}");
+        for (suffix, shape) in [
+            (
+                "attn_q.weight",
+                vec![config.hidden_size, config.hidden_size],
+            ),
+            ("attn_k.weight", vec![kv_size, config.hidden_size]),
+            ("attn_v.weight", vec![kv_size, config.hidden_size]),
+            (
+                "attn_output.weight",
+                vec![config.hidden_size, config.hidden_size],
+            ),
+            (
+                "ffn_gate.weight",
+                vec![config.intermediate_size, config.hidden_size],
+            ),
+            (
+                "ffn_down.weight",
+                vec![config.hidden_size, config.intermediate_size],
+            ),
+            (
+                "ffn_up.weight",
+                vec![config.intermediate_size, config.hidden_size],
+            ),
+            ("attn_norm.weight", vec![config.hidden_size]),
+            ("ffn_norm.weight", vec![config.hidden_size]),
+        ] {
+            validate_gguf_tensor(content, &format!("{prefix}.{suffix}"), &shape)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_gguf_tensor(
+    content: &gguf_file::Content,
+    name: &str,
+    expected: &[usize],
+) -> Result<(), CandleError> {
+    let tensor = content.tensor_infos.get(name).ok_or_else(|| {
+        CandleError::InvalidQuantizedCheckpoint(format!("missing expected tensor `{name}`"))
+    })?;
+    if tensor.shape.dims() != expected {
+        return Err(CandleError::InvalidQuantizedCheckpoint(format!(
+            "tensor `{name}` has shape {:?}, expected {expected:?}",
+            tensor.shape.dims()
+        )));
+    }
+    Ok(())
 }
 
 fn validate_checkpoint(weights: &[u8], config: &Config) -> Result<(), CandleError> {
@@ -945,7 +1616,15 @@ fn validate_request(request: &CompletionRequest) -> Result<(), CandleError> {
     Ok(())
 }
 
+#[cfg(test)]
 fn render_prompt(request: &CompletionRequest) -> Result<String, CandleError> {
+    render_prompt_for(request, ModelFamily::Llama3)
+}
+
+fn render_prompt_for(
+    request: &CompletionRequest,
+    family: ModelFamily,
+) -> Result<String, CandleError> {
     validate_request(request)?;
     let mut messages = Vec::new();
     if let Some(preamble) = &request.preamble {
@@ -969,20 +1648,49 @@ fn render_prompt(request: &CompletionRequest) -> Result<String, CandleError> {
         messages.insert(insertion, Message::user(context));
     }
 
-    let mut rendered = String::from(BEGIN_OF_TEXT);
+    let mut rendered = match family {
+        ModelFamily::Llama3 => String::from(BEGIN_OF_TEXT),
+        ModelFamily::SmolLm2 => {
+            if !matches!(messages.first(), Some(Message::System { .. })) {
+                format!("{IM_START}system\n{SMOLLM2_DEFAULT_SYSTEM_PROMPT}{IM_END}\n")
+            } else {
+                String::new()
+            }
+        }
+    };
     for message in messages {
         let (role, content) = render_message(&message)?;
-        rendered.push_str(START_HEADER);
-        rendered.push_str(role);
-        rendered.push_str(END_HEADER);
-        rendered.push_str("\n\n");
-        rendered.push_str(&content);
-        rendered.push_str(END_OF_TURN);
+        match family {
+            ModelFamily::Llama3 => {
+                rendered.push_str(START_HEADER);
+                rendered.push_str(role);
+                rendered.push_str(END_HEADER);
+                rendered.push_str("\n\n");
+                rendered.push_str(&content);
+                rendered.push_str(END_OF_TURN);
+            }
+            ModelFamily::SmolLm2 => {
+                rendered.push_str(IM_START);
+                rendered.push_str(role);
+                rendered.push('\n');
+                rendered.push_str(&content);
+                rendered.push_str(IM_END);
+                rendered.push('\n');
+            }
+        }
     }
-    rendered.push_str(START_HEADER);
-    rendered.push_str("assistant");
-    rendered.push_str(END_HEADER);
-    rendered.push_str("\n\n");
+    match family {
+        ModelFamily::Llama3 => {
+            rendered.push_str(START_HEADER);
+            rendered.push_str("assistant");
+            rendered.push_str(END_HEADER);
+            rendered.push_str("\n\n");
+        }
+        ModelFamily::SmolLm2 => {
+            rendered.push_str(IM_START);
+            rendered.push_str("assistant\n");
+        }
+    }
     Ok(rendered)
 }
 
@@ -995,20 +1703,20 @@ fn render_message(message: &Message) -> Result<(&'static str, String), CandleErr
                 match item {
                     UserContent::Text(text) => parts.push(text.text.clone()),
                     UserContent::ToolResult(_) => {
-                        return Err(CandleError::UnsupportedFeature("tool results".to_string()));
+                        return Err(CandleError::UnsupportedPromptContent("tool results"));
                     }
                     UserContent::Image(_) => {
-                        return Err(CandleError::UnsupportedFeature("image content".to_string()));
+                        return Err(CandleError::UnsupportedPromptContent("image content"));
                     }
                     UserContent::Audio(_) => {
-                        return Err(CandleError::UnsupportedFeature("audio content".to_string()));
+                        return Err(CandleError::UnsupportedPromptContent("audio content"));
                     }
                     UserContent::Video(_) => {
-                        return Err(CandleError::UnsupportedFeature("video content".to_string()));
+                        return Err(CandleError::UnsupportedPromptContent("video content"));
                     }
                     UserContent::Document(_) => {
-                        return Err(CandleError::UnsupportedFeature(
-                            "message document content".to_string(),
+                        return Err(CandleError::UnsupportedPromptContent(
+                            "message document content",
                         ));
                     }
                 }
@@ -1021,15 +1729,15 @@ fn render_message(message: &Message) -> Result<(&'static str, String), CandleErr
                 match item {
                     AssistantContent::Text(text) => parts.push(text.text.clone()),
                     AssistantContent::ToolCall(_) => {
-                        return Err(CandleError::UnsupportedFeature("tool calls".to_string()));
+                        return Err(CandleError::UnsupportedPromptContent("tool calls"));
                     }
                     AssistantContent::Reasoning(_) => {
-                        return Err(CandleError::UnsupportedFeature(
-                            "structured reasoning".to_string(),
+                        return Err(CandleError::UnsupportedPromptContent(
+                            "structured reasoning",
                         ));
                     }
                     AssistantContent::Image(_) => {
-                        return Err(CandleError::UnsupportedFeature("image content".to_string()));
+                        return Err(CandleError::UnsupportedPromptContent("image content"));
                     }
                 }
             }
@@ -1257,7 +1965,7 @@ struct GenerationSession<'a> {
     generation: GenerationConfig,
     cancellation: &'a CancellationSignal,
     decoder: IncrementalTextDecoder<'a>,
-    cache: Cache,
+    weights: SessionWeights<'a>,
     logits: Tensor,
     processor: LogitsProcessor,
     prompt_tokens: usize,
@@ -1272,13 +1980,32 @@ struct GenerationSession<'a> {
     delivery_duration: Duration,
 }
 
+enum SessionWeights<'a> {
+    Safetensors { model: &'a Llama, cache: Cache },
+    Gguf(QuantizedLlama),
+}
+
+impl SessionWeights<'_> {
+    fn forward(&mut self, input: &Tensor, position: usize) -> Result<Tensor, CandleError> {
+        match self {
+            Self::Safetensors { model, cache } => model
+                .forward(input, position, cache)
+                .and_then(|tensor| tensor.squeeze(0)),
+            Self::Gguf(model) => model
+                .forward(input, position)
+                .and_then(|tensor| tensor.squeeze(0)),
+        }
+        .map_err(|error| CandleError::Inference(error.to_string()))
+    }
+}
+
 impl<'a> GenerationSession<'a> {
     fn new(
         loaded: &'a LoadedModel,
         request: CompletionRequest,
         cancellation: &'a CancellationSignal,
     ) -> Result<Self, CandleError> {
-        let prompt = render_prompt(&request)?;
+        let prompt = render_prompt_for(&request, loaded.family)?;
         let generation =
             effective_generation(&request, &loaded.generation, loaded.config.vocab_size)?;
         let encoding = loaded
@@ -1308,14 +2035,16 @@ impl<'a> GenerationSession<'a> {
         let input = Tensor::new(prompt_ids, &device)
             .and_then(|tensor| tensor.unsqueeze(0))
             .map_err(|error| CandleError::Inference(error.to_string()))?;
-        let mut cache = Cache::new(true, DType::F32, &loaded.config, &device)
-            .map_err(|error| CandleError::Inference(error.to_string()))?;
+        let mut weights = match &loaded.model {
+            LoadedWeights::Safetensors(model) => SessionWeights::Safetensors {
+                model,
+                cache: Cache::new(true, DType::F32, &loaded.config, &device)
+                    .map_err(|error| CandleError::Inference(error.to_string()))?,
+            },
+            LoadedWeights::Gguf(model) => SessionWeights::Gguf(model.clone()),
+        };
         check_cancellation(cancellation)?;
-        let logits = loaded
-            .model
-            .forward(&input, 0, &mut cache)
-            .and_then(|tensor| tensor.squeeze(0))
-            .map_err(|error| CandleError::Inference(error.to_string()))?;
+        let logits = weights.forward(&input, 0)?;
         let prefill_duration = started.elapsed();
         let processor = LogitsProcessor::from_sampling(generation.seed, sampling(&generation));
 
@@ -1323,7 +2052,7 @@ impl<'a> GenerationSession<'a> {
             loaded,
             processor,
             decoder: IncrementalTextDecoder::new(&loaded.tokenizer),
-            cache,
+            weights,
             logits,
             prompt_tokens: prompt_ids.len(),
             max_tokens,
@@ -1382,12 +2111,7 @@ impl<'a> GenerationSession<'a> {
             let next = Tensor::new(&[token], &device)
                 .and_then(|tensor| tensor.unsqueeze(0))
                 .map_err(|error| CandleError::Inference(error.to_string()))?;
-            self.logits = self
-                .loaded
-                .model
-                .forward(&next, position, &mut self.cache)
-                .and_then(|tensor| tensor.squeeze(0))
-                .map_err(|error| CandleError::Inference(error.to_string()))?;
+            self.logits = self.weights.forward(&next, position)?;
         }
 
         Ok(GenerationStep::Token(fragment))
@@ -1729,6 +2453,36 @@ mod tests {
         Ok(tokenizer.to_string(false)?.into_bytes())
     }
 
+    fn tiny_smollm2_tokenizer(
+        include_end: bool,
+        mark_end_special: bool,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        let end = if include_end { IM_END } else { "<other>" };
+        let vocab = [
+            ("<unk>".to_string(), 0),
+            (IM_START.to_string(), 1),
+            (end.to_string(), 2),
+            ("<eos>".to_string(), 3),
+            ("system".to_string(), 4),
+            ("user".to_string(), 5),
+            ("assistant".to_string(), 6),
+            ("hello".to_string(), 7),
+        ]
+        .into_iter()
+        .collect();
+        let model = WordLevel::builder()
+            .vocab(vocab)
+            .unk_token("<unk>".to_string())
+            .build()?;
+        let mut tokenizer = Tokenizer::new(model);
+        let mut special = vec![AddedToken::from(IM_START, true)];
+        if mark_end_special {
+            special.push(AddedToken::from(end, true));
+        }
+        tokenizer.add_special_tokens(&special);
+        Ok(tokenizer.to_string(false)?.into_bytes())
+    }
+
     fn tensor(shape: &[usize]) -> TestTensor {
         tensor_with_dtype(shape, Dtype::F32)
     }
@@ -2042,13 +2796,24 @@ mod tests {
         let config = config.into_config(false);
         let tokenizer = Tokenizer::from_bytes(tiny_tokenizer_with_end_header("<other>", true)?)?;
         assert!(matches!(
-            validate_tokenizer(&config, &tokenizer),
+            validate_tokenizer(&config, &tokenizer, ModelFamily::Llama3),
             Err(CandleError::MissingSpecialToken { token: END_HEADER })
         ));
         let tokenizer = Tokenizer::from_bytes(tiny_tokenizer_with_end_header(END_HEADER, false)?)?;
         assert!(matches!(
-            validate_tokenizer(&config, &tokenizer),
+            validate_tokenizer(&config, &tokenizer, ModelFamily::Llama3),
             Err(CandleError::SpecialTokenNotMarked { token: END_HEADER })
+        ));
+
+        let tokenizer = Tokenizer::from_bytes(tiny_smollm2_tokenizer(false, true)?)?;
+        assert!(matches!(
+            validate_tokenizer(&config, &tokenizer, ModelFamily::SmolLm2),
+            Err(CandleError::MissingSpecialToken { token: IM_END })
+        ));
+        let tokenizer = Tokenizer::from_bytes(tiny_smollm2_tokenizer(true, false)?)?;
+        assert!(matches!(
+            validate_tokenizer(&config, &tokenizer, ModelFamily::SmolLm2),
+            Err(CandleError::SpecialTokenNotMarked { token: IM_END })
         ));
 
         let data = ModelData {
@@ -2069,6 +2834,17 @@ mod tests {
             LlamaModel::from_safetensors(data),
             Err(CandleError::TokenIdOutOfRange { token, id: 9, .. }) if token == "eos_token_id"
         ));
+        for (field, value) in [("bos_token_id", 7.into()), ("eos_token_id", 3.into())] {
+            let data = ModelData {
+                config: config_with(field, value)?,
+                tokenizer: tiny_tokenizer()?,
+                weights: checkpoint(true)?,
+            };
+            assert!(matches!(
+                LlamaModel::from_safetensors(data),
+                Err(CandleError::ArtifactMismatch { artifact, .. }) if artifact == field
+            ));
+        }
         let data = ModelData {
             config: config_with("eos_token_id", serde_json::json!([]))?,
             tokenizer: tiny_tokenizer()?,
@@ -2218,6 +2994,78 @@ mod tests {
     fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let model = LlamaModel::from_safetensors(model_data()?)?;
         assert!(matches!(model.state, ModelState::Ready(_)));
+        assert_eq!(model.model_family(), Some(ModelFamily::Llama3));
+        assert_eq!(model.quantization(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn typed_gguf_and_family_errors_preserve_the_failure_kind()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let data = model_data()?;
+        assert!(matches!(
+            LlamaModel::builder(data)
+                .model_family(ModelFamily::SmolLm2)
+                .build(),
+            Err(CandleError::ModelFamilyMismatch {
+                selected: ModelFamily::SmolLm2,
+                detected: ModelFamily::Llama3,
+            })
+        ));
+
+        let mut malformed = model_data()?;
+        malformed.weights = b"not a gguf checkpoint".to_vec();
+        assert!(matches!(
+            LlamaModel::from_gguf(malformed),
+            Err(CandleError::InvalidQuantizedCheckpoint(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_metadata_shapes_and_tensor_encodings_are_validated_before_loading()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let config: LlamaConfig = serde_json::from_slice(&tiny_config())?;
+        let config = config.into_config(false);
+        let mut content = gguf_file::Content {
+            magic: gguf_file::VersionedMagic::GgufV3,
+            metadata: HashMap::from([("llama.vocab_size".to_string(), gguf_file::Value::U32(9))]),
+            tensor_infos: HashMap::new(),
+            tensor_data_offset: 0,
+        };
+        let tokenizer = Tokenizer::from_bytes(tiny_tokenizer()?)?;
+        assert!(matches!(
+            validate_gguf_metadata(&content, &config, &tokenizer),
+            Err(CandleError::ArtifactMismatch {
+                artifact: "model.gguf",
+                ..
+            })
+        ));
+
+        content.tensor_infos.insert(
+            "token_embd.weight".to_string(),
+            gguf_file::TensorInfo {
+                ggml_dtype: GgmlDType::Q4K,
+                shape: candle_core::Shape::from(vec![7, 4]),
+                offset: 0,
+            },
+        );
+        assert!(matches!(
+            validate_gguf_tensors(&content, &config),
+            Err(CandleError::InvalidQuantizedCheckpoint(message))
+                if message.contains("token_embd.weight") && message.contains("expected")
+        ));
+
+        content
+            .tensor_infos
+            .get_mut("token_embd.weight")
+            .ok_or("synthetic GGUF tensor disappeared")?
+            .ggml_dtype = GgmlDType::Q2K;
+        assert!(matches!(
+            validate_gguf_tensors(&content, &config),
+            Err(CandleError::UnsupportedQuantization(message))
+                if message.contains("token_embd.weight")
+        ));
         Ok(())
     }
 
@@ -2279,13 +3127,12 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn streaming_reports_eos_and_excludes_the_stop_token()
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let model = LlamaModel::builder(ModelData {
-            config: config_with("eos_token_id", 0.into())?,
-            tokenizer: tiny_tokenizer()?,
-            weights: checkpoint(true)?,
-        })
-        .temperature(0.0)
-        .build()?;
+        let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
+        loaded.generation.temperature = 0.0;
+        loaded.stop_tokens.insert(0);
+        let model = LlamaModel {
+            state: ModelState::Ready(Arc::new(loaded)),
+        };
         let (text, raw) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
         assert!(text.is_empty());
         assert!(raw.text.is_empty());
@@ -2424,15 +3271,8 @@ mod tests {
     #[test]
     fn eos_is_counted_but_excluded_from_decoded_text()
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let loaded = load_model(
-            ModelData {
-                config: config_with("eos_token_id", 0.into())?,
-                tokenizer: tiny_tokenizer()?,
-                weights: checkpoint(true)?,
-            },
-            GenerationConfig::default(),
-            1,
-        )?;
+        let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
+        loaded.stop_tokens.insert(0);
         let mut completion_request = request(vec![Message::user("hello")]);
         completion_request.temperature = Some(0.0);
         let response = infer(&loaded, completion_request, &CancellationSignal::default())?;
@@ -2753,6 +3593,28 @@ mod tests {
         let rendered = render_prompt(&request)?;
         assert!(rendered.contains("<file id: doc-1>\ncontext\n</file>"));
         assert!(rendered.find("<file id: doc-1>") < rendered.find("question"));
+        Ok(())
+    }
+
+    #[test]
+    fn renders_smollm2_history_default_system_and_generation_suffix()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let with_system = request(vec![
+            Message::system("rules"),
+            Message::user("question"),
+            Message::assistant("answer"),
+            Message::user("follow-up"),
+        ]);
+        assert_eq!(
+            render_prompt_for(&with_system, ModelFamily::SmolLm2)?,
+            "<|im_start|>system\nrules<|im_end|>\n<|im_start|>user\nquestion<|im_end|>\n<|im_start|>assistant\nanswer<|im_end|>\n<|im_start|>user\nfollow-up<|im_end|>\n<|im_start|>assistant\n"
+        );
+
+        let without_system = request(vec![Message::user("hello")]);
+        assert_eq!(
+            render_prompt_for(&without_system, ModelFamily::SmolLm2)?,
+            "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n"
+        );
         Ok(())
     }
 

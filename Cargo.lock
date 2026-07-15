@@ -1990,6 +1990,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "candle_wasm_chat"
+version = "0.40.0"
+dependencies = [
+ "rig",
+ "serde_json",
+ "thiserror 2.0.18",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9856,6 +9867,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokenizers 0.22.2",
  "tokio",
+ "web-time",
 ]
 
 [[package]]

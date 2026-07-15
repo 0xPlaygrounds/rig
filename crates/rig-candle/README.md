@@ -1,8 +1,8 @@
 # rig-candle
 
-`rig-candle` adapts a Hugging Face-format, non-quantized Llama-family instruct
-model to Rig's `CompletionModel` and agent APIs. It is CPU-only and works from
-owned bytes on native targets and `wasm32-unknown-unknown`.
+`rig-candle` adapts byte-backed Llama-family instruct models to Rig's
+`CompletionModel` and agent APIs. It supports unsharded safetensors and Q4_K_M
+GGUF on native targets and `wasm32-unknown-unknown`.
 
 ```rust,no_run
 use rig_core::{agent::AgentBuilder, completion::Prompt};
@@ -30,9 +30,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The directory in this example contains exactly `config.json`, `tokenizer.json`,
-and one unsharded `model.safetensors` checkpoint. The crate never reads files or
-uses the network.
+For quantized loading, pass the same config and tokenizer plus `model.gguf` to
+`LlamaModel::from_gguf`. Embedded applications can use `from_gguf_bytes` and
+`GgufModelData` to borrow `include_bytes!` buffers without copying the checkpoint.
+`ModelArtifacts` makes the format explicit; the crate does not infer it from a
+filename. The crate never reads files or uses the network.
 
 The repository includes a runnable package with a model downloader and metadata
 output under `examples/candle_local`:
@@ -47,9 +49,20 @@ cargo run -p candle_local -- "Explain ownership in one sentence."
 Before Candle loads the model, `rig-candle` validates every expected tensor name,
 shape, and dtype (`F32`, `F16`, or `BF16`); model dimensions and attention-head
 relationships; tokenizer/config vocabulary agreement; BOS/EOS IDs; required
-Llama 3 special tokens; and tied versus separate output embeddings. Errors name
+Llama 3 or SmolLM2 special tokens; and tied versus separate output embeddings. Errors name
 the incompatible tensor, token, field, expected value, and actual value where
-applicable. Only one complete, unsharded safetensors buffer is accepted.
+applicable. GGUF loading additionally validates the SmolLM2 identity, exact GGUF
+token vocabulary, BOS/EOS IDs, Q4_K_M metadata, every required tensor shape, the
+allowed mixed tensor encodings, and the complete Candle tensor load before it
+reports the model ready.
+
+Prompt rendering is explicit and deterministic. Llama 3 and SmolLM2 use their
+documented instruct control tokens; arbitrary tokenizer chat templates are not
+executed. The maintained Candle quantized-Llama implementation is used for
+SmolLM2 because the official model declares `LlamaForCausalLM` and its GGUF uses
+the Llama tensor schema. Candle 0.11's quantized implementation has a 4096-token
+cache limit, so GGUF context capacity is capped at 4096 even when config permits
+more.
 
 ## Generation and context limits
 
@@ -104,7 +117,8 @@ workers.
 ## Real-model test
 
 The ignored native integration test performs no download. Point it at a local
-directory containing the same three files:
+directory containing config/tokenizer plus either `model.safetensors` or
+`model.gguf`:
 
 ```bash
 RIG_CANDLE_MODEL_DIR=/path/to/model \
@@ -113,9 +127,9 @@ RIG_CANDLE_MODEL_DIR=/path/to/model \
 
 ## MVP limitations
 
-- Llama 3 instruct prompt formatting only
-- non-quantized Hugging Face Llama-family checkpoints only
-- one safetensors file; no shards or index
+- Llama 3 and SmolLM2 instruct prompt formatting only
+- unsharded Llama-family safetensors or SmolLM2-360M-Instruct Q4_K_M GGUF
+- one checkpoint file; no shards or index
 - CPU inference only; no CUDA, Metal, or device selection
 - buffered and streaming text conversations without tools
 - no structured output, multimodal input, tool calls, or batching
