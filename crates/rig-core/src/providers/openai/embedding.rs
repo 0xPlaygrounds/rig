@@ -1,6 +1,7 @@
 use super::{client::ApiResponse, completion::Usage};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{embeddings, http_client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -21,6 +22,50 @@ pub struct EmbeddingResponse {
     pub data: Vec<EmbeddingData>,
     pub model: String,
     pub usage: Usage,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompatibleEmbeddingResponse {
+    #[serde(rename = "object")]
+    _object: String,
+    pub data: Vec<EmbeddingData>,
+    #[serde(rename = "model")]
+    _model: String,
+    #[serde(default)]
+    pub usage: Option<Usage>,
+}
+
+/// Contract for provider extensions that speak an OpenAI-compatible embeddings
+/// wire format through [`GenericEmbeddingModel`].
+#[doc(hidden)]
+pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
+    /// Provider name used in embedding request and response errors.
+    const PROVIDER_NAME: &'static str;
+
+    /// Whether successful responses from this provider must include usage.
+    const REQUIRES_USAGE: bool = true;
+
+    /// The request path for embeddings, resolved against the client base URL.
+    fn embeddings_path(&self) -> String {
+        "/embeddings".to_string()
+    }
+
+    /// Adjust the serialized embedding request immediately before it is sent.
+    fn finalize_embeddings_request(
+        &self,
+        body: &mut serde_json::Value,
+    ) -> Result<(), EmbeddingError> {
+        let _ = body;
+        Ok(())
+    }
+}
+
+impl OpenAIEmbeddingsCompatible for super::OpenAIResponsesExt {
+    const PROVIDER_NAME: &'static str = "openai";
+}
+
+impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {
+    const PROVIDER_NAME: &'static str = "openai";
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -63,8 +108,9 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
 
 impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
-    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + Send + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
@@ -104,9 +150,9 @@ where
             "input": documents,
         });
 
-        let body_object = body.as_object_mut().ok_or_else(|| {
-            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
-        })?;
+        let body_object = body
+            .as_object_mut()
+            .ok_or(EmbeddingError::InvalidRequestBody)?;
 
         if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
             body_object.insert("dimensions".to_owned(), json!(self.ndims));
@@ -120,11 +166,13 @@ where
             body_object.insert("user".to_owned(), json!(user));
         }
 
+        self.client.ext().finalize_embeddings_request(&mut body)?;
+
         let body = serde_json::to_vec(&body)?;
 
         let req = self
             .client
-            .post("/embeddings")?
+            .post(self.client.ext().embeddings_path())?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -133,12 +181,13 @@ where
         let status = response.status();
         if status.is_success() {
             let response_body: Vec<u8> = response.into_body().await?;
-            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
+            let parsed: ApiResponse<CompatibleEmbeddingResponse> =
+                serde_json::from_slice(&response_body)?;
 
             match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "OpenAI embedding token usage: {:?}",
+                        "embedding token usage: {:?}",
                         response.usage
                     );
 
@@ -148,18 +197,25 @@ where
                         ));
                     }
 
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.prompt_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: response
-                            .usage
-                            .prompt_tokens_details
-                            .as_ref()
-                            .map_or(0, |d| d.cached_tokens as u64),
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
+                    let usage = match response.usage {
+                        Some(usage) => crate::completion::Usage {
+                            input_tokens: usage.prompt_tokens as u64,
+                            output_tokens: 0,
+                            total_tokens: usage.total_tokens as u64,
+                            cached_input_tokens: usage
+                                .prompt_tokens_details
+                                .as_ref()
+                                .map_or(0, |details| details.cached_tokens as u64),
+                            cache_creation_input_tokens: 0,
+                            tool_use_prompt_tokens: 0,
+                            reasoning_tokens: 0,
+                        },
+                        None if Ext::REQUIRES_USAGE => {
+                            return Err(EmbeddingError::MissingUsage {
+                                provider: Ext::PROVIDER_NAME,
+                            });
+                        }
+                        None => crate::completion::Usage::new(),
                     };
 
                     let embeddings = response
@@ -254,6 +310,53 @@ mod tests {
     use crate::embeddings::EmbeddingModel as _;
     use crate::providers::openai::CompletionsClient;
     use crate::test_utils::RecordingHttpClient;
+
+    const RESPONSE_BODY: &str = r#"{
+        "object": "list",
+        "model": "text-embedding-3-small",
+        "usage": { "prompt_tokens": 4, "total_tokens": 4 },
+        "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
+    }"#;
+
+    #[tokio::test]
+    async fn openai_embeddings_preserve_path_parameters_and_usage() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client
+            .embedding_model(TEXT_EMBEDDING_3_SMALL)
+            .encoding_format(EncodingFormat::Float)
+            .user("user-123");
+
+        let response = model
+            .embed_texts_with_usage(["hello".to_string()])
+            .await
+            .expect("embedding should succeed");
+
+        assert_eq!(response.usage.input_tokens, 4);
+        assert_eq!(response.usage.total_tokens, 4);
+        let requests = http_client.requests();
+        assert_eq!(requests[0].uri, "https://api.openai.com/v1/embeddings");
+        let body: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
+        assert_eq!(body["dimensions"], serde_json::json!(1_536));
+        assert_eq!(body["encoding_format"], serde_json::json!("float"));
+        assert_eq!(body["user"], serde_json::json!("user-123"));
+    }
+
+    #[test]
+    fn public_openai_embedding_response_requires_usage() {
+        let body = r#"{
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1] }]
+        }"#;
+
+        assert!(serde_json::from_str::<EmbeddingResponse>(body).is_err());
+    }
 
     #[tokio::test]
     async fn embedding_preserves_raw_provider_error_json_on_api_error_envelope() {

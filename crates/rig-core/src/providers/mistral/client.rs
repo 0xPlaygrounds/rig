@@ -101,6 +101,72 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
     }
 }
 
+impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for MistralExt {
+    const PROVIDER_NAME: &'static str = "mistral";
+
+    fn embeddings_path(&self) -> String {
+        "/v1/embeddings".to_string()
+    }
+
+    fn finalize_embeddings_request(
+        &self,
+        body: &mut serde_json::Value,
+    ) -> Result<(), crate::embeddings::EmbeddingError> {
+        let object = body
+            .as_object_mut()
+            .ok_or(crate::embeddings::EmbeddingError::InvalidRequestBody)?;
+
+        if object.contains_key("user") {
+            return Err(crate::embeddings::EmbeddingError::UnsupportedParameter {
+                provider: Self::PROVIDER_NAME,
+                parameter: "user",
+            });
+        }
+
+        if let Some(dimensions) = object.remove("dimensions") {
+            let model = object
+                .get("model")
+                .and_then(serde_json::Value::as_str)
+                .ok_or(crate::embeddings::EmbeddingError::InvalidRequestBody)?;
+
+            if !matches!(model, "codestral-embed" | "codestral-embed-2505") {
+                return Err(crate::embeddings::EmbeddingError::UnsupportedParameter {
+                    provider: Self::PROVIDER_NAME,
+                    parameter: "dimensions",
+                });
+            }
+
+            if dimensions
+                .as_u64()
+                .is_none_or(|dimensions| dimensions > 3_072)
+            {
+                return Err(crate::embeddings::EmbeddingError::InvalidParameterValue {
+                    provider: Self::PROVIDER_NAME,
+                    parameter: "dimensions",
+                    requirement: "to be at most 3072 for Codestral Embed",
+                });
+            }
+
+            object.insert("output_dimension".to_string(), dimensions);
+        }
+
+        if object
+            .get("encoding_format")
+            .and_then(serde_json::Value::as_str)
+            == Some("base64")
+        {
+            return Err(
+                crate::embeddings::EmbeddingError::UnsupportedResponseEncoding {
+                    provider: Self::PROVIDER_NAME,
+                    encoding_format: "base64",
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
 impl<H> Capabilities<H> for MistralExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
@@ -215,18 +281,6 @@ impl std::fmt::Display for Usage {
             self.prompt_tokens, self.total_tokens
         )
     }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ApiErrorResponse {
-    pub(crate) message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
 }
 
 #[cfg(test)]

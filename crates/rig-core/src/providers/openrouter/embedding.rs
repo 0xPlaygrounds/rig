@@ -1,189 +1,64 @@
-use super::{Client, Usage, client::ApiResponse};
-use crate::embeddings::EmbeddingError;
-use crate::http_client::HttpClientExt;
-use crate::wasm_compat::WasmCompatSend;
-use crate::{embeddings, http_client};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use super::client::OpenRouterExt;
+use crate::providers::openai::embedding::GenericEmbeddingModel;
 
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingResponse {
-    pub object: String,
-    pub data: Vec<EmbeddingData>,
-    pub model: String,
-    pub usage: Option<Usage>,
-    pub id: Option<String>,
-}
+pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<OpenRouterExt, H>;
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EncodingFormat {
-    Float,
-    Base64,
-}
+#[cfg(test)]
+mod tests {
+    use crate::client::EmbeddingsClient;
+    use crate::embeddings::{EmbeddingError, EmbeddingModel as _};
+    use crate::providers::{openai::embedding::EncodingFormat, openrouter};
+    use crate::test_utils::RecordingHttpClient;
 
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingData {
-    pub object: String,
-    pub embedding: Vec<serde_json::Number>,
-    pub index: usize,
-}
+    const RESPONSE_BODY: &str = r#"{
+        "id": "gen-1",
+        "object": "list",
+        "model": "openai/text-embedding-3-small",
+        "data": [{ "object": "embedding", "index": 0, "embedding": [0.5, 0.6] }]
+    }"#;
 
-#[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    pub encoding_format: Option<EncodingFormat>,
-    pub user: Option<String>,
-    ndims: usize,
-}
-
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
-{
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = ndims.unwrap_or_default();
-
-        Self::new(client.clone(), model, dims)
+    fn client(http_client: RecordingHttpClient) -> openrouter::Client<RecordingHttpClient> {
+        openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build")
     }
 
-    fn ndims(&self) -> usize {
-        self.ndims
+    #[tokio::test]
+    async fn openrouter_embeddings_preserve_supported_parameters_and_zero_absent_usage() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let model = client(http_client.clone())
+            .embedding_model_with_ndims("openai/text-embedding-3-small", 2)
+            .encoding_format(EncodingFormat::Float)
+            .user("user-123");
+
+        let response = model
+            .embed_texts_with_usage(["hello".to_string()])
+            .await
+            .expect("embedding request should succeed");
+
+        assert_eq!(response.embeddings.len(), 1);
+        assert_eq!(response.usage.total_tokens, 0);
+        let requests = http_client.requests();
+        assert_eq!(requests[0].uri, "https://openrouter.ai/api/v1/embeddings");
+        let body: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
+        assert_eq!(body["dimensions"], serde_json::json!(2));
+        assert_eq!(body["encoding_format"], serde_json::json!("float"));
+        assert_eq!(body["user"], serde_json::json!("user-123"));
     }
 
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
+    #[tokio::test]
+    async fn openrouter_rejects_response_length_mismatch() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let model = client(http_client).embedding_model("openai/text-embedding-3-small");
 
-        let mut body = json!({
-            "model": self.model,
-            "input": documents,
-        });
+        let error = model
+            .embed_texts(["one".to_string(), "two".to_string()])
+            .await
+            .expect_err("response length mismatch should fail");
 
-        let body_object = body.as_object_mut().ok_or_else(|| {
-            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
-        })?;
-
-        if self.ndims > 0 {
-            body_object.insert("dimensions".to_owned(), json!(self.ndims));
-        }
-
-        if let Some(encoding_format) = &self.encoding_format {
-            body_object.insert("encoding_format".to_owned(), json!(encoding_format));
-        }
-
-        if let Some(user) = &self.user {
-            body_object.insert("user".to_owned(), json!(user));
-        }
-
-        let body = serde_json::to_vec(&body)?;
-
-        let req = self
-            .client
-            .post("/embeddings")?
-            .body(body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-
-        let response = self.client.send(req).await?;
-
-        let status = response.status();
-        if status.is_success() {
-            let response_body: Vec<u8> = response.into_body().await?;
-            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
-
-            match parsed {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "OpenRouter embedding token usage: {:?}",
-                        response.usage
-                    );
-
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
-
-                    Ok(response
-                        .data
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding
-                                .embedding
-                                .into_iter()
-                                .filter_map(|n| n.as_f64())
-                                .collect(),
-                        })
-                        .collect())
-                }
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(EmbeddingError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
-        } else {
-            let text = http_client::text(response).await?;
-            Err(EmbeddingError::from_http_response(status, text))
-        }
-    }
-}
-
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            encoding_format: None,
-            ndims,
-            user: None,
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            encoding_format: None,
-            ndims,
-            user: None,
-        }
-    }
-
-    pub fn with_encoding_format(
-        client: Client<T>,
-        model: &str,
-        ndims: usize,
-        encoding_format: EncodingFormat,
-    ) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            encoding_format: Some(encoding_format),
-            ndims,
-            user: None,
-        }
-    }
-
-    pub fn encoding_format(mut self, encoding_format: EncodingFormat) -> Self {
-        self.encoding_format = Some(encoding_format);
-        self
-    }
-
-    pub fn user(mut self, user: impl Into<String>) -> Self {
-        self.user = Some(user.into());
-        self
+        assert!(matches!(error, EmbeddingError::ResponseError(_)));
     }
 }

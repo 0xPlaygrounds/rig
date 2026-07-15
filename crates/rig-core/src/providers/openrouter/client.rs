@@ -45,6 +45,11 @@ impl<H> Capabilities<H> for OpenRouterExt {
     type Rerank = Nothing;
 }
 
+impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for OpenRouterExt {
+    const PROVIDER_NAME: &'static str = "openrouter";
+    const REQUIRES_USAGE: bool = false;
+}
+
 impl DebugExt for OpenRouterExt {}
 
 impl ProviderBuilder for OpenRouterExtBuilder {
@@ -80,18 +85,6 @@ impl ProviderClient for Client {
     fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
         Self::new(input).map_err(Into::into)
     }
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ApiErrorResponse {
-    pub message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
