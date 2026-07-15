@@ -1,0 +1,13 @@
+[package]
+name = "candle_local"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+rig = { workspace = true, features = ["candle"] }
+tokio = { workspace = true, features = ["full"] }

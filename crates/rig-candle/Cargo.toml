@@ -1,0 +1,32 @@
+[package]
+name = "rig-candle"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Local Candle Llama completion models for Rig"
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+candle-core = { workspace = true }
+candle-nn = { workspace = true }
+candle-transformers = { workspace = true }
+safetensors = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+tokio = { workspace = true, features = ["rt", "sync"] }
+tokenizers = { workspace = true, features = ["onig"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["wasm"] }
+tokenizers = { workspace = true, default-features = false, features = ["unstable_wasm"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

@@ -67,6 +67,9 @@ aws-smithy-runtime-api = "1.11.3"
 aws-smithy-types = "1.3.2"
 base64 = "0.22.1"
 bytes = "1.10.1"
+candle-core = "0.11.0"
+candle-nn = "0.11.0"
+candle-transformers = "0.11.0"
 chrono = "0.4"
 convert_case = "0.11.0"
 deranged = "=0.5.8"
@@ -120,6 +123,7 @@ schemars = "1.0.4"
 serde = "1.0.219"
 serde_yaml = "0.9.34"
 serde_json = "1.0.150"
+safetensors = "0.8.0"
 serde_path_to_error = "0.1.17"
 sqlite-vec = "0.1"
 sqlx = "0.9.0"
@@ -135,6 +139,7 @@ tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
 tokio-tungstenite = { version = "0.28.0", default-features = false }
+tokenizers = { version = "0.22.2", default-features = false }
 tonic = "0.14.6"
 tonic-build = "0.14.6"
 tonic-prost = "0.14.5"
@@ -158,6 +163,7 @@ workspace = true
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.40.0", default-features = false }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.40.0", optional = true, default-features = false }
+rig-candle = { path = "crates/rig-candle", version = "0.40.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.40.0", optional = true, default-features = false }
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.40.0", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.40.0", optional = true, default-features = false }
@@ -246,6 +252,7 @@ url = { workspace = true }
 default = ["rig-core/default", "rustls"]
 test-utils = ["rig-core/test-utils"]
 bedrock = ["dep:rig-bedrock"]
+candle = ["dep:rig-candle"]
 fastembed = [
   "dep:rig-fastembed",
   "rig-fastembed/hf-hub",

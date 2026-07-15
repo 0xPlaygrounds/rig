@@ -49,6 +49,13 @@ pub mod bedrock {
     pub use rig_bedrock::*;
 }
 
+/// Local CPU inference with Hugging Face Llama-family safetensors models.
+#[cfg(feature = "candle")]
+#[cfg_attr(docsrs, doc(cfg(feature = "candle")))]
+pub mod candle {
+    pub use rig_candle::*;
+}
+
 #[cfg(any(
     feature = "fastembed",
     feature = "fastembed-hf-hub",
