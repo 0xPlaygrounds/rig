@@ -1,5 +1,10 @@
+use std::io::Write;
+
+use anyhow::Context;
+use futures::StreamExt;
 use rig::candle::{LlamaModel, ModelData};
-use rig::{agent::AgentBuilder, completion::Completion, message::Message};
+use rig::streaming::{StreamedAssistantContent, StreamingCompletion};
+use rig::{agent::AgentBuilder, message::Message};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,26 +31,41 @@ async fn main() -> anyhow::Result<()> {
         .max_tokens(64)
         .build();
 
-    let response = agent
-        .completion(prompt, std::iter::empty::<Message>())
+    let mut response = agent
+        .stream_completion(prompt, std::iter::empty::<Message>())
         .await?
-        .send()
+        .stream()
         .await?;
-    let raw = response.raw_response;
-    println!("{}", raw.text);
+    let mut final_response = None;
+    while let Some(item) = response.next().await {
+        match item? {
+            StreamedAssistantContent::Text(fragment) => {
+                print!("{}", fragment.text);
+                std::io::stdout().flush()?;
+            }
+            StreamedAssistantContent::Final(raw) => final_response = Some(raw),
+            _ => {}
+        }
+    }
+    println!();
+    let raw = final_response.context("Candle stream ended without final metadata")?;
+    let usage = response.usage();
     println!(
         "tokens: prompt={}, generated={}, total={}",
-        response.usage.input_tokens, response.usage.output_tokens, response.usage.total_tokens
+        usage.input_tokens, usage.output_tokens, usage.total_tokens
     );
     let throughput = match raw.tokens_per_second {
         Some(value) => format!("{value:.2} tokens/s"),
         None => "n/a".to_string(),
     };
     println!(
-        "finish: {:?}; requested max: {}; effective max: {}; duration: {} ms; throughput: {}",
+        "finish: {:?}; requested max: {}; effective max: {}; prefill: {} ms; time to first token: {} ms; total: {} ms; throughput: {}",
         raw.finish_reason,
         raw.requested_max_tokens,
         raw.effective_max_tokens,
+        raw.prefill_duration_ms,
+        raw.time_to_first_token_ms
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
         raw.generation_duration_ms,
         throughput
     );

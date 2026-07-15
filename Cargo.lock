@@ -1984,6 +1984,7 @@ name = "candle_local"
 version = "0.40.0"
 dependencies = [
  "anyhow",
+ "futures",
  "rig",
  "tokio",
 ]
@@ -9847,6 +9848,7 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "futures",
  "rig-core",
  "safetensors",
  "serde",

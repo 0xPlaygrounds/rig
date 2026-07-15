@@ -16,6 +16,9 @@ The default model is
 It is an ungated, single-checkpoint Llama 3 test model whose weights are only
 about 2 MB. Its output is random and is useful only for verifying download,
 loading, prompt formatting, and inference.
+The example prints generated fragments as they arrive, then reports final usage,
+finish reason, context limits, prefill time, time to first token, total duration,
+and throughput.
 
 To try a useful public instruct model instead, download the approximately 2.5 GB
 Llama 3.2 1B checkpoint:

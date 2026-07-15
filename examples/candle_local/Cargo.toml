@@ -9,5 +9,6 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+futures = { workspace = true }
 rig = { workspace = true, features = ["candle"] }
 tokio = { workspace = true, features = ["full"] }

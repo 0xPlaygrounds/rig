@@ -40,12 +40,15 @@
 //! Native inference is admitted asynchronously and runs in `spawn_blocking`.
 //! [`LlamaModelBuilder::max_concurrent_requests`] defaults to one to control CPU
 //! and KV-cache memory pressure. Dropping a native completion future signals
-//! cooperative cancellation; a forward operation already in progress cannot be
-//! interrupted, so cancellation is observed at the next generation boundary.
-//! WASM does not use native synchronization or threads.
+//! cooperative cancellation. Streaming uses an eight-fragment bounded channel;
+//! dropping the stream signals the same cancellation while keeping the admission
+//! permit until the blocking worker exits. A forward operation already in progress
+//! cannot be interrupted, so cancellation is observed at the next generation
+//! boundary. WASM does not use native synchronization or threads and collects its
+//! synchronously generated events before exposing them as a compatible stream.
 //!
-//! Tools, structured output, multimodal content, streaming, quantized formats,
-//! accelerators, shards, tokenizer chat templates, and downloads are unsupported.
+//! Tools, structured output, multimodal content, quantized formats, accelerators,
+//! shards, tokenizer chat templates, and downloads are unsupported.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -61,23 +64,40 @@ use candle_transformers::models::llama::{
     Cache, Config, Llama, Llama3RopeType, LlamaConfig, LlamaEosToks,
 };
 use candle_transformers::utils::apply_repeat_penalty;
+#[cfg(not(target_family = "wasm"))]
+use futures::Stream;
 use rig_core::OneOrMany;
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-    Usage,
+    GetTokenUsage, Usage,
 };
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingResult};
 use safetensors::{Dtype as SafeDtype, SafeTensors};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokenizers::Tokenizer;
+use tokenizers::tokenizer::DecodeStream;
+use tokenizers::{
+    DecoderWrapper, ModelWrapper, NormalizerWrapper, PostProcessorWrapper, PreTokenizerWrapper,
+    Tokenizer,
+};
 
 const BEGIN_OF_TEXT: &str = "<|begin_of_text|>";
 const START_HEADER: &str = "<|start_header_id|>";
 const END_HEADER: &str = "<|end_header_id|>";
 const END_OF_TURN: &str = "<|eot_id|>";
 const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
+#[cfg(not(target_family = "wasm"))]
+const STREAM_CHANNEL_CAPACITY: usize = 8;
+
+type TokenDecodeStream<'a> = DecodeStream<
+    'a,
+    ModelWrapper,
+    NormalizerWrapper,
+    PreTokenizerWrapper,
+    PostProcessorWrapper,
+    DecoderWrapper,
+>;
 
 /// Sampling and length defaults used when a completion request does not override them.
 #[derive(Debug, Clone, PartialEq)]
@@ -264,6 +284,10 @@ pub enum CandleError {
     #[cfg(not(target_family = "wasm"))]
     #[error("Candle blocking task failed: {0}")]
     BlockingTaskJoin(String),
+    /// The consumer of a native streaming response closed its bounded channel.
+    #[cfg(not(target_family = "wasm"))]
+    #[error("Candle streaming response channel was closed")]
+    StreamingChannelClosed,
 }
 
 impl From<CandleError> for CompletionError {
@@ -297,10 +321,25 @@ pub struct CandleCompletionResponse {
     pub effective_max_tokens: u64,
     /// Why generation ended.
     pub finish_reason: FinishReason,
-    /// Time spent in model prefill and token generation, in milliseconds.
+    /// Time spent preparing the prompt tensor and running its initial forward pass.
+    pub prefill_duration_ms: u64,
+    /// Time from generation start until the first sampled token, in milliseconds.
+    pub time_to_first_token_ms: Option<u64>,
+    /// Total time spent in prefill and token generation, in milliseconds.
     pub generation_duration_ms: u64,
     /// Generated tokens per second when the measured duration is nonzero.
     pub tokens_per_second: Option<f64>,
+}
+
+impl GetTokenUsage for CandleCompletionResponse {
+    fn token_usage(&self) -> Usage {
+        Usage {
+            input_tokens: self.prompt_tokens,
+            output_tokens: self.generated_tokens,
+            total_tokens: self.prompt_tokens.saturating_add(self.generated_tokens),
+            ..Usage::new()
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -317,6 +356,87 @@ struct LoadedModel {
     generation: GenerationConfig,
     #[cfg(not(target_family = "wasm"))]
     concurrency: Arc<tokio::sync::Semaphore>,
+    #[cfg(all(test, not(target_family = "wasm")))]
+    test_control: Option<Arc<TestControl>>,
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+struct TestControl {
+    gate: std::sync::Mutex<bool>,
+    gate_changed: std::sync::Condvar,
+    entered: AtomicBool,
+    entered_notification: tokio::sync::Notify,
+    panic_after_gate: AtomicBool,
+    delivery_attempts: std::sync::atomic::AtomicUsize,
+    delivery_notification: tokio::sync::Notify,
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+impl TestControl {
+    fn new(blocked: bool, panic_after_gate: bool) -> Self {
+        Self {
+            gate: std::sync::Mutex::new(blocked),
+            gate_changed: std::sync::Condvar::new(),
+            entered: AtomicBool::new(false),
+            entered_notification: tokio::sync::Notify::new(),
+            panic_after_gate: AtomicBool::new(panic_after_gate),
+            delivery_attempts: std::sync::atomic::AtomicUsize::new(0),
+            delivery_notification: tokio::sync::Notify::new(),
+        }
+    }
+
+    fn enter_generation(&self) -> Result<(), CandleError> {
+        self.entered.store(true, Ordering::Release);
+        self.entered_notification.notify_waiters();
+        let mut blocked = self
+            .gate
+            .lock()
+            .map_err(|_| CandleError::Inference("test generation gate was poisoned".to_string()))?;
+        while *blocked {
+            blocked = self.gate_changed.wait(blocked).map_err(|_| {
+                CandleError::Inference("test generation gate was poisoned".to_string())
+            })?;
+        }
+        if self.panic_after_gate.load(Ordering::Acquire) {
+            std::panic::resume_unwind(Box::new("intentional blocking-task test panic"));
+        }
+        Ok(())
+    }
+
+    async fn wait_until_entered(&self) {
+        loop {
+            let notified = self.entered_notification.notified();
+            if self.entered.load(Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    fn release(&self) -> Result<(), CandleError> {
+        let mut blocked = self
+            .gate
+            .lock()
+            .map_err(|_| CandleError::Inference("test generation gate was poisoned".to_string()))?;
+        *blocked = false;
+        self.gate_changed.notify_all();
+        Ok(())
+    }
+
+    fn record_delivery_attempt(&self) {
+        self.delivery_attempts.fetch_add(1, Ordering::AcqRel);
+        self.delivery_notification.notify_waiters();
+    }
+
+    async fn wait_for_delivery_attempts(&self, expected: usize) {
+        loop {
+            let notified = self.delivery_notification.notified();
+            if self.delivery_attempts.load(Ordering::Acquire) >= expected {
+                return;
+            }
+            notified.await;
+        }
+    }
 }
 
 /// A cheaply cloneable, CPU-only Llama completion model.
@@ -455,6 +575,8 @@ fn load_model(
         generation,
         #[cfg(not(target_family = "wasm"))]
         concurrency: Arc::new(tokio::sync::Semaphore::new(_max_concurrent_requests)),
+        #[cfg(all(test, not(target_family = "wasm")))]
+        test_control: None,
     })
 }
 
@@ -1064,148 +1186,352 @@ async fn acquire_concurrency(
         .map_err(|_| CandleError::ConcurrencyControllerClosed)
 }
 
+enum GenerationStep {
+    /// A token was sampled. Some token sequences need more IDs before they decode to valid UTF-8.
+    Token(Option<String>),
+    /// Generation and incremental decoding are complete.
+    Finished(CandleCompletionResponse),
+}
+
+struct IncrementalTextDecoder<'a> {
+    tokenizer: &'a Tokenizer,
+    stream: TokenDecodeStream<'a>,
+    token_ids: Vec<u32>,
+    text: String,
+    flushed: bool,
+}
+
+impl<'a> IncrementalTextDecoder<'a> {
+    fn new(tokenizer: &'a Tokenizer) -> Self {
+        Self {
+            tokenizer,
+            stream: tokenizer.decode_stream(true),
+            token_ids: Vec::new(),
+            text: String::new(),
+            flushed: false,
+        }
+    }
+
+    fn push(&mut self, token: u32) -> Result<Option<String>, CandleError> {
+        self.token_ids.push(token);
+        let fragment = self
+            .stream
+            .step(token)
+            .map_err(|error| CandleError::TokenizerDecoding(error.to_string()))?;
+        if let Some(fragment) = &fragment {
+            self.text.push_str(fragment);
+        }
+        Ok(fragment)
+    }
+
+    fn finish(&mut self) -> Result<Option<String>, CandleError> {
+        if self.flushed {
+            return Ok(None);
+        }
+        self.flushed = true;
+        let fully_decoded = self
+            .tokenizer
+            .decode(&self.token_ids, true)
+            .map_err(|error| CandleError::TokenizerDecoding(error.to_string()))?;
+        let suffix = fully_decoded.strip_prefix(&self.text).ok_or_else(|| {
+            CandleError::TokenizerDecoding(
+                "incremental decoding did not match complete decoding".to_string(),
+            )
+        })?;
+        if suffix.is_empty() {
+            Ok(None)
+        } else {
+            let suffix = suffix.to_string();
+            self.text.push_str(&suffix);
+            Ok(Some(suffix))
+        }
+    }
+
+    fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+struct GenerationSession<'a> {
+    loaded: &'a LoadedModel,
+    generation: GenerationConfig,
+    cancellation: &'a CancellationSignal,
+    decoder: IncrementalTextDecoder<'a>,
+    cache: Cache,
+    logits: Tensor,
+    processor: LogitsProcessor,
+    prompt_tokens: usize,
+    max_tokens: usize,
+    effective_max_tokens: u64,
+    all_tokens: Vec<u32>,
+    generated_tokens: usize,
+    finish_reason: Option<FinishReason>,
+    started: Instant,
+    prefill_duration: Duration,
+    time_to_first_token: Option<Duration>,
+    delivery_duration: Duration,
+}
+
+impl<'a> GenerationSession<'a> {
+    fn new(
+        loaded: &'a LoadedModel,
+        request: CompletionRequest,
+        cancellation: &'a CancellationSignal,
+    ) -> Result<Self, CandleError> {
+        let prompt = render_prompt(&request)?;
+        let generation =
+            effective_generation(&request, &loaded.generation, loaded.config.vocab_size)?;
+        let encoding = loaded
+            .tokenizer
+            .encode(prompt, false)
+            .map_err(|error| CandleError::TokenizerEncoding(error.to_string()))?;
+        let prompt_ids = encoding.get_ids();
+        if prompt_ids.is_empty() {
+            return Err(CandleError::TokenizerEncoding(
+                "the rendered prompt produced no tokens".to_string(),
+            ));
+        }
+        let max_tokens = effective_output_limit(
+            prompt_ids.len(),
+            generation.max_tokens,
+            loaded.config.max_position_embeddings,
+        )?;
+        let effective_max_tokens =
+            u64::try_from(max_tokens).map_err(|_| CandleError::NumericConversion {
+                field: "effective_max_tokens",
+                value: u64::MAX,
+            })?;
+
+        check_cancellation(cancellation)?;
+        let started = Instant::now();
+        let device = Device::Cpu;
+        let input = Tensor::new(prompt_ids, &device)
+            .and_then(|tensor| tensor.unsqueeze(0))
+            .map_err(|error| CandleError::Inference(error.to_string()))?;
+        let mut cache = Cache::new(true, DType::F32, &loaded.config, &device)
+            .map_err(|error| CandleError::Inference(error.to_string()))?;
+        check_cancellation(cancellation)?;
+        let logits = loaded
+            .model
+            .forward(&input, 0, &mut cache)
+            .and_then(|tensor| tensor.squeeze(0))
+            .map_err(|error| CandleError::Inference(error.to_string()))?;
+        let prefill_duration = started.elapsed();
+        let processor = LogitsProcessor::from_sampling(generation.seed, sampling(&generation));
+
+        Ok(Self {
+            loaded,
+            processor,
+            decoder: IncrementalTextDecoder::new(&loaded.tokenizer),
+            cache,
+            logits,
+            prompt_tokens: prompt_ids.len(),
+            max_tokens,
+            effective_max_tokens,
+            all_tokens: prompt_ids.to_vec(),
+            generated_tokens: 0,
+            finish_reason: None,
+            started,
+            prefill_duration,
+            time_to_first_token: None,
+            delivery_duration: Duration::ZERO,
+            generation,
+            cancellation,
+        })
+    }
+
+    fn next_token(&mut self) -> Result<GenerationStep, CandleError> {
+        check_cancellation(self.cancellation)?;
+
+        if self.finish_reason.is_some() {
+            return self.finish();
+        }
+
+        if self.generation.repeat_penalty != 1.0 && self.generation.repeat_last_n > 0 {
+            let recent = recent_tokens(&self.all_tokens, self.generation.repeat_last_n);
+            self.logits =
+                apply_repeat_penalty(&self.logits, self.generation.repeat_penalty, recent)
+                    .map_err(|error| CandleError::Inference(error.to_string()))?;
+        }
+        let token = self
+            .processor
+            .sample(&self.logits)
+            .map_err(|error| CandleError::Inference(error.to_string()))?;
+        self.generated_tokens = self.generated_tokens.checked_add(1).ok_or_else(|| {
+            CandleError::Inference("generated token count overflowed usize".to_string())
+        })?;
+        if self.time_to_first_token.is_none() {
+            self.time_to_first_token = Some(self.started.elapsed());
+        }
+
+        if self.loaded.stop_tokens.contains(&token) {
+            self.finish_reason = Some(FinishReason::Eos);
+            return Ok(GenerationStep::Token(None));
+        }
+
+        self.all_tokens.push(token);
+        let fragment = self.decoder.push(token)?;
+
+        if self.generated_tokens >= self.max_tokens {
+            self.finish_reason = Some(FinishReason::MaxTokens);
+        } else {
+            check_cancellation(self.cancellation)?;
+            let generated_index = self.generated_tokens.saturating_sub(1);
+            let position = next_cache_position(self.prompt_tokens, generated_index)?;
+            let device = Device::Cpu;
+            let next = Tensor::new(&[token], &device)
+                .and_then(|tensor| tensor.unsqueeze(0))
+                .map_err(|error| CandleError::Inference(error.to_string()))?;
+            self.logits = self
+                .loaded
+                .model
+                .forward(&next, position, &mut self.cache)
+                .and_then(|tensor| tensor.squeeze(0))
+                .map_err(|error| CandleError::Inference(error.to_string()))?;
+        }
+
+        Ok(GenerationStep::Token(fragment))
+    }
+
+    fn finish(&mut self) -> Result<GenerationStep, CandleError> {
+        if let Some(suffix) = self.decoder.finish()? {
+            return Ok(GenerationStep::Token(Some(suffix)));
+        }
+
+        let finish_reason = self.finish_reason.ok_or_else(|| {
+            CandleError::Inference("generation finished without a finish reason".to_string())
+        })?;
+        let prompt_tokens = u64::try_from(self.prompt_tokens).map_err(|_| {
+            CandleError::Inference("prompt token count does not fit in u64".to_string())
+        })?;
+        let generated_tokens = u64::try_from(self.generated_tokens).map_err(|_| {
+            CandleError::Inference("generated token count does not fit in u64".to_string())
+        })?;
+        let generation_duration = self
+            .started
+            .elapsed()
+            .saturating_sub(self.delivery_duration);
+        let tokens_per_second = if generation_duration.is_zero() {
+            None
+        } else {
+            Some(generated_tokens as f64 / generation_duration.as_secs_f64())
+        };
+        Ok(GenerationStep::Finished(CandleCompletionResponse {
+            text: self.decoder.text().to_string(),
+            prompt_tokens,
+            generated_tokens,
+            requested_max_tokens: self.generation.max_tokens,
+            effective_max_tokens: self.effective_max_tokens,
+            finish_reason,
+            prefill_duration_ms: duration_millis(self.prefill_duration),
+            time_to_first_token_ms: self.time_to_first_token.map(duration_millis),
+            generation_duration_ms: duration_millis(generation_duration),
+            tokens_per_second,
+        }))
+    }
+
+    fn record_delivery_duration(&mut self, duration: Duration) {
+        self.delivery_duration = self.delivery_duration.saturating_add(duration);
+    }
+}
+
+fn duration_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).map_or(u64::MAX, |value| value)
+}
+
+fn generate(
+    loaded: &LoadedModel,
+    request: CompletionRequest,
+    cancellation: &CancellationSignal,
+    mut emit: impl FnMut(String) -> Result<(), CandleError>,
+) -> Result<CandleCompletionResponse, CandleError> {
+    #[cfg(all(test, not(target_family = "wasm")))]
+    if let Some(control) = &loaded.test_control {
+        control.enter_generation()?;
+    }
+    let mut session = GenerationSession::new(loaded, request, cancellation)?;
+    loop {
+        match session.next_token()? {
+            GenerationStep::Token(Some(fragment)) if !fragment.is_empty() => {
+                let delivery_started = Instant::now();
+                let result = emit(fragment);
+                session.record_delivery_duration(delivery_started.elapsed());
+                result?;
+            }
+            GenerationStep::Token(_) => {}
+            GenerationStep::Finished(response) => return Ok(response),
+        }
+    }
+}
+
 fn infer(
     loaded: &LoadedModel,
     request: CompletionRequest,
     cancellation: &CancellationSignal,
 ) -> Result<CompletionResponse<CandleCompletionResponse>, CandleError> {
-    let prompt = render_prompt(&request)?;
-    let generation = effective_generation(&request, &loaded.generation, loaded.config.vocab_size)?;
-    let encoding = loaded
-        .tokenizer
-        .encode(prompt, false)
-        .map_err(|error| CandleError::TokenizerEncoding(error.to_string()))?;
-    let prompt_ids = encoding.get_ids();
-    if prompt_ids.is_empty() {
-        return Err(CandleError::TokenizerEncoding(
-            "the rendered prompt produced no tokens".to_string(),
-        ));
-    }
-    let max_tokens = effective_output_limit(
-        prompt_ids.len(),
-        generation.max_tokens,
-        loaded.config.max_position_embeddings,
-    )?;
-    let effective_max_tokens =
-        u64::try_from(max_tokens).map_err(|_| CandleError::NumericConversion {
-            field: "effective_max_tokens",
-            value: u64::MAX,
-        })?;
-
-    check_cancellation(cancellation)?;
-    let started = Instant::now();
-    let device = Device::Cpu;
-    let input = Tensor::new(prompt_ids, &device)
-        .and_then(|tensor| tensor.unsqueeze(0))
-        .map_err(|error| CandleError::Inference(error.to_string()))?;
-    let mut cache = Cache::new(true, DType::F32, &loaded.config, &device)
-        .map_err(|error| CandleError::Inference(error.to_string()))?;
-    check_cancellation(cancellation)?;
-    let mut logits = loaded
-        .model
-        .forward(&input, 0, &mut cache)
-        .and_then(|tensor| tensor.squeeze(0))
-        .map_err(|error| CandleError::Inference(error.to_string()))?;
-    let mut processor = LogitsProcessor::from_sampling(generation.seed, sampling(&generation));
-    let mut all_tokens = prompt_ids.to_vec();
-    let mut decoded_tokens = Vec::new();
-    let mut generated_count = 0usize;
-    let mut finish_reason = FinishReason::MaxTokens;
-
-    for index in 0..max_tokens {
-        check_cancellation(cancellation)?;
-        if generation.repeat_penalty != 1.0 && generation.repeat_last_n > 0 {
-            let recent = recent_tokens(&all_tokens, generation.repeat_last_n);
-            logits = apply_repeat_penalty(&logits, generation.repeat_penalty, recent)
-                .map_err(|error| CandleError::Inference(error.to_string()))?;
-        }
-        let token = processor
-            .sample(&logits)
-            .map_err(|error| CandleError::Inference(error.to_string()))?;
-        generated_count += 1;
-        if loaded.stop_tokens.contains(&token) {
-            finish_reason = FinishReason::Eos;
-            break;
-        }
-        decoded_tokens.push(token);
-        all_tokens.push(token);
-        if index + 1 < max_tokens {
-            check_cancellation(cancellation)?;
-            let position = next_cache_position(prompt_ids.len(), index)?;
-            let next = Tensor::new(&[token], &device)
-                .and_then(|tensor| tensor.unsqueeze(0))
-                .map_err(|error| CandleError::Inference(error.to_string()))?;
-            logits = loaded
-                .model
-                .forward(&next, position, &mut cache)
-                .and_then(|tensor| tensor.squeeze(0))
-                .map_err(|error| CandleError::Inference(error.to_string()))?;
-        }
-    }
-
-    let text = loaded
-        .tokenizer
-        .decode(&decoded_tokens, true)
-        .map_err(|error| CandleError::TokenizerDecoding(error.to_string()))?;
-    completion_response(
-        text,
-        prompt_ids.len(),
-        generated_count,
-        generation.max_tokens,
-        effective_max_tokens,
-        finish_reason,
-        started.elapsed(),
-    )
-}
-
-fn completion_response(
-    text: String,
-    prompt_tokens: usize,
-    generated_tokens: usize,
-    requested_max_tokens: u64,
-    effective_max_tokens: u64,
-    finish_reason: FinishReason,
-    generation_duration: Duration,
-) -> Result<CompletionResponse<CandleCompletionResponse>, CandleError> {
-    let prompt_tokens = u64::try_from(prompt_tokens).map_err(|_| {
-        CandleError::Inference("prompt token count does not fit in u64".to_string())
-    })?;
-    let generated_tokens = u64::try_from(generated_tokens).map_err(|_| {
-        CandleError::Inference("generated token count does not fit in u64".to_string())
-    })?;
-    let generation_duration_ms =
-        u64::try_from(generation_duration.as_millis()).map_or(u64::MAX, |value| value);
-    let tokens_per_second = if generation_duration.is_zero() {
-        None
-    } else {
-        Some(generated_tokens as f64 / generation_duration.as_secs_f64())
-    };
-    let raw_response = CandleCompletionResponse {
-        text: text.clone(),
-        prompt_tokens,
-        generated_tokens,
-        requested_max_tokens,
-        effective_max_tokens,
-        finish_reason,
-        generation_duration_ms,
-        tokens_per_second,
-    };
+    let raw_response = generate(loaded, request, cancellation, |_| Ok(()))?;
+    let choice = OneOrMany::one(AssistantContent::text(raw_response.text.clone()));
+    let usage = raw_response.token_usage();
     Ok(CompletionResponse {
-        choice: OneOrMany::one(AssistantContent::text(text)),
-        usage: Usage {
-            input_tokens: prompt_tokens,
-            output_tokens: generated_tokens,
-            total_tokens: prompt_tokens + generated_tokens,
-            ..Usage::new()
-        },
+        choice,
+        usage,
         raw_response,
         message_id: None,
     })
 }
 
+#[cfg(not(target_family = "wasm"))]
+type CandleStreamItem = Result<RawStreamingChoice<CandleCompletionResponse>, CompletionError>;
+
+#[cfg(not(target_family = "wasm"))]
+struct CandleReceiverStream {
+    receiver: tokio::sync::mpsc::Receiver<CandleStreamItem>,
+    cancellation: CancellationSignal,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Stream for CandleReceiverStream {
+    type Item = CandleStreamItem;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.get_mut().receiver.poll_recv(context)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Drop for CandleReceiverStream {
+    fn drop(&mut self) {
+        self.cancellation.cancel();
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn stream_infer(
+    loaded: &LoadedModel,
+    request: CompletionRequest,
+    cancellation: &CancellationSignal,
+    sender: &tokio::sync::mpsc::Sender<CandleStreamItem>,
+) -> Result<(), CandleError> {
+    let response = generate(loaded, request, cancellation, |fragment| {
+        #[cfg(test)]
+        if let Some(control) = &loaded.test_control {
+            control.record_delivery_attempt();
+        }
+        sender
+            .blocking_send(Ok(RawStreamingChoice::Message(fragment)))
+            .map_err(|_| CandleError::StreamingChannelClosed)
+    })?;
+    sender
+        .blocking_send(Ok(RawStreamingChoice::FinalResponse(response)))
+        .map_err(|_| CandleError::StreamingChannelClosed)
+}
+
 impl CompletionModel for LlamaModel {
     type Response = CandleCompletionResponse;
-    type StreamingResponse = ();
+    type StreamingResponse = CandleCompletionResponse;
     type Client = ();
 
     fn make(_: &Self::Client, _: impl Into<String>) -> Self {
@@ -1247,9 +1573,56 @@ impl CompletionModel for LlamaModel {
 
     async fn stream(
         &self,
-        _request: CompletionRequest,
+        request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        Err(CandleError::UnsupportedFeature("streaming".to_string()).into())
+        let ModelState::Ready(loaded) = &self.state else {
+            return Err(CandleError::UnsupportedMake.into());
+        };
+
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let cancellation = CancellationSignal::default();
+            let mut cancel_on_drop = CancelOnDrop::new(cancellation.clone());
+            let permit = acquire_concurrency(Arc::clone(&loaded.concurrency)).await?;
+            let loaded = Arc::clone(loaded);
+            let (sender, receiver) = tokio::sync::mpsc::channel(STREAM_CHANNEL_CAPACITY);
+            let producer_sender = sender.clone();
+            let producer_cancellation = cancellation.clone();
+            let task = tokio::task::spawn_blocking(move || {
+                let result =
+                    stream_infer(&loaded, request, &producer_cancellation, &producer_sender);
+                if let Err(error) = result {
+                    let _ = producer_sender.blocking_send(Err(error.into()));
+                }
+                drop(permit);
+            });
+            tokio::spawn(async move {
+                if let Err(error) = task.await {
+                    let error = CandleError::BlockingTaskJoin(error.to_string());
+                    let _ = sender.send(Err(error.into())).await;
+                }
+            });
+            let stream: StreamingResult<CandleCompletionResponse> =
+                Box::pin(CandleReceiverStream {
+                    receiver,
+                    cancellation,
+                });
+            cancel_on_drop.disarm();
+            Ok(StreamingCompletionResponse::stream(stream))
+        }
+
+        #[cfg(target_family = "wasm")]
+        {
+            let mut events = Vec::new();
+            let response = generate(loaded, request, &CancellationSignal, |fragment| {
+                events.push(Ok(RawStreamingChoice::Message(fragment)));
+                Ok(())
+            })?;
+            events.push(Ok(RawStreamingChoice::FinalResponse(response)));
+            let stream: StreamingResult<CandleCompletionResponse> =
+                Box::pin(futures::stream::iter(events));
+            Ok(StreamingCompletionResponse::stream(stream))
+        }
     }
 }
 
@@ -1259,13 +1632,24 @@ mod tests {
     use std::borrow::Cow;
     use std::collections::HashMap;
 
+    #[cfg(not(target_family = "wasm"))]
+    use futures::StreamExt;
     use rig_core::completion::{CompletionModel, Document, ToolDefinition};
     use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
+    #[cfg(not(target_family = "wasm"))]
+    use rig_core::streaming::StreamedAssistantContent;
     use safetensors::tensor::{Dtype, View, serialize};
-    use tokenizers::AddedToken;
+    use tokenizers::decoders::byte_fallback::ByteFallback;
+    use tokenizers::models::bpe::{BPE, Vocab};
     use tokenizers::models::wordlevel::WordLevel;
+    use tokenizers::normalizers::unicode::NFC;
+    use tokenizers::pre_tokenizers::byte_level::ByteLevel;
+    use tokenizers::{AddedToken, TokenizerBuilder};
 
     use super::*;
+
+    #[cfg(not(target_family = "wasm"))]
+    type ControlledModel = (LlamaModel, Arc<TestControl>, Arc<tokio::sync::Semaphore>);
 
     struct TestTensor {
         dtype: Dtype,
@@ -1459,6 +1843,49 @@ mod tests {
             output_schema: None,
             record_telemetry_content: false,
         }
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    async fn collect_stream(
+        model: &LlamaModel,
+        request: CompletionRequest,
+    ) -> Result<(String, CandleCompletionResponse), Box<dyn std::error::Error + Send + Sync>> {
+        let mut response = model.stream(request).await?;
+        let mut text = String::new();
+        let mut final_response = None;
+        while let Some(item) = response.next().await {
+            match item? {
+                StreamedAssistantContent::Text(fragment) => text.push_str(&fragment.text),
+                StreamedAssistantContent::Final(raw) => final_response = Some(raw),
+                _ => {}
+            }
+        }
+        let raw = final_response.ok_or("stream did not emit a final response")?;
+        Ok((text, raw))
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn controlled_model(
+        blocked: bool,
+        panic_after_gate: bool,
+        max_tokens: u64,
+    ) -> Result<ControlledModel, Box<dyn std::error::Error + Send + Sync>> {
+        let generation = GenerationConfig {
+            temperature: 0.0,
+            max_tokens,
+            ..GenerationConfig::default()
+        };
+        let mut loaded = load_model(model_data()?, generation, 1)?;
+        let control = Arc::new(TestControl::new(blocked, panic_after_gate));
+        let concurrency = Arc::clone(&loaded.concurrency);
+        loaded.test_control = Some(Arc::clone(&control));
+        Ok((
+            LlamaModel {
+                state: ModelState::Ready(Arc::new(loaded)),
+            },
+            control,
+            concurrency,
+        ))
     }
 
     #[test]
@@ -1794,6 +2221,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(not(target_family = "wasm"))]
     #[test]
     fn loaded_model_works_with_agent_builder()
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -1810,6 +2238,159 @@ mod tests {
             let _answer = agent.prompt("hello").await?;
             Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
         })?;
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn buffered_and_streaming_generation_are_equivalent()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let model = LlamaModel::builder(model_data()?)
+            .temperature(0.0)
+            .max_tokens(3)
+            .build()?;
+        let completion_request = request(vec![Message::user("hello")]);
+        let buffered = model.completion(completion_request.clone()).await?;
+        let (streamed_text, streamed) = collect_stream(&model, completion_request).await?;
+
+        assert_eq!(streamed_text, buffered.raw_response.text);
+        assert_eq!(streamed.text, buffered.raw_response.text);
+        assert_eq!(streamed.prompt_tokens, buffered.raw_response.prompt_tokens);
+        assert_eq!(
+            streamed.generated_tokens,
+            buffered.raw_response.generated_tokens
+        );
+        assert_eq!(streamed.finish_reason, buffered.raw_response.finish_reason);
+        assert_eq!(
+            streamed.requested_max_tokens,
+            buffered.raw_response.requested_max_tokens
+        );
+        assert_eq!(
+            streamed.effective_max_tokens,
+            buffered.raw_response.effective_max_tokens
+        );
+        assert_eq!(streamed.token_usage(), buffered.usage);
+        assert!(streamed.time_to_first_token_ms.is_some());
+        assert!(streamed.prefill_duration_ms <= streamed.generation_duration_ms);
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn streaming_reports_eos_and_excludes_the_stop_token()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let model = LlamaModel::builder(ModelData {
+            config: config_with("eos_token_id", 0.into())?,
+            tokenizer: tiny_tokenizer()?,
+            weights: checkpoint(true)?,
+        })
+        .temperature(0.0)
+        .build()?;
+        let (text, raw) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
+        assert!(text.is_empty());
+        assert!(raw.text.is_empty());
+        assert_eq!(raw.finish_reason, FinishReason::Eos);
+        assert_eq!(raw.generated_tokens, 1);
+        assert_eq!(raw.token_usage().output_tokens, 1);
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn streaming_clamps_context_and_rejects_bad_request_options()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
+        let mut completion_request = request(vec![Message::user("hello")]);
+        completion_request.max_tokens = Some(10);
+        completion_request.temperature = Some(0.0);
+        let prompt = render_prompt(&completion_request)?;
+        let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
+        loaded.config.max_position_embeddings = prompt_tokens + 2;
+        let model = LlamaModel {
+            state: ModelState::Ready(Arc::new(loaded)),
+        };
+        let (_, raw) = collect_stream(&model, completion_request).await?;
+        assert_eq!(raw.requested_max_tokens, 10);
+        assert_eq!(raw.effective_max_tokens, 2);
+        assert_eq!(raw.generated_tokens, 2);
+
+        for additional_params in [
+            serde_json::json!({"unknown": true}),
+            serde_json::json!({"top_k": "four"}),
+        ] {
+            let mut bad_request = request(vec![Message::user("hello")]);
+            bad_request.additional_params = Some(additional_params);
+            let mut stream = model.stream(bad_request).await?;
+            let item = stream
+                .next()
+                .await
+                .ok_or("bad streaming request produced no error item")?;
+            assert!(item.is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn incremental_decoder_preserves_token_boundaries() -> Result<(), CandleError> {
+        let tokenizer = Tokenizer::from_bytes(
+            tiny_tokenizer().map_err(|error| CandleError::TokenizerLoading(error.to_string()))?,
+        )
+        .map_err(|error| CandleError::TokenizerLoading(error.to_string()))?;
+        let ids = [0, 0, 7];
+        let independently_decoded = ids
+            .iter()
+            .map(|id| tokenizer.decode(&[*id], true))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| CandleError::TokenizerDecoding(error.to_string()))?
+            .join("");
+        let complete = tokenizer
+            .decode(&ids, true)
+            .map_err(|error| CandleError::TokenizerDecoding(error.to_string()))?;
+        assert_ne!(independently_decoded, complete);
+
+        let mut decoder = IncrementalTextDecoder::new(&tokenizer);
+        let mut streamed = String::new();
+        for id in ids {
+            if let Some(fragment) = decoder.push(id)? {
+                streamed.push_str(&fragment);
+            }
+        }
+        if let Some(fragment) = decoder.finish()? {
+            streamed.push_str(&fragment);
+        }
+        assert_eq!(streamed, complete);
+        assert_eq!(streamed, decoder.text());
+        Ok(())
+    }
+
+    #[test]
+    fn incremental_decoder_waits_for_complete_unicode_bytes()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let vocab: Vocab = [
+            ("<0x20>".to_string(), 0),
+            ("<0xC3>".to_string(), 1),
+            ("<0xA9>".to_string(), 2),
+        ]
+        .into_iter()
+        .collect();
+        let tokenizer: Tokenizer = TokenizerBuilder::default()
+            .with_model(
+                BPE::builder()
+                    .vocab_and_merges(vocab, Vec::new())
+                    .byte_fallback(true)
+                    .build()?,
+            )
+            .with_decoder(Some(ByteFallback::default()))
+            .with_normalizer(Some(NFC))
+            .with_pre_tokenizer(Some(ByteLevel::default()))
+            .with_post_processor(Some(ByteLevel::default()))
+            .build()?
+            .into();
+        let mut decoder = IncrementalTextDecoder::new(&tokenizer);
+        assert!(decoder.push(1)?.is_none());
+        assert_eq!(decoder.push(2)?.as_deref(), Some("é"));
+        assert!(decoder.finish()?.is_none());
+        assert_eq!(decoder.text(), "é");
         Ok(())
     }
 
@@ -1939,12 +2520,169 @@ mod tests {
         assert_eq!(first.raw_response.generated_tokens, 2);
         assert_eq!(second.raw_response.generated_tokens, 2);
 
+        let first_stream = collect_stream(&model, request(vec![Message::user("hello")]));
+        let second_stream = collect_stream(&model, request(vec![Message::user("hello")]));
+        let (first_stream, second_stream) = tokio::join!(first_stream, second_stream);
+        let (first_text, first_raw) = first_stream?;
+        let (second_text, second_raw) = second_stream?;
+        assert_eq!(first_text, second_text);
+        assert_eq!(first_raw.text, second_raw.text);
+        assert_eq!(first_raw.generated_tokens, 2);
+        assert_eq!(second_raw.generated_tokens, 2);
+
         let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
         semaphore.close();
         assert!(matches!(
             acquire_concurrency(semaphore).await,
             Err(CandleError::ConcurrencyControllerClosed)
         ));
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn closed_admission_controller_fails_public_operations()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let model = LlamaModel::builder(model_data()?).build()?;
+        let ModelState::Ready(loaded) = &model.state else {
+            return Err("loaded model was not ready".into());
+        };
+        loaded.concurrency.close();
+        let completion_error = model
+            .completion(request(vec![Message::user("hello")]))
+            .await
+            .err()
+            .ok_or("closed completion admission unexpectedly succeeded")?;
+        assert!(
+            completion_error
+                .to_string()
+                .contains("concurrency controller is closed")
+        );
+        let stream_error = model
+            .stream(request(vec![Message::user("hello")]))
+            .await
+            .err()
+            .ok_or("closed stream admission unexpectedly succeeded")?;
+        assert!(
+            stream_error
+                .to_string()
+                .contains("concurrency controller is closed")
+        );
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropping_buffered_completion_retains_permit_until_worker_exits()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (model, control, concurrency) = controlled_model(true, false, 2)?;
+        let first_model = model.clone();
+        let first = tokio::spawn(async move {
+            first_model
+                .completion(request(vec![Message::user("hello")]))
+                .await
+        });
+        control.wait_until_entered().await;
+
+        let second = model.completion(request(vec![Message::user("hello")]));
+        futures::pin_mut!(second);
+        assert!(futures::poll!(&mut second).is_pending());
+
+        first.abort();
+        assert!(first.await.is_err());
+        assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
+        control.release()?;
+
+        let second = second.await?;
+        assert_eq!(second.raw_response.generated_tokens, 2);
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropping_stream_cancels_worker_before_queued_request_runs()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (model, control, concurrency) = controlled_model(true, false, 2)?;
+        let stream = model.stream(request(vec![Message::user("hello")])).await?;
+        control.wait_until_entered().await;
+
+        let queued = model.completion(request(vec![Message::user("hello")]));
+        futures::pin_mut!(queued);
+        assert!(futures::poll!(&mut queued).is_pending());
+
+        drop(stream);
+        assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
+        control.release()?;
+
+        let queued = queued.await?;
+        assert_eq!(queued.raw_response.generated_tokens, 2);
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn public_stream_cancel_stops_worker_without_dropping_response()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (model, control, concurrency) = controlled_model(true, false, 2)?;
+        let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
+        control.wait_until_entered().await;
+
+        stream.cancel();
+        assert!(stream.next().await.is_none());
+        let queued = model.completion(request(vec![Message::user("hello")]));
+        futures::pin_mut!(queued);
+        assert!(futures::poll!(&mut queued).is_pending());
+        assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
+
+        control.release()?;
+        let queued = queued.await?;
+        assert_eq!(queued.raw_response.generated_tokens, 2);
+        assert!(stream.next().await.is_none());
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn streaming_channel_applies_bounded_backpressure()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (model, control, concurrency) =
+            controlled_model(false, false, (STREAM_CHANNEL_CAPACITY + 4) as u64)?;
+        let stream = model.stream(request(vec![Message::user("hello")])).await?;
+        control
+            .wait_for_delivery_attempts(STREAM_CHANNEL_CAPACITY + 1)
+            .await;
+        assert_eq!(
+            control.delivery_attempts.load(Ordering::Acquire),
+            STREAM_CHANNEL_CAPACITY + 1
+        );
+
+        drop(stream);
+        let permit = Arc::clone(&concurrency).acquire_owned().await?;
+        drop(permit);
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn blocking_task_panic_maps_to_typed_completion_error()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (model, _, _) = controlled_model(false, true, 1)?;
+        let error = model
+            .completion(request(vec![Message::user("hello")]))
+            .await
+            .err()
+            .ok_or("blocking task panic unexpectedly succeeded")?;
+        assert!(error.to_string().contains("Candle blocking task failed"));
+
+        let (model, _, _) = controlled_model(false, true, 1)?;
+        let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
+        let error = stream
+            .next()
+            .await
+            .ok_or("panicked streaming task produced no error")?
+            .err()
+            .ok_or("panicked streaming task unexpectedly produced content")?;
+        assert!(error.to_string().contains("Candle blocking task failed"));
         Ok(())
     }
 
@@ -2098,29 +2836,35 @@ mod tests {
 
     #[test]
     fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
-        let response = completion_response(
-            "done".to_string(),
-            5,
-            2,
-            4,
-            3,
-            FinishReason::Eos,
-            Duration::from_millis(20),
-        )?;
-        assert_eq!(response.usage.input_tokens, 5);
-        assert_eq!(response.usage.output_tokens, 2);
-        assert_eq!(response.usage.total_tokens, 7);
-        assert_eq!(response.raw_response.finish_reason, FinishReason::Eos);
-        assert_eq!(response.raw_response.text, "done");
-        assert_eq!(response.raw_response.requested_max_tokens, 4);
-        assert_eq!(response.raw_response.effective_max_tokens, 3);
-        assert_eq!(response.raw_response.generation_duration_ms, 20);
-        assert_eq!(response.raw_response.tokens_per_second, Some(100.0));
+        let response = CandleCompletionResponse {
+            text: "done".to_string(),
+            prompt_tokens: 5,
+            generated_tokens: 2,
+            requested_max_tokens: 4,
+            effective_max_tokens: 3,
+            finish_reason: FinishReason::Eos,
+            prefill_duration_ms: 8,
+            time_to_first_token_ms: Some(10),
+            generation_duration_ms: 20,
+            tokens_per_second: Some(100.0),
+        };
+        let usage = response.token_usage();
+        assert_eq!(usage.input_tokens, 5);
+        assert_eq!(usage.output_tokens, 2);
+        assert_eq!(usage.total_tokens, 7);
+        assert_eq!(response.finish_reason, FinishReason::Eos);
+        assert_eq!(response.text, "done");
+        assert_eq!(response.requested_max_tokens, 4);
+        assert_eq!(response.effective_max_tokens, 3);
+        assert_eq!(response.prefill_duration_ms, 8);
+        assert_eq!(response.time_to_first_token_ms, Some(10));
+        assert_eq!(response.generation_duration_ms, 20);
+        assert_eq!(response.tokens_per_second, Some(100.0));
         Ok(())
     }
 
     #[test]
-    fn unsupported_make_and_stream_fail_explicitly()
+    fn unsupported_make_fails_for_buffered_and_streaming()
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let runtime = tokio::runtime::Builder::new_current_thread().build()?;
         runtime.block_on(async {
@@ -2139,8 +2883,8 @@ mod tests {
                 .stream(request(vec![Message::user("hello")]))
                 .await
                 .err()
-                .ok_or("expected unsupported streaming")?;
-            assert!(stream_error.to_string().contains("streaming"));
+                .ok_or("expected unsupported make")?;
+            assert!(stream_error.to_string().contains("CompletionModel::make"));
             Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
         })?;
         Ok(())
