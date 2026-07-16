@@ -107,7 +107,7 @@ pub(crate) struct CassettePolicy {
 impl CassettePolicy {
     fn for_scenario(provider: &str, scenario: &str, replay_matching: ReplayMatching) -> Self {
         let required_request_headers = match provider {
-            "openai" => OPENAI_REQUIRED_REQUEST_HEADERS,
+            "openai" | "doubleword" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
             "gemini" if scenario.starts_with("interactions_api/") => {
@@ -2669,37 +2669,40 @@ mod tests {
     }
 
     #[test]
-    fn replay_matching_requires_provider_auth_header_presence_without_recorded_value() {
-        let policy = CassettePolicy::for_scenario(
-            "openai",
-            "agent/completion_smoke",
-            ReplayMatching::Ordered,
-        );
-        let interaction = ReplayInteraction {
-            when: cassette_request("/v1/responses"),
-            then: cassette_response(),
-            consumed: false,
-        };
-        let interactions = vec![interaction];
-        let request_without_auth = incoming_request("/v1/responses", Bytes::new());
-        let mut request_with_auth = incoming_request("/v1/responses", Bytes::new());
-        request_with_auth.headers.insert(
-            axum::http::header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer [REDACTED]"),
-        );
+    fn replay_matching_requires_bearer_provider_auth_without_recording_its_value() {
+        for provider in ["openai", "doubleword"] {
+            let policy = CassettePolicy::for_scenario(
+                provider,
+                "agent/completion_smoke",
+                ReplayMatching::Ordered,
+            );
+            let interaction = ReplayInteraction {
+                when: cassette_request("/v1/responses"),
+                then: cassette_response(),
+                consumed: false,
+            };
+            let interactions = vec![interaction];
+            let request_without_auth = incoming_request("/v1/responses", Bytes::new());
+            let mut request_with_auth = incoming_request("/v1/responses", Bytes::new());
+            request_with_auth.headers.insert(
+                axum::http::header::AUTHORIZATION,
+                HeaderValue::from_static("Bearer [REDACTED]"),
+            );
 
-        assert_eq!(
-            matching_interaction_index(policy, &interactions, &request_without_auth),
-            None
-        );
-        assert_eq!(
-            missing_required_headers(policy, &request_without_auth.headers),
-            vec!["authorization"]
-        );
-        assert_eq!(
-            matching_interaction_index(policy, &interactions, &request_with_auth),
-            Some(0)
-        );
+            assert_eq!(
+                matching_interaction_index(policy, &interactions, &request_without_auth),
+                None,
+                "{provider} replay should require bearer authentication"
+            );
+            assert_eq!(
+                missing_required_headers(policy, &request_without_auth.headers),
+                vec!["authorization"]
+            );
+            assert_eq!(
+                matching_interaction_index(policy, &interactions, &request_with_auth),
+                Some(0)
+            );
+        }
     }
 
     #[test]
