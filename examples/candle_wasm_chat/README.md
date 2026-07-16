@@ -18,7 +18,9 @@ different port.
 `tokenizer.json`, and `model.gguf` into the ignored `model/` directory.
 The Rust build script copies those bytes into Cargo's build output and
 `include_bytes!` embeds them in the final WASM module. `wasm-pack` writes the
-browser package to the ignored `www/pkg/` directory.
+browser package to the ignored `www/pkg/` directory. Direct builds verify the
+pinned size and SHA-256 of every artifact before copying hundreds of megabytes;
+a partial or modified model directory fails early with a recovery instruction.
 
 Set `MODEL_DIR` to choose the artifact directory for both downloading and
 embedding. The downloader intentionally pins immutable model revisions and
@@ -32,11 +34,29 @@ is substantially smaller than full-precision weights while retaining useful
 instruction output. The three embedded inputs total 272,696,282 bytes.
 
 The Web Worker prevents synchronous WASM inference from freezing the page. The
-Rust side retains Rig chat history until the **Clear** button is pressed.
+Rust side retains a rolling window of recent Rig chat history until the
+**Clear** button is pressed. User messages are limited to 1,024 UTF-8 bytes and
+the retained window is bounded by both message count and serialized size, so a
+long-running demo does not inevitably become stuck beyond the model's 4,096-token
+context. Reinitialization is idempotent, avoiding a transient second model
+allocation in wasm32's constrained linear memory.
 Generation is currently returned after completion because synchronous Candle
 inference cannot yield incremental fragments to JavaScript on the same worker.
 After the page, worker, and WASM package load, inference makes no network
 requests.
+
+The worker controller has a model-independent Node regression test:
+
+```bash
+node --test examples/candle_wasm_chat/www/worker-runtime.test.mjs
+```
+
+After `build.sh`, exercise the actual embedded model, idempotent initialization,
+chat history, and Clear behavior with:
+
+```bash
+node examples/candle_wasm_chat/smoke.mjs
+```
 
 ## Measured reference build
 

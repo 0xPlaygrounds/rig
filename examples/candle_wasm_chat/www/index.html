@@ -24,7 +24,7 @@
                     <strong>Local model</strong>
                     <p>
                         Loading the embedded SmolLM2-360M-Instruct Q4_K_M model. Generation runs
-                        locally in a Web Worker and preserves this conversation until Clear.
+                        locally in a Web Worker and retains a bounded window of recent turns.
                     </p>
                 </article>
             </section>
@@ -38,6 +38,7 @@
                         type="text"
                         placeholder="Say hello…"
                         autocomplete="off"
+                        maxlength="1024"
                         disabled
                     />
                     <button id="send" type="submit" disabled>Send</button>

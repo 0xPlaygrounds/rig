@@ -4,34 +4,13 @@ import init, {
     embedded_model_size,
     initialize,
 } from "./pkg/candle_wasm_chat.js";
+import { createWorkerRuntime } from "./worker-runtime.js";
 
-const ready = (async () => {
-    const started = performance.now();
-    await init();
-    initialize();
-    self.postMessage({
-        type: "ready",
-        modelBytes: embedded_model_size(),
-        initializationMs: Math.round(performance.now() - started),
-    });
-})().catch((error) => {
-    self.postMessage({ type: "error", message: String(error) });
-    throw error;
-});
+const runtime = createWorkerRuntime(
+    { init, initialize, embeddedModelSize: embedded_model_size, chat, clearHistory: clear_history },
+    (message) => self.postMessage(message),
+);
 
-self.onmessage = async ({ data }) => {
-    try {
-        await ready;
-        if (data.type === "clear") {
-            clear_history();
-            self.postMessage({ type: "cleared" });
-            return;
-        }
-        if (data.type === "chat") {
-            const output = await chat(data.message);
-            self.postMessage({ type: "response", output });
-        }
-    } catch (error) {
-        self.postMessage({ type: "error", message: String(error) });
-    }
+self.onmessage = ({ data }) => {
+    void runtime.handle(data);
 };

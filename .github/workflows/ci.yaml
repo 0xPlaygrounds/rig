@@ -50,6 +50,9 @@ jobs:
             exit 1
           fi
 
+      - name: Test WASM chat worker runtime
+        run: node --test examples/candle_wasm_chat/www/worker-runtime.test.mjs
+
   # Special check to make sure rig-core is compatible with the wasm target
   check-wasm:
     name: stable / check rig-core wasm target

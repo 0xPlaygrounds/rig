@@ -652,9 +652,19 @@ fn render_qwen_message(
                 match item {
                     UserContent::Text(value) => text.push(value.text.clone()),
                     UserContent::ToolResult(result) => {
-                        let canonical = aliases
-                            .get(&result.id)
-                            .or_else(|| result.call_id.as_ref().and_then(|id| aliases.get(id)))
+                        let canonical_by_id = aliases.get(&result.id);
+                        let canonical_by_call_id =
+                            result.call_id.as_ref().and_then(|id| aliases.get(id));
+                        if let (Some(by_id), Some(by_call_id)) =
+                            (canonical_by_id, canonical_by_call_id)
+                            && by_id != by_call_id
+                        {
+                            return Err(CandleError::UnmatchedToolResult {
+                                result_id: result.id.clone(),
+                            });
+                        }
+                        let canonical = canonical_by_id
+                            .or(canonical_by_call_id)
                             .cloned()
                             .ok_or_else(|| CandleError::UnmatchedToolResult {
                                 result_id: result.id.clone(),
@@ -1069,6 +1079,34 @@ mod tests {
         assert!(matches!(
             render_prompt(&request, ModelFamily::Qwen3),
             Err(CandleError::UnmatchedToolResult { .. })
+        ));
+    }
+
+    #[test]
+    fn renderer_rejects_conflicting_tool_result_aliases() {
+        let first = ToolCall::new(
+            "internal-a".to_string(),
+            ToolFunction::new("calculate".to_string(), serde_json::json!({ "value": 1 })),
+        )
+        .with_call_id("provider-a".to_string());
+        let second = ToolCall::new(
+            "internal-b".to_string(),
+            ToolFunction::new("lookup".to_string(), serde_json::json!({ "value": 2 })),
+        )
+        .with_call_id("provider-b".to_string());
+        let history = vec![
+            Message::from(first),
+            Message::from(second),
+            Message::tool_result_with_call_id(
+                "internal-a",
+                Some("provider-b".to_string()),
+                "wrong call",
+            ),
+        ];
+
+        assert!(matches!(
+            render_prompt(&request(history), ModelFamily::Qwen3),
+            Err(CandleError::UnmatchedToolResult { result_id }) if result_id == "internal-a"
         ));
     }
 

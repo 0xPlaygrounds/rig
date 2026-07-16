@@ -18,3 +18,4 @@ echo "WASM size: $(wc -c < "$WASM" | tr -d ' ') bytes"
 echo
 echo "WASM chat app built in $SCRIPT_DIR/www"
 echo "Run: $SCRIPT_DIR/serve.sh"
+echo "Smoke test: node $SCRIPT_DIR/smoke.mjs"

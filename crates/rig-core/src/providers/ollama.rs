@@ -421,7 +421,10 @@ fn split_legacy_thinking(content: &str, permits_omitted_start: bool) -> (Option<
     let split = if let Some(reasoning_start) = trimmed.strip_prefix("<think>") {
         reasoning_start.split_once("</think>")
     } else if permits_omitted_start {
-        trimmed.split_once("\n</think>")
+        // Qwen's prefilled opening marker produces this exact blank-line
+        // boundary. Requiring the full boundary avoids hiding ordinary visible
+        // text that merely demonstrates a closing XML-like tag on its own line.
+        trimmed.split_once("\n</think>\n\n")
     } else {
         None
     };
@@ -1332,6 +1335,10 @@ mod tests {
         assert_eq!(
             split_legacy_thinking("The closing token </think> is XML-like.", true),
             (None, "The closing token </think> is XML-like.")
+        );
+        assert_eq!(
+            split_legacy_thinking("Example:\n</think>\nis a closing tag.", true),
+            (None, "Example:\n</think>\nis a closing tag.")
         );
     }
 

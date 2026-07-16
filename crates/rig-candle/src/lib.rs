@@ -1,7 +1,8 @@
 //! Local, CPU-only Llama-compatible and Qwen3 inference for Rig, backed by Candle.
 //!
-//! Models are loaded entirely from owned byte buffers. This crate performs no
-//! filesystem or network access. On `wasm32-unknown-unknown`, inference runs
+//! Models are loaded entirely from caller-provided owned or borrowed byte
+//! buffers. This crate performs no filesystem or network access. On
+//! `wasm32-unknown-unknown`, inference runs
 //! synchronously inside the completion future; browser applications should own
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!

@@ -1,4 +1,4 @@
-//! Browser chat example backed by a Llama model embedded in WebAssembly.
+//! Browser chat example backed by SmolLM2 embedded in WebAssembly.
 
 use std::cell::RefCell;
 
@@ -20,6 +20,8 @@ enum BrowserModelError {
     NotInitialized,
     #[error("message must not be empty")]
     EmptyMessage,
+    #[error("message is too large; use at most {max_bytes} UTF-8 bytes")]
+    MessageTooLarge { max_bytes: usize },
     #[error("local inference failed: {0}")]
     Inference(String),
 }
@@ -27,6 +29,9 @@ enum BrowserModelError {
 const CONFIG: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/config.json"));
 const TOKENIZER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tokenizer.json"));
 const WEIGHTS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/model.gguf"));
+const MAX_MESSAGE_BYTES: usize = 1024;
+const MAX_HISTORY_MESSAGES: usize = 12;
+const MAX_HISTORY_JSON_BYTES: usize = 2048;
 
 struct ChatState {
     agent: Agent<CandleModel>,
@@ -59,6 +64,9 @@ pub fn initialize() -> Result<(), JsValue> {
     if !model_is_embedded() {
         return Err(js_error(BrowserModelError::MissingEmbeddedModel));
     }
+    if CHAT_STATE.with(|state| state.borrow().is_some()) {
+        return Ok(());
+    }
 
     let model = CandleModel::from_gguf_bytes(GgufModelData {
         config: CONFIG,
@@ -90,13 +98,45 @@ pub async fn chat(message: String) -> Result<String, JsValue> {
     if message.trim().is_empty() {
         return Err(js_error(BrowserModelError::EmptyMessage));
     }
+    if message.len() > MAX_MESSAGE_BYTES {
+        return Err(js_error(BrowserModelError::MessageTooLarge {
+            max_bytes: MAX_MESSAGE_BYTES,
+        }));
+    }
 
     let mut state = CHAT_STATE
         .with(|slot| slot.take())
         .ok_or_else(|| js_error(BrowserModelError::NotInitialized))?;
+    trim_history(&mut state.history);
     let result = state.agent.chat(message, &mut state.history).await;
     CHAT_STATE.with(|slot| slot.replace(Some(state)));
     result.map_err(|error| js_error(BrowserModelError::Inference(error.to_string())))
+}
+
+fn trim_history(history: &mut Vec<Message>) {
+    while history.len() > MAX_HISTORY_MESSAGES
+        || serde_json::to_vec(&*history).map_or(usize::MAX, |serialized| serialized.len())
+            > MAX_HISTORY_JSON_BYTES
+    {
+        let next_turn = history
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find_map(|(index, message)| matches!(message, Message::User { .. }).then_some(index))
+            .unwrap_or(history.len());
+        history.drain(..next_turn);
+    }
+}
+
+/// Returns the number of messages currently retained by the browser chat.
+#[wasm_bindgen]
+pub fn history_len() -> Result<usize, JsValue> {
+    CHAT_STATE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(|state| state.history.len())
+            .ok_or_else(|| js_error(BrowserModelError::NotInitialized))
+    })
 }
 
 /// Clears the conversation while retaining the loaded model.
@@ -110,4 +150,40 @@ pub fn clear_history() -> Result<(), JsValue> {
         state.history.clear();
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn history_window_keeps_recent_complete_turns_within_bounds() {
+        let mut history = Vec::new();
+        for turn in 0..10 {
+            history.push(Message::user(format!("turn-{turn}-{}", "x".repeat(400))));
+            history.push(Message::assistant(format!(
+                "answer-{turn}-{}",
+                "y".repeat(100)
+            )));
+        }
+
+        trim_history(&mut history);
+
+        assert!(history.len() <= MAX_HISTORY_MESSAGES);
+        assert!(
+            serde_json::to_vec(&history)
+                .is_ok_and(|serialized| serialized.len() <= MAX_HISTORY_JSON_BYTES)
+        );
+        assert!(matches!(history.first(), Some(Message::User { .. })));
+        assert!(history.iter().any(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        rig::message::UserContent::Text(text) if text.text.starts_with("turn-9-")
+                    ))
+            )
+        }));
+    }
 }

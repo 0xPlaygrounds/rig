@@ -158,5 +158,7 @@ request owns its cache and sampler. Cancellation is cooperative between Candle
 forwards, and the bounded stream channel has capacity eight.
 
 WASM inference is synchronous and should run in an application-owned Web Worker.
-The maintained browser example embeds SmolLM2 at compile time. CPU only; no
-CUDA/Metal selection, batching, multimodal prompts, or checkpoint shards.
+The maintained browser example embeds SmolLM2 at compile time, rejects modified
+artifacts during its build, bounds input/history growth, and includes both a
+model-independent worker test and an opt-in real-artifact smoke test. CPU only;
+no CUDA/Metal selection, batching, multimodal prompts, or checkpoint shards.

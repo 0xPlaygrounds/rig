@@ -1995,6 +1995,7 @@ version = "0.40.0"
 dependencies = [
  "rig",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
