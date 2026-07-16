@@ -217,18 +217,6 @@ impl std::fmt::Display for Usage {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ApiErrorResponse {
-    pub(crate) message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
 #[cfg(test)]
 mod tests {
     #[test]

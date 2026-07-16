@@ -1,9 +1,9 @@
 use super::{client::ApiResponse, completion::Usage};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{embeddings, http_client};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 // ================================================================
 // OpenAI Embedding API
@@ -23,11 +23,85 @@ pub struct EmbeddingResponse {
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Debug, Deserialize)]
+struct CompatibleEmbeddingResponse {
+    #[serde(rename = "object")]
+    _object: String,
+    pub data: Vec<EmbeddingData>,
+    #[serde(rename = "model")]
+    _model: String,
+    #[serde(default)]
+    pub usage: Option<Usage>,
+}
+
+/// Provider-specific spelling for an embedding dimension request field.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmbeddingDimensions {
+    /// Serialize the value as the OpenAI-compatible `dimensions` field.
+    Dimensions(usize),
+    /// Serialize the value as Mistral's `output_dimension` field.
+    OutputDimension(usize),
+}
+
+/// Contract for provider extensions that speak an OpenAI-compatible embeddings
+/// wire format through [`GenericEmbeddingModel`].
+#[doc(hidden)]
+pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
+    /// Provider name used in embedding request and response errors.
+    const PROVIDER_NAME: &'static str;
+
+    /// Whether successful responses from this provider must include usage.
+    const REQUIRES_USAGE: bool = true;
+
+    /// Whether the provider accepts the OpenAI-compatible `encoding_format` field.
+    const SUPPORTS_ENCODING_FORMAT: bool = true;
+
+    /// Whether the provider accepts the OpenAI-compatible `user` field.
+    const SUPPORTS_USER: bool = true;
+
+    /// The request path for embeddings, resolved against the client base URL.
+    fn embeddings_path(&self) -> String {
+        "/embeddings".to_string()
+    }
+
+    /// Validate and select the provider's dimension field.
+    fn embedding_dimensions(
+        &self,
+        _model: &str,
+        dimensions: Option<usize>,
+    ) -> Result<Option<EmbeddingDimensions>, EmbeddingError> {
+        Ok(dimensions.map(EmbeddingDimensions::Dimensions))
+    }
+}
+
+impl OpenAIEmbeddingsCompatible for super::OpenAIResponsesExt {
+    const PROVIDER_NAME: &'static str = "openai";
+}
+
+impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {
+    const PROVIDER_NAME: &'static str = "openai";
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EncodingFormat {
     Float,
     Base64,
+}
+
+#[derive(Debug, Serialize)]
+struct CompatibleEmbeddingRequest<'a> {
+    model: &'a str,
+    input: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dimensions: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_dimension: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    encoding_format: Option<EncodingFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user: Option<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,9 +137,9 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
 
 impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
-    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + Send + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + 'static,
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
 
@@ -99,32 +173,51 @@ where
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
 
-        let mut body = json!({
-            "model": self.model,
-            "input": documents,
-        });
+        if self.encoding_format == Some(EncodingFormat::Base64) {
+            return Err(EmbeddingError::UnsupportedResponseEncoding {
+                provider: Ext::PROVIDER_NAME,
+                encoding_format: "base64",
+            });
+        }
 
-        let body_object = body.as_object_mut().ok_or_else(|| {
-            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
+        if self.encoding_format.is_some() && !Ext::SUPPORTS_ENCODING_FORMAT {
+            return Err(EmbeddingError::UnsupportedParameter {
+                provider: Ext::PROVIDER_NAME,
+                parameter: "encoding_format",
+            });
+        }
+
+        if self.user.is_some() && !Ext::SUPPORTS_USER {
+            return Err(EmbeddingError::UnsupportedParameter {
+                provider: Ext::PROVIDER_NAME,
+                parameter: "user",
+            });
+        }
+
+        let requested_dimensions =
+            (self.ndims > 0 && self.model != TEXT_EMBEDDING_ADA_002).then_some(self.ndims);
+        let dimensions = self
+            .client
+            .ext()
+            .embedding_dimensions(&self.model, requested_dimensions)?;
+        let (dimensions, output_dimension) = match dimensions {
+            Some(EmbeddingDimensions::Dimensions(value)) => (Some(value), None),
+            Some(EmbeddingDimensions::OutputDimension(value)) => (None, Some(value)),
+            None => (None, None),
+        };
+
+        let body = serde_json::to_vec(&CompatibleEmbeddingRequest {
+            model: &self.model,
+            input: &documents,
+            dimensions,
+            output_dimension,
+            encoding_format: self.encoding_format,
+            user: self.user.as_deref(),
         })?;
-
-        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
-            body_object.insert("dimensions".to_owned(), json!(self.ndims));
-        }
-
-        if let Some(encoding_format) = &self.encoding_format {
-            body_object.insert("encoding_format".to_owned(), json!(encoding_format));
-        }
-
-        if let Some(user) = &self.user {
-            body_object.insert("user".to_owned(), json!(user));
-        }
-
-        let body = serde_json::to_vec(&body)?;
 
         let req = self
             .client
-            .post("/embeddings")?
+            .post(self.client.ext().embeddings_path())?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -133,12 +226,13 @@ where
         let status = response.status();
         if status.is_success() {
             let response_body: Vec<u8> = response.into_body().await?;
-            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
+            let parsed: ApiResponse<CompatibleEmbeddingResponse> =
+                serde_json::from_slice(&response_body)?;
 
             match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
-                        "OpenAI embedding token usage: {:?}",
+                        "embedding token usage: {:?}",
                         response.usage
                     );
 
@@ -148,18 +242,25 @@ where
                         ));
                     }
 
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.prompt_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: response
-                            .usage
-                            .prompt_tokens_details
-                            .as_ref()
-                            .map_or(0, |d| d.cached_tokens as u64),
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
+                    let usage = match response.usage {
+                        Some(usage) => crate::completion::Usage {
+                            input_tokens: usage.prompt_tokens as u64,
+                            output_tokens: 0,
+                            total_tokens: usage.total_tokens as u64,
+                            cached_input_tokens: usage
+                                .prompt_tokens_details
+                                .as_ref()
+                                .map_or(0, |details| details.cached_tokens as u64),
+                            cache_creation_input_tokens: 0,
+                            tool_use_prompt_tokens: 0,
+                            reasoning_tokens: 0,
+                        },
+                        None if Ext::REQUIRES_USAGE => {
+                            return Err(EmbeddingError::MissingUsage {
+                                provider: Ext::PROVIDER_NAME,
+                            });
+                        }
+                        None => crate::completion::Usage::new(),
                     };
 
                     let embeddings = response
@@ -252,8 +353,134 @@ mod tests {
     use super::*;
     use crate::client::EmbeddingsClient;
     use crate::embeddings::EmbeddingModel as _;
+    use crate::http_client::{LazyBody, MultipartForm, Request, Response, StreamingResponse};
     use crate::providers::openai::CompletionsClient;
     use crate::test_utils::RecordingHttpClient;
+    use bytes::Bytes;
+    use std::future::{self, Future};
+
+    #[derive(Clone)]
+    struct CustomHttpClient;
+
+    impl HttpClientExt for CustomHttpClient {
+        fn send<T, U>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            T: Into<Bytes> + WasmCompatSend,
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: Request<MultipartForm>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+        where
+            T: Into<Bytes> + WasmCompatSend,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+    }
+
+    const RESPONSE_BODY: &str = r#"{
+        "object": "list",
+        "model": "text-embedding-3-small",
+        "usage": { "prompt_tokens": 4, "total_tokens": 4 },
+        "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
+    }"#;
+
+    #[test]
+    fn embedding_model_accepts_backend_without_default_or_debug() {
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(CustomHttpClient)
+            .build()
+            .expect("build client");
+
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
+
+        assert_eq!(model.ndims(), 1_536);
+    }
+
+    #[tokio::test]
+    async fn openai_embeddings_preserve_path_parameters_and_usage() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client
+            .embedding_model(TEXT_EMBEDDING_3_SMALL)
+            .encoding_format(EncodingFormat::Float)
+            .user("user-123");
+
+        let response = model
+            .embed_texts_with_usage(["hello".to_string()])
+            .await
+            .expect("embedding should succeed");
+
+        assert_eq!(response.usage.input_tokens, 4);
+        assert_eq!(response.usage.total_tokens, 4);
+        let requests = http_client.requests();
+        assert_eq!(requests[0].uri, "https://api.openai.com/v1/embeddings");
+        let body: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
+        assert_eq!(body["dimensions"], serde_json::json!(1_536));
+        assert_eq!(body["encoding_format"], serde_json::json!("float"));
+        assert_eq!(body["user"], serde_json::json!("user-123"));
+    }
+
+    #[tokio::test]
+    async fn openai_rejects_base64_before_sending() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client
+            .embedding_model(TEXT_EMBEDDING_3_SMALL)
+            .encoding_format(EncodingFormat::Base64);
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("numeric response parser should reject base64");
+
+        assert!(matches!(
+            error,
+            EmbeddingError::UnsupportedResponseEncoding {
+                provider: "openai",
+                encoding_format: "base64"
+            }
+        ));
+        assert!(http_client.requests().is_empty());
+    }
+
+    #[test]
+    fn public_openai_embedding_response_requires_usage() {
+        let body = r#"{
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1] }]
+        }"#;
+
+        assert!(serde_json::from_str::<EmbeddingResponse>(body).is_err());
+    }
 
     #[tokio::test]
     async fn embedding_preserves_raw_provider_error_json_on_api_error_envelope() {

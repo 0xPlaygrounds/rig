@@ -46,6 +46,43 @@ pub enum EmbeddingError {
     #[error("ResponseError: {0}")]
     ResponseError(String),
 
+    /// The provider does not support an embedding request parameter configured on the model.
+    #[error("{provider} embeddings do not support the `{parameter}` parameter")]
+    UnsupportedParameter {
+        /// Provider whose embedding API rejected the parameter.
+        provider: &'static str,
+        /// Unsupported request parameter.
+        parameter: &'static str,
+    },
+
+    /// A provider request parameter was configured with a value outside the
+    /// provider's supported range.
+    #[error("{provider} embeddings require `{parameter}` {requirement}")]
+    InvalidParameterValue {
+        /// Provider whose embedding API constrains the parameter.
+        provider: &'static str,
+        /// Request parameter with the invalid value.
+        parameter: &'static str,
+        /// Concise description of the accepted values.
+        requirement: &'static str,
+    },
+
+    /// Rig cannot decode the requested provider response encoding.
+    #[error("Rig cannot decode {provider} embedding responses encoded as `{encoding_format}`")]
+    UnsupportedResponseEncoding {
+        /// Provider whose response encoding was requested.
+        provider: &'static str,
+        /// Response encoding that Rig cannot decode.
+        encoding_format: &'static str,
+    },
+
+    /// A provider that guarantees embedding usage omitted it from the response.
+    #[error("{provider} embedding response omitted required usage")]
+    MissingUsage {
+        /// Provider whose response omitted usage.
+        provider: &'static str,
+    },
+
     /// Error returned by the embedding model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
