@@ -47,35 +47,6 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Together
     }
 }
 
-impl crate::providers::openai::embedding::OpenAIEmbeddingsCompatible for TogetherExt {
-    const PROVIDER_NAME: &'static str = "together";
-    const REQUIRES_USAGE: bool = false;
-
-    fn embeddings_path(&self) -> String {
-        "/v1/embeddings".to_string()
-    }
-
-    fn finalize_embeddings_request(
-        &self,
-        body: &mut serde_json::Value,
-    ) -> Result<(), crate::embeddings::EmbeddingError> {
-        let object = body
-            .as_object()
-            .ok_or(crate::embeddings::EmbeddingError::InvalidRequestBody)?;
-
-        for parameter in ["encoding_format", "user"] {
-            if object.contains_key(parameter) {
-                return Err(crate::embeddings::EmbeddingError::UnsupportedParameter {
-                    provider: Self::PROVIDER_NAME,
-                    parameter,
-                });
-            }
-        }
-
-        Ok(())
-    }
-}
-
 impl<H> Capabilities<H> for TogetherExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;

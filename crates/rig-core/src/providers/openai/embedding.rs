@@ -4,7 +4,6 @@ use crate::http_client::HttpClientExt;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{embeddings, http_client};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 // ================================================================
 // OpenAI Embedding API
@@ -35,6 +34,16 @@ struct CompatibleEmbeddingResponse {
     pub usage: Option<Usage>,
 }
 
+/// Provider-specific spelling for an embedding dimension request field.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmbeddingDimensions {
+    /// Serialize the value as the OpenAI-compatible `dimensions` field.
+    Dimensions(usize),
+    /// Serialize the value as Mistral's `output_dimension` field.
+    OutputDimension(usize),
+}
+
 /// Contract for provider extensions that speak an OpenAI-compatible embeddings
 /// wire format through [`GenericEmbeddingModel`].
 #[doc(hidden)]
@@ -45,18 +54,24 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     /// Whether successful responses from this provider must include usage.
     const REQUIRES_USAGE: bool = true;
 
+    /// Whether the provider accepts the OpenAI-compatible `encoding_format` field.
+    const SUPPORTS_ENCODING_FORMAT: bool = true;
+
+    /// Whether the provider accepts the OpenAI-compatible `user` field.
+    const SUPPORTS_USER: bool = true;
+
     /// The request path for embeddings, resolved against the client base URL.
     fn embeddings_path(&self) -> String {
         "/embeddings".to_string()
     }
 
-    /// Adjust the serialized embedding request immediately before it is sent.
-    fn finalize_embeddings_request(
+    /// Validate and select the provider's dimension field.
+    fn embedding_dimensions(
         &self,
-        body: &mut serde_json::Value,
-    ) -> Result<(), EmbeddingError> {
-        let _ = body;
-        Ok(())
+        _model: &str,
+        dimensions: Option<usize>,
+    ) -> Result<Option<EmbeddingDimensions>, EmbeddingError> {
+        Ok(dimensions.map(EmbeddingDimensions::Dimensions))
     }
 }
 
@@ -68,11 +83,25 @@ impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EncodingFormat {
     Float,
     Base64,
+}
+
+#[derive(Debug, Serialize)]
+struct CompatibleEmbeddingRequest<'a> {
+    model: &'a str,
+    input: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dimensions: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_dimension: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    encoding_format: Option<EncodingFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user: Option<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,30 +173,47 @@ where
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
 
-        let mut body = json!({
-            "model": self.model,
-            "input": documents,
-        });
-
-        let body_object = body
-            .as_object_mut()
-            .ok_or(EmbeddingError::InvalidRequestBody)?;
-
-        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
-            body_object.insert("dimensions".to_owned(), json!(self.ndims));
+        if self.encoding_format == Some(EncodingFormat::Base64) {
+            return Err(EmbeddingError::UnsupportedResponseEncoding {
+                provider: Ext::PROVIDER_NAME,
+                encoding_format: "base64",
+            });
         }
 
-        if let Some(encoding_format) = &self.encoding_format {
-            body_object.insert("encoding_format".to_owned(), json!(encoding_format));
+        if self.encoding_format.is_some() && !Ext::SUPPORTS_ENCODING_FORMAT {
+            return Err(EmbeddingError::UnsupportedParameter {
+                provider: Ext::PROVIDER_NAME,
+                parameter: "encoding_format",
+            });
         }
 
-        if let Some(user) = &self.user {
-            body_object.insert("user".to_owned(), json!(user));
+        if self.user.is_some() && !Ext::SUPPORTS_USER {
+            return Err(EmbeddingError::UnsupportedParameter {
+                provider: Ext::PROVIDER_NAME,
+                parameter: "user",
+            });
         }
 
-        self.client.ext().finalize_embeddings_request(&mut body)?;
+        let requested_dimensions =
+            (self.ndims > 0 && self.model != TEXT_EMBEDDING_ADA_002).then_some(self.ndims);
+        let dimensions = self
+            .client
+            .ext()
+            .embedding_dimensions(&self.model, requested_dimensions)?;
+        let (dimensions, output_dimension) = match dimensions {
+            Some(EmbeddingDimensions::Dimensions(value)) => (Some(value), None),
+            Some(EmbeddingDimensions::OutputDimension(value)) => (None, Some(value)),
+            None => (None, None),
+        };
 
-        let body = serde_json::to_vec(&body)?;
+        let body = serde_json::to_vec(&CompatibleEmbeddingRequest {
+            model: &self.model,
+            input: &documents,
+            dimensions,
+            output_dimension,
+            encoding_format: self.encoding_format,
+            user: self.user.as_deref(),
+        })?;
 
         let req = self
             .client
@@ -396,6 +442,33 @@ mod tests {
         assert_eq!(body["dimensions"], serde_json::json!(1_536));
         assert_eq!(body["encoding_format"], serde_json::json!("float"));
         assert_eq!(body["user"], serde_json::json!("user-123"));
+    }
+
+    #[tokio::test]
+    async fn openai_rejects_base64_before_sending() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client
+            .embedding_model(TEXT_EMBEDDING_3_SMALL)
+            .encoding_format(EncodingFormat::Base64);
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("numeric response parser should reject base64");
+
+        assert!(matches!(
+            error,
+            EmbeddingError::UnsupportedResponseEncoding {
+                provider: "openai",
+                encoding_format: "base64"
+            }
+        ));
+        assert!(http_client.requests().is_empty());
     }
 
     #[test]

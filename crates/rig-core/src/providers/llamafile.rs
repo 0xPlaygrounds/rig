@@ -151,6 +151,7 @@ mod tests {
     use super::*;
     use crate::client::{EmbeddingsClient, Nothing};
     use crate::embeddings::EmbeddingModel as _;
+    use crate::providers::openai::embedding::EncodingFormat;
     use crate::test_utils::RecordingHttpClient;
 
     #[test]
@@ -219,5 +220,32 @@ mod tests {
             http_client.requests()[0].uri,
             "http://localhost:8080/v1/embeddings"
         );
+    }
+
+    #[tokio::test]
+    async fn embedding_model_rejects_base64_before_sending() {
+        let http_client = RecordingHttpClient::new("{}");
+        let client = Client::builder()
+            .api_key(Nothing)
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
+        let model = client
+            .embedding_model(LLAMA_CPP)
+            .encoding_format(EncodingFormat::Base64);
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("numeric response parser should reject base64");
+
+        assert!(matches!(
+            error,
+            crate::embeddings::EmbeddingError::UnsupportedResponseEncoding {
+                provider: "llamafile",
+                encoding_format: "base64"
+            }
+        ));
+        assert!(http_client.requests().is_empty());
     }
 }

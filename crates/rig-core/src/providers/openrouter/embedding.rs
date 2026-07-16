@@ -1,5 +1,10 @@
 use super::client::OpenRouterExt;
-use crate::providers::openai::embedding::GenericEmbeddingModel;
+use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
+
+impl OpenAIEmbeddingsCompatible for OpenRouterExt {
+    const PROVIDER_NAME: &'static str = "openrouter";
+    const REQUIRES_USAGE: bool = false;
+}
 
 pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<OpenRouterExt, H>;
 
@@ -60,5 +65,27 @@ mod tests {
             .expect_err("response length mismatch should fail");
 
         assert!(matches!(error, EmbeddingError::ResponseError(_)));
+    }
+
+    #[tokio::test]
+    async fn openrouter_rejects_base64_before_sending() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let model = client(http_client.clone())
+            .embedding_model("openai/text-embedding-3-small")
+            .encoding_format(EncodingFormat::Base64);
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("numeric response parser should reject base64");
+
+        assert!(matches!(
+            error,
+            EmbeddingError::UnsupportedResponseEncoding {
+                provider: "openrouter",
+                encoding_format: "base64"
+            }
+        ));
+        assert!(http_client.requests().is_empty());
     }
 }

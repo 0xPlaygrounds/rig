@@ -1,11 +1,52 @@
 use super::client::MistralExt;
-use crate::providers::openai::embedding::GenericEmbeddingModel;
+use crate::{
+    embeddings::EmbeddingError,
+    providers::openai::embedding::{
+        EmbeddingDimensions, GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
+    },
+};
 
 pub const MISTRAL_EMBED: &str = "mistral-embed";
 /// Codestral embedding model with configurable output dimensions.
 pub const CODESTRAL_EMBED: &str = "codestral-embed";
 
 pub const MAX_DOCUMENTS: usize = 1024;
+
+impl OpenAIEmbeddingsCompatible for MistralExt {
+    const PROVIDER_NAME: &'static str = "mistral";
+    const SUPPORTS_USER: bool = false;
+
+    fn embeddings_path(&self) -> String {
+        "/v1/embeddings".to_string()
+    }
+
+    fn embedding_dimensions(
+        &self,
+        model: &str,
+        dimensions: Option<usize>,
+    ) -> Result<Option<EmbeddingDimensions>, EmbeddingError> {
+        let Some(dimensions) = dimensions else {
+            return Ok(None);
+        };
+
+        if !matches!(model, "codestral-embed" | "codestral-embed-2505") {
+            return Err(EmbeddingError::UnsupportedParameter {
+                provider: Self::PROVIDER_NAME,
+                parameter: "dimensions",
+            });
+        }
+
+        if dimensions > 3_072 {
+            return Err(EmbeddingError::InvalidParameterValue {
+                provider: Self::PROVIDER_NAME,
+                parameter: "dimensions",
+                requirement: "to be at most 3072 for Codestral Embed",
+            });
+        }
+
+        Ok(Some(EmbeddingDimensions::OutputDimension(dimensions)))
+    }
+}
 
 pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<MistralExt, H>;
 

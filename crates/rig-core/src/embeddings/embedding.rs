@@ -76,10 +76,6 @@ pub enum EmbeddingError {
         encoding_format: &'static str,
     },
 
-    /// The shared embedding request could not be represented as a JSON object.
-    #[error("embedding request body must be a JSON object")]
-    InvalidRequestBody,
-
     /// A provider that guarantees embedding usage omitted it from the response.
     #[error("{provider} embedding response omitted required usage")]
     MissingUsage {

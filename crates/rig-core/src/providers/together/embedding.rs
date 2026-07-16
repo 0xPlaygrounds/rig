@@ -4,7 +4,7 @@
 // ================================================================
 
 use super::client::TogetherExt;
-use crate::providers::openai::embedding::GenericEmbeddingModel;
+use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
 
 // ================================================================
 // Together AI Embedding API
@@ -18,6 +18,17 @@ pub const M2_BERT_80M_2K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-2k-retr
 pub const M2_BERT_80M_8K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-8k-retrieval";
 pub const SENTENCE_BERT: &str = "sentence-transformers/msmarco-bert-base-dot-v5";
 pub const UAE_LARGE_V1: &str = "WhereIsAI/UAE-Large-V1";
+
+impl OpenAIEmbeddingsCompatible for TogetherExt {
+    const PROVIDER_NAME: &'static str = "together";
+    const REQUIRES_USAGE: bool = false;
+    const SUPPORTS_ENCODING_FORMAT: bool = false;
+    const SUPPORTS_USER: bool = false;
+
+    fn embeddings_path(&self) -> String {
+        "/v1/embeddings".to_string()
+    }
+}
 
 /// Together AI embedding model, driven by the shared OpenAI-compatible transport.
 pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<TogetherExt, H>;
@@ -109,6 +120,28 @@ mod tests {
             ));
             assert!(http_client.requests().is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn together_rejects_base64_consistently_before_sending() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let model = client(http_client.clone())
+            .embedding_model(BGE_BASE_EN_V1_5)
+            .encoding_format(EncodingFormat::Base64);
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("numeric response parser should reject base64");
+
+        assert!(matches!(
+            error,
+            EmbeddingError::UnsupportedResponseEncoding {
+                provider: "together",
+                encoding_format: "base64"
+            }
+        ));
+        assert!(http_client.requests().is_empty());
     }
 
     #[tokio::test]
