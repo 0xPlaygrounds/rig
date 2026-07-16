@@ -19,7 +19,6 @@ const SERVER_TOOL_USE_SYSTEM_INSTRUCTION: &str =
     "For the rest of this conversation, answer in Spanish only.";
 
 #[tokio::test]
-#[ignore = "issue #2154: Anthropic code_execution_tool_result is not yet supported"]
 async fn web_search_with_dynamic_filtering_succeeds() {
     super::super::support::with_anthropic_cassette(
         "opus_4_8/web_search_with_dynamic_filtering_succeeds",
@@ -38,6 +37,12 @@ async fn web_search_with_dynamic_filtering_succeeds() {
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
 
+            assert!(
+                response.choice.iter().any(|content| {
+                    content_raw_type(content) == Some("code_execution_tool_result")
+                }),
+                "dynamic web-search response should preserve a code_execution_tool_result block",
+            );
             assert!(
                 assistant_text_response(&response.choice)
                     .or_else(|| response.raw_response.get_text_response())

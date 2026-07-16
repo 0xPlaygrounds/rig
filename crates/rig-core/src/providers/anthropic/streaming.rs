@@ -444,7 +444,8 @@ fn handle_event(
                 );
                 None
             }
-            raw @ Content::WebSearchToolResult { .. } => Some(Ok(RawStreamingChoice::TextStart {
+            raw @ (Content::WebSearchToolResult { .. }
+            | Content::CodeExecutionToolResult { .. }) => Some(Ok(RawStreamingChoice::TextStart {
                 additional_params: Some(json!({
                     super::completion::ANTHROPIC_RAW_CONTENT_KEY: raw
                 })),
@@ -1452,6 +1453,54 @@ mod tests {
             } if tool_use_id == "srvtoolu_01"
                 && content[0]["encrypted_content"] == "encrypted-content"
         ));
+    }
+
+    #[test]
+    fn test_code_execution_tool_result_block_is_preserved() {
+        let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+            "type": "content_block_start",
+            "index": 1,
+            "content_block": {
+                "type": "code_execution_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": {
+                    "type": "code_execution_result",
+                    "return_code": 0,
+                    "stdout": "42\n",
+                    "stderr": "",
+                    "content": []
+                }
+            }
+        }))
+        .unwrap();
+        let mut tool_call_state = None;
+        let mut server_tool_uses = HashMap::new();
+        let mut thinking_state = None;
+
+        let choice = super::handle_event(
+            &event,
+            &mut tool_call_state,
+            &mut server_tool_uses,
+            &mut thinking_state,
+        )
+        .expect("code_execution_tool_result block should produce raw metadata")
+        .unwrap();
+
+        let RawStreamingChoice::TextStart {
+            additional_params: Some(additional_params),
+        } = choice
+        else {
+            panic!("expected text-start metadata for code_execution_tool_result");
+        };
+        assert_eq!(
+            additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
+            "code_execution_tool_result"
+        );
+        assert_eq!(
+            additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
+                ["stdout"],
+            "42\n"
+        );
     }
 
     #[tokio::test]

@@ -313,6 +313,11 @@ pub enum Content {
         tool_use_id: String,
         content: serde_json::Value,
     },
+    /// The result of an Anthropic-hosted code execution tool call.
+    CodeExecutionToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+    },
     ToolResult {
         tool_use_id: String,
         #[serde(deserialize_with = "string_or_one_or_many")]
@@ -836,9 +841,11 @@ fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>
     })?;
 
     match content {
-        Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. } => Ok(Some(content)),
+        Content::ServerToolUse { .. }
+        | Content::WebSearchToolResult { .. }
+        | Content::CodeExecutionToolResult { .. } => Ok(Some(content)),
         _ => Err(MessageError::ConversionError(format!(
-            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use and web_search_tool_result blocks"
+            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use, web_search_tool_result, and code_execution_tool_result blocks"
         ))),
     }
 }
@@ -1377,7 +1384,9 @@ impl TryFrom<Content> for message::AssistantContent {
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
             }
-            raw @ (Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. }) => {
+            raw @ (Content::ServerToolUse { .. }
+            | Content::WebSearchToolResult { .. }
+            | Content::CodeExecutionToolResult { .. }) => {
                 message::AssistantContent::Text(anthropic_raw_content_to_message_text(raw)?)
             }
             Content::Thinking {
@@ -2285,7 +2294,10 @@ fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
         return false;
     };
 
-    matches!(raw_type, "server_tool_use" | "web_search_tool_result")
+    matches!(
+        raw_type,
+        "server_tool_use" | "web_search_tool_result" | "code_execution_tool_result"
+    )
 }
 
 /// Parameters for building an AnthropicCompletionRequest
@@ -5379,6 +5391,108 @@ mod tests {
                 content
             } if tool_use_id == "srvtoolu_01"
                 && content["error_code"] == "max_uses_exceeded"
+        ));
+    }
+
+    #[test]
+    fn code_execution_tool_result_variants_deserialize() {
+        let normal: Content = serde_json::from_value(json!({
+            "type": "code_execution_tool_result",
+            "tool_use_id": "srvtoolu_normal",
+            "content": {
+                "type": "code_execution_result",
+                "return_code": 0,
+                "stdout": "42\n",
+                "stderr": "",
+                "content": []
+            }
+        }))
+        .unwrap();
+        assert!(matches!(
+            normal,
+            Content::CodeExecutionToolResult {
+                ref tool_use_id,
+                ref content
+            } if tool_use_id == "srvtoolu_normal"
+                && content["type"] == "code_execution_result"
+                && content["stdout"] == "42\n"
+        ));
+
+        let encrypted: Content = serde_json::from_value(json!({
+            "type": "code_execution_tool_result",
+            "tool_use_id": "srvtoolu_encrypted",
+            "content": {
+                "type": "encrypted_code_execution_result",
+                "return_code": 1,
+                "stderr": "failure",
+                "encrypted_stdout": "encrypted-output",
+                "content": []
+            }
+        }))
+        .unwrap();
+        assert!(matches!(
+            encrypted,
+            Content::CodeExecutionToolResult {
+                ref tool_use_id,
+                ref content
+            } if tool_use_id == "srvtoolu_encrypted"
+                && content["type"] == "encrypted_code_execution_result"
+                && content["encrypted_stdout"] == "encrypted-output"
+        ));
+    }
+
+    #[test]
+    fn code_execution_tool_result_is_preserved_and_round_trips() {
+        let raw_block = json!({
+            "type": "code_execution_tool_result",
+            "tool_use_id": "srvtoolu_01",
+            "content": {
+                "type": "code_execution_result",
+                "return_code": 0,
+                "stdout": "42\n",
+                "stderr": "",
+                "content": []
+            }
+        });
+        let value = json!({
+            "id": "msg_code_execution",
+            "model": CLAUDE_OPUS_4_8,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20
+            },
+            "content": [raw_block.clone()]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(value).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let message::AssistantContent::Text(code_execution_result) = converted.choice.first()
+        else {
+            panic!("expected raw code_execution_tool_result metadata");
+        };
+        assert_eq!(
+            code_execution_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY],
+            raw_block
+        );
+
+        let round_trip: Message = message::Message::Assistant {
+            id: converted.message_id,
+            content: converted.choice,
+        }
+        .try_into()
+        .unwrap();
+        assert!(matches!(
+            round_trip.content.first(),
+            Content::CodeExecutionToolResult {
+                tool_use_id,
+                content
+            } if tool_use_id == "srvtoolu_01"
+                && content["type"] == "code_execution_result"
+                && content["stdout"] == "42\n"
         ));
     }
 
