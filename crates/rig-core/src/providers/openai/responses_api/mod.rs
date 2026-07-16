@@ -641,7 +641,7 @@ pub struct ResponsesToolDefinition {
     pub parameters: serde_json::Value,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
     /// or [`GenericResponsesCompletionModel::with_strict_tools`].
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "is_false", deserialize_with = "null_to_false")]
     pub strict: bool,
     /// Tool description.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -657,6 +657,15 @@ fn is_json_null(value: &Value) -> bool {
 
 fn is_false(value: &bool) -> bool {
     !value
+}
+
+fn null_to_false<'a, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'a>,
+{
+    // First deserialize as Option<bool>, then map None -> false
+    let opt = Option::<bool>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or(false))
 }
 
 impl ResponsesToolDefinition {
