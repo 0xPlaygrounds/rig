@@ -9,7 +9,7 @@ use rig::message::{Message, ToolChoice, UserContent};
 use rig::providers::gemini;
 
 use super::super::agent_run_support::{
-    Add, FORCE_TOOLS_PREAMBLE, Subtract, call_model, execute_pending_calls,
+    FORCE_TOOLS_PREAMBLE, GeminiAgent, call_model, execute_pending_calls,
     history_has_assistant_tool_call, is_tool_result_user_message, sum_completion_call_usage,
     tool_names,
 };
@@ -23,10 +23,12 @@ async fn hand_driven_single_turn_completes() {
     with_gemini_cassette(
         "agent_run_stepping/hand_driven_single_turn_completes",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(BASIC_PREAMBLE)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                BASIC_PREAMBLE,
+                &[],
+                None,
+            );
             let names = tool_names(&[]);
 
             let mut run = AgentRun::new(BASIC_PROMPT);
@@ -104,12 +106,12 @@ async fn hand_driven_multi_turn_tool_run_completes() {
     with_gemini_cassette(
         "agent_run_stepping/hand_driven_multi_turn_tool_run_completes",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool(Subtract)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add", "subtract"],
+                None,
+            );
             let names = tool_names(&["add", "subtract"]);
 
             let mut run = AgentRun::new(
@@ -196,12 +198,12 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
     with_gemini_cassette(
         "agent_run_stepping/hand_driven_parallel_tool_calls_arrive_in_one_step",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool(Subtract)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add", "subtract"],
+                None,
+            );
             let names = tool_names(&["add", "subtract"]);
 
             let mut run = AgentRun::new(
@@ -260,12 +262,12 @@ async fn max_turns_error_carries_pending_tool_results_message() {
     with_gemini_cassette(
         "agent_run_stepping/max_turns_error_carries_pending_tool_results_message",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add"],
+                Some(ToolChoice::Required),
+            );
             let names = tool_names(&["add"]);
 
             // max_turns 2: the run errors once tool results demand a third

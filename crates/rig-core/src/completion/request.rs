@@ -445,30 +445,6 @@ pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
         T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
 
-/// Trait defining a low-level LLM completion interface
-pub trait Completion<M: CompletionModel> {
-    /// Generates a completion request builder for the given `prompt` and `chat_history`.
-    /// This function is meant to be called by the user to further customize the
-    /// request at prompt time before sending it.
-    ///
-    /// ❗IMPORTANT: The type that implements this trait might have already
-    /// populated fields in the builder (the exact fields depend on the type).
-    /// For fields that have already been set by the model, calling the corresponding
-    /// method on the builder will overwrite the value set by the model.
-    ///
-    /// For example, the request builder returned by [`Agent::completion`](crate::agent::Agent::completion) will already
-    /// contain the `preamble` provided when creating the agent.
-    fn completion<I, T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>
-    + WasmCompatSend
-    where
-        I: IntoIterator<Item = T> + WasmCompatSend,
-        T: Into<Message>;
-}
-
 /// General completion response struct that contains the high-level completion choice
 /// and the raw response. The completion choice contains one or more assistant content.
 #[derive(Debug)]

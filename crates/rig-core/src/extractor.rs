@@ -29,17 +29,24 @@
 //! # }
 //! ```
 
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
-use schemars::{JsonSchema, schema_for};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::{
-    agent::{Agent, AgentBuilder, WithBuilderTools},
-    completion::{Completion, CompletionError, CompletionModel, Usage},
-    message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
-    tool::Tool,
+    agent::{
+        Agent, AgentBuilder, AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
+        OutputMode,
+    },
+    completion::{CompletionError, CompletionModel, PromptError, Usage},
+    message::{AssistantContent, Message, ToolChoice},
     vector_store::VectorStoreIndexDyn,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -65,6 +72,9 @@ pub enum ExtractionError {
 
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
+
+    #[error("PromptError: {0}")]
+    PromptError(#[from] PromptError),
 }
 
 /// Extractor for structured data from text
@@ -201,62 +211,44 @@ where
         text: &Message,
         messages: &[Message],
     ) -> (Result<T, ExtractionError>, Usage) {
-        let completion = async { self.agent.completion(text, messages).await?.send().await };
-        let response = match completion.await {
+        let submissions = Arc::new(AtomicUsize::new(0));
+        let response = match self
+            .agent
+            .runner(text.clone())
+            .history(messages.iter().cloned())
+            .max_turns(1)
+            .output_tool(
+                SUBMIT_TOOL_NAME,
+                "Submit the structured data you extracted from the provided text.",
+                false,
+            )
+            .add_hook(SubmissionObserver(submissions.clone()))
+            .run()
+            .await
+        {
             Ok(response) => response,
+            Err(PromptError::CompletionError(e)) => {
+                return (Err(ExtractionError::CompletionError(e)), Usage::new());
+            }
             Err(e) => return (Err(e.into()), Usage::new()),
         };
         let usage = response.usage;
 
-        if !response.choice.iter().any(|x| {
-            let AssistantContent::ToolCall(ToolCall {
-                function: ToolFunction { name, .. },
-                ..
-            }) = x
-            else {
-                return false;
-            };
-
-            name == SUBMIT_TOOL_NAME
-        }) {
+        let submissions = submissions.load(Ordering::Acquire);
+        if submissions == 0 {
             tracing::warn!(
                 "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
             );
+            return (Err(ExtractionError::NoData), usage);
         }
-
-        let arguments = response
-            .choice
-            .into_iter()
-            // We filter tool calls to look for submit tool calls
-            .filter_map(|content| {
-                if let AssistantContent::ToolCall(ToolCall {
-                    function: ToolFunction { arguments, name },
-                    ..
-                }) = content
-                {
-                    if name == SUBMIT_TOOL_NAME {
-                        Some(arguments)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        if arguments.len() > 1 {
+        if submissions > 1 {
             tracing::warn!(
                 "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
             );
         }
 
-        let Some(raw_data) = arguments.into_iter().next() else {
-            return (Err(ExtractionError::NoData), usage);
-        };
-
         (
-            serde_json::from_value(raw_data).map_err(ExtractionError::from),
+            serde_json::from_str(&response.output).map_err(ExtractionError::from),
             usage,
         )
     }
@@ -268,7 +260,7 @@ where
     M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    agent_builder: AgentBuilder<M, WithBuilderTools>,
+    agent_builder: AgentBuilder<M>,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
@@ -287,11 +279,9 @@ where
                     Use the `submit` function to submit the structured data.\n\
                     Be sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.
                 ")
-                .tool(SubmitTool::<T> {_t: PhantomData})
+                .output_schema::<T>()
                 .tool_choice(ToolChoice::Required)
-                // The extractor already implements its own tool-based output via
-                // `SubmitTool`; opt out of the agent's OutputMode routing (#1928).
-                .output_mode(crate::agent::OutputMode::Native),
+                .output_mode(OutputMode::Tool),
             retries: None,
             _t: PhantomData,
         }
@@ -334,6 +324,15 @@ where
         self
     }
 
+    /// Add a lifecycle hook to every extraction attempt.
+    pub fn add_hook<H>(mut self, hook: H) -> Self
+    where
+        H: AgentHook<M> + 'static,
+    {
+        self.agent_builder = self.agent_builder.add_hook(hook);
+        self
+    }
+
     /// Build the Extractor
     pub fn build(self) -> Extractor<M, T> {
         Extractor {
@@ -357,46 +356,40 @@ where
     }
 }
 
-#[derive(Deserialize, Serialize)]
-struct SubmitTool<T>
+struct SubmissionObserver(Arc<AtomicUsize>);
+
+impl<M> AgentHook<M> for SubmissionObserver
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
+    M: CompletionModel,
 {
-    _t: PhantomData<T>,
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("SubmitError")]
-struct SubmitError;
-
-impl<T> Tool for SubmitTool<T>
-where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
-{
-    const NAME: &'static str = SUBMIT_TOOL_NAME;
-    type Error = SubmitError;
-    type Args = T;
-    type Output = T;
-
-    fn description(&self) -> String {
-        "Submit the structured data you extracted from the provided text.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!(schema_for!(T))
-    }
-
-    async fn call(
+    async fn on_completion_response(
         &self,
-        _context: &mut crate::tool::ToolContext,
-        data: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok(data)
+        _ctx: &HookContext,
+        event: CompletionResponseEvent<'_, M>,
+    ) -> ObservationAction {
+        let submissions = event
+            .response
+            .choice
+            .iter()
+            .filter(|content| {
+                matches!(
+                    content,
+                    AssistantContent::ToolCall(call) if call.function.name == SUBMIT_TOOL_NAME
+                )
+            })
+            .count();
+        self.0.fetch_add(submissions, Ordering::Release);
+        ObservationAction::Continue
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use serde_json::json;
 
     use super::*;
@@ -423,6 +416,96 @@ mod tests {
 
     fn submit_turn(name: &str) -> MockTurn {
         MockTurn::tool_call("id1", SUBMIT_TOOL_NAME, json!({ "name": name }))
+    }
+
+    #[derive(Clone, Default)]
+    struct LifecycleCounts {
+        completion_calls: Arc<AtomicUsize>,
+        completion_responses: Arc<AtomicUsize>,
+        model_turns: Arc<AtomicUsize>,
+    }
+
+    impl<M> AgentHook<M> for LifecycleCounts
+    where
+        M: CompletionModel,
+    {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::CompletionCallEvent<'_>,
+        ) -> crate::agent::CompletionCallAction {
+            self.completion_calls.fetch_add(1, Ordering::SeqCst);
+            crate::agent::CompletionCallAction::Continue
+        }
+
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionResponseEvent<'_, M>,
+        ) -> ObservationAction {
+            self.completion_responses.fetch_add(1, Ordering::SeqCst);
+            ObservationAction::Continue
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::ModelTurnFinished<'_>,
+        ) -> ObservationAction {
+            self.model_turns.fetch_add(1, Ordering::SeqCst);
+            ObservationAction::Continue
+        }
+    }
+
+    struct StopBeforeCompletion;
+
+    impl<M> AgentHook<M> for StopBeforeCompletion
+    where
+        M: CompletionModel,
+    {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::CompletionCallEvent<'_>,
+        ) -> crate::agent::CompletionCallAction {
+            crate::agent::CompletionCallAction::stop("extractor stopped")
+        }
+    }
+
+    #[tokio::test]
+    async fn extractor_runs_through_full_response_lifecycle() {
+        let model = MockCompletionModel::new([submit_turn("John")]);
+        let counts = LifecycleCounts::default();
+        let response = ExtractorBuilder::<_, Person>::new(model.clone())
+            .add_hook(counts.clone())
+            .build()
+            .extract("John")
+            .await
+            .expect("extraction should succeed");
+
+        assert_eq!(response.name, "John");
+        assert_eq!(model.request_count(), 1);
+        assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
+        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn extractor_completion_call_stop_prevents_provider_io() {
+        let model = MockCompletionModel::new([submit_turn("John")]);
+        let error = ExtractorBuilder::<_, Person>::new(model.clone())
+            .add_hook(StopBeforeCompletion)
+            .build()
+            .extract("John")
+            .await
+            .expect_err("terminating hook should cancel extraction");
+
+        assert!(matches!(
+            error,
+            ExtractionError::PromptError(PromptError::PromptCancelled { reason, .. })
+                if reason == "extractor stopped"
+        ));
+        assert_eq!(model.request_count(), 0);
     }
 
     #[tokio::test]

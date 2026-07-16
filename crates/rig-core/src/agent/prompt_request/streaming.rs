@@ -284,12 +284,10 @@ where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
 {
-    /// Create a new StreamingPromptRequest from an agent WITHOUT the agent's
-    /// default hooks. Use [`from_agent`](Self::from_agent) to include them.
+    /// Create a new `StreamingPromptRequest` from an agent, including its
+    /// default hooks.
     pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
-        let mut runner = AgentRunner::from_agent(agent.as_ref(), prompt);
-        runner.hooks = HookStack::new();
-        StreamingPromptRequest { runner }
+        Self::from_agent(agent.as_ref(), prompt)
     }
 
     /// Create a new StreamingPromptRequest from an agent, cloning the agent's
@@ -537,6 +535,8 @@ where
                         runner.output_schema.as_ref(),
                         &runner.output_mode,
                         committed_output_tool.as_deref(),
+                        runner.output_tool_description.as_deref(),
+                        runner.augment_output_preamble,
                         request_patch.as_ref(),
                     )
                     .await
@@ -1582,6 +1582,45 @@ mod migrated_tests {
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+    struct StopAgentStreamingBeforeCompletion;
+
+    impl AgentHook<MockCompletionModel> for StopAgentStreamingBeforeCompletion {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::CompletionCallEvent<'_>,
+        ) -> crate::agent::CompletionCallAction {
+            crate::agent::CompletionCallAction::stop("agent streaming stopped")
+        }
+    }
+
+    #[tokio::test]
+    async fn public_streaming_request_constructor_preserves_agent_hooks() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("should not run"),
+            MockStreamEvent::final_response(Usage::new()),
+        ]]);
+        let agent = Arc::new(
+            AgentBuilder::new(model.clone())
+                .add_hook(StopAgentStreamingBeforeCompletion)
+                .build(),
+        );
+
+        let mut stream = StreamingPromptRequest::new(agent, "go").await;
+        let error = stream
+            .try_next()
+            .await
+            .expect_err("the configured agent hook should terminate the stream");
+
+        assert!(matches!(
+            error,
+            StreamingError::Prompt(error)
+                if matches!(*error, PromptError::PromptCancelled { ref reason, .. }
+                    if reason == "agent streaming stopped")
+        ));
+        assert_eq!(model.request_count(), 0);
+    }
 
     #[test]
     fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {

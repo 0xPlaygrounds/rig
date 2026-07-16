@@ -1,41 +1,24 @@
 //! Migrated from `examples/multi_turn_streaming_gemini.rs`.
 
-use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use futures::{Stream, StreamExt};
-use rig::OneOrMany;
-use rig::agent::Agent;
+use futures::StreamExt;
+use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
-use rig::completion::{self, CompletionError, CompletionModel, PromptError};
-use rig::message::{AssistantContent, Message, Text, UserContent};
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamingCompletion};
-use rig::tool::{Tool, ToolContext, ToolExecutionError};
+use rig::streaming::StreamingPrompt;
+use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
-use thiserror::Error;
 
 use crate::support::{
     MULTI_TURN_STREAMING_EXPECTED_RESULT, MULTI_TURN_STREAMING_PROMPT,
     assert_mentions_expected_number, assert_nonempty_response,
 };
 
-#[derive(Debug, Error)]
-enum StreamingError {
-    #[error("CompletionError: {0}")]
-    Completion(#[from] CompletionError),
-    #[error("PromptError: {0}")]
-    Prompt(#[from] Box<PromptError>),
-    #[error("ToolExecutionError: {0}")]
-    Tool(#[from] ToolExecutionError),
-}
-
-type StreamingResult = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> + Send>>;
-
 #[tokio::test]
-async fn manual_multi_turn_streaming_loop() {
+async fn runner_driven_multi_turn_streaming_loop() {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let subtract_calls = Arc::new(AtomicUsize::new(0));
     let multiply_calls = Arc::new(AtomicUsize::new(0));
@@ -53,11 +36,19 @@ async fn manual_multi_turn_streaming_loop() {
                 .tool(Divide::new(divide_calls.clone()))
                 .build();
 
-            let mut stream =
-                multi_turn_prompt(agent, MULTI_TURN_STREAMING_PROMPT, Vec::new()).await;
-            let response = collect_text(&mut stream)
-                .await
-                .expect("manual multi-turn streaming should succeed");
+            let mut stream = agent
+                .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
+                .max_turns(10)
+                .await;
+            let mut response = None;
+            while let Some(item) = stream.next().await {
+                if let MultiTurnStreamItem::FinalResponse(final_response) =
+                    item.expect("runner-driven multi-turn streaming should succeed")
+                {
+                    response = Some(final_response.output);
+                }
+            }
+            let response = response.expect("stream should emit a final response");
 
             assert_nonempty_response(&response);
             assert!(
@@ -85,110 +76,6 @@ async fn manual_multi_turn_streaming_loop() {
         },
     )
     .await;
-}
-
-async fn multi_turn_prompt<M>(
-    agent: Agent<M>,
-    prompt: impl Into<Message> + Send,
-    mut chat_history: Vec<completion::Message>,
-) -> StreamingResult
-where
-    M: CompletionModel + 'static,
-    M::StreamingResponse: Send,
-{
-    let prompt: Message = prompt.into();
-
-    Box::pin(async_stream::stream! {
-        let mut current_prompt = prompt;
-        let mut did_call_tool = false;
-
-        'outer: loop {
-            let mut stream = agent
-                .stream_completion(current_prompt.clone(), &chat_history)
-                .await?
-                .stream()
-                .await?;
-
-            chat_history.push(current_prompt.clone());
-            let mut tool_calls = vec![];
-            let mut tool_results = vec![];
-
-            while let Some(content) = stream.next().await {
-                match content {
-                    Ok(StreamedAssistantContent::Text(text)) => {
-                        yield Ok(Text::new(text.text));
-                        did_call_tool = false;
-                    }
-                    Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
-                        let execution = agent
-                            .tool_server_handle
-                            .execute(
-                                &tool_call.function.name,
-                                &tool_call.function.arguments.to_string(),
-                                &mut ToolContext::new(),
-                            )
-                            .await;
-                        if let Some(error) = execution.error() {
-                            Err(StreamingError::Tool(error.clone()))?;
-                        }
-                        let tool_result = execution.output().clone();
-
-                        tool_calls.push(AssistantContent::ToolCall(tool_call.clone()));
-                        tool_results.push((tool_call.id, tool_call.call_id, tool_result));
-                        did_call_tool = true;
-                    }
-                    Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
-                        let rendered = reasoning.display_text();
-                        if !rendered.is_empty() {
-                            yield Ok(Text::new(rendered));
-                        }
-                        did_call_tool = false;
-                    }
-                    Ok(_) => {}
-                    Err(error) => {
-                        yield Err(error.into());
-                        break 'outer;
-                    }
-                }
-            }
-
-            if !tool_calls.is_empty() {
-                chat_history.push(Message::Assistant {
-                    id: None,
-                    content: OneOrMany::many(tool_calls).expect("tool calls should be non-empty"),
-                });
-            }
-
-            for (id, call_id, tool_result) in tool_results {
-                let tool_content = tool_result.into_content();
-                let user_content = if let Some(call_id) = call_id {
-                    UserContent::tool_result_with_call_id(id, call_id, tool_content)
-                } else {
-                    UserContent::tool_result(id, tool_content)
-                };
-                chat_history.push(Message::User {
-                    content: OneOrMany::one(user_content),
-                });
-            }
-
-            current_prompt = match chat_history.pop() {
-                Some(prompt) => prompt,
-                None => unreachable!("chat history should not be empty"),
-            };
-
-            if !did_call_tool {
-                break;
-            }
-        }
-    })
-}
-
-async fn collect_text(stream: &mut StreamingResult) -> Result<String, StreamingError> {
-    let mut text = String::new();
-    while let Some(content) = stream.next().await {
-        text.push_str(&content?.text);
-    }
-    Ok(text)
 }
 
 #[derive(Deserialize, JsonSchema)]

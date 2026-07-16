@@ -5,14 +5,12 @@
 //! The main traits defined in this module are:
 //! - [StreamingPrompt]: Defines a high-level streaming LLM one-shot prompt interface
 //! - [StreamingChat]: Defines a high-level streaming LLM chat interface with history
-//! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
 use crate::OneOrMany;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
-    Message, Usage,
+    CompletionError, CompletionModel, CompletionResponse, GetTokenUsage, Message, Usage,
 };
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
@@ -21,7 +19,6 @@ use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
@@ -616,19 +613,6 @@ where
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: I,
     ) -> StreamingPromptRequest<M>
-    where
-        I: IntoIterator<Item = T> + WasmCompatSend,
-        T: Into<Message>;
-}
-
-/// Trait for low-level streaming completion interface
-pub trait StreamingCompletion<M: CompletionModel> {
-    /// Generate a streaming completion from a request
-    fn stream_completion<I, T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>
     where
         I: IntoIterator<Item = T> + WasmCompatSend,
         T: Into<Message>;

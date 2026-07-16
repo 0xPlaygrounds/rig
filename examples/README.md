@@ -47,7 +47,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `gemini_nanobanana_image_generation` | See source. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
-| `manual_tool_calls` | Demonstrates manual tool-call handling with `Agent::completion()`. |
+| `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit raw `CompletionModel` request. |
 | `multi_agent` | See source. |
 | `multi_extract` | Demonstrates fan-out structured extraction with `try_parallel!`. |
 | `multi_turn_agent_extended` | See source. |

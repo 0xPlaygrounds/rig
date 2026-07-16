@@ -7,14 +7,62 @@ use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
 use rig::agent::run::{ModelTurn, PendingToolCall};
-use rig::completion::{Completion, ToolDefinition, Usage};
-use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::completion::{CompletionModel, CompletionRequestBuilder, ToolDefinition, Usage};
+use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
-pub(crate) type GeminiAgent = rig::agent::Agent<gemini::completion::CompletionModel>;
+pub(crate) struct GeminiAgent {
+    model: gemini::completion::CompletionModel,
+    preamble: String,
+    tools: Vec<ToolDefinition>,
+    tool_choice: Option<ToolChoice>,
+}
+
+impl GeminiAgent {
+    pub(crate) fn new(
+        model: gemini::completion::CompletionModel,
+        preamble: impl Into<String>,
+        tool_names: &[&str],
+        tool_choice: Option<ToolChoice>,
+    ) -> Self {
+        Self {
+            model,
+            preamble: preamble.into(),
+            tools: tool_names
+                .iter()
+                .map(|name| match *name {
+                    "add" => operation_definition("add", "Add x and y together"),
+                    "sum" => operation_definition("sum", "Add x and y together (alias of add)"),
+                    "subtract" => {
+                        operation_definition("subtract", "Subtract y from x (i.e. x - y)")
+                    }
+                    other => panic!("unsupported raw harness tool `{other}`"),
+                })
+                .collect(),
+            tool_choice,
+        }
+    }
+
+    pub(crate) fn request(
+        &self,
+        prompt: Message,
+        history: Vec<Message>,
+    ) -> CompletionRequestBuilder<gemini::completion::CompletionModel> {
+        let mut request = self
+            .model
+            .completion_request(prompt)
+            .messages(history)
+            .preamble(self.preamble.clone())
+            .tools(self.tools.clone());
+        if let Some(tool_choice) = &self.tool_choice {
+            request = request.tool_choice(tool_choice.clone());
+        }
+        request
+    }
+}
 
 pub(crate) const FORCE_TOOLS_PREAMBLE: &str = "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.";
 
@@ -166,9 +214,9 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
         .collect()
 }
 
-/// One hand-driven, non-streamed model call: send the step's prompt and
-/// history through the agent's completion builder and shape the response into
-/// a [`ModelTurn`] with the given advertised tool names.
+/// One hand-driven, non-streamed model call through an explicit raw model
+/// harness. This exercises the sans-IO `AgentRun` protocol without pretending
+/// to execute a configured `Agent`, whose only execution path is `AgentRunner`.
 pub(crate) async fn call_model(
     agent: &GeminiAgent,
     prompt: Message,
@@ -177,9 +225,7 @@ pub(crate) async fn call_model(
     allowed: &BTreeSet<String>,
 ) -> ModelTurn {
     let response = agent
-        .completion(prompt, history)
-        .await
-        .expect("completion request should build")
+        .request(prompt, history)
         .send()
         .await
         .expect("gemini completion should succeed");

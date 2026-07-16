@@ -150,8 +150,7 @@ async fn sample_caps_retrieved_definitions() {
                 .build();
 
             let defs = agent
-                .tool_server_handle
-                .get_tool_defs(Some(
+                .tool_definitions(Some(
                     "Multiply two numbers together to get their product.".to_string(),
                 ))
                 .await

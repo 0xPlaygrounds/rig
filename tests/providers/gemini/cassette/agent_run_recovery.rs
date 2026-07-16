@@ -11,7 +11,7 @@ use rig::message::ToolChoice;
 use rig::providers::gemini;
 
 use super::super::agent_run_support::{
-    Add, FORCE_TOOLS_PREAMBLE, Subtract, Sum, assistant_tool_call_names, call_model,
+    FORCE_TOOLS_PREAMBLE, GeminiAgent, assistant_tool_call_names, call_model,
     execute_pending_calls, history_has_assistant_tool_call, tool_names,
     user_content_tool_result_texts,
 };
@@ -52,12 +52,12 @@ async fn fail_resolution_returns_unknown_tool_call() {
     with_gemini_cassette(
         "agent_run_recovery/fail_resolution_returns_unknown_tool_call",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add"],
+                Some(ToolChoice::Required),
+            );
 
             let mut run = run_until_invalid_add_call(&agent, &tool_names(&[]), 0).await;
             let error = run
@@ -92,12 +92,12 @@ async fn repair_renames_tool_call_and_executes_it() {
         |client| async move {
             // `sum` is registered alongside `add` so the post-repair wire
             // history references a tool Gemini saw advertised.
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool(Sum)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add", "sum"],
+                None,
+            );
             let machine_names = tool_names(&["sum"]);
 
             let mut run =
@@ -177,12 +177,12 @@ async fn skip_suppresses_every_call_in_the_turn() {
     with_gemini_cassette(
         "agent_run_recovery/skip_suppresses_every_call_in_the_turn",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool(Subtract)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add", "subtract"],
+                None,
+            );
             let executable = tool_names(&["add", "subtract"]);
             // `add` is disallowed for the first turn.
             let restricted = tool_names(&["subtract"]);
@@ -269,12 +269,12 @@ async fn retry_with_exhausted_budget_fails_with_unknown_tool_call() {
     with_gemini_cassette(
         "agent_run_recovery/retry_with_exhausted_budget_fails_with_unknown_tool_call",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add"],
+                Some(ToolChoice::Required),
+            );
 
             // Zero retry budget: the first retry resolution must fail.
             let mut run = run_until_invalid_add_call(&agent, &tool_names(&[]), 0).await;
@@ -296,12 +296,12 @@ async fn repair_to_disallowed_name_fails_with_unknown_tool_call() {
     with_gemini_cassette(
         "agent_run_recovery/repair_to_disallowed_name_fails_with_unknown_tool_call",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add"],
+                Some(ToolChoice::Required),
+            );
 
             let mut run = run_until_invalid_add_call(&agent, &tool_names(&["subtract"]), 0).await;
             let error = run

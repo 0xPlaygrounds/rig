@@ -5,13 +5,13 @@ use super::runner::AgentRunner;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
-        GetTokenUsage, Message, Prompt, PromptError, TypedPrompt,
+        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, GetTokenUsage,
+        Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     json_utils,
     message::ToolChoice,
-    streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
-    tool::server::{ToolRegistrySnapshot, ToolServerHandle},
+    streaming::{StreamingChat, StreamingPrompt},
+    tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
     vector_store::{VectorStoreError, request::VectorSearchRequest},
     wasm_compat::WasmCompatSend,
 };
@@ -224,49 +224,6 @@ pub(crate) fn allowed_tool_names_for_choice(
     Ok(allowed)
 }
 
-/// Helper function to build a completion request from agent components.
-/// This is used by `Agent::completion()` to preserve the public completion API.
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn build_completion_request<M: CompletionModel>(
-    model: &Arc<M>,
-    prompt: Message,
-    chat_history: &[Message],
-    preamble: Option<&str>,
-    static_context: &[Document],
-    temperature: Option<f64>,
-    max_tokens: Option<u64>,
-    additional_params: Option<&serde_json::Value>,
-    record_telemetry_content: bool,
-    tool_choice: Option<&ToolChoice>,
-    tool_server_handle: &ToolServerHandle,
-    dynamic_context: &DynamicContextStore,
-    output_schema: Option<&schemars::Schema>,
-) -> Result<CompletionRequestBuilder<M>, CompletionError> {
-    Ok(build_prepared_completion_request(
-        model,
-        prompt,
-        chat_history,
-        preamble,
-        static_context,
-        temperature,
-        max_tokens,
-        additional_params,
-        record_telemetry_content,
-        tool_choice,
-        tool_server_handle,
-        dynamic_context,
-        output_schema,
-        // The single-shot `Agent::completion()` API has no run loop to consume an
-        // output-tool call, so it always uses native structured output (#1928).
-        &OutputMode::Native,
-        None,
-        // No agent run loop, so no `CompletionCall` hook to override the request.
-        None,
-    )
-    .await?
-    .builder)
-}
-
 /// Helper function to build a completion request from agent components while
 /// preserving the executable Rig tool names sent to the provider.
 #[allow(clippy::too_many_arguments)]
@@ -286,6 +243,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     output_schema: Option<&schemars::Schema>,
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
+    output_tool_description: Option<&str>,
+    augment_output_preamble: bool,
     request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest<M>, CompletionError> {
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
@@ -520,14 +479,17 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     let effective_preamble: Option<String> = {
         let base = preamble.map(str::to_owned);
         let instruction = match &resolved_mode {
-            OutputMode::Tool => output_tool_name.as_deref().map(|name| {
-                format!(
-                    "When you have gathered enough information to answer, call the `{name}` \
+            OutputMode::Tool if augment_output_preamble => {
+                output_tool_name.as_deref().map(|name| {
+                    format!(
+                        "When you have gathered enough information to answer, call the `{name}` \
                      tool exactly once with your final answer. Its arguments are the structured \
                      result and must satisfy the required schema. Do not return the final answer \
                      as plain text."
-                )
-            }),
+                    )
+                })
+            }
+            OutputMode::Tool => None,
             OutputMode::Prompted => output_schema.map(|schema| {
                 let schema_json = serde_json::to_string(schema.as_value()).unwrap_or_default();
                 format!(
@@ -568,9 +530,11 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
         tooldefs.push(crate::completion::ToolDefinition {
             name: name.clone(),
-            description: "Call this tool exactly once with your final answer when you are done. \
-                          Its arguments are the structured result and must satisfy the output \
-                          schema."
+            description: output_tool_description
+                .unwrap_or(
+                    "Call this tool exactly once with your final answer when you are done. \
+                     Its arguments are the structured result and must satisfy the output schema.",
+                )
                 .to_string(),
             parameters: schema.clone().to_value(),
         });
@@ -671,49 +635,49 @@ where
     M: CompletionModel,
 {
     /// Name of the agent used for logging and debugging
-    pub name: Option<String>,
+    pub(crate) name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
-    pub description: Option<String>,
+    pub(crate) description: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
-    pub model: Arc<M>,
+    pub(crate) model: Arc<M>,
     /// System prompt
-    pub preamble: Option<String>,
+    pub(crate) preamble: Option<String>,
     /// Context documents always available to the agent
-    pub static_context: Vec<Document>,
+    pub(crate) static_context: Vec<Document>,
     /// Temperature of the model
-    pub temperature: Option<f64>,
+    pub(crate) temperature: Option<f64>,
     /// Maximum number of tokens for the completion
-    pub max_tokens: Option<u64>,
+    pub(crate) max_tokens: Option<u64>,
     /// Additional parameters to be passed to the model
-    pub additional_params: Option<serde_json::Value>,
+    pub(crate) additional_params: Option<serde_json::Value>,
     /// Whether to record sensitive request, response, and tool content on GenAI spans.
     ///
     /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
     /// tool results, model responses, and other sensitive or high-cardinality data
     /// through OpenTelemetry span attributes, which can increase observability
     /// backend storage and query costs.
-    pub record_telemetry_content: bool,
-    pub tool_server_handle: ToolServerHandle,
+    pub(crate) record_telemetry_content: bool,
+    pub(crate) tool_server_handle: ToolServerHandle,
     /// List of vector store, with the sample number
-    pub dynamic_context: DynamicContextStore,
+    pub(crate) dynamic_context: DynamicContextStore,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
-    pub tool_choice: Option<ToolChoice>,
+    pub(crate) tool_choice: Option<ToolChoice>,
     /// Default total model-call budget, including the initial call and every
     /// retry or continuation. `None` uses the implicit budget of one.
-    pub default_max_turns: Option<usize>,
+    pub(crate) default_max_turns: Option<usize>,
     /// Default hook stack applied to every prompt request and runner created
     /// from this agent. Empty by default.
-    pub hooks: HookStack<M>,
+    pub(crate) hooks: HookStack<M>,
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
-    pub output_schema: Option<schemars::Schema>,
+    pub(crate) output_schema: Option<schemars::Schema>,
     /// How `output_schema` is enforced — tool call, native structured output, or
     /// prompt injection (see [`OutputMode`] and issue #1928).
-    pub output_mode: OutputMode,
+    pub(crate) output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
-    pub memory: Option<Arc<dyn crate::memory::ConversationMemory>>,
+    pub(crate) memory: Option<Arc<dyn crate::memory::ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
-    pub default_conversation_id: Option<String>,
+    pub(crate) default_conversation_id: Option<String>,
 }
 
 impl<M> Agent<M>
@@ -731,38 +695,16 @@ where
     pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner<M> {
         AgentRunner::from_agent(self, prompt)
     }
-}
 
-impl<M> Completion<M> for Agent<M>
-where
-    M: CompletionModel,
-{
-    async fn completion<I, T>(
+    /// Resolve the provider-facing tool definitions available for a prompt.
+    ///
+    /// This read-only view does not expose tool dispatch. Agent execution and
+    /// tool lifecycle hooks remain owned by [`Self::runner`].
+    pub async fn tool_definitions(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> Result<CompletionRequestBuilder<M>, CompletionError>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Message>,
-    {
-        let history: Vec<Message> = chat_history.into_iter().map(Into::into).collect();
-        build_completion_request(
-            &self.model,
-            prompt.into(),
-            &history,
-            self.preamble.as_deref(),
-            &self.static_context,
-            self.temperature,
-            self.max_tokens,
-            self.additional_params.as_ref(),
-            self.record_telemetry_content,
-            self.tool_choice.as_ref(),
-            &self.tool_server_handle,
-            &self.dynamic_context,
-            self.output_schema.as_ref(),
-        )
-        .await
+        prompt: Option<String>,
+    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
+        self.tool_server_handle.get_tool_defs(prompt).await
     }
 }
 
@@ -821,25 +763,6 @@ where
         }
 
         Ok(response.output)
-    }
-}
-
-impl<M> StreamingCompletion<M> for Agent<M>
-where
-    M: CompletionModel,
-{
-    async fn stream_completion<I, T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> Result<CompletionRequestBuilder<M>, CompletionError>
-    where
-        I: IntoIterator<Item = T> + WasmCompatSend,
-        T: Into<Message>,
-    {
-        // Reuse the existing completion implementation to build the request
-        // This ensures streaming and non-streaming use the same request building logic
-        self.completion(prompt, chat_history).await
     }
 }
 

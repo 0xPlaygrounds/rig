@@ -190,6 +190,9 @@ where
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
     pub(crate) output_mode: OutputMode,
+    pub(crate) output_tool_name: Option<String>,
+    pub(crate) output_tool_description: Option<String>,
+    pub(crate) augment_output_preamble: bool,
     pub(crate) concurrency: usize,
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
@@ -222,6 +225,9 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             output_mode: agent.output_mode.clone(),
+            output_tool_name: None,
+            output_tool_description: None,
+            augment_output_preamble: true,
             concurrency: 1,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
@@ -270,6 +276,48 @@ where
         T: Into<Message>,
     {
         self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Override the model temperature for this run.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Override the maximum completion token count for this run.
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Merge provider-specific additional parameters into this run's baseline.
+    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+        self.additional_params = Some(match self.additional_params.take() {
+            Some(baseline) if baseline.is_object() && params.is_object() => {
+                crate::json_utils::merge(baseline, params)
+            }
+            _ => params,
+        });
+        self
+    }
+
+    /// Override the tool-choice policy for this run.
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Configure the synthetic tool used by an internal Tool-output flow.
+    pub(crate) fn output_tool(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        augment_preamble: bool,
+    ) -> Self {
+        self.output_tool_name = Some(name.into());
+        self.output_tool_description = Some(description.into());
+        self.augment_output_preamble = augment_preamble;
         self
     }
 
@@ -341,14 +389,18 @@ where
     /// memory-loaded history). Delegates to [`build_agent_run`] — the single
     /// construction site shared with the streaming driver.
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
-        build_agent_run(
+        let run = build_agent_run(
             self.prompt.clone(),
             self.max_turns,
             self.max_invalid_tool_call_retries,
             self.output_schema.as_ref(),
             history_override.or_else(|| self.chat_history.clone()),
             self.tool_choice.clone(),
-        )
+        );
+        match &self.output_tool_name {
+            Some(name) => run.with_output_tool_name(name.clone()),
+            None => run,
+        }
     }
 }
 
@@ -989,6 +1041,7 @@ mod tests {
     use crate::{
         agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
         completion::CompletionModel,
+        message::ToolChoice,
         test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
         tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
     };
@@ -1111,6 +1164,86 @@ mod tests {
             }
             ToolResultAction::rewrite("rewritten for model")
         }
+    }
+
+    #[tokio::test]
+    async fn runner_applies_per_run_request_overrides() {
+        let model = MockCompletionModel::text("done");
+        AgentBuilder::new(model.clone())
+            .temperature(0.1)
+            .max_tokens(10)
+            .additional_params(json!({"baseline": true}))
+            .build()
+            .runner("go")
+            .temperature(0.7)
+            .max_tokens(42)
+            .additional_params(json!({"override": true}))
+            .tool_choice(ToolChoice::None)
+            .run()
+            .await
+            .expect("runner request should succeed");
+
+        let requests = model.requests();
+        let request = requests.first().expect("one request");
+        assert_eq!(request.temperature, Some(0.7));
+        assert_eq!(request.max_tokens, Some(42));
+        assert_eq!(
+            request.additional_params,
+            Some(json!({"baseline": true, "override": true}))
+        );
+        assert_eq!(request.tool_choice, Some(ToolChoice::None));
+    }
+
+    #[tokio::test]
+    async fn runner_non_object_additional_params_replace_the_baseline() {
+        let model = MockCompletionModel::text("done");
+        AgentBuilder::new(model.clone())
+            .additional_params(json!({"baseline": true}))
+            .build()
+            .runner("go")
+            .additional_params(json!(["replacement"]))
+            .run()
+            .await
+            .expect("runner request should succeed");
+
+        let requests = model.requests();
+        let request = requests.first().expect("one request");
+        assert_eq!(request.additional_params, Some(json!(["replacement"])));
+    }
+
+    #[tokio::test]
+    async fn direct_completion_model_requests_are_intentionally_hook_free() {
+        #[derive(Clone)]
+        struct CountCompletionCalls(Arc<AtomicUsize>);
+
+        impl<M> AgentHook<M> for CountCompletionCalls
+        where
+            M: CompletionModel,
+        {
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                _event: crate::agent::CompletionCallEvent<'_>,
+            ) -> crate::agent::CompletionCallAction {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                crate::agent::CompletionCallAction::Continue
+            }
+        }
+
+        let model = MockCompletionModel::text("raw response");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let _agent = AgentBuilder::new(model.clone())
+            .add_hook(CountCompletionCalls(calls.clone()))
+            .build();
+
+        model
+            .completion_request("raw request")
+            .send()
+            .await
+            .expect("direct model request should succeed");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(model.request_count(), 1);
     }
 
     #[tokio::test]

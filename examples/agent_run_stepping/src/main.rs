@@ -25,10 +25,10 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
 };
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{Completion, CompletionModel};
+use rig::completion::CompletionModel;
 use rig::message::UserContent;
 use rig::providers::openai;
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -91,11 +91,13 @@ impl<M: CompletionModel> AgentHook<M> for ToolLoggerHook {
 #[tokio::main]
 async fn main() -> Result<()> {
     let openai = openai::Client::from_env()?;
-    let agent = openai
-        .agent(openai::GPT_4O)
+    let model = openai.completion_model(openai::GPT_4O);
+    let agent = rig::agent::AgentBuilder::new(model.clone())
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();
+    let local_tools = ToolSet::builder().static_tool(Add).build();
+    let tool_definitions = local_tools.get_tool_definitions();
 
     let mut run = AgentRun::new("What is 2 + 5?").max_turns(2);
 
@@ -107,17 +109,26 @@ async fn main() -> Result<()> {
                 turn,
             } => {
                 println!("→ model call #{turn}");
-                let response = agent.completion(prompt, history).await?.send().await?;
+                // A hand-driven `AgentRun` is a sans-IO protocol primitive, not
+                // execution of the configured `Agent`. Its transport is an
+                // explicit raw model request and therefore has no agent hooks.
+                let response = model
+                    .completion_request(prompt)
+                    .messages(history)
+                    .preamble(
+                        "You are a calculator. Always use the provided tools to compute results."
+                            .to_string(),
+                    )
+                    .tools(tool_definitions.clone())
+                    .send()
+                    .await?;
 
                 // The tools advertised to the provider for this turn. With
                 // static tools these are the agent's registered tools; agents
                 // with dynamic (RAG) tools would resolve them per turn.
-                let tool_names: BTreeSet<String> = agent
-                    .tool_server_handle
-                    .get_tool_defs(None)
-                    .await?
-                    .into_iter()
-                    .map(|def| def.name)
+                let tool_names: BTreeSet<String> = tool_definitions
+                    .iter()
+                    .map(|def| def.name.clone())
                     .collect();
 
                 let mut outcome = run.model_response(ModelTurn::new(
@@ -157,10 +168,7 @@ async fn main() -> Result<()> {
                     let args = call.tool_call.function.arguments.to_string();
                     println!("→ executing {name}({args})");
                     let mut context = rig::tool::ToolContext::new();
-                    let result = agent
-                        .tool_server_handle
-                        .execute(name, &args, &mut context)
-                        .await;
+                    let result = local_tools.execute(name, args, &mut context).await;
                     results.push(UserContent::tool_result(
                         call.tool_call.id.clone(),
                         result.output().clone().into_content(),

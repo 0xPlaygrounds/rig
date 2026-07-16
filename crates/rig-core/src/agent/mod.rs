@@ -8,9 +8,10 @@
 //! a simple bot with a specific system prompt to a complex RAG system with a set of dynamic
 //! context documents and tools.
 //!
-//! The [Agent] struct implements the [crate::completion::Completion] and [crate::completion::Prompt] traits,
-//! allowing it to be used for generating completions responses and prompts. The [Agent] struct also
-//! implements the [crate::completion::Chat] trait, which allows it to be used for generating chat completions.
+//! The [Agent] struct implements the runner-backed [crate::completion::Prompt],
+//! [crate::completion::TypedPrompt], and [crate::completion::Chat] traits. All
+//! agent execution goes through [AgentRunner], so hooks and lifecycle policies
+//! cannot be bypassed through a raw agent request builder.
 //!
 //! The [AgentBuilder] implements the builder pattern for creating instances of [Agent].
 //! It allows configuring the model, preamble, context documents, tools, temperature, and additional parameters
@@ -20,7 +21,7 @@
 //! ```no_run
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
-//!     completion::{Chat, Completion, Prompt},
+//!     completion::{Chat, Prompt},
 //!     providers::openai,
 //! };
 //!
@@ -35,24 +36,15 @@
 //!     .temperature(0.8)
 //!     .build();
 //!
-//! // Use the agent for completions and prompts
+//! // Use the agent for chats and prompts
 //! // Generate a chat completion response from a prompt and chat history
 //! let chat_response = agent.chat("Prompt", &mut Vec::<rig_core::completion::Message>::new()).await?;
 //!
 //! // Generate a prompt completion response from a simple prompt
 //! let prompt_response = agent.prompt("Prompt").await?;
 //!
-//! // Generate a completion request builder from a prompt and chat history. The builder
-//! // will contain the agent's configuration (i.e.: preamble, context documents, tools,
-//! // model parameters, etc.), but these can be overwritten.
-//! let completion_req_builder = agent
-//!     .completion("Prompt", Vec::<rig_core::completion::Message>::new())
-//!     .await?;
-//!
-//! let response = completion_req_builder
-//!     .temperature(0.9) // Overwrite the agent's temperature
-//!     .send()
-//!     .await?;
+//! // Per-run overrides stay inside the hook-aware runner.
+//! let response = agent.runner("Prompt").temperature(0.9).run().await?;
 //! # Ok(())
 //! # }
 //! ```
