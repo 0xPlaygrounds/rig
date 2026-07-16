@@ -15,6 +15,7 @@ use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
+use rig::test_utils::validate_result_redaction;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -126,12 +127,14 @@ impl<M: CompletionModel> AgentHook<M> for RedactSsnFromResult {
     }
 }
 
-fn assert_answer_hides_secret(answer: &str) {
-    assert!(!answer.is_empty(), "agent should produce a final answer");
-    assert!(
-        !answer.contains(SECRET_SSN),
-        "the redacted SSN must never reach the model, but the answer contained it: {answer}"
-    );
+fn assert_answer_hides_secret(answer: &str, tool_produced_secret: bool) {
+    validate_result_redaction(
+        "anthropic_tool_result_redaction",
+        tool_produced_secret,
+        answer,
+        SECRET_SSN,
+    )
+    .expect("portable result-redaction contract should hold");
 }
 
 #[tokio::test]
@@ -142,6 +145,7 @@ async fn tool_result_redacted_by_hook_blocking() {
     with_anthropic_cassette(
         "tool_result_rewrite/tool_result_redacted_by_hook_blocking",
         move |client| async move {
+            let execution_probe = tool.clone();
             let agent = client
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble(PREAMBLE)
@@ -155,7 +159,7 @@ async fn tool_result_redacted_by_hook_blocking() {
                 .await
                 .expect("blocking lookup should succeed");
 
-            assert_answer_hides_secret(&response);
+            assert_answer_hides_secret(&response, execution_probe.produced_secret());
         },
     )
     .await;
@@ -174,6 +178,7 @@ async fn tool_result_redacted_by_hook_streaming() {
     with_anthropic_cassette(
         "tool_result_rewrite/tool_result_redacted_by_hook_streaming",
         move |client| async move {
+            let execution_probe = tool.clone();
             let agent = client
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble(PREAMBLE)
@@ -186,7 +191,7 @@ async fn tool_result_redacted_by_hook_streaming() {
                 .await
                 .expect("streaming lookup should succeed");
 
-            assert_answer_hides_secret(&response);
+            assert_answer_hides_secret(&response, execution_probe.produced_secret());
         },
     )
     .await;

@@ -127,6 +127,46 @@ Use the provider-specific environment variables named in the ignored test reason
 module, such as `OPENROUTER_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`,
 `HUGGINGFACE_API_KEY`, or local services such as Ollama, llamafile, and llama.cpp.
 
+## Local Artifact Model Tests
+
+`rig-candle` has an ignored native model-contract suite. It is not an HTTP
+cassette: it loads one pinned Qwen3 GGUF artifact and runs provider-neutral
+completion, buffered/raw-streaming parity, parallel and sequential tools,
+zero-argument and complex typed arguments, call/result history correlation,
+result serialization, invalid-call recovery, hook rewrite chaining, turn-local
+request patches, cancellation/max-turn diagnostics, extraction with usage,
+tool-choice, protocol hygiene, and synthetic structured-output scenarios
+through Rig's agent driver.
+
+```bash
+export RIG_CANDLE_TEST_MODEL_DIR="$PWD/crates/rig-candle/test-models/qwen3-4b-q4-k-m"
+./crates/rig-candle/tests/download_qwen3.sh
+cargo test --release -p rig-candle --test live_conformance \
+  -- --ignored --nocapture --test-threads=1
+```
+
+The 2.33-GiB model is checksum-verified, cached in an ignored directory, and
+loaded once per test binary. The measured ARM64 release run completed in 164.41
+seconds; allow at least fifteen minutes for slower CPU hosts and more than twice
+the checkpoint size during loading. Use serial execution to bound CPU and memory use.
+See `crates/rig-candle/README.md` for revisions, hashes, measured performance,
+and the boundary between model-contract and provider-transport tests.
+
+Reusable scenarios and typed validators are exported from
+`rig_core::test_utils`. A provider suite should call a complete model-driving
+scenario when its cassette records the same prompt and tool definitions. When
+wire-specific prompts, schemas, request parameters, or metadata must remain
+local, the provider test should retain that transport setup and call the shared
+validator on its public Rig result. Do not move authentication, HTTP body, SSE,
+hosted-tool, remote-file, or provider-session assertions into the portable
+module.
+
+Universal scenarios require only the public completion/agent contract.
+Optional capability scenarios—parallel model emission, structured reasoning,
+provider-assigned IDs, native constrained decoding, and hosted tools—must be
+selected explicitly. A provider that does not expose one optional capability
+must not weaken the universal assertions or silently mark the scenario passed.
+
 ## Integration Tests
 
 External-service integration tests are collected under the `integrations` target and are gated by

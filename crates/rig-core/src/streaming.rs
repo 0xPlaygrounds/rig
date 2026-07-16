@@ -284,9 +284,14 @@ where
         }
     }
 
-    /// Cancel the stream. Cancellation is surfaced as normal stream termination.
-    pub fn cancel(&self) {
+    /// Cancel the stream and immediately drop the provider's inner stream.
+    /// Cancellation is surfaced as normal stream termination.
+    pub fn cancel(&mut self) {
         self.abort_handle.abort();
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        let empty: StreamingResult<R> = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
+        self.inner = Abortable::new(empty, abort_registration);
+        self.abort_handle = abort_handle;
     }
 
     /// Pause stream polling.

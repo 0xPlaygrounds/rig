@@ -7,6 +7,7 @@ use rig::completion::{Chat, Message, Prompt};
 use rig::message::{DocumentSourceKind, ImageMediaType};
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
 use rig::streaming::{StreamingChat, StreamingPrompt};
+use rig::test_utils::validate_extraction_fields;
 
 use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
 use crate::support::{
@@ -147,6 +148,15 @@ async fn messages_extractor_smoke() {
                 .extract_with_usage(EXTRACTOR_TEXT)
                 .await
                 .expect("extractor request should succeed");
+
+            validate_extraction_fields(
+                "anthropic_opus_4_7_extractor_smoke",
+                response.data.first_name.as_deref(),
+                response.data.last_name.as_deref(),
+                response.data.job.as_deref(),
+                response.usage,
+            )
+            .expect("portable extraction contract should hold");
 
             assert_nonempty_response(
                 response

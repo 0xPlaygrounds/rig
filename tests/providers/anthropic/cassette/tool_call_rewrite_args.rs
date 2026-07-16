@@ -15,6 +15,7 @@ use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
+use rig::test_utils::validate_rewritten_arguments;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -127,18 +128,16 @@ impl<M: CompletionModel> AgentHook<M> for PinUnitsToCelsius {
 }
 
 fn assert_units_were_injected(observations: &[ObservedCall]) {
-    assert!(
-        !observations.is_empty(),
-        "the get_weather tool should have been called"
-    );
-    for call in observations {
-        assert_eq!(
-            call.units.as_deref(),
-            Some("celsius"),
-            "the hook must inject units=celsius into every call (the model cannot, \
-             since units is not in the tool's schema); saw {call:?}"
-        );
-    }
+    let values = observations
+        .iter()
+        .map(|call| json!({ "location": call.location, "units": call.units }))
+        .collect::<Vec<_>>();
+    validate_rewritten_arguments(
+        "anthropic_tool_call_args_rewritten",
+        &values,
+        &json!({ "units": "celsius" }),
+    )
+    .expect("portable argument-rewrite contract should hold");
 }
 
 #[tokio::test]

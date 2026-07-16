@@ -1,0 +1,24 @@
+[package]
+name = "candle_wasm_chat"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+rig = { path = "../..", default-features = false, features = ["candle", "wasm"] }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+sha2 = { workspace = true }
