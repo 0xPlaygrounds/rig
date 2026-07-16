@@ -52,15 +52,20 @@ Schema parameters, including optional properties, enums, nested objects, and
 arrays. `Auto`, `None`, `Required`, and `Specific` tool choices are represented
 explicitly. `Specific` exposes only the named functions; `Required` and
 `Specific` add a mandatory-call instruction and reject a model turn with no
-call. Unknown functions, malformed/non-object arguments, duplicate IDs,
-truncated envelopes, and unmatched results are typed errors.
+call. Malformed/non-object arguments, duplicate IDs, truncated envelopes, and
+unmatched results are typed Candle completion errors. Syntactically valid
+unknown or disallowed names reach Rig's agent dispatcher, where fail, repair,
+retry, or skip handling produces the corresponding typed `PromptError` and
+never executes the rejected call.
 
 Argument validation is intentionally split: `rig-candle` validates the JSON
 envelope and requires arguments to be an object, while Rig's registered tool
 performs typed deserialization/schema validation before execution. Tool
 execution always remains in Rig's agent driver. Assistant tool calls and
 correlated text or JSON results round-trip through history. Multimodal tool
-results and provider-hosted tools are rejected.
+results and provider-hosted tools are rejected. Caller-controlled text, tool
+schemas, arguments, and results containing reserved chat-template delimiters
+are rejected before rendering so they cannot create structural prompt content.
 
 Qwen tool syntax can cross token boundaries, so streaming buffers one model
 turn, parses it, then emits ordered text/reasoning items and complete
@@ -87,7 +92,7 @@ Download the official artifacts with the reproducible helper:
 ```bash
 export RIG_CANDLE_TEST_MODEL_DIR="$PWD/crates/rig-candle/test-models/qwen3-4b-q4-k-m"
 ./crates/rig-candle/tests/download_qwen3.sh
-cargo test -p rig-candle --test live_conformance \
+cargo test --release -p rig-candle --test live_conformance \
   -- --ignored --nocapture --test-threads=1
 ```
 
@@ -104,24 +109,42 @@ reused and `test-models/` is ignored.
 The live test loads the model once, reuses cheap `CandleModel` clones with a
 fresh KV cache per request, applies greedy decoding and a fixed seed, enforces
 timeouts, and prints tokens, tool counts, history size, timings, throughput, and
-safe output. On the ARM64 development host used for the release-mode verification,
-the seven-scenario suite completed in 72.45 seconds: the short direct completion
-reported 2.03 generated tokens/s and the multi-turn reports ranged from 4.07 to
-5.90 aggregate generated tokens/s per end-to-end second. Actual resident memory
-and speed depend on the target; the loaded quantized tensors are based on a
-2.33-GiB GGUF, KV cache grows with context, and loading temporarily also holds
+safe output. On the ARM64 development host used for the release-mode
+verification, the expanded suite completed in 164.41 seconds. It passed a
+direct completion plus sixteen portable reports: buffered/raw-streaming text
+parity, optional arguments, parallel calls, serial host execution of a parallel
+batch, a zero-argument tool, string/JSON result serialization, complex nested
+Unicode and escaped arguments, invalid-call fail/repair/retry/skip recovery,
+hook rewrite chaining with turn-local request patches, cancellation and
+max-turn diagnostics, structured extraction with usage, sequential tools,
+streamed tool execution, buffered and streamed synthetic structured output,
+and all tool-choice modes. Reported end-to-end generation throughput ranged
+from 3.48 to 7.83 tokens/s for the generated-output scenarios. Actual resident
+memory and speed depend on the target; the loaded quantized tensors are based on
+a 2.33-GiB GGUF, KV cache grows with context, and loading temporarily also holds
 the 2.33-GiB input byte buffer alongside constructed tensors. Plan for more than
 twice the checkpoint size during loading rather than treating file size as a
 hard memory bound.
 
 ## Conformance boundary
 
-Portable model-contract helpers live under `rig_core::test_utils` and are shared
-by the Ollama Qwen3 cassette suite and this artifact-backed Candle suite. They
-cover optional arguments, sequential tools, streaming execution, history, and a
-synthetic structured final result on both buffered and streaming surfaces, plus
-all portable tool-choice modes. Provider suites retain HTTP serialization,
-authentication, SSE parsing, hosted tools, remote files, and provider-specific
+Portable model-contract helpers live under `rig_core::test_utils`. The
+artifact-backed Candle suite calls the model-driving scenarios directly.
+Provider cassette suites reuse the same runners where their recorded request
+already represents the scenario, and reuse the typed validators when transport
+fixtures need provider-specific prompts or schemas. Current adoption covers
+Gemini parallel/zero-argument/result-serialization, recovery, cancellation,
+hook, extraction, and structured-output cases; OpenAI extraction and structured
+output; Anthropic hook rewrites, extraction, and structured output; and Ollama
+optional and sequential tools.
+
+The universal model contract covers semantic text, typed arguments, canonical
+call/result history, streaming finalization and usage, hook-visible outcomes,
+extraction, and structured output. Parallel model emission, structured
+reasoning, provider-assigned IDs, native constrained decoding, and hosted tools
+remain optional capabilities and are selected independently rather than hidden
+behind a passing umbrella test. Provider suites retain HTTP serialization,
+authentication, SSE framing, hosted tools, remote files, and provider-specific
 reasoning/session assertions; those are transport conformance, not local model
 quality.
 

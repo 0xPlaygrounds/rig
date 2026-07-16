@@ -6,8 +6,10 @@ use rig_candle::{CandleModel, ModelArtifacts, ModelData};
 use rig_core::{
     completion::CompletionModel,
     test_utils::{
-        optional_argument, sequential_tools, streaming_structured_after_tool, streaming_tool,
-        structured_after_tool,
+        buffered_streaming_text_parity, cancellation_and_max_turns, complex_tool_arguments,
+        hook_rewrites_and_request_patch, invalid_tool_recovery, optional_argument, parallel_tools,
+        sequential_tools, streaming_structured_after_tool, streaming_tool, structured_after_tool,
+        structured_extraction, tool_output_serialization, zero_argument_tool,
     },
 };
 
@@ -91,6 +93,13 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
         simple.raw_response.text,
     );
 
+    let text_parity = tokio::time::timeout(
+        Duration::from_secs(600),
+        buffered_streaming_text_parity(loaded_model.clone()),
+    )
+    .await??;
+    print_report(&text_parity);
+
     let optional = tokio::time::timeout(
         Duration::from_secs(900),
         optional_argument(loaded_model.clone(), |builder| {
@@ -99,6 +108,89 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
     )
     .await??;
     print_report(&optional);
+
+    let parallel = tokio::time::timeout(
+        Duration::from_secs(900),
+        parallel_tools(
+            loaded_model.clone(),
+            |builder| builder.temperature(0.0).max_tokens(384),
+            None,
+        ),
+    )
+    .await??;
+    print_report(&parallel);
+
+    let serial_parallel = tokio::time::timeout(
+        Duration::from_secs(900),
+        parallel_tools(
+            loaded_model.clone(),
+            |builder| builder.temperature(0.0).max_tokens(384),
+            Some(1),
+        ),
+    )
+    .await??;
+    print_report(&serial_parallel);
+
+    let zero_argument = tokio::time::timeout(
+        Duration::from_secs(900),
+        zero_argument_tool(loaded_model.clone(), |builder| {
+            builder.temperature(0.0).max_tokens(384)
+        }),
+    )
+    .await??;
+    print_report(&zero_argument);
+
+    let serialized_outputs = tokio::time::timeout(
+        Duration::from_secs(900),
+        tool_output_serialization(loaded_model.clone(), |builder| {
+            builder.temperature(0.0).max_tokens(384)
+        }),
+    )
+    .await??;
+    print_report(&serialized_outputs);
+
+    let complex_arguments = tokio::time::timeout(
+        Duration::from_secs(900),
+        complex_tool_arguments(loaded_model.clone(), |builder| {
+            builder.temperature(0.0).max_tokens(384)
+        }),
+    )
+    .await??;
+    print_report(&complex_arguments);
+
+    let recovery = tokio::time::timeout(
+        Duration::from_secs(900),
+        invalid_tool_recovery(loaded_model.clone(), |builder| {
+            builder.temperature(0.0).max_tokens(384)
+        }),
+    )
+    .await??;
+    print_report(&recovery);
+
+    let hooks = tokio::time::timeout(
+        Duration::from_secs(900),
+        hook_rewrites_and_request_patch(loaded_model.clone(), |builder| {
+            builder.temperature(0.0).max_tokens(384)
+        }),
+    )
+    .await??;
+    print_report(&hooks);
+
+    let run_controls = tokio::time::timeout(
+        Duration::from_secs(900),
+        cancellation_and_max_turns(loaded_model.clone(), |builder| {
+            builder.temperature(0.0).max_tokens(384)
+        }),
+    )
+    .await??;
+    print_report(&run_controls);
+
+    let extraction = tokio::time::timeout(
+        Duration::from_secs(900),
+        structured_extraction(loaded_model.clone()),
+    )
+    .await??;
+    print_report(&extraction);
 
     let sequential = tokio::time::timeout(
         Duration::from_secs(1200),

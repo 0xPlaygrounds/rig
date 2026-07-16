@@ -6,6 +6,9 @@
 use rig::client::CompletionClient;
 use rig::completion::{Prompt, PromptError};
 use rig::providers::gemini;
+use rig::test_utils::{
+    validate_cancelled_failure, validate_result_redaction, validate_rewritten_arguments,
+};
 use serde_json::json;
 
 use super::super::hook_stress_support::{
@@ -56,6 +59,12 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
             assert_eq!(calls.len(), 1, "one add call, saw {calls:?}");
             let observed: serde_json::Value =
                 serde_json::from_str(&calls[0].1).expect("observed args are JSON");
+            validate_rewritten_arguments(
+                "gemini_arg_rewrite_preserves_fields",
+                std::slice::from_ref(&observed),
+                &json!({ "x": 100 }),
+            )
+            .expect("portable argument-rewrite contract should hold");
             assert_eq!(observed["x"], json!(100), "x must be the rewritten value");
             assert!(
                 observed.get("y").is_some(),
@@ -107,6 +116,12 @@ async fn two_arg_rewrites_chain_blocking() {
             assert_eq!(calls.len(), 1);
             let observed: serde_json::Value =
                 serde_json::from_str(&calls[0].1).expect("observed args are JSON");
+            validate_rewritten_arguments(
+                "gemini_chained_arg_rewrites",
+                std::slice::from_ref(&observed),
+                &json!({ "x": 7, "y": 8 }),
+            )
+            .expect("portable chained argument-rewrite contract should hold");
             assert_eq!(
                 observed,
                 json!({ "x": 7, "y": 8 }),
@@ -170,6 +185,8 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
                 !response.contains('4'),
                 "the raw tool result must not reach the model: {response:?}"
             );
+            validate_result_redaction("gemini_chained_result_rewrites", true, &response, "4")
+                .expect("portable result-rewrite contract should hold");
         },
     )
     .await;
@@ -246,6 +263,9 @@ async fn terminate_from_tool_result_cancels_after_execution_blocking() {
                 })
                 .await
                 .expect_err("a ToolResult terminate should cancel the run");
+
+            validate_cancelled_failure(&error, "result vetoed by policy hook", "add")
+                .expect("portable cancellation diagnostics should hold");
 
             // The tool executed before the terminate fired.
             assert!(

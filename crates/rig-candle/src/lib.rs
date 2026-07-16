@@ -308,6 +308,15 @@ pub enum CandleError {
     /// A message contains content that the selected text-only prompt renderer cannot represent.
     #[error("unsupported prompt content: {0}")]
     UnsupportedPromptContent(&'static str),
+    /// Caller-controlled content contains a delimiter reserved by the selected
+    /// chat template and therefore cannot be interpolated safely.
+    #[error("{field} contains reserved protocol marker `{marker}`")]
+    ReservedProtocolMarker {
+        /// Kind of prompt content containing the marker.
+        field: &'static str,
+        /// Structural delimiter that was rejected.
+        marker: &'static str,
+    },
     /// A tensor required by the configured architecture was absent.
     #[error("checkpoint is missing expected tensor `{0}`")]
     MissingTensor(String),
@@ -391,12 +400,6 @@ pub enum CandleError {
     /// A model-generated tool call was malformed or incomplete.
     #[error("malformed Qwen3 tool call: {0}")]
     MalformedToolCall(String),
-    /// A model-generated tool call named a function that was not offered this turn.
-    #[error("Qwen3 generated unknown or disallowed tool `{tool}`")]
-    UnknownToolCall {
-        /// Unrecognized function name.
-        tool: String,
-    },
     /// The generated response violated the requested tool-choice policy.
     #[error("Qwen3 tool-choice violation: {0}")]
     ToolChoiceViolation(String),

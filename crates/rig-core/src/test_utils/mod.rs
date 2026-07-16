@@ -20,8 +20,14 @@ pub use http::{
 };
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use model_conformance::{
-    ConformanceToolError, ScenarioReport, optional_argument, sequential_tools,
-    streaming_structured_after_tool, streaming_tool, structured_after_tool, tool_choice_modes,
+    ConformanceToolError, ScenarioError, ScenarioReport, buffered_streaming_text_parity,
+    cancellation_and_max_turns, complex_tool_arguments, decode_structured_output,
+    hook_rewrites_and_request_patch, invalid_tool_recovery, optional_argument, parallel_tools,
+    sequential_tools, streaming_structured_after_tool, streaming_tool, structured_after_tool,
+    structured_extraction, tool_choice_modes, tool_output_serialization,
+    validate_cancelled_failure, validate_extraction_fields, validate_max_turns_failure,
+    validate_protocol_hygiene, validate_result_redaction, validate_rewritten_arguments,
+    validate_unknown_tool_failure, zero_argument_tool,
 };
 pub use model_listing::MockModelLister;
 pub use streaming::{MockResponse, MockStreamEvent};

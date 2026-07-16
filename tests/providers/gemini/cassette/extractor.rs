@@ -5,6 +5,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
+use rig::test_utils::validate_extraction_fields;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -31,20 +32,31 @@ async fn extractor_smoke() {
             )
             .build();
 
-        let person = extractor
-            .extract(EXTRACTOR_TEXT)
+        let response = extractor
+            .extract_with_usage(EXTRACTOR_TEXT)
             .await
             .expect("extractor request should succeed");
 
-        let first_name = person
+        validate_extraction_fields(
+            "gemini_extractor_smoke",
+            response.data.first_name.as_deref(),
+            response.data.last_name.as_deref(),
+            response.data.job.as_deref(),
+            response.usage,
+        )
+        .expect("portable extraction contract should hold");
+
+        let first_name = response
+            .data
             .first_name
             .as_deref()
             .expect("first_name should be present");
-        let last_name = person
+        let last_name = response
+            .data
             .last_name
             .as_deref()
             .expect("last_name should be present");
-        let job = person.job.as_deref().expect("job should be present");
+        let job = response.data.job.as_deref().expect("job should be present");
 
         assert_nonempty_response(first_name);
         assert_nonempty_response(last_name);

@@ -332,6 +332,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 ..
             } => {
                 let mut assistant_contents = Vec::new();
+                let permits_omitted_think_start = resp.model.to_ascii_lowercase().contains("qwen3");
+                let (legacy_thinking, visible_content) =
+                    if matches!(thinking.as_deref(), None | Some("")) {
+                        split_legacy_thinking(&content, permits_omitted_think_start)
+                    } else {
+                        (None, content.as_str())
+                    };
                 // Preserve the model's reasoning so it round-trips into agent
                 // history and is echoed back to Ollama on the next turn (issue
                 // #1926). Without this, non-streaming `thinking` is kept only in
@@ -340,9 +347,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
                     assistant_contents.push(completion::AssistantContent::reasoning(thinking));
                 }
+                if let Some(legacy_thinking) = legacy_thinking {
+                    assistant_contents
+                        .push(completion::AssistantContent::reasoning(legacy_thinking));
+                }
                 // Add the assistant's text content if any.
-                if !content.is_empty() {
-                    assistant_contents.push(completion::AssistantContent::text(&content));
+                if !visible_content.is_empty() {
+                    assistant_contents.push(completion::AssistantContent::text(visible_content));
                 }
                 // Process tool_calls following Ollama's chat response definition.
                 // Each ToolCall has an id, a type, and a function field.
@@ -399,6 +410,31 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )),
         }
     }
+}
+
+/// Older reasoning models served by Ollama sometimes returned their reasoning
+/// in `content` instead of `thinking`. Qwen can also omit the opening marker
+/// because its chat template prefills it. Only split a leading, terminated
+/// reasoning block so ordinary mentions of the marker remain untouched.
+fn split_legacy_thinking(content: &str, permits_omitted_start: bool) -> (Option<&str>, &str) {
+    let trimmed = content.trim_start();
+    let split = if let Some(reasoning_start) = trimmed.strip_prefix("<think>") {
+        reasoning_start.split_once("</think>")
+    } else if permits_omitted_start {
+        trimmed.split_once("\n</think>")
+    } else {
+        None
+    };
+    let Some((reasoning, visible)) = split else {
+        return (None, content);
+    };
+
+    let reasoning = reasoning.trim();
+    if reasoning.is_empty() {
+        return (None, visible.trim_start());
+    }
+
+    (Some(reasoning), visible.trim_start())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1266,6 +1302,38 @@ pub struct ImageUrl {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn splits_legacy_reasoning_with_or_without_opening_marker() {
+        assert_eq!(
+            split_legacy_thinking("<think>private reasoning</think>\n\nvisible answer", false),
+            (Some("private reasoning"), "visible answer")
+        );
+        assert_eq!(
+            split_legacy_thinking("private reasoning\n</think>\n\nvisible answer", true),
+            (Some("private reasoning"), "visible answer")
+        );
+    }
+
+    #[test]
+    fn leaves_unterminated_or_inline_reasoning_markers_visible() {
+        assert_eq!(
+            split_legacy_thinking("<think>unterminated", true),
+            (None, "<think>unterminated")
+        );
+        assert_eq!(
+            split_legacy_thinking("The literal marker is <think>.", true),
+            (None, "The literal marker is <think>.")
+        );
+        assert_eq!(
+            split_legacy_thinking("  visible indentation", true),
+            (None, "  visible indentation")
+        );
+        assert_eq!(
+            split_legacy_thinking("The closing token </think> is XML-like.", true),
+            (None, "The closing token </think> is XML-like.")
+        );
+    }
 
     // Test deserialization and conversion for the /api/chat endpoint.
     #[tokio::test]

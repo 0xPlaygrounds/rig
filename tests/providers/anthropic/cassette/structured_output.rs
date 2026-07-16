@@ -3,6 +3,7 @@
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::test_utils::decode_structured_output;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{
@@ -24,7 +25,8 @@ async fn structured_output_smoke() {
                 .await
                 .expect("structured output prompt should succeed");
             let structured: SmokeStructuredOutput =
-                serde_json::from_str(&response).expect("structured output should deserialize");
+                decode_structured_output("anthropic_structured_output_smoke", &response)
+                    .expect("structured output should deserialize");
 
             assert_smoke_structured_output(&structured);
         },
