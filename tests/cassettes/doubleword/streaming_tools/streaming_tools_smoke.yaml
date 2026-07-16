@@ -1,0 +1,117 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |2+
+
+
+
+
+
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"The","reasoning_details":[{"format":"unknown","index":0,"text":"The","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" user wants me to","reasoning_details":[{"format":"unknown","index":0,"text":" user wants me to","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" calculate 2 -","reasoning_details":[{"format":"unknown","index":0,"text":" calculate 2 -","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" 5. I","reasoning_details":[{"format":"unknown","index":0,"text":" 5. I","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" have a subtract function","reasoning_details":[{"format":"unknown","index":0,"text":" have a subtract function","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" available that can subtract","reasoning_details":[{"format":"unknown","index":0,"text":" available that can subtract","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" y from x (","reasoning_details":[{"format":"unknown","index":0,"text":" y from x (","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"i.e., x","reasoning_details":[{"format":"unknown","index":0,"text":"i.e., x","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" - y). I","reasoning_details":[{"format":"unknown","index":0,"text":" - y). I","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" need to call this","reasoning_details":[{"format":"unknown","index":0,"text":" need to call this","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" function with x =","reasoning_details":[{"format":"unknown","index":0,"text":" function with x =","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" 2 and y","reasoning_details":[{"format":"unknown","index":0,"text":" 2 and y","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" = 5.","reasoning_details":[{"format":"unknown","index":0,"text":" = 5.","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"subtract"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": "},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"2"},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":", \"y\": 5"},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"}"},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":89,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":49},"prompt_tokens":413,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":502}}
+
+    data: [DONE]
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"reasoning_content":"The user wants me to calculate 2 - 5. I have a subtract function available that can subtract y from x (i.e., x - y). I need to call this function with x = 2 and y = 5.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |2+
+
+
+
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"The","reasoning_details":[{"format":"unknown","index":0,"text":"The","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" function","reasoning_details":[{"format":"unknown","index":0,"text":" function","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" returned -3,","reasoning_details":[{"format":"unknown","index":0,"text":" returned -3,","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" which is the correct","reasoning_details":[{"format":"unknown","index":0,"text":" which is the correct","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" result of ","reasoning_details":[{"format":"unknown","index":0,"text":" result of ","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"2 - 5","reasoning_details":[{"format":"unknown","index":0,"text":"2 - 5","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":". I should provide","reasoning_details":[{"format":"unknown","index":0,"text":". I should provide","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" this answer to the","reasoning_details":[{"format":"unknown","index":0,"text":" this answer to the","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" user.","reasoning_details":[{"format":"unknown","index":0,"text":" user.","type":"reasoning.text"}],"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"2 - ","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"5 = -3","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":39,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":27},"prompt_tokens":518,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":557}}
+
+    data: [DONE]

@@ -9,5 +9,10 @@
 #[path = "common/support.rs"]
 mod support;
 
+#[path = "common/cassette_safety.rs"]
+mod cassette_safety;
+#[path = "common/cassettes.rs"]
+mod cassettes;
+
 #[path = "providers/doubleword/mod.rs"]
 mod doubleword;

@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use add for arithmetic and report only the tool result.","type":"text"}],"role":"system"},{"content":"Use add once for x=1 and y=1, then report what the tool returns.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tool_choice":"required","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to use the add function once with x=1 and y=1, and then report what the tool returns. I need to call the add function with these parameters.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to use the add function once with x=1 and y=1, and then report what the tool returns. I need to call the add function with these parameters.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 1, \"y\": 1}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":75,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":41},"prompt_tokens":335,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":410}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use add for arithmetic and report only the tool result.","type":"text"}],"role":"system"},{"content":"Use add once for x=1 and y=1, then report what the tool returns.","role":"user"},{"reasoning_content":"The user wants me to use the add function once with x=1 and y=1, and then report what the tool returns. I need to call the add function with these parameters.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":1,\"y\":1}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"[portable-redacted]","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The tool returned: [portable-redacted]","reasoning":"The tool returned a result, but it appears to be redacted. I should report what the tool returned as requested.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The tool returned a result, but it appears to be redacted. I should report what the tool returned as requested.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":39,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":24},"prompt_tokens":421,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":460}}'

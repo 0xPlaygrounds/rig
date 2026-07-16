@@ -62,6 +62,14 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_bedrock_cassette"],
     },
     ProviderCassetteSuite {
+        provider: "doubleword",
+        source_dir: "tests/providers/doubleword/cassette",
+        wrapper_names: &[
+            "with_doubleword_cassette",
+            "with_doubleword_cassette_result",
+        ],
+    },
+    ProviderCassetteSuite {
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],

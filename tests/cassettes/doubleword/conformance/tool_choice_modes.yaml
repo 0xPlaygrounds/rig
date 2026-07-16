@@ -1,0 +1,50 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Answer with only the number 4. Do not call a function.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tool_choice":"none","tools":[{"function":{"description":"Return the supplied integer using alpha.","name":"alpha","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Return the supplied integer using beta.","name":"beta","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"4","reasoning":"Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Instruction: \"Answer with only the number 4.\"\n    *   Constraint: \"Do not call a function.\"\n    *   Goal: Provide the output \"4\" and nothing else.\n\n2.  **Evaluate Constraints:**\n    *   \"Only the number 4\": Means no text, no explanations, no punctuation (other than what might be inherent to the number, but usually just the digit).\n    *   \"Do not call a function\": This is a directive to me (the AI) not to use any internal tools or function calling mechanisms. I should just generate the text directly.\n\n3.  **Determine Output:**\n    *   The required output is simply: 4\n\n4.  **Final Check:**\n    *   Does this violate any safety policies? No.\n    *   Does this follow the user''s instruction? Yes.\n    *   Am I calling a function? No, I am generating text.\n\n5.  **Construct Response:**\n    *   4\n\n6.  **Final Decision:** Output \"4\".","reasoning_details":[{"format":"unknown","index":0,"text":"Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Instruction: \"Answer with only the number 4.\"\n    *   Constraint: \"Do not call a function.\"\n    *   Goal: Provide the output \"4\" and nothing else.\n\n2.  **Evaluate Constraints:**\n    *   \"Only the number 4\": Means no text, no explanations, no punctuation (other than what might be inherent to the number, but usually just the digit).\n    *   \"Do not call a function\": This is a directive to me (the AI) not to use any internal tools or function calling mechanisms. I should just generate the text directly.\n\n3.  **Determine Output:**\n    *   The required output is simply: 4\n\n4.  **Final Check:**\n    *   Does this violate any safety policies? No.\n    *   Does this follow the user''s instruction? Yes.\n    *   Am I calling a function? No, I am generating text.\n\n5.  **Construct Response:**\n    *   4\n\n6.  **Final Decision:** Output \"4\".","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":246,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":241},"prompt_tokens":24,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":270}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":96,"messages":[{"content":"Call alpha with value 7.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tool_choice":"required","tools":[{"function":{"description":"Return the supplied integer using alpha.","name":"alpha","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Return the supplied integer using beta.","name":"beta","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to call the alpha function with value 7. I need to use the alpha function with the parameter value set to 7.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to call the alpha function with value 7. I need to use the alpha function with the parameter value set to 7.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\": 7}","name":"alpha"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":57,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":33},"prompt_tokens":350,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":407}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":96,"messages":[{"content":"Call beta with value 9.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tool_choice":{"function":{"name":"beta"},"type":"function"},"tools":[{"function":{"description":"Return the supplied integer using alpha.","name":"alpha","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Return the supplied integer using beta.","name":"beta","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user is asking me to call the beta function with value 9. I have access to a beta function that takes an integer value parameter. I need to call this function with the value 9.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The user is asking me to call the beta function with value 9. I have access to a beta function that takes an integer value parameter. I need to call this function with the value 9.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\": 9}","name":"beta"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"resp_REDACTED_3","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":68,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":46},"prompt_tokens":284,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":352}}'

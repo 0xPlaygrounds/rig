@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use the repeat_text tool whenever asked to repeat text.","type":"text"}],"role":"system"},{"content":"Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.","role":"user"}],"model":"Qwen/Qwen3.5-9B","tools":[{"function":{"description":"Repeat `text`. `times` is optional and defaults to 2.","name":"repeat_text","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"text":{"description":"The text to repeat.","type":"string"},"times":{"description":"Number of repetitions; defaults to 2 when omitted.","format":"uint32","minimum":0,"type":["integer","null"]}},"required":["text"],"title":"RepeatArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to use the repeat_text tool to repeat the word \"banana\" 3 times, and then show them the exact result. I need to call the repeat_text function with text=\"banana\" and times=3.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to use the repeat_text tool to repeat the word \"banana\" 3 times, and then show them the exact result. I need to call the repeat_text function with text=\"banana\" and times=3.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"text\": \"banana\", \"times\": 3}","name":"repeat_text"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":88,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":49},"prompt_tokens":390,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":478}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use the repeat_text tool whenever asked to repeat text.","type":"text"}],"role":"system"},{"content":"Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.","role":"user"},{"reasoning_content":"The user wants me to use the repeat_text tool to repeat the word \"banana\" 3 times, and then show them the exact result. I need to call the repeat_text function with text=\"banana\" and times=3.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"text\":\"banana\",\"times\":3}","name":"repeat_text"},"id":"call_REDACTED_1","type":"function"}]},{"content":"banana banana banana","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen/Qwen3.5-9B","tools":[{"function":{"description":"Repeat `text`. `times` is optional and defaults to 2.","name":"repeat_text","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"text":{"description":"The text to repeat.","type":"string"},"times":{"description":"Number of repetitions; defaults to 2 when omitted.","format":"uint32","minimum":0,"type":["integer","null"]}},"required":["text"],"title":"RepeatArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The result is: **banana banana banana**","reasoning":"The tool returned \"banana banana banana\", which is exactly what was requested. Now I should share the result with the user.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The tool returned \"banana banana banana\", which is exactly what was requested. Now I should share the result with the user.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":38,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":32},"prompt_tokens":448,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":486}}'
