@@ -9,6 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] Make `AgentRunner` the only execution path for configured agents: remove the raw `Completion` and `StreamingCompletion` traits and their `Agent` implementations, make agent execution state private, add runner-backed per-request overrides, and route `Extractor` through the full hook lifecycle. Raw hook-free requests remain available explicitly through `CompletionModel`.
+
+  Migration examples:
+
+  ```rust
+  // Before: built a one-shot request from configured Agent state, but bypassed
+  // the AgentRunner lifecycle.
+  agent.completion(prompt, history).await?.send().await?;
+
+  // After, for managed Agent execution: hooks, tools, retrieval, memory, and
+  // turn accounting all run. Budget enough calls for tool follow-ups.
+  agent
+      .runner(prompt)
+      .history(history)
+      .max_turns(3)
+      .run()
+      .await?;
+  ```
+
+  Streaming follows the same boundary:
+
+  ```rust
+  // Before
+  agent.stream_completion(prompt, history).await?.stream().await?;
+
+  // After
+  let stream = agent
+      .runner(prompt)
+      .history(history)
+      .max_turns(3)
+      .stream()
+      .await;
+  ```
+
+  The runner consumes tool calls instead of returning the first raw model
+  response. If the old caller handled that response itself, or for any other
+  intentionally hook-free provider transport, start from the model rather than
+  an `Agent`:
+
+  ```rust
+  model
+      .completion_request(prompt)
+      .messages(history)
+      .send()
+      .await?;
+
+  let stream = model
+      .completion_request(prompt)
+      .messages(history)
+      .stream()
+      .await?;
+  ```
+
+  `AgentRun::new(prompt).with_history(history)` remains the public sans-I/O
+  state machine for custom drivers. It contains no model, tools, memory, or hook
+  stack: callers must handle every `AgentRunStep`, perform provider/tool IO, and
+  feed results back explicitly. It is not a way to execute a configured
+  `Agent`; use `AgentRunner` for that.
+
+  An `Agent` also keeps its configured model private and fixed. Applications
+  that previously called `.model(...)` or `.model_opt(...)` on the returned raw
+  request builder should retain the provider `CompletionModel` and use its raw
+  request API, or construct a separate `Agent` for that model selection.
 - *(providers)* [**breaking**] Move Together, OpenRouter, and Mistral embeddings onto the shared `GenericEmbeddingModel`, with provider-specific endpoint and typed request-shaping hooks. Together now forwards configured embedding dimensions, Mistral maps Codestral Embed dimensions to `output_dimension` while rejecting dimensions for fixed-size models, compatible providers may omit usage without weakening OpenAI's public response type, and Base64 response encoding is rejected before sending because the shared parser accepts numeric vectors. Remove the superseded provider-specific embedding response/data types, Together's API envelope module, and OpenRouter's duplicate `EncodingFormat`.
 - *(tool)* [**breaking**] Replace the parallel tool-execution APIs with one structured path. Typed tools now implement only `Tool::call(&mut ToolContext, Args) -> Result<Output, Error>`; author-facing errors remain typed until private runtime erasure normalizes them into `ToolExecutionError`, `ToolContext` carries inbound values and host-only result metadata, `ToolResult` is the single runtime observation, and `ToolSet::execute` / `ToolServerHandle::execute` are the dispatch surfaces. Event-specific hook action types make invalid event/action combinations unrepresentable.
   - Tool implementations: retain one typed `type Error` for ordinary `?` propagation and direct-call tests; remove `classify_error`, `call_with_extensions`, and `call_structured`. The optional `map_error` method classifies domain failures at the erased boundary, while its default preserves the source as `Other`. Return refusals through `map_error` with `ToolExecutionError::refused`, and attach host-only result metadata with `ToolContext::insert_result`.

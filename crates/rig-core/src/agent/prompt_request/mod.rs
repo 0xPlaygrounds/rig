@@ -42,6 +42,91 @@ macro_rules! forward_prompt_setters {
             self
         }
 
+        /// Override the agent preamble for this request.
+        pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+            self.$recv = self.$recv.preamble(preamble);
+            self
+        }
+
+        /// Remove the agent's configured preamble for this request.
+        pub fn without_preamble(mut self) -> Self {
+            self.$recv = self.$recv.without_preamble();
+            self
+        }
+
+        /// Append one static context document for this request.
+        pub fn document(mut self, document: crate::completion::Document) -> Self {
+            self.$recv = self.$recv.document(document);
+            self
+        }
+
+        /// Append static context documents for this request.
+        pub fn documents(
+            mut self,
+            documents: impl IntoIterator<Item = crate::completion::Document>,
+        ) -> Self {
+            self.$recv = self.$recv.documents(documents);
+            self
+        }
+
+        /// Override the model temperature for this request.
+        pub fn temperature(mut self, temperature: f64) -> Self {
+            self.$recv = self.$recv.temperature(temperature);
+            self
+        }
+
+        /// Remove the agent's configured temperature for this request.
+        pub fn without_temperature(mut self) -> Self {
+            self.$recv = self.$recv.without_temperature();
+            self
+        }
+
+        /// Override the maximum completion token count for this request.
+        pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+            self.$recv = self.$recv.max_tokens(max_tokens);
+            self
+        }
+
+        /// Remove the agent's configured maximum token count for this request.
+        pub fn without_max_tokens(mut self) -> Self {
+            self.$recv = self.$recv.without_max_tokens();
+            self
+        }
+
+        /// Shallow-merge object fields into the provider-specific parameters
+        /// for this request. Later fields win.
+        pub fn merge_additional_params(
+            mut self,
+            params: serde_json::Map<String, serde_json::Value>,
+        ) -> Self {
+            self.$recv = self.$recv.merge_additional_params(params);
+            self
+        }
+
+        /// Replace all provider-specific parameters for this request.
+        pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
+            self.$recv = self.$recv.replace_additional_params(params);
+            self
+        }
+
+        /// Remove the agent's configured provider-specific parameters for this request.
+        pub fn without_additional_params(mut self) -> Self {
+            self.$recv = self.$recv.without_additional_params();
+            self
+        }
+
+        /// Override the tool-choice policy for this request.
+        pub fn tool_choice(mut self, tool_choice: crate::message::ToolChoice) -> Self {
+            self.$recv = self.$recv.tool_choice(tool_choice);
+            self
+        }
+
+        /// Remove the agent's configured tool-choice policy for this request.
+        pub fn without_tool_choice(mut self) -> Self {
+            self.$recv = self.$recv.without_tool_choice();
+            self
+        }
+
         /// Opt in or out of recording sensitive request, response, and tool
         /// content on GenAI telemetry spans for this request.
         ///
@@ -297,6 +382,10 @@ pub struct PromptResponse {
     /// Where [`output`](Self::output) is the concatenated text, this preserves
     /// the individual content parts (text, reasoning, images, …).
     pub content: OneOrMany<AssistantContent>,
+    /// Number of synthetic output-tool calls in the turn that finalized this
+    /// response. Kept crate-private because it is runner bookkeeping rather
+    /// than provider-facing response content.
+    output_tool_calls: usize,
 }
 
 /// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
@@ -315,6 +404,8 @@ struct PromptResponseRepr {
     messages: Option<Vec<Message>>,
     #[serde(default)]
     content: Option<OneOrMany<AssistantContent>>,
+    #[serde(skip)]
+    output_tool_calls: usize,
 }
 
 impl From<PromptResponseRepr> for PromptResponse {
@@ -328,6 +419,7 @@ impl From<PromptResponseRepr> for PromptResponse {
             completion_calls: repr.completion_calls,
             messages: repr.messages,
             content,
+            output_tool_calls: repr.output_tool_calls,
         }
     }
 }
@@ -340,6 +432,7 @@ impl From<PromptResponse> for PromptResponseRepr {
             completion_calls: response.completion_calls,
             messages: response.messages,
             content: Some(response.content),
+            output_tool_calls: response.output_tool_calls,
         }
     }
 }
@@ -359,6 +452,7 @@ impl PromptResponse {
             usage,
             completion_calls: Vec::new(),
             messages: None,
+            output_tool_calls: 0,
         }
     }
 
@@ -382,6 +476,15 @@ impl PromptResponse {
     pub fn with_content(mut self, content: OneOrMany<AssistantContent>) -> Self {
         self.content = content;
         self
+    }
+
+    pub(crate) fn with_output_tool_calls(mut self, count: usize) -> Self {
+        self.output_tool_calls = count;
+        self
+    }
+
+    pub(crate) fn output_tool_calls(&self) -> usize {
+        self.output_tool_calls
     }
 
     /// The concatenated assistant text for the final turn.
@@ -1099,6 +1202,18 @@ mod tests {
             ]
         );
         assert_eq!(response.requests(), 2);
+    }
+
+    #[test]
+    fn prompt_response_output_tool_marker_is_never_serialized() {
+        let response = PromptResponse::new("ok", usage(1, 2)).with_output_tool_calls(3);
+
+        let value = serde_json::to_value(&response).expect("serialize prompt response");
+        assert!(value.get("output_tool_calls").is_none());
+
+        let decoded: PromptResponse =
+            serde_json::from_value(value).expect("deserialize prompt response");
+        assert_eq!(decoded.output_tool_calls(), 0);
     }
 
     #[test]

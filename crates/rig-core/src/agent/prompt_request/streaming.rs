@@ -284,12 +284,10 @@ where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
 {
-    /// Create a new StreamingPromptRequest from an agent WITHOUT the agent's
-    /// default hooks. Use [`from_agent`](Self::from_agent) to include them.
+    /// Create a new `StreamingPromptRequest` from an agent, including its
+    /// default hooks.
     pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
-        let mut runner = AgentRunner::from_agent(agent.as_ref(), prompt);
-        runner.hooks = HookStack::new();
-        StreamingPromptRequest { runner }
+        Self::from_agent(agent.as_ref(), prompt)
     }
 
     /// Create a new StreamingPromptRequest from an agent, cloning the agent's
@@ -451,6 +449,15 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     }
 }
 
+pub(crate) fn store_error_usage<M>(runner: &AgentRunner<M>, run: &AgentRun)
+where
+    M: CompletionModel,
+{
+    if let Some(usage) = &runner.error_usage {
+        *usage.lock().unwrap_or_else(|error| error.into_inner()) = run.usage();
+    }
+}
+
 /// The single agent drive loop, shared by the blocking and streaming surfaces.
 ///
 /// Owns the medium-independent loop — `next_step` dispatch, the `CompletionCall`
@@ -485,6 +492,7 @@ where
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
+                    store_error_usage(&runner, &run);
                     yield Err(Box::new(err).into());
                     break 'outer;
                 }
@@ -501,6 +509,7 @@ where
                     let request_patch =
                         match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
+                                store_error_usage(&runner, &run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
@@ -537,12 +546,15 @@ where
                         runner.output_schema.as_ref(),
                         &runner.output_mode,
                         committed_output_tool.as_deref(),
+                        runner.output_tool_description.as_deref(),
+                        runner.augment_output_preamble,
                         request_patch.as_ref(),
                     )
                     .await
                     {
                         Ok(prepared) => prepared,
                         Err(err) => {
+                            store_error_usage(&runner, &run);
                             yield Err(err.into());
                             break 'outer;
                         }
@@ -564,25 +576,27 @@ where
                         &agent_span,
                         prompt,
                     );
-                    let mut errored = false;
+                    let mut turn_error = None;
                     while let Some(item) = turn_stream.next().await {
                         match item {
                             Ok(item) => yield Ok(DriveItem::Item(item)),
                             Err(err) => {
-                                errored = true;
-                                yield Err(err);
+                                turn_error = Some(err);
                                 break;
                             }
                         }
                     }
                     drop(turn_stream);
-                    if errored {
+                    if let Some(err) = turn_error {
+                        store_error_usage(&runner, &run);
+                        yield Err(err);
                         break 'outer;
                     }
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
+                        store_error_usage(&runner, &run);
                         yield Err(StreamingError::Completion(CompletionError::ResponseError(
                             "agent requested tool execution without a prepared registry snapshot"
                                 .to_string(),
@@ -596,19 +610,20 @@ where
                         calls,
                         tool_snapshot,
                     );
-                    let mut errored = false;
+                    let mut tool_error = None;
                     while let Some(item) = tool_stream.next().await {
                         match item {
                             Ok(item) => yield Ok(DriveItem::Item(item)),
                             Err(err) => {
-                                errored = true;
-                                yield Err(err);
+                                tool_error = Some(err);
                                 break;
                             }
                         }
                     }
                     drop(tool_stream);
-                    if errored {
+                    if let Some(err) = tool_error {
+                        store_error_usage(&runner, &run);
+                        yield Err(err);
                         break 'outer;
                     }
                 }
@@ -1582,6 +1597,45 @@ mod migrated_tests {
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+    struct StopAgentStreamingBeforeCompletion;
+
+    impl AgentHook<MockCompletionModel> for StopAgentStreamingBeforeCompletion {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::CompletionCallEvent<'_>,
+        ) -> crate::agent::CompletionCallAction {
+            crate::agent::CompletionCallAction::stop("agent streaming stopped")
+        }
+    }
+
+    #[tokio::test]
+    async fn public_streaming_request_constructor_preserves_agent_hooks() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("should not run"),
+            MockStreamEvent::final_response(Usage::new()),
+        ]]);
+        let agent = Arc::new(
+            AgentBuilder::new(model.clone())
+                .add_hook(StopAgentStreamingBeforeCompletion)
+                .build(),
+        );
+
+        let mut stream = StreamingPromptRequest::new(agent, "go").await;
+        let error = stream
+            .try_next()
+            .await
+            .expect_err("the configured agent hook should terminate the stream");
+
+        assert!(matches!(
+            error,
+            StreamingError::Prompt(error)
+                if matches!(*error, PromptError::PromptCancelled { ref reason, .. }
+                    if reason == "agent streaming stopped")
+        ));
+        assert_eq!(model.request_count(), 0);
+    }
 
     #[test]
     fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {

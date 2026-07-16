@@ -1,4 +1,4 @@
-//! Demonstrates manual tool-call handling with `Agent::completion()`.
+//! Demonstrates manual tool-call handling with a raw `CompletionModel` request.
 //! Requires `OPENAI_API_KEY`.
 //!
 //! Unlike `agent.prompt(...)`, this example never lets Rig execute tools automatically.
@@ -12,7 +12,7 @@
 use anyhow::{Result, bail};
 use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::Completion;
+use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::providers::openai;
 use rig::tool::{Tool, ToolOutput, ToolSet};
@@ -133,17 +133,11 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
 async fn main() -> Result<()> {
     const MAX_ROUNDS: usize = 8;
 
-    let agent = openai::Client::from_env()?
-        .agent(openai::GPT_4O_MINI)
-        .preamble(
-            "You are a calculator. Never do arithmetic from memory. \
-             Use the provided tools for every intermediate step. \
-             You may emit one or multiple tool calls in a single turn. \
-             Once all tool results are available, give a short final answer.",
-        )
-        .tool(Add)
-        .tool(Subtract)
-        .build();
+    let model = openai::Client::from_env()?.completion_model(openai::GPT_4O_MINI);
+    let preamble = "You are a calculator. Never do arithmetic from memory. \
+                    Use the provided tools for every intermediate step. \
+                    You may emit one or multiple tool calls in a single turn. \
+                    Once all tool results are available, give a short final answer.";
 
     let local_tools = ToolSet::builder()
         .static_tool(Add)
@@ -156,9 +150,13 @@ async fn main() -> Result<()> {
     );
 
     for round in 1..=MAX_ROUNDS {
-        let mut request = agent
-            .completion(current_prompt.clone(), history.clone())
-            .await?;
+        // This example intentionally operates below the Agent abstraction. Raw
+        // model requests have no agent lifecycle or hooks.
+        let mut request = model
+            .completion_request(current_prompt.clone())
+            .preamble(preamble.to_string())
+            .messages(history.clone())
+            .tools(local_tools.get_tool_definitions());
         if round == 1 {
             // Force the first turn through the tool path so the example always demonstrates it.
             request = request.tool_choice(ToolChoice::Required);

@@ -19,15 +19,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{
-        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, HookContext,
-        InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig, OutputMode, RequestPatch,
-        StreamingError, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
-        ToolResultEvent,
+        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent,
+        CompletionResponseEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem,
+        NoToolConfig, ObservationAction, OutputMode, RequestPatch, StreamingError,
+        ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
-        AssistantContent, Completion, CompletionError, CompletionModel, Message, Prompt,
-        PromptError, ToolDefinition,
+        AssistantContent, CompletionError, CompletionModel, Message, Prompt, PromptError,
+        ToolDefinition,
     },
     message::{ToolChoice, UserContent},
     streaming::StreamingPrompt,
@@ -1408,11 +1408,44 @@ where
         .tool(CountingSum(sum_calls.clone()))
         .tool_choice(ToolChoice::Required)
         .build();
-    let response = agent
-        .completion(PROMPT, Vec::<Message>::new())
-        .await?
-        .send()
-        .await?;
+    #[derive(Clone)]
+    struct CaptureTurn(Arc<Mutex<Option<ModelTurn>>>);
+
+    impl<M> AgentHook<M> for CaptureTurn
+    where
+        M: CompletionModel,
+    {
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            event: CompletionResponseEvent<'_, M>,
+        ) -> ObservationAction {
+            *lock_recover(&self.0) = Some(ModelTurn::new(
+                event.response.message_id.clone(),
+                event.response.choice.clone(),
+                event.response.usage,
+                BTreeSet::new(),
+                BTreeSet::new(),
+            ));
+            ObservationAction::stop("captured conformance model turn")
+        }
+    }
+
+    let captured = Arc::new(Mutex::new(None));
+    let stopped = agent
+        .runner(PROMPT)
+        .add_hook(CaptureTurn(captured.clone()))
+        .run()
+        .await;
+    if !matches!(stopped, Err(PromptError::PromptCancelled { .. })) {
+        return Err(ScenarioError::contract(
+            SCENARIO,
+            format!("capture hook did not stop after the model response: {stopped:?}"),
+        ));
+    }
+    let response = lock_recover(&captured).take().ok_or_else(|| {
+        ScenarioError::contract(SCENARIO, "capture hook observed no model response")
+    })?;
     let emitted = response
         .choice
         .iter()

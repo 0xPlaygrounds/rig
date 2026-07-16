@@ -18,11 +18,11 @@ use rig::client::CompletionClient;
 use rig::completion::{GetTokenUsage, PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamingCompletion, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 use rig::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
-    Add, FORCE_TOOLS_PREAMBLE, GeminiAgent, Subtract, Sum, assert_canonical_assistant_order,
+    Add, FORCE_TOOLS_PREAMBLE, GeminiAgent, assert_canonical_assistant_order,
     assistant_tool_call_names, execute_pending_calls, history_has_assistant_tool_call,
     is_tool_result_user_message, sum_completion_call_usage, tool_names,
 };
@@ -56,9 +56,7 @@ async fn run_streamed_turn(
     collected_text: &mut String,
 ) -> Result<TurnEnd, PromptError> {
     let mut stream = agent
-        .stream_completion(prompt, &history)
-        .await
-        .expect("stream request should build")
+        .request(prompt, history)
         .stream()
         .await
         .expect("gemini stream should open");
@@ -163,12 +161,12 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                 "a phantom completion call must be rejected on a fresh run"
             );
 
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool(Subtract)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add", "subtract"],
+                None,
+            );
             let names = tool_names(&["add", "subtract"]);
 
             let mut run = AgentRun::new(
@@ -244,12 +242,12 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
     with_gemini_cassette(
         "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add"],
+                Some(ToolChoice::Required),
+            );
             let executable = tool_names(&["add"]);
             let nothing_allowed = tool_names(&[]);
 
@@ -303,12 +301,12 @@ async fn streamed_repair_continues_the_same_stream() {
     with_gemini_cassette(
         "agent_run_streamed/streamed_repair_continues_the_same_stream",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool(Sum)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add", "sum"],
+                None,
+            );
             let machine_names = tool_names(&["sum"]);
 
             let mut run =
@@ -375,11 +373,12 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
     with_gemini_cassette(
         "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .build();
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add"],
+                None,
+            );
             let executable = tool_names(&["add"]);
             let nothing_allowed = tool_names(&[]);
             const SKIP_REASON: &str = "The add tool is disabled for this request.";

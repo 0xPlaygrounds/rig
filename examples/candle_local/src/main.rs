@@ -3,8 +3,8 @@ use std::io::Write;
 use anyhow::Context;
 use futures::StreamExt;
 use rig::candle::{CandleModel, ModelData};
-use rig::streaming::{StreamedAssistantContent, StreamingCompletion};
-use rig::{agent::AgentBuilder, message::Message};
+use rig::completion::CompletionModel;
+use rig::streaming::StreamedAssistantContent;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -25,15 +25,11 @@ async fn main() -> anyhow::Result<()> {
         tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
         weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
-    let agent = AgentBuilder::new(model)
-        .preamble("You are a concise and helpful assistant.")
+    let mut response = model
+        .completion_request(prompt)
+        .preamble("You are a concise and helpful assistant.".to_string())
         .temperature(0.0)
         .max_tokens(64)
-        .build();
-
-    let mut response = agent
-        .stream_completion(prompt, std::iter::empty::<Message>())
-        .await?
         .stream()
         .await?;
     let mut final_response = None;

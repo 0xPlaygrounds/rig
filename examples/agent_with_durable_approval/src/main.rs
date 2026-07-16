@@ -31,10 +31,10 @@ use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::Completion;
+use rig::completion::CompletionModel;
 use rig::message::{ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -145,15 +145,17 @@ async fn ask(prompt: &str) -> Option<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
-        .agent(openai::GPT_4O)
-        .preamble(
-            "You are a banking assistant. Use the tools to carry out the user's request. \
-             Call one tool at a time.",
-        )
-        .tool(GetBalance)
-        .tool(TransferFunds)
+    // A serializable `AgentRun` is a sans-IO protocol primitive. This example
+    // intentionally supplies raw model transport and tool dispatch explicitly;
+    // configured `Agent` execution instead always goes through `AgentRunner`.
+    let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
+    let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
+                    Call one tool at a time.";
+    let tools = ToolSet::builder()
+        .static_tool(GetBalance)
+        .static_tool(TransferFunds)
         .build();
+    let tool_definitions = tools.get_tool_definitions();
 
     let prompt = "Check the balance of account A-1, then transfer $500 to account B-2.";
     println!("User: {prompt}");
@@ -172,13 +174,16 @@ async fn main() -> Result<()> {
                 turn,
             } => {
                 println!("\n→ model call #{turn}");
-                let response = agent.completion(prompt, history).await?.send().await?;
-                let tool_names: BTreeSet<String> = agent
-                    .tool_server_handle
-                    .get_tool_defs(None)
-                    .await?
-                    .into_iter()
-                    .map(|def| def.name)
+                let response = model
+                    .completion_request(prompt)
+                    .messages(history)
+                    .preamble(preamble.to_string())
+                    .tools(tool_definitions.clone())
+                    .send()
+                    .await?;
+                let tool_names: BTreeSet<String> = tool_definitions
+                    .iter()
+                    .map(|def| def.name.clone())
                     .collect();
                 let mut outcome = run.model_response(ModelTurn::new(
                     response.message_id.clone(),
@@ -226,9 +231,8 @@ async fn main() -> Result<()> {
                         .as_deref()
                     {
                         Some("a") | Some("approve") => {
-                            let execution = agent
-                                .tool_server_handle
-                                .execute(&name, &args, &mut rig::tool::ToolContext::new())
+                            let execution = tools
+                                .execute(&name, args, &mut rig::tool::ToolContext::new())
                                 .await;
                             results.push(UserContent::tool_result(
                                 id,
@@ -242,11 +246,10 @@ async fn main() -> Result<()> {
                                 .map(serde_json::from_str::<serde_json::Value>)
                             {
                                 Some(Ok(value)) => {
-                                    let execution = agent
-                                        .tool_server_handle
+                                    let execution = tools
                                         .execute(
                                             &name,
-                                            &value.to_string(),
+                                            value.to_string(),
                                             &mut rig::tool::ToolContext::new(),
                                         )
                                         .await;
