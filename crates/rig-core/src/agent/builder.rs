@@ -114,8 +114,6 @@ where
     record_telemetry_content: bool,
     /// Maximum number of tokens for the completion
     max_tokens: Option<u64>,
-    /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
@@ -177,18 +175,6 @@ where
             text: doc.into(),
             additional_props: HashMap::new(),
         });
-        self
-    }
-
-    /// Add some dynamic context to the agent. On each prompt, `sample` documents from the
-    /// dynamic context will be inserted in the request.
-    pub fn dynamic_context(
-        mut self,
-        sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
-    ) -> Self {
-        self.dynamic_context
-            .push((sample, Arc::new(dynamic_context)));
         self
     }
 
@@ -318,7 +304,6 @@ where
             max_tokens: None,
             additional_params: None,
             record_telemetry_content: false,
-            dynamic_context: vec![],
             tool_choice: None,
             default_max_turns: None,
             tool_state: NoToolConfig,
@@ -353,7 +338,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -385,7 +369,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -422,7 +405,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -521,7 +503,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -563,7 +544,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
@@ -596,7 +576,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hooks: self.hooks,
@@ -625,7 +604,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle: self.tool_state.handle,
             default_max_turns: self.default_max_turns,
             hooks: self.hooks,
@@ -739,7 +717,6 @@ where
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hooks: self.hooks,

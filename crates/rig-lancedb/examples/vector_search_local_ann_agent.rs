@@ -1,17 +1,68 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
+use rig_core::agent::{
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
+};
 use rig_core::client::{EmbeddingsClient, ProviderClient};
-use rig_core::completion::Prompt;
+use rig_core::completion::{CompletionModel, Document, Message, Prompt};
+use rig_core::message::UserContent;
 use rig_core::prelude::CompletionClient;
 use rig_core::providers::openai;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::Client,
+    vector_store::{VectorStoreIndexDyn, request::VectorSearchRequest},
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
+
+struct LanceDbRag<I> {
+    index: I,
+    samples: usize,
+}
+
+impl<M, I> AgentHook<M> for LanceDbRag<I>
+where
+    M: CompletionModel,
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let message_text = |message: &Message| match message {
+            Message::User { content } => content.iter().find_map(|item| match item {
+                UserContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        };
+        let Some(query) = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text))
+        else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.samples as u64)
+            .build();
+        match self.index.top_n(request).await {
+            Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text:
+                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+                    additional_props: Default::default(),
+                }),
+            )),
+            Err(error) => CompletionCallAction::stop(format!("LanceDB retrieval failed: {error}")),
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -71,7 +122,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let search_params = SearchParams::default();
     let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 
-    // Build RAG agent with dynamic context
+    // Build a passive-RAG agent with application-defined retrieval policy.
     // Use OpenAI-compatible API interface to build agent
     let agent = openai_client
         .completion_model(openai::GPT_4O)
@@ -79,7 +130,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .into_agent_builder()
         .temperature(0.5)
         .preamble("You are a helpful AI assistant.")
-        .dynamic_context(top_k, vector_store_index)
+        .add_hook(LanceDbRag {
+            index: vector_store_index,
+            samples: top_k,
+        })
         .build();
 
     let query = "My boss says I zindle too much, what does that mean?";

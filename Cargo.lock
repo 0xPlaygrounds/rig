@@ -4379,6 +4379,7 @@ dependencies = [
  "rig",
  "schemars 1.2.1",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -8293,6 +8294,7 @@ dependencies = [
  "anyhow",
  "rig",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -9108,6 +9110,7 @@ dependencies = [
  "anyhow",
  "rig",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -9148,6 +9151,7 @@ dependencies = [
  "anyhow",
  "rig",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

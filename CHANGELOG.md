@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] Remove the built-in `AgentBuilder::dynamic_context` and
+  `ExtractorBuilder::dynamic_context` passive-retrieval APIs. Applications now own
+  retrieval query selection, formatting, and failure policy in an `AgentHook`; a
+  retrieval failure can return `CompletionCallAction::stop` before provider I/O.
+  Replace `.dynamic_context(samples, index)` with a local hook that queries the
+  index during `on_completion_call` and returns
+  `CompletionCallAction::patch(RequestPatch::new().extra_context(documents))`, then
+  register it with `.add_hook(MyRetrievalHook { index, samples })`. Use an index's
+  blanket `Tool` implementation (or a custom tool) instead when the model should
+  actively decide whether to retrieve.
 - *(agent)* [**breaking**] Make `AgentRunner` the only execution path for configured agents: remove the raw `Completion` and `StreamingCompletion` traits and their `Agent` implementations, make agent execution state private, add runner-backed per-request overrides, and route `Extractor` through the full hook lifecycle. Raw hook-free requests remain available explicitly through `CompletionModel`.
   - For managed agent execution, replace `agent.completion(prompt, history).await?.send().await?` with `agent.runner(prompt).history(history).max_turns(3).run().await?`, choosing a turn budget large enough for tool follow-ups.
   - For managed streaming execution, replace `agent.stream_completion(prompt, history).await?.stream().await?` with `agent.runner(prompt).history(history).max_turns(3).stream().await`.

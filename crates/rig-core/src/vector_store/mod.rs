@@ -4,7 +4,7 @@
 //!
 //! - [`VectorStoreIndex`]: Query a vector store for similar documents.
 //! - [`InsertDocuments`]: Insert documents and their embeddings.
-//! - [`VectorStoreIndexDyn`]: Type-erased version for dynamic contexts.
+//! - [`VectorStoreIndexDyn`]: Type-erased vector queries for runtime-defined retrieval policies.
 //!
 //! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
 //!
@@ -242,6 +242,51 @@ where
                 document,
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tool::ToolContext;
+    use crate::vector_store::request::Filter;
+
+    struct TestIndex;
+
+    impl VectorStoreIndex for TestIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            let document = serde_json::from_value(json!({ "answer": 42 }))?;
+            Ok(vec![(0.9, "doc-1".to_string(), document)])
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            Ok(vec![(0.9, "doc-1".to_string())])
+        }
+    }
+
+    #[tokio::test]
+    async fn vector_store_index_remains_a_tool() {
+        let request = VectorSearchRequest::builder()
+            .query("answer")
+            .samples(1)
+            .build();
+        let output = <TestIndex as Tool>::call(&TestIndex, &mut ToolContext::new(), request)
+            .await
+            .expect("vector tool call should succeed");
+
+        assert_eq!(<TestIndex as Tool>::NAME, "search_vector_store");
+        assert_eq!(output.len(), 1);
+        let result = output.first().expect("one vector result");
+        assert_eq!(result.id, "doc-1");
+        assert_eq!(result.document, json!({ "answer": 42 }));
     }
 }
 

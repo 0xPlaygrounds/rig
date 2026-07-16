@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] Remove `AgentBuilder::dynamic_context`,
+  `ExtractorBuilder::dynamic_context`, and the internal `DynamicContextStore`.
+  Passive RAG is now explicit application policy implemented with an `AgentHook`;
+  active, model-directed RAG remains available through the blanket vector-index
+  `Tool` implementation or a custom tool.
+
+  Migration pattern:
+
+  ```rust
+  // Before: Rig selected the prompt text, queried the index, and formatted context.
+  let agent = client
+      .agent(model)
+      .dynamic_context(3, index)
+      .build();
+
+  // After: define a local AgentHook whose on_completion_call implementation:
+  // 1. selects a query from event.prompt and event.history,
+  // 2. calls index.top_n(VectorSearchRequest::builder() ...),
+  // 3. converts matches into completion::Document values, and
+  // 4. returns a patch, or stops before provider I/O if retrieval fails.
+  let agent = client
+      .agent(model)
+      .add_hook(MyRetrievalHook { index, samples: 3 })
+      .build();
+
+  // Successful retrieval:
+  CompletionCallAction::patch(
+      RequestPatch::new().extra_context(documents),
+  )
+
+  // Retrieval failure:
+  CompletionCallAction::stop(format!("retrieval failed: {error}"))
+  ```
+
+  The hook path is shared by `AgentRunner::run` and `AgentRunner::stream`, and is
+  also used by `Extractor`, so one retrieval policy has the same behavior on all
+  managed execution surfaces. Multiple hook context patches append in registration
+  order after static agent context.
 - *(agent)* [**breaking**] Make `AgentRunner` the only execution path for configured agents: remove the raw `Completion` and `StreamingCompletion` traits and their `Agent` implementations, make agent execution state private, add runner-backed per-request overrides, and route `Extractor` through the full hook lifecycle. Raw hook-free requests remain available explicitly through `CompletionModel`.
 
   Migration examples:

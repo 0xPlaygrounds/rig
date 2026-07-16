@@ -38,7 +38,6 @@ use crate::{
     agent::{Agent, AgentBuilder, AgentHook, OutputMode},
     completion::{CompletionError, CompletionModel, PromptError, Usage},
     message::{Message, ToolChoice},
-    vector_store::VectorStoreIndexDyn,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -331,19 +330,6 @@ where
             retries: self.retries.unwrap_or(0),
         }
     }
-
-    /// Add dynamic context (RAG) to the extractor.
-    ///
-    /// On each prompt, `sample` documents will be retrieved from the index based on the RAG text
-    /// and inserted in the request.
-    pub fn dynamic_context(
-        mut self,
-        sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
-    ) -> Self {
-        self.agent_builder = self.agent_builder.dynamic_context(sample, dynamic_context);
-        self
-    }
 }
 
 #[cfg(test)]
@@ -356,7 +342,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::agent::{CompletionResponseEvent, HookContext, ObservationAction};
+    use crate::agent::{
+        CompletionCallAction, CompletionResponseEvent, HookContext, ObservationAction, RequestPatch,
+    };
     use crate::message::{AssistantContent, ToolCall, ToolFunction};
     use crate::test_utils::{MockCompletionModel, MockTurn};
 
@@ -451,6 +439,25 @@ mod tests {
             _event: crate::agent::CompletionCallEvent<'_>,
         ) -> crate::agent::CompletionCallAction {
             crate::agent::CompletionCallAction::stop("extractor stopped")
+        }
+    }
+
+    struct ExtractorRetrievalHook;
+
+    impl<M> AgentHook<M> for ExtractorRetrievalHook
+    where
+        M: CompletionModel,
+    {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            CompletionCallAction::patch(RequestPatch::new().context(crate::completion::Document {
+                id: "application-retrieval".to_string(),
+                text: "retrieved extractor context".to_string(),
+                additional_props: Default::default(),
+            }))
         }
     }
 
@@ -566,6 +573,28 @@ mod tests {
         assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
         assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
         assert_eq!(counts.model_turns.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn extractor_accepts_application_defined_retrieval_hook() {
+        let model = MockCompletionModel::new([submit_turn("John")]);
+        let probe = model.clone();
+        let response = ExtractorBuilder::<_, Person>::new(model)
+            .add_hook(ExtractorRetrievalHook)
+            .build()
+            .extract("John")
+            .await
+            .expect("extraction should succeed");
+
+        assert_eq!(response.name, "John");
+        let requests = probe.requests();
+        let request = requests.first().expect("one extractor request");
+        assert!(
+            request
+                .documents
+                .iter()
+                .any(|document| document.id == "application-retrieval")
+        );
     }
 
     #[tokio::test]

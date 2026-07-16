@@ -493,7 +493,7 @@ mod tests {
 
     #[allow(clippy::panic)]
     #[tokio::test]
-    async fn surreal_vector_store_supports_dynamic_context_filters() {
+    async fn surreal_vector_store_supports_type_erased_queries() {
         fn assert_dyn<T: VectorStoreIndexDyn + Send + Sync + 'static>(_: T) {}
 
         let surreal = match Surreal::new::<Mem>(()).await {

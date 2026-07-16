@@ -11,4 +11,5 @@ workspace = true
 rig = { workspace = true, features = ["derive", "pdf"] }
 anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
