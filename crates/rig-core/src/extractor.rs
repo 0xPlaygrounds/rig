@@ -29,24 +29,15 @@
 //! # }
 //! ```
 
-use std::{
-    marker::PhantomData,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-};
+use std::marker::PhantomData;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    agent::{
-        Agent, AgentBuilder, AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
-        OutputMode,
-    },
+    agent::{Agent, AgentBuilder, AgentHook, OutputMode},
     completion::{CompletionError, CompletionModel, PromptError, Usage},
-    message::{AssistantContent, Message, ToolChoice},
+    message::{Message, ToolChoice},
     vector_store::VectorStoreIndexDyn,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -211,7 +202,6 @@ where
         text: &Message,
         messages: &[Message],
     ) -> (Result<T, ExtractionError>, Usage) {
-        let submissions = Arc::new(AtomicUsize::new(0));
         let response = match self
             .agent
             .runner(text.clone())
@@ -222,7 +212,7 @@ where
                 "Submit the structured data you extracted from the provided text.",
                 false,
             )
-            .add_hook(SubmissionObserver(submissions.clone()))
+            .ignore_unhandled_invalid_tool_calls()
             .run()
             .await
         {
@@ -234,7 +224,7 @@ where
         };
         let usage = response.usage;
 
-        let submissions = submissions.load(Ordering::Acquire);
+        let submissions = response.output_tool_calls;
         if submissions == 0 {
             tracing::warn!(
                 "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
@@ -356,33 +346,6 @@ where
     }
 }
 
-struct SubmissionObserver(Arc<AtomicUsize>);
-
-impl<M> AgentHook<M> for SubmissionObserver
-where
-    M: CompletionModel,
-{
-    async fn on_completion_response(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionResponseEvent<'_, M>,
-    ) -> ObservationAction {
-        let submissions = event
-            .response
-            .choice
-            .iter()
-            .filter(|content| {
-                matches!(
-                    content,
-                    AssistantContent::ToolCall(call) if call.function.name == SUBMIT_TOOL_NAME
-                )
-            })
-            .count();
-        self.0.fetch_add(submissions, Ordering::Release);
-        ObservationAction::Continue
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -393,6 +356,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::agent::{CompletionResponseEvent, HookContext, ObservationAction};
+    use crate::message::{AssistantContent, ToolCall, ToolFunction};
     use crate::test_utils::{MockCompletionModel, MockTurn};
 
     #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
@@ -418,11 +383,19 @@ mod tests {
         MockTurn::tool_call("id1", SUBMIT_TOOL_NAME, json!({ "name": name }))
     }
 
+    fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
+        AssistantContent::ToolCall(ToolCall::new(
+            id.to_string(),
+            ToolFunction::new(name.to_string(), arguments),
+        ))
+    }
+
     #[derive(Clone, Default)]
     struct LifecycleCounts {
         completion_calls: Arc<AtomicUsize>,
         completion_responses: Arc<AtomicUsize>,
         model_turns: Arc<AtomicUsize>,
+        invalid_tool_calls: Arc<AtomicUsize>,
     }
 
     impl<M> AgentHook<M> for LifecycleCounts
@@ -455,6 +428,15 @@ mod tests {
             self.model_turns.fetch_add(1, Ordering::SeqCst);
             ObservationAction::Continue
         }
+
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &crate::agent::InvalidToolCallContext,
+        ) -> Option<crate::agent::InvalidToolCallAction> {
+            self.invalid_tool_calls.fetch_add(1, Ordering::SeqCst);
+            None
+        }
     }
 
     struct StopBeforeCompletion;
@@ -469,6 +451,57 @@ mod tests {
             _event: crate::agent::CompletionCallEvent<'_>,
         ) -> crate::agent::CompletionCallAction {
             crate::agent::CompletionCallAction::stop("extractor stopped")
+        }
+    }
+
+    struct StopOnInvalidToolCall;
+
+    impl<M> AgentHook<M> for StopOnInvalidToolCall
+    where
+        M: CompletionModel,
+    {
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &crate::agent::InvalidToolCallContext,
+        ) -> Option<crate::agent::InvalidToolCallAction> {
+            Some(crate::agent::InvalidToolCallAction::stop(
+                "unexpected extractor tool call",
+            ))
+        }
+    }
+
+    struct RepairUnexpectedAsSubmit;
+
+    impl<M> AgentHook<M> for RepairUnexpectedAsSubmit
+    where
+        M: CompletionModel,
+    {
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &crate::agent::InvalidToolCallContext,
+        ) -> Option<crate::agent::InvalidToolCallAction> {
+            Some(crate::agent::InvalidToolCallAction::repair(
+                SUBMIT_TOOL_NAME,
+            ))
+        }
+    }
+
+    struct SkipUnexpected;
+
+    impl<M> AgentHook<M> for SkipUnexpected
+    where
+        M: CompletionModel,
+    {
+        async fn on_invalid_tool_call(
+            &self,
+            _ctx: &HookContext,
+            _event: &crate::agent::InvalidToolCallContext,
+        ) -> Option<crate::agent::InvalidToolCallAction> {
+            Some(crate::agent::InvalidToolCallAction::skip(
+                "ignored by extractor hook",
+            ))
         }
     }
 
@@ -527,6 +560,120 @@ mod tests {
             }
         );
         assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn unexpected_tool_call_preserves_usage_and_retries() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
+            submit_turn("John").with_usage(usage(5)),
+        ]);
+
+        let response = extractor(model, 1)
+            .extract_with_usage("John")
+            .await
+            .expect("second attempt should succeed");
+
+        assert_eq!(response.data.name, "John");
+        assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
+            submit_turn("John").with_usage(usage(5)),
+        ]);
+        let counts = LifecycleCounts::default();
+
+        let response = ExtractorBuilder::<_, Person>::new(model)
+            .retries(1)
+            .add_hook(counts.clone())
+            .build()
+            .extract_with_usage("John")
+            .await
+            .expect("deferred invalid call should use extractor fallback");
+
+        assert_eq!(response.data.name, "John");
+        assert_eq!(response.usage.total_tokens, 15);
+        assert_eq!(counts.invalid_tool_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 2);
+        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn unexpected_tool_call_hook_can_stop_extraction() {
+        let model =
+            MockCompletionModel::new([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
+
+        let error = ExtractorBuilder::<_, Person>::new(model)
+            .add_hook(StopOnInvalidToolCall)
+            .build()
+            .extract("John")
+            .await
+            .expect_err("invalid-tool hook should retain control");
+
+        assert!(matches!(
+            error,
+            ExtractionError::PromptError(PromptError::PromptCancelled { reason, .. })
+                if reason == "unexpected extractor tool call"
+        ));
+    }
+
+    #[tokio::test]
+    async fn unexpected_tool_call_hook_can_repair_to_submit() {
+        let model = MockCompletionModel::new([MockTurn::tool_call(
+            "unknown",
+            "unexpected",
+            json!({ "name": "John" }),
+        )]);
+
+        let response = ExtractorBuilder::<_, Person>::new(model)
+            .add_hook(RepairUnexpectedAsSubmit)
+            .build()
+            .extract("John")
+            .await
+            .expect("repaired output-tool call should finalize extraction");
+
+        assert_eq!(response.name, "John");
+    }
+
+    #[tokio::test]
+    async fn skip_hook_preserves_valid_submit_sibling() {
+        let turn = MockTurn::from_contents([
+            tool_call("unknown", "unexpected", json!({})),
+            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+        ])
+        .expect("two tool calls");
+        let model = MockCompletionModel::new([turn]);
+
+        let response = ExtractorBuilder::<_, Person>::new(model)
+            .add_hook(SkipUnexpected)
+            .build()
+            .extract("John")
+            .await
+            .expect("skipping an invalid sibling should preserve submit");
+
+        assert_eq!(response.name, "John");
+    }
+
+    #[tokio::test]
+    async fn submit_call_wins_over_unexpected_sibling_call() {
+        let turn = MockTurn::from_contents([
+            tool_call("unknown", "unexpected", json!({})),
+            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+        ])
+        .expect("two tool calls")
+        .with_usage(usage(7));
+        let model = MockCompletionModel::new([turn]);
+
+        let response = extractor(model, 0)
+            .extract_with_usage("John")
+            .await
+            .expect("submit should remain authoritative");
+
+        assert_eq!(response.data.name, "John");
+        assert_eq!(response.usage.total_tokens, 7);
     }
 
     #[tokio::test]

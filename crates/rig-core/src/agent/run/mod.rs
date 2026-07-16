@@ -611,6 +611,16 @@ impl AgentRun {
                         _ => None,
                     })
                 {
+                    let output_tool_calls = items
+                        .iter()
+                        .filter(|item| {
+                            matches!(
+                                item,
+                                AssistantContent::ToolCall(tc)
+                                    if tc.function.name == output_tool_name
+                            )
+                        })
+                        .count();
                     let args = tool_call.function.arguments.clone();
                     let tool_call_id = tool_call.id.clone();
                     let output = json_utils::serialize_json_value(&args);
@@ -658,7 +668,8 @@ impl AgentRun {
 
                     let mut response = PromptResponse::new(output, self.usage)
                         .with_messages(self.new_messages.clone())
-                        .with_completion_calls(self.completion_calls.clone());
+                        .with_completion_calls(self.completion_calls.clone())
+                        .with_output_tool_calls(output_tool_calls);
                     if let Some(content) = final_content {
                         response = response.with_content(content);
                     }
@@ -977,6 +988,50 @@ impl AgentRun {
                 self.advance_resolution()
             }
         }
+    }
+
+    /// Discard the pending invalid tool call without marking the turn as
+    /// recovered.
+    ///
+    /// This is the extractor driver's fallback after every invalid-tool hook
+    /// has declined to act. Keeping it distinct from [`InvalidToolCallAction::Skip`]
+    /// preserves the extractor's legacy response semantics: unrelated calls
+    /// disappear, a sibling output call can still finalize the turn, and raw
+    /// response observers still receive the provider response.
+    pub(crate) fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
+        let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::ResolvingToolCalls(resolving) => resolving,
+            other => {
+                self.state = other;
+                return Err(self.protocol_violation(
+                    "ignore_invalid_tool_call called without a pending invalid tool call",
+                ));
+            }
+        };
+
+        match resolving.items.get(resolving.next_index) {
+            Some(AssistantContent::ToolCall(tool_call))
+                if !resolving
+                    .allowed_tool_names
+                    .contains(&tool_call.function.name) => {}
+            _ => {
+                self.state = RunState::ResolvingToolCalls(resolving);
+                return Err(self.protocol_violation(
+                    "ignore_invalid_tool_call called without a pending invalid tool call",
+                ));
+            }
+        }
+
+        resolving.items.remove(resolving.next_index);
+        resolving.has_tool_calls = resolving
+            .items
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+        if resolving.items.is_empty() {
+            resolving.items.push(AssistantContent::text(""));
+        }
+        self.state = RunState::ResolvingToolCalls(resolving);
+        self.advance_resolution()
     }
 
     /// Feed the tool results for the pending [`AgentRunStep::CallTools`].

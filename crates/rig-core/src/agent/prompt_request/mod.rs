@@ -54,7 +54,8 @@ macro_rules! forward_prompt_setters {
             self
         }
 
-        /// Merge provider-specific additional parameters into this request's baseline.
+        /// Apply provider-specific parameters for this request. Object values
+        /// merge into an object baseline; any non-object value replaces it.
         pub fn additional_params(mut self, params: serde_json::Value) -> Self {
             self.$recv = self.$recv.additional_params(params);
             self
@@ -321,6 +322,10 @@ pub struct PromptResponse {
     /// Where [`output`](Self::output) is the concatenated text, this preserves
     /// the individual content parts (text, reasoning, images, …).
     pub content: OneOrMany<AssistantContent>,
+    /// Number of synthetic output-tool calls in the turn that finalized this
+    /// response. Kept crate-private because it is runner bookkeeping rather
+    /// than provider-facing response content.
+    pub(crate) output_tool_calls: usize,
 }
 
 /// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
@@ -339,6 +344,8 @@ struct PromptResponseRepr {
     messages: Option<Vec<Message>>,
     #[serde(default)]
     content: Option<OneOrMany<AssistantContent>>,
+    #[serde(skip)]
+    output_tool_calls: usize,
 }
 
 impl From<PromptResponseRepr> for PromptResponse {
@@ -352,6 +359,7 @@ impl From<PromptResponseRepr> for PromptResponse {
             completion_calls: repr.completion_calls,
             messages: repr.messages,
             content,
+            output_tool_calls: repr.output_tool_calls,
         }
     }
 }
@@ -364,6 +372,7 @@ impl From<PromptResponse> for PromptResponseRepr {
             completion_calls: response.completion_calls,
             messages: response.messages,
             content: Some(response.content),
+            output_tool_calls: response.output_tool_calls,
         }
     }
 }
@@ -383,6 +392,7 @@ impl PromptResponse {
             usage,
             completion_calls: Vec::new(),
             messages: None,
+            output_tool_calls: 0,
         }
     }
 
@@ -405,6 +415,11 @@ impl PromptResponse {
     /// Set the structured assistant content for the final turn.
     pub fn with_content(mut self, content: OneOrMany<AssistantContent>) -> Self {
         self.content = content;
+        self
+    }
+
+    pub(crate) fn with_output_tool_calls(mut self, count: usize) -> Self {
+        self.output_tool_calls = count;
         self
     }
 

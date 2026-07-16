@@ -193,6 +193,7 @@ where
     pub(crate) output_tool_name: Option<String>,
     pub(crate) output_tool_description: Option<String>,
     pub(crate) augment_output_preamble: bool,
+    pub(crate) ignore_unhandled_invalid_tool_calls: bool,
     pub(crate) concurrency: usize,
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
@@ -228,6 +229,7 @@ where
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
+            ignore_unhandled_invalid_tool_calls: false,
             concurrency: 1,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
@@ -291,7 +293,8 @@ where
         self
     }
 
-    /// Merge provider-specific additional parameters into this run's baseline.
+    /// Apply provider-specific parameters for this run. Object values merge
+    /// into an object baseline; any non-object value replaces the baseline.
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.additional_params = Some(match self.additional_params.take() {
             Some(baseline) if baseline.is_object() && params.is_object() => {
@@ -318,6 +321,17 @@ where
         self.output_tool_name = Some(name.into());
         self.output_tool_description = Some(description.into());
         self.augment_output_preamble = augment_preamble;
+        self
+    }
+
+    /// Ignore invalid tool calls when every registered hook declines to act.
+    ///
+    /// This is an internal compatibility policy for extractors, whose legacy
+    /// transport treated every non-`submit` call as irrelevant response
+    /// content. Hooks still receive the invalid-call event first and retain
+    /// full control over recovery or termination.
+    pub(crate) fn ignore_unhandled_invalid_tool_calls(mut self) -> Self {
+        self.ignore_unhandled_invalid_tool_calls = true;
         self
     }
 
@@ -847,9 +861,15 @@ where
                         let action = runner
                             .hooks
                             .on_invalid_tool_call(hook_ctx, &context)
-                            .await
-                            .unwrap_or_else(InvalidToolCallAction::fail);
-                        outcome = match run.resolve_invalid_tool_call(action) {
+                            .await;
+                        let resolution = match action {
+                            Some(action) => run.resolve_invalid_tool_call(action),
+                            None if runner.ignore_unhandled_invalid_tool_calls => {
+                                run.ignore_invalid_tool_call()
+                            }
+                            None => run.resolve_invalid_tool_call(InvalidToolCallAction::fail()),
+                        };
+                        outcome = match resolution {
                             Ok(outcome) => outcome,
                             Err(err) => {
                                 yield Err(Box::new(err).into());
