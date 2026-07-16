@@ -42,6 +42,27 @@ macro_rules! forward_prompt_setters {
             self
         }
 
+        /// Override the agent preamble for this request.
+        pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+            self.$recv = self.$recv.preamble(preamble);
+            self
+        }
+
+        /// Append one static context document for this request.
+        pub fn document(mut self, document: crate::completion::Document) -> Self {
+            self.$recv = self.$recv.document(document);
+            self
+        }
+
+        /// Append static context documents for this request.
+        pub fn documents(
+            mut self,
+            documents: impl IntoIterator<Item = crate::completion::Document>,
+        ) -> Self {
+            self.$recv = self.$recv.documents(documents);
+            self
+        }
+
         /// Override the sampling temperature for this request.
         pub fn temperature(mut self, temperature: f64) -> Self {
             self.$recv = self.$recv.temperature(temperature);

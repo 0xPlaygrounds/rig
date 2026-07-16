@@ -3,7 +3,9 @@
 //! `run_until_interruption` stops before a tool batch and returns a serializable
 //! `AgentRun`. The example writes that checkpoint to disk, reloads it, asks for
 //! approval, and resumes through `AgentRunner`; no raw completion request is
-//! prepared or sent by application code.
+//! prepared or sent by application code. A checkpoint authorizes its pending
+//! tool calls, so production applications must use trusted storage and
+//! authenticate checkpoint data that can cross an untrusted boundary.
 
 use anyhow::Result;
 use rig::OneOrMany;

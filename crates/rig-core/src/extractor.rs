@@ -203,18 +203,18 @@ where
         text: &Message,
         messages: &[Message],
     ) -> (Result<T, ExtractionError>, Usage) {
-        let response = match self
+        let (result, error_usage) = self
             .agent
             .runner(text.clone())
             .history(messages.iter().cloned())
-            .run()
-            .await
-        {
+            .run_with_error_usage()
+            .await;
+        let response = match result {
             Ok(response) => response,
             Err(PromptError::CompletionError(e)) => {
-                return (Err(ExtractionError::CompletionError(e)), Usage::new());
+                return (Err(ExtractionError::CompletionError(e)), error_usage);
             }
-            Err(e) => return (Err(e.into()), Usage::new()),
+            Err(e) => return (Err(e.into()), error_usage),
         };
         let usage = response.usage;
 
@@ -473,6 +473,22 @@ mod tests {
                 name: "John".to_string()
             }
         );
+        assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn usage_accumulates_when_a_billed_response_calls_an_unknown_tool() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("id0", "not_submit", json!({})).with_usage(usage(10)),
+            submit_turn("John").with_usage(usage(5)),
+        ]);
+
+        let response = extractor(model, 1)
+            .extract_with_usage("John")
+            .await
+            .expect("second attempt should succeed");
+
+        assert_eq!(response.data.name, "John");
         assert_eq!(response.usage.total_tokens, 15);
     }
 

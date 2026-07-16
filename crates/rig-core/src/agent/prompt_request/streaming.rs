@@ -460,6 +460,15 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
 /// medium-specific model call, tool execution, span shaping and finalization to
 /// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
 /// the blocking surface folds them to `Done`.
+pub(crate) fn store_error_usage<M>(runner: &AgentRunner<M>, run: &AgentRun)
+where
+    M: CompletionModel,
+{
+    if let Some(usage) = &runner.error_usage {
+        *usage.lock().unwrap_or_else(|error| error.into_inner()) = run.usage();
+    }
+}
+
 pub(crate) fn drive_agent<M, S>(
     runner: AgentRunner<M>,
     mut source: S,
@@ -507,6 +516,7 @@ where
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
+                    store_error_usage(&runner, &run);
                     yield Err(Box::new(err).into());
                     break 'outer;
                 }
@@ -523,6 +533,7 @@ where
                     let request_patch =
                         match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
+                                store_error_usage(&runner, &run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
@@ -568,6 +579,7 @@ where
                     {
                         Ok(prepared) => prepared,
                         Err(err) => {
+                            store_error_usage(&runner, &run);
                             yield Err(err.into());
                             break 'outer;
                         }
@@ -602,6 +614,7 @@ where
                     }
                     drop(turn_stream);
                     if errored {
+                        store_error_usage(&runner, &run);
                         break 'outer;
                     }
                     pending_tool_snapshot = Some(turn_tool_snapshot);
@@ -611,8 +624,8 @@ where
                         yield Ok(DriveItem::Interrupted(Box::new(run)));
                         break 'outer;
                     }
-                    let tool_snapshot = match pending_tool_snapshot.take() {
-                        Some(snapshot) => snapshot,
+                    let (tool_snapshot, resumed_allowed_tools) = match pending_tool_snapshot.take() {
+                        Some(snapshot) => (snapshot, None),
                         None => {
                             // A deserialized `AgentRun` intentionally contains no
                             // live tool implementations. Re-resolve the runner's
@@ -640,14 +653,31 @@ where
                             )
                             .await
                             {
-                                Ok(prepared) => prepared.tool_snapshot,
+                                Ok(prepared) => (
+                                    prepared.tool_snapshot,
+                                    Some(prepared.allowed_tool_names),
+                                ),
                                 Err(error) => {
+                                    store_error_usage(&runner, &run);
                                     yield Err(error.into());
                                     break 'outer;
                                 }
                             }
                         }
                     };
+                    if let Some(allowed_tools) = resumed_allowed_tools
+                        && let Some(call) = calls.iter().find(|call| {
+                            call.preresolved_result.is_none()
+                                && !allowed_tools.contains(&call.tool_call.function.name)
+                        })
+                    {
+                        store_error_usage(&runner, &run);
+                        yield Err(CompletionError::RequestError(std::io::Error::other(format!(
+                            "checkpoint tool `{}` is not allowed by the current runner configuration",
+                            call.tool_call.function.name
+                        )).into()).into());
+                        break 'outer;
+                    }
                     let mut tool_stream = source.run_tool_calls(
                         &runner,
                         &hook_ctx,
@@ -668,6 +698,7 @@ where
                     }
                     drop(tool_stream);
                     if errored {
+                        store_error_usage(&runner, &run);
                         break 'outer;
                     }
                     may_interrupt_before_tools = true;

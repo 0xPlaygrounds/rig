@@ -26,7 +26,7 @@
 //! ```
 
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicU64, Ordering},
 };
 
@@ -45,7 +45,7 @@ use super::{
         PromptResponse,
         streaming::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
-            drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
+            drive_tool_calls, record_usage_on_span, store_error_usage, streaming_error_into_prompt,
         },
         tool_result_output,
     },
@@ -54,7 +54,7 @@ use super::{
     },
 };
 use crate::{
-    completion::{CompletionError, CompletionModel, Document, Message, PromptError},
+    completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
@@ -199,6 +199,7 @@ where
     pub(crate) hooks: HookStack<M>,
     pub(crate) resumed_run: Option<AgentRun>,
     pub(crate) interrupt_before_tools: bool,
+    pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
 /// Result of driving an agent until completion or a requested durable
@@ -248,6 +249,7 @@ where
             hooks: agent.hooks.clone(),
             resumed_run: None,
             interrupt_before_tools: false,
+            error_usage: None,
         }
     }
 
@@ -271,7 +273,11 @@ where
     /// The checkpoint must have been produced for an equivalent agent
     /// configuration. Dynamic tool definitions are resolved again before
     /// pending tools execute, so applications should keep the backing index
-    /// stable across a durable suspension.
+    /// stable across a durable suspension. A checkpoint authorizes its pending
+    /// tool calls: persist it only in trusted storage, and authenticate it when
+    /// it can cross a user-controlled or otherwise untrusted boundary. Resume
+    /// revalidates calls against the current runner's tool-choice policy, but
+    /// the checkpoint format is not cryptographically signed.
     pub fn resume(mut self, checkpoint: AgentRun) -> Self {
         self.resumed_run = Some(checkpoint);
         self
@@ -304,6 +310,24 @@ where
         T: Into<Message>,
     {
         self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Override the agent preamble for this run.
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+        self.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Append one static context document for this run.
+    pub fn document(mut self, document: Document) -> Self {
+        self.static_context.push(document);
+        self
+    }
+
+    /// Append static context documents for this run.
+    pub fn documents(mut self, documents: impl IntoIterator<Item = Document>) -> Self {
+        self.static_context.extend(documents);
         self
     }
 
@@ -845,6 +869,7 @@ where
             )) {
                 Ok(outcome) => outcome,
                 Err(err) => {
+                    store_error_usage(runner, run);
                     yield Err(Box::new(err).into());
                     return;
                 }
@@ -861,6 +886,7 @@ where
                         outcome = match run.resolve_invalid_tool_call(action) {
                             Ok(outcome) => outcome,
                             Err(err) => {
+                                store_error_usage(runner, run);
                                 yield Err(Box::new(err).into());
                                 return;
                             }
@@ -892,6 +918,7 @@ where
                                     )
                                     .await,
                             ) {
+                                store_error_usage(runner, run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
@@ -908,6 +935,7 @@ where
                                     )
                                     .await,
                             ) {
+                                store_error_usage(runner, run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
@@ -970,6 +998,19 @@ impl<M> AgentRunner<M>
 where
     M: CompletionModel,
 {
+    pub(crate) async fn run_with_error_usage(
+        mut self,
+    ) -> (Result<PromptResponse, PromptError>, Usage) {
+        let usage = Arc::new(Mutex::new(Usage::new()));
+        self.error_usage = Some(usage.clone());
+        let result = self.run().await;
+        let observed = result.as_ref().map_or_else(
+            |_| *usage.lock().unwrap_or_else(|error| error.into_inner()),
+            |response| response.usage,
+        );
+        (result, observed)
+    }
+
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
@@ -1050,7 +1091,10 @@ where
     /// Resume an interrupted run with
     /// `agent.runner(prompt).resume(checkpoint).run_until_interruption()`.
     /// Repeating that sequence supports durable approval one tool batch at a
-    /// time without exposing raw completion request builders.
+    /// time without exposing raw completion request builders. Durable
+    /// interruption currently uses the non-streaming model transport;
+    /// [`StreamingPromptRequest`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
+    /// does not emit serializable checkpoints.
     pub async fn run_until_interruption(mut self) -> Result<AgentRunnerOutcome, PromptError> {
         self.interrupt_before_tools = true;
         let (agent_span, created_agent_span) = acquire_agent_span(
@@ -1381,7 +1425,7 @@ mod migrated_tests {
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{
-        CompletionError, CompletionModel, CompletionRequest, Message, Prompt, PromptError,
+        CompletionError, CompletionModel, CompletionRequest, Document, Message, Prompt, PromptError,
     };
     use crate::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
@@ -1626,6 +1670,98 @@ mod migrated_tests {
     }
 
     #[tokio::test]
+    async fn resumed_checkpoint_revalidates_pending_tools_against_current_policy() {
+        let source = AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .build();
+        let checkpoint = match source
+            .runner("add 2 and 3")
+            .max_turns(2)
+            .run_until_interruption()
+            .await
+            .expect("source run should reach a tool boundary")
+        {
+            super::AgentRunnerOutcome::Interrupted(run) => run,
+            super::AgentRunnerOutcome::Completed(_) => panic!("expected a pending tool call"),
+        };
+
+        let resumed_model = MockCompletionModel::text("must not be called");
+        let resumed_probe = resumed_model.clone();
+        let resumed = AgentBuilder::new(resumed_model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+        let error = resumed
+            .runner("ignored on resume")
+            .resume(checkpoint)
+            .run_until_interruption()
+            .await
+            .expect_err("current policy must reject the checkpoint's pending tool");
+
+        assert!(matches!(
+            error,
+            PromptError::CompletionError(CompletionError::RequestError(message))
+                if message.to_string().contains("is not allowed by the current runner configuration")
+        ));
+        assert_eq!(resumed_probe.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn injected_denial_result_resumes_without_executing_the_pending_tool() {
+        #[derive(Clone)]
+        struct ToolProbe(Arc<AtomicU32>);
+        impl<M: CompletionModel> AgentHook<M> for ToolProbe {
+            async fn on_tool_call(
+                &self,
+                _ctx: &HookContext,
+                _event: ToolCall<'_>,
+            ) -> ToolCallAction {
+                self.0.fetch_add(1, SeqCst);
+                ToolCallAction::Run
+            }
+        }
+
+        let calls = Arc::new(AtomicU32::new(0));
+        let agent = AgentBuilder::new(blocking_model())
+            .tool(MockAddTool)
+            .add_hook(ToolProbe(calls.clone()))
+            .build();
+        let mut checkpoint = match agent
+            .runner("add 2 and 3")
+            .max_turns(2)
+            .run_until_interruption()
+            .await
+            .expect("run should reach a tool boundary")
+        {
+            super::AgentRunnerOutcome::Interrupted(run) => run,
+            super::AgentRunnerOutcome::Completed(_) => panic!("expected a pending tool call"),
+        };
+        let pending = checkpoint
+            .pending_tool_calls()
+            .expect("checkpoint should contain one tool call")[0]
+            .tool_call
+            .clone();
+        checkpoint
+            .tool_results(vec![UserContent::tool_result(
+                pending.id,
+                crate::OneOrMany::one(crate::message::ToolResultContent::text(
+                    "human approval denied",
+                )),
+            )])
+            .expect("denial should advance the checkpoint");
+
+        let outcome = agent
+            .runner("ignored on resume")
+            .max_turns(2)
+            .resume(checkpoint)
+            .run_until_interruption()
+            .await
+            .expect("denied run should continue without tool execution");
+        assert!(matches!(outcome, super::AgentRunnerOutcome::Completed(_)));
+        assert_eq!(calls.load(SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn direct_completion_model_call_is_hook_free() {
         struct StopAgent;
         impl<M: CompletionModel> AgentHook<M> for StopAgent {
@@ -1669,6 +1805,12 @@ mod migrated_tests {
 
         agent
             .runner("request")
+            .preamble("per-run preamble")
+            .document(Document {
+                id: "context-1".to_string(),
+                text: "per-run context".to_string(),
+                additional_props: Default::default(),
+            })
             .temperature(0.25)
             .max_tokens(321)
             .additional_params(json!({"seed": 7}))
@@ -1679,6 +1821,12 @@ mod migrated_tests {
 
         let requests = probe.requests();
         let request = requests.first().expect("one request");
+        assert_eq!(
+            request.chat_history.iter().next(),
+            Some(&Message::system("per-run preamble"))
+        );
+        assert_eq!(request.documents.len(), 1);
+        assert_eq!(request.documents[0].id, "context-1");
         assert_eq!(request.temperature, Some(0.25));
         assert_eq!(request.max_tokens, Some(321));
         assert_eq!(request.additional_params, Some(json!({"seed": 7})));
