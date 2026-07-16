@@ -1,5 +1,7 @@
 # Changelog
 
+- *(agent)* [**breaking**] removed the raw `Completion` and `StreamingCompletion` agent surfaces. `AgentRunner` now owns every agent execution path, including extraction; direct `CompletionModel` calls remain the explicit hook-free provider transport API. Per-run temperature, max tokens, additional parameters, and tool choice are available on runner-backed request builders. Durable workflows can call `run_until_interruption()` to serialize the pending `AgentRun` before tools execute and later continue it with `resume()`.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

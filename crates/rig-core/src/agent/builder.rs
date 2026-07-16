@@ -602,6 +602,9 @@ where
             hooks: self.hooks,
             output_schema: self.output_schema,
             output_mode: self.output_mode,
+            preferred_output_tool: None,
+            preferred_output_tool_description: None,
+            suppress_output_tool_instruction: false,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -631,6 +634,9 @@ where
             hooks: self.hooks,
             output_schema: self.output_schema,
             output_mode: self.output_mode,
+            preferred_output_tool: None,
+            preferred_output_tool_description: None,
+            suppress_output_tool_instruction: false,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -745,6 +751,9 @@ where
             hooks: self.hooks,
             output_schema: self.output_schema,
             output_mode: self.output_mode,
+            preferred_output_tool: None,
+            preferred_output_tool_description: None,
+            suppress_output_tool_instruction: false,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }

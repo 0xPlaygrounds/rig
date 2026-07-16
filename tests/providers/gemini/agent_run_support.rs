@@ -6,15 +6,12 @@
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
-use rig::agent::run::{ModelTurn, PendingToolCall};
-use rig::completion::{Completion, ToolDefinition, Usage};
+use rig::agent::run::PendingToolCall;
+use rig::completion::{ToolDefinition, Usage};
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
-use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
-
-pub(crate) type GeminiAgent = rig::agent::Agent<gemini::completion::CompletionModel>;
 
 pub(crate) const FORCE_TOOLS_PREAMBLE: &str = "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.";
 
@@ -164,32 +161,6 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
             }
         })
         .collect()
-}
-
-/// One hand-driven, non-streamed model call: send the step's prompt and
-/// history through the agent's completion builder and shape the response into
-/// a [`ModelTurn`] with the given advertised tool names.
-pub(crate) async fn call_model(
-    agent: &GeminiAgent,
-    prompt: Message,
-    history: Vec<Message>,
-    executable: &BTreeSet<String>,
-    allowed: &BTreeSet<String>,
-) -> ModelTurn {
-    let response = agent
-        .completion(prompt, history)
-        .await
-        .expect("completion request should build")
-        .send()
-        .await
-        .expect("gemini completion should succeed");
-    ModelTurn::new(
-        response.message_id.clone(),
-        response.choice.clone(),
-        response.usage,
-        executable.clone(),
-        allowed.clone(),
-    )
 }
 
 pub(crate) fn assistant_tool_call_names(message: &Message) -> Vec<String> {

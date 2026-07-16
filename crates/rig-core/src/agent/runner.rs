@@ -190,10 +190,27 @@ where
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
     pub(crate) output_mode: OutputMode,
+    pub(crate) preferred_output_tool: Option<String>,
+    pub(crate) preferred_output_tool_description: Option<String>,
+    pub(crate) suppress_output_tool_instruction: bool,
     pub(crate) concurrency: usize,
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack<M>,
+    pub(crate) resumed_run: Option<AgentRun>,
+    pub(crate) interrupt_before_tools: bool,
+}
+
+/// Result of driving an agent until completion or a requested durable
+/// interruption point.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum AgentRunnerOutcome {
+    /// The agent completed normally.
+    Completed(PromptResponse),
+    /// Tool calls are pending. The contained sans-IO state can be serialized
+    /// and later supplied to [`AgentRunner::resume`].
+    Interrupted(AgentRun),
 }
 
 impl<M> AgentRunner<M>
@@ -222,10 +239,15 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             output_mode: agent.output_mode.clone(),
+            preferred_output_tool: agent.preferred_output_tool.clone(),
+            preferred_output_tool_description: agent.preferred_output_tool_description.clone(),
+            suppress_output_tool_instruction: agent.suppress_output_tool_instruction,
             concurrency: 1,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
+            resumed_run: None,
+            interrupt_before_tools: false,
         }
     }
 
@@ -240,6 +262,18 @@ where
         H: AgentHook<M> + 'static,
     {
         self.hooks.push(hook);
+        self
+    }
+
+    /// Resume a serialized [`AgentRun`] with this agent's runner-owned model,
+    /// hooks, tool registry, and request configuration.
+    ///
+    /// The checkpoint must have been produced for an equivalent agent
+    /// configuration. Dynamic tool definitions are resolved again before
+    /// pending tools execute, so applications should keep the backing index
+    /// stable across a durable suspension.
+    pub fn resume(mut self, checkpoint: AgentRun) -> Self {
+        self.resumed_run = Some(checkpoint);
         self
     }
 }
@@ -270,6 +304,30 @@ where
         T: Into<Message>,
     {
         self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Override the sampling temperature for this run.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Override the maximum output-token count for this run.
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Override provider-specific request parameters for this run.
+    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+        self.additional_params = Some(params);
+        self
+    }
+
+    /// Override the provider tool-choice policy for this run.
+    pub fn tool_choice(mut self, choice: ToolChoice) -> Self {
+        self.tool_choice = Some(choice);
         self
     }
 
@@ -341,6 +399,9 @@ where
     /// memory-loaded history). Delegates to [`build_agent_run`] — the single
     /// construction site shared with the streaming driver.
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
+        if let Some(run) = &self.resumed_run {
+            return run.clone();
+        }
         build_agent_run(
             self.prompt.clone(),
             self.max_turns,
@@ -962,6 +1023,14 @@ where
         while let Some(item) = driver.next().await {
             match item {
                 Ok(DriveItem::Done(done)) => response = Some(*done),
+                Ok(DriveItem::Interrupted(_)) => {
+                    return Err(PromptError::CompletionError(
+                        CompletionError::ResponseError(
+                            "agent interrupted before tools; use run_until_interruption to receive the checkpoint"
+                                .to_string(),
+                        ),
+                    ));
+                }
                 Ok(DriveItem::Item(_)) => {}
                 Err(err) => return Err(streaming_error_into_prompt(err)),
             }
@@ -973,6 +1042,71 @@ where
                 "agent run ended without producing a final response".to_string(),
             ))
         })
+    }
+
+    /// Drive until the agent completes or reaches a tool batch, returning a
+    /// serializable checkpoint before any pending tool executes.
+    ///
+    /// Resume an interrupted run with
+    /// `agent.runner(prompt).resume(checkpoint).run_until_interruption()`.
+    /// Repeating that sequence supports durable approval one tool batch at a
+    /// time without exposing raw completion request builders.
+    pub async fn run_until_interruption(mut self) -> Result<AgentRunnerOutcome, PromptError> {
+        self.interrupt_before_tools = true;
+        let (agent_span, created_agent_span) = acquire_agent_span(
+            self.agent_name_or_default(),
+            self.preamble.as_deref(),
+            self.record_telemetry_content,
+        );
+
+        let (history_override, memory_handle) = if self.resumed_run.is_some() {
+            let memory_handle = match (&self.memory, &self.conversation_id) {
+                (Some(memory), Some(id)) => Some((memory.clone(), id.clone())),
+                _ => None,
+            };
+            (None, memory_handle)
+        } else {
+            match &self.chat_history {
+                Some(_) => (None, None),
+                None => match (&self.memory, &self.conversation_id) {
+                    (Some(memory), Some(id)) => {
+                        let loaded = memory.load(id).await?;
+                        (Some(loaded), Some((memory.clone(), id.clone())))
+                    }
+                    _ => (None, None),
+                },
+            }
+        };
+
+        let run = self.build_run(history_override);
+        let record_telemetry_content = self.record_telemetry_content;
+        let driver = drive_agent(
+            self,
+            UnaryTurnSource::new(record_telemetry_content),
+            run,
+            agent_span,
+            created_agent_span,
+            memory_handle,
+            false,
+        );
+        futures::pin_mut!(driver);
+
+        while let Some(item) = driver.next().await {
+            match item {
+                Ok(DriveItem::Done(done)) => return Ok(AgentRunnerOutcome::Completed(*done)),
+                Ok(DriveItem::Interrupted(run)) => {
+                    return Ok(AgentRunnerOutcome::Interrupted(*run));
+                }
+                Ok(DriveItem::Item(_)) => {}
+                Err(error) => return Err(streaming_error_into_prompt(error)),
+            }
+        }
+
+        Err(PromptError::CompletionError(
+            CompletionError::ResponseError(
+                "agent run ended without producing an outcome".to_string(),
+            ),
+        ))
     }
 }
 
@@ -1246,7 +1380,9 @@ mod migrated_tests {
     use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
-    use crate::completion::{CompletionError, CompletionModel, Message, Prompt, PromptError};
+    use crate::completion::{
+        CompletionError, CompletionModel, CompletionRequest, Message, Prompt, PromptError,
+    };
     use crate::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
@@ -1407,6 +1543,146 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ])
+    }
+
+    #[tokio::test]
+    async fn durable_checkpoint_resumes_before_tools_without_raw_completion() {
+        #[derive(Clone)]
+        struct ContextProbe(Arc<Mutex<Vec<(&'static str, String, usize)>>>);
+
+        impl<M: CompletionModel> AgentHook<M> for ContextProbe {
+            async fn on_completion_call(
+                &self,
+                ctx: &HookContext,
+                _event: CompletionCallEvent<'_>,
+            ) -> CompletionCallAction {
+                self.0.lock().unwrap().push((
+                    "completion",
+                    ctx.run_id().as_str().to_owned(),
+                    ctx.turn(),
+                ));
+                CompletionCallAction::Continue
+            }
+
+            async fn on_tool_call(
+                &self,
+                ctx: &HookContext,
+                _event: ToolCall<'_>,
+            ) -> ToolCallAction {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(("tool", ctx.run_id().as_str().to_owned(), ctx.turn()));
+                ToolCallAction::Run
+            }
+        }
+
+        let model = blocking_model();
+        let recorded = model.clone();
+        let contexts = Arc::new(Mutex::new(Vec::new()));
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .add_hook(ContextProbe(contexts.clone()))
+            .build();
+
+        let checkpoint = match agent
+            .runner("add 2 and 3")
+            .max_turns(2)
+            .run_until_interruption()
+            .await
+            .expect("first segment should reach a tool boundary")
+        {
+            super::AgentRunnerOutcome::Interrupted(run) => run,
+            super::AgentRunnerOutcome::Completed(_) => panic!("tool call should interrupt the run"),
+        };
+        assert_eq!(recorded.request_count(), 1);
+
+        let serialized = serde_json::to_vec(&checkpoint).expect("checkpoint should serialize");
+        let checkpoint = serde_json::from_slice(&serialized).expect("checkpoint should resume");
+        let outcome = agent
+            .runner("add 2 and 3")
+            .max_turns(2)
+            .resume(checkpoint)
+            .run_until_interruption()
+            .await
+            .expect("resumed runner should execute tools and finish");
+
+        let super::AgentRunnerOutcome::Completed(response) = outcome else {
+            panic!("the second segment should complete");
+        };
+        assert_eq!(response.output, "the answer is 5");
+        assert_eq!(recorded.request_count(), 2);
+        let contexts = contexts.lock().unwrap();
+        let completion = contexts
+            .iter()
+            .find(|(kind, _, turn)| *kind == "completion" && *turn == 1)
+            .expect("the first completion hook should run");
+        let tool = contexts
+            .iter()
+            .find(|(kind, _, _)| *kind == "tool")
+            .expect("the resumed tool hook should run");
+        assert_eq!(tool.1, completion.1);
+        assert_eq!(tool.2, 1);
+    }
+
+    #[tokio::test]
+    async fn direct_completion_model_call_is_hook_free() {
+        struct StopAgent;
+        impl<M: CompletionModel> AgentHook<M> for StopAgent {
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                _event: CompletionCallEvent<'_>,
+            ) -> CompletionCallAction {
+                CompletionCallAction::stop("agent hook must not run")
+            }
+        }
+
+        let model = MockCompletionModel::text("raw response");
+        let probe = model.clone();
+        let _agent = AgentBuilder::new(model.clone()).add_hook(StopAgent).build();
+        let _response = model
+            .completion(CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: crate::OneOrMany::one(Message::user("raw request")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .await
+            .expect("direct provider transport should bypass agent hooks");
+
+        assert_eq!(probe.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn runner_exposes_raw_builder_request_overrides() {
+        let model = MockCompletionModel::text("ok");
+        let probe = model.clone();
+        let agent = AgentBuilder::new(model).build();
+
+        agent
+            .runner("request")
+            .temperature(0.25)
+            .max_tokens(321)
+            .additional_params(json!({"seed": 7}))
+            .tool_choice(ToolChoice::None)
+            .run()
+            .await
+            .expect("runner request should complete");
+
+        let requests = probe.requests();
+        let request = requests.first().expect("one request");
+        assert_eq!(request.temperature, Some(0.25));
+        assert_eq!(request.max_tokens, Some(321));
+        assert_eq!(request.additional_params, Some(json!({"seed": 7})));
+        assert_eq!(request.tool_choice, Some(ToolChoice::None));
     }
 
     /// `AgentRunner::from_agent` preserves the distinction between an absent

@@ -42,6 +42,30 @@ macro_rules! forward_prompt_setters {
             self
         }
 
+        /// Override the sampling temperature for this request.
+        pub fn temperature(mut self, temperature: f64) -> Self {
+            self.$recv = self.$recv.temperature(temperature);
+            self
+        }
+
+        /// Override the maximum output-token count for this request.
+        pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+            self.$recv = self.$recv.max_tokens(max_tokens);
+            self
+        }
+
+        /// Override provider-specific parameters for this request.
+        pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+            self.$recv = self.$recv.additional_params(params);
+            self
+        }
+
+        /// Override the provider tool-choice policy for this request.
+        pub fn tool_choice(mut self, choice: crate::message::ToolChoice) -> Self {
+            self.$recv = self.$recv.tool_choice(choice);
+            self
+        }
+
         /// Opt in or out of recording sensitive request, response, and tool
         /// content on GenAI telemetry spans for this request.
         ///

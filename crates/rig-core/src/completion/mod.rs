@@ -7,8 +7,8 @@
 //! - [`Prompt`] sends one user prompt and returns assistant text.
 //! - [`Chat`] sends a prompt with existing history and returns assistant text.
 //! - [`TypedPrompt`] requests structured output and deserializes it into a Rust type.
-//! - [`Completion`] exposes a request builder for call-site overrides.
-//! - [`CompletionModel`] is the provider-facing trait implemented by completion models.
+//! - [`CompletionModel`] is the low-level, hook-free provider transport trait
+//!   implemented by completion models.
 //!
 //! `CompletionRequest` is Rig's canonical request representation. Provider modules
 //! translate it into provider-specific request bodies and convert responses back into

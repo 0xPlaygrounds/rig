@@ -30,8 +30,8 @@ pub use crate::agent::Agent;
 
 // Completion: prompting, chatting, the model trait, and the core types.
 pub use crate::completion::{
-    Chat, Completion, CompletionError, CompletionModel, Message, Prompt, PromptError,
-    StructuredOutputError, TypedPrompt,
+    Chat, CompletionError, CompletionModel, Message, Prompt, PromptError, StructuredOutputError,
+    TypedPrompt,
 };
 
 // Streaming counterparts of the blocking `Prompt`/`Chat` traits, plus the items

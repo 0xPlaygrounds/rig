@@ -64,7 +64,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OneOrMany,
-    agent::hook::{InvalidToolCallAction, InvalidToolCallContext},
+    agent::hook::{InvalidToolCallAction, InvalidToolCallContext, Scratchpad},
     agent::prompt_request::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
@@ -271,6 +271,14 @@ enum RunState {
 /// driving protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRun {
+    /// Stable hook lifecycle identity. Stored in checkpoints so resumed hooks
+    /// remain part of the same logical run.
+    #[serde(default)]
+    hook_run_id: Option<String>,
+    /// Typed hook values are process-local and cannot be represented in the
+    /// durable serde format. They are retained across in-process suspension.
+    #[serde(skip)]
+    hook_scratchpad: Scratchpad,
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
     tool_choice: Option<ToolChoice>,
@@ -314,6 +322,8 @@ impl AgentRun {
     /// budget, and no invalid tool-call retries.
     pub fn new(prompt: impl Into<Message>) -> Self {
         Self {
+            hook_run_id: None,
+            hook_scratchpad: Scratchpad::default(),
             max_turns: 1,
             max_invalid_tool_call_retries: 0,
             tool_choice: None,
@@ -465,6 +475,15 @@ impl AgentRun {
         self.current_turn
     }
 
+    pub(crate) fn hook_context_state(&self) -> (Option<&str>, Scratchpad) {
+        (self.hook_run_id.as_deref(), self.hook_scratchpad.clone())
+    }
+
+    pub(crate) fn set_hook_context_state(&mut self, run_id: String, scratchpad: Scratchpad) {
+        self.hook_run_id = Some(run_id);
+        self.hook_scratchpad = scratchpad;
+    }
+
     /// Details for each completed model call so far.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
@@ -493,6 +512,16 @@ impl AgentRun {
     /// Whether the run reached [`AgentRunStep::Done`].
     pub fn is_done(&self) -> bool {
         matches!(self.state, RunState::Done(_))
+    }
+
+    /// Pending tool calls when the run is suspended immediately before tool
+    /// execution. This view is stable across serialization and lets an
+    /// approval workflow inspect a checkpoint without advancing it.
+    pub fn pending_tool_calls(&self) -> Option<&[PendingToolCall]> {
+        match &self.state {
+            RunState::ExecutingTools(calls) => Some(calls),
+            _ => None,
+        }
     }
 
     /// The final response once the run is done, without cloning it.

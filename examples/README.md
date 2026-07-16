@@ -17,13 +17,13 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_parallelization` | See source. |
 | `agent_prompt_chaining` | Demonstrates prompt chaining with two agents in sequence. |
 | `agent_routing` | Demonstrates routing one prompt into different follow-up prompts. |
-| `agent_run_stepping` | Drives the agent loop by hand with the sans-IO [`AgentRun`] state machine. |
+| `agent_run_stepping` | Pauses `AgentRunner` before tools, serializes its checkpoint, and resumes execution. |
 | `agent_stream_chat` | Demonstrates `stream_chat` with prior conversation history. |
 | `agent_with_agent_tool` | See source. |
 | `agent_with_approval_policy` | Demonstrates a non-interactive, policy-based HITL gate: an `AgentHook` auto-approves an allow-list, denies the rest (fail-closed), and applies an arg-based rule (mirrors `needs_approval`/`interrupt_on` predicates). |
 | `agent_with_context` | Demonstrates adding small context documents directly to an agent. |
 | `agent_with_default_max_turns` | Demonstrates extending the default agent loop budget for tool-heavy prompts. |
-| `agent_with_durable_approval` | Demonstrates **durable** HITL: the hand-driven `AgentRun` is serialized while tool calls are pending and resumed from JSON (as another process would), so approval can happen out-of-process / later. |
+| `agent_with_durable_approval` | Demonstrates durable approval by serializing an `AgentRunner` interruption checkpoint and resuming it later. |
 | `agent_with_echochambers` | See source. |
 | `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve/deny/edit/abort, mapped onto typed `ToolCallAction` values (`Run`/`Skip`/`Rewrite`/`Stop`). |
 | `agent_with_loaders` | Demonstrates loading real example files into agent context. |
@@ -47,7 +47,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `gemini_nanobanana_image_generation` | See source. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
-| `manual_tool_calls` | Demonstrates manual tool-call handling with `Agent::completion()`. |
+| `manual_tool_calls` | Observes tool calls with hooks while `AgentRunner` owns execution. |
 | `multi_agent` | See source. |
 | `multi_extract` | Demonstrates fan-out structured extraction with `try_parallel!`. |
 | `multi_turn_agent_extended` | See source. |

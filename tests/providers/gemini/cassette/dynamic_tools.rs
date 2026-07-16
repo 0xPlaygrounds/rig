@@ -43,6 +43,47 @@ async fn build_tool_index(
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone());
     vector_store.index(embedding_model)
 }
+#[tokio::test]
+async fn sample_caps_retrieved_definitions() {
+    with_gemini_cassette(
+        "dynamic_tools/sample_caps_retrieved_definitions",
+        |client| async move {
+            let toolset = ToolSet::builder()
+                .retrieved_tool(EmbedAdd::default())
+                .retrieved_tool(EmbedSubtract::default())
+                .retrieved_tool(EmbedMultiply::default())
+                .build();
+            let index = build_tool_index(&client, &toolset).await;
+
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble(FORCE_TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .retrieved_tools(2, index, toolset)
+                .build();
+
+            let defs = agent
+                .tool_definitions(Some(
+                    "Multiply two numbers together to get their product.".to_string(),
+                ))
+                .await
+                .expect("dynamic definitions should resolve");
+
+            assert_eq!(
+                defs.len(),
+                2,
+                "the sample size should cap how many dynamic definitions are returned: {:?}",
+                defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
+            );
+            assert!(
+                defs.iter().any(|def| def.name == "multiply"),
+                "the best-matching tool should be retrieved: {:?}",
+                defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
+            );
+        },
+    )
+    .await;
+}
 
 #[tokio::test]
 async fn dynamic_tool_retrieved_and_merged_with_static() {
@@ -124,49 +165,6 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
                 add_counter.count(),
                 1,
                 "the retrieved dynamic tool should execute exactly once"
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sample_caps_retrieved_definitions() {
-    with_gemini_cassette(
-        "dynamic_tools/sample_caps_retrieved_definitions",
-        |client| async move {
-            let toolset = ToolSet::builder()
-                .retrieved_tool(EmbedAdd::default())
-                .retrieved_tool(EmbedSubtract::default())
-                .retrieved_tool(EmbedMultiply::default())
-                .build();
-            let index = build_tool_index(&client, &toolset).await;
-
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .retrieved_tools(2, index, toolset)
-                .build();
-
-            let defs = agent
-                .tool_server_handle
-                .get_tool_defs(Some(
-                    "Multiply two numbers together to get their product.".to_string(),
-                ))
-                .await
-                .expect("dynamic definitions should resolve");
-
-            assert_eq!(
-                defs.len(),
-                2,
-                "the sample size should cap how many dynamic definitions are returned: {:?}",
-                defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
-            );
-            assert!(
-                defs.iter().any(|def| def.name == "multiply"),
-                "the best-matching tool should be retrieved: {:?}",
-                defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
             );
         },
     )

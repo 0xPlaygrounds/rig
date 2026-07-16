@@ -8,8 +8,8 @@
 //! a simple bot with a specific system prompt to a complex RAG system with a set of dynamic
 //! context documents and tools.
 //!
-//! The [Agent] struct implements the [crate::completion::Completion] and [crate::completion::Prompt] traits,
-//! allowing it to be used for generating completions responses and prompts. The [Agent] struct also
+//! The [Agent] struct implements the [crate::completion::Prompt] trait,
+//! allowing it to be used for generating agent responses. The [Agent] struct also
 //! implements the [crate::completion::Chat] trait, which allows it to be used for generating chat completions.
 //!
 //! The [AgentBuilder] implements the builder pattern for creating instances of [Agent].
@@ -20,7 +20,7 @@
 //! ```no_run
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
-//!     completion::{Chat, Completion, Prompt},
+//!     completion::{Chat, Prompt},
 //!     providers::openai,
 //! };
 //!
@@ -35,24 +35,15 @@
 //!     .temperature(0.8)
 //!     .build();
 //!
-//! // Use the agent for completions and prompts
+//! // Use the agent through runner-backed chat and prompt conveniences.
 //! // Generate a chat completion response from a prompt and chat history
 //! let chat_response = agent.chat("Prompt", &mut Vec::<rig_core::completion::Message>::new()).await?;
 //!
 //! // Generate a prompt completion response from a simple prompt
 //! let prompt_response = agent.prompt("Prompt").await?;
 //!
-//! // Generate a completion request builder from a prompt and chat history. The builder
-//! // will contain the agent's configuration (i.e.: preamble, context documents, tools,
-//! // model parameters, etc.), but these can be overwritten.
-//! let completion_req_builder = agent
-//!     .completion("Prompt", Vec::<rig_core::completion::Message>::new())
-//!     .await?;
-//!
-//! let response = completion_req_builder
-//!     .temperature(0.9) // Overwrite the agent's temperature
-//!     .send()
-//!     .await?;
+//! // Customize a single run without bypassing hooks or the agent lifecycle.
+//! let response = agent.runner("Prompt").temperature(0.9).run().await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -133,4 +124,4 @@ pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
-pub use runner::AgentRunner;
+pub use runner::{AgentRunner, AgentRunnerOutcome};

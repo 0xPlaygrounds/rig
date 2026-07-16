@@ -377,6 +377,8 @@ pub(crate) enum DriveItem<R> {
     /// returns. The streaming surface has already received the final item as the
     /// preceding `Item` and ignores this.
     Done(Box<PromptResponse>),
+    /// The caller requested a durable interruption before tool execution.
+    Interrupted(Box<AgentRun>),
 }
 
 /// The per-medium half of the agent loop: how a turn is fetched from the model,
@@ -475,11 +477,31 @@ where
         // Run-scoped hook context: minted once, shared by every hook event on
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
-        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+        let (stored_run_id, scratchpad) = run.hook_context_state();
+        let hook_ctx = match stored_run_id {
+            Some(run_id) => HookContext::resume(
+                run_id.to_owned(),
+                run.turn(),
+                is_streaming,
+                runner.agent_name.clone(),
+                scratchpad,
+            ),
+            None => HookContext::new(is_streaming, runner.agent_name.clone()),
+        };
+        run.set_hook_context_state(
+            hook_ctx.run_id().as_str().to_owned(),
+            hook_ctx.scratchpad().clone(),
+        );
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
         let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
+        // A resumed checkpoint is already paused at a tool boundary: execute
+        // that approved batch first, then interrupt before any later batch.
+        let mut may_interrupt_before_tools = runner
+            .resumed_run
+            .as_ref()
+            .is_none_or(|run| run.pending_tool_calls().is_none());
 
         'outer: loop {
             let step = match run.next_step() {
@@ -536,6 +558,9 @@ where
                         &runner.dynamic_context,
                         runner.output_schema.as_ref(),
                         &runner.output_mode,
+                        runner.preferred_output_tool.as_deref(),
+                        runner.preferred_output_tool_description.as_deref(),
+                        runner.suppress_output_tool_instruction,
                         committed_output_tool.as_deref(),
                         request_patch.as_ref(),
                     )
@@ -582,12 +607,46 @@ where
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let Some(tool_snapshot) = pending_tool_snapshot.take() else {
-                        yield Err(StreamingError::Completion(CompletionError::ResponseError(
-                            "agent requested tool execution without a prepared registry snapshot"
-                                .to_string(),
-                        )));
+                    if runner.interrupt_before_tools && may_interrupt_before_tools {
+                        yield Ok(DriveItem::Interrupted(Box::new(run)));
                         break 'outer;
+                    }
+                    let tool_snapshot = match pending_tool_snapshot.take() {
+                        Some(snapshot) => snapshot,
+                        None => {
+                            // A deserialized `AgentRun` intentionally contains no
+                            // live tool implementations. Re-resolve the runner's
+                            // registry before executing its pending batch.
+                            match build_prepared_completion_request(
+                                &runner.model,
+                                runner.prompt.clone(),
+                                &run.full_history(),
+                                runner.preamble.as_deref(),
+                                &runner.static_context,
+                                runner.temperature,
+                                runner.max_tokens,
+                                runner.additional_params.as_ref(),
+                                runner.record_telemetry_content,
+                                runner.tool_choice.as_ref(),
+                                &runner.tool_server_handle,
+                                &runner.dynamic_context,
+                                runner.output_schema.as_ref(),
+                                &runner.output_mode,
+                                runner.preferred_output_tool.as_deref(),
+                                runner.preferred_output_tool_description.as_deref(),
+                                runner.suppress_output_tool_instruction,
+                                run.output_tool_name(),
+                                None,
+                            )
+                            .await
+                            {
+                                Ok(prepared) => prepared.tool_snapshot,
+                                Err(error) => {
+                                    yield Err(error.into());
+                                    break 'outer;
+                                }
+                            }
+                        }
                     };
                     let mut tool_stream = source.run_tool_calls(
                         &runner,
@@ -611,6 +670,7 @@ where
                     if errored {
                         break 'outer;
                     }
+                    may_interrupt_before_tools = true;
                 }
                 AgentRunStep::Done(response) => {
                     // Run-completion marker, unifying the blocking and streaming
@@ -1483,6 +1543,12 @@ where
             std::future::ready(match item {
                 Ok(DriveItem::Item(item)) => Some(Ok(item)),
                 Ok(DriveItem::Done(_)) => None,
+                Ok(DriveItem::Interrupted(_)) => Some(Err(StreamingError::Completion(
+                    CompletionError::ResponseError(
+                        "durable interruption checkpoints are available through AgentRunner::run_until_interruption"
+                            .to_string(),
+                    ),
+                ))),
                 Err(err) => Some(Err(err)),
             })
         });

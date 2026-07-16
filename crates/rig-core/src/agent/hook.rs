@@ -37,13 +37,18 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-/// Opaque process-scoped identifier for one agent run.
+/// Opaque stable identifier for one logical agent run, including durable
+/// checkpoint resumption in another process.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RunId(String);
 
 impl RunId {
     pub(crate) fn generate() -> Self {
         Self(crate::id::generate())
+    }
+
+    pub(crate) fn from_stored(value: String) -> Self {
+        Self(value)
     }
 
     /// Identifier as text.
@@ -223,6 +228,23 @@ impl HookContext {
             is_streaming,
             agent_name,
             scratchpad: Scratchpad::default(),
+            tool_call_rewrite_frames: ToolCallRewriteFrames::default(),
+        }
+    }
+
+    pub(crate) fn resume(
+        run_id: String,
+        turn: usize,
+        is_streaming: bool,
+        agent_name: Option<String>,
+        scratchpad: Scratchpad,
+    ) -> Self {
+        Self {
+            run_id: RunId::from_stored(run_id),
+            turn: AtomicUsize::new(turn),
+            is_streaming,
+            agent_name,
+            scratchpad,
             tool_call_rewrite_frames: ToolCallRewriteFrames::default(),
         }
     }
