@@ -19,6 +19,42 @@ const SERVER_TOOL_USE_SYSTEM_INSTRUCTION: &str =
     "For the rest of this conversation, answer in Spanish only.";
 
 #[tokio::test]
+async fn web_search_with_dynamic_filtering_succeeds() {
+    super::super::support::with_anthropic_cassette(
+        "opus_4_8/web_search_with_dynamic_filtering_succeeds",
+        |client| async move {
+            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let response = model
+                .completion_request(
+                    "Search for the current prices of AAPL and GOOGL, then calculate which has a better P/E ratio.",
+                )
+                .provider_tool(
+                    ProviderToolDefinition::new("web_search_20260209")
+                        .with_config("name", json!("web_search")),
+                )
+                .max_tokens(1024)
+                .send()
+                .await
+                .expect("Opus 4.8 dynamic web-search request should succeed");
+
+            assert!(
+                response.choice.iter().any(|content| {
+                    content_raw_type(content) == Some("code_execution_tool_result")
+                }),
+                "dynamic web-search response should preserve a code_execution_tool_result block",
+            );
+            assert!(
+                assistant_text_response(&response.choice)
+                    .or_else(|| response.raw_response.get_text_response())
+                    .is_some_and(|text| !text.trim().is_empty()),
+                "dynamic web-search response should contain assistant text",
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn messages_preserve_mid_conversation_system_role() {
     super::super::support::with_anthropic_cassette(
         "opus_4_8/messages_preserve_mid_conversation_system_role",
