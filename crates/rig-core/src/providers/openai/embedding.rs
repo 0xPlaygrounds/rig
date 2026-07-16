@@ -109,9 +109,8 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
 impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
 
@@ -308,8 +307,47 @@ mod tests {
     use super::*;
     use crate::client::EmbeddingsClient;
     use crate::embeddings::EmbeddingModel as _;
+    use crate::http_client::{LazyBody, MultipartForm, Request, Response, StreamingResponse};
     use crate::providers::openai::CompletionsClient;
     use crate::test_utils::RecordingHttpClient;
+    use bytes::Bytes;
+    use std::future::{self, Future};
+
+    #[derive(Clone)]
+    struct CustomHttpClient;
+
+    impl HttpClientExt for CustomHttpClient {
+        fn send<T, U>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            T: Into<Bytes> + WasmCompatSend,
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: Request<MultipartForm>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+        where
+            T: Into<Bytes> + WasmCompatSend,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+    }
 
     const RESPONSE_BODY: &str = r#"{
         "object": "list",
@@ -317,6 +355,19 @@ mod tests {
         "usage": { "prompt_tokens": 4, "total_tokens": 4 },
         "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
     }"#;
+
+    #[test]
+    fn embedding_model_accepts_backend_without_default_or_debug() {
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(CustomHttpClient)
+            .build()
+            .expect("build client");
+
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
+
+        assert_eq!(model.ndims(), 1_536);
+    }
 
     #[tokio::test]
     async fn openai_embeddings_preserve_path_parameters_and_usage() {
