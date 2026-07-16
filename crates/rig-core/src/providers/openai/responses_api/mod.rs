@@ -491,11 +491,13 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             media_type: Some(DocumentMediaType::PDF),
                             ..
                         }) => {
-                            let (file_data, file_url) = match data {
-                                DocumentSourceKind::Base64(data) => {
-                                    (Some(format!("data:application/pdf;base64,{data}")), None)
-                                }
-                                DocumentSourceKind::Url(url) => (None, Some(url)),
+                            let (file_data, file_url, filename) = match data {
+                                DocumentSourceKind::Base64(data) => (
+                                    Some(format!("data:application/pdf;base64,{data}")),
+                                    None,
+                                    Some("document.pdf".to_string()),
+                                ),
+                                DocumentSourceKind::Url(url) => (None, Some(url), None),
                                 DocumentSourceKind::Raw(_) => {
                                     return Err(CompletionError::RequestError(
                                         "Raw file data not supported, encode as base64 first"
@@ -516,7 +518,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                         file_id: None,
                                         file_data,
                                         file_url,
-                                        filename: Some("document.pdf".to_string()),
+                                        filename,
                                     }),
                                     name: None,
                                 }),
@@ -4676,5 +4678,143 @@ mod tests {
                 serde_json::from_value(item.clone()).expect("should decode to Unknown");
             assert_eq!(output, Output::Unknown(item));
         }
+    }
+
+    // Regression tests for issue #1429: `file_url` and `filename` are mutually
+    // exclusive on OpenAI's Responses API (400 `mutually_exclusive_parameters`),
+    // so URL-backed PDFs must not carry the hardcoded `filename`. PR #1432
+    // fixed the `TryFrom<message::Message> for Vec<Message>` conversion; these
+    // tests also cover the `TryFrom<crate::completion::Message> for
+    // Vec<InputItem>` path that `CompletionModel::completion()` requests
+    // actually go through.
+    //
+    // See <https://platform.openai.com/docs/guides/pdf-files> for the
+    // `input_file` content part and its `file_url` / `file_data` / `file_id`
+    // input variants.
+
+    const PDF_URL: &str = "https://example.com/resume.pdf";
+
+    fn url_pdf_message() -> message::Message {
+        message::Message::User {
+            content: OneOrMany::one(message::UserContent::document_url(
+                PDF_URL,
+                Some(message::DocumentMediaType::PDF),
+            )),
+        }
+    }
+
+    /// Recursively collect every JSON object with `"type": "input_file"`.
+    fn find_input_files(value: &serde_json::Value, out: &mut Vec<serde_json::Value>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                if map.get("type").and_then(|t| t.as_str()) == Some("input_file") {
+                    out.push(value.clone());
+                }
+                map.values().for_each(|v| find_input_files(v, out));
+            }
+            serde_json::Value::Array(items) => {
+                items.iter().for_each(|v| find_input_files(v, out));
+            }
+            _ => {}
+        }
+    }
+
+    fn sole_input_file(value: &serde_json::Value) -> serde_json::Value {
+        let mut found = Vec::new();
+        find_input_files(value, &mut found);
+        assert_eq!(
+            found.len(),
+            1,
+            "expected exactly one input_file item in {value:#}"
+        );
+        found.pop().unwrap()
+    }
+
+    fn assert_url_only_input_file(input_file: &serde_json::Value) {
+        assert_eq!(
+            input_file.get("file_url").and_then(|v| v.as_str()),
+            Some(PDF_URL),
+            "URL PDF should carry file_url: {input_file:#}"
+        );
+        assert_eq!(
+            input_file.get("filename"),
+            None,
+            "filename must be absent for URL PDFs (issue #1429): {input_file:#}"
+        );
+        assert_eq!(
+            input_file.get("file_data"),
+            None,
+            "file_data must be absent for URL PDFs: {input_file:#}"
+        );
+    }
+
+    #[test]
+    fn url_pdf_via_input_item_path_omits_filename() {
+        let items = Vec::<InputItem>::try_from(url_pdf_message())
+            .expect("URL PDF should convert to input items");
+        let json = serde_json::to_value(&items).expect("input items should serialize");
+        assert_url_only_input_file(&sole_input_file(&json));
+    }
+
+    #[test]
+    fn url_pdf_in_full_completion_request_omits_filename() {
+        let core_request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(url_pdf_message()),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
+            .expect("request should convert");
+        let json = serde_json::to_value(&request).expect("request should serialize");
+        assert_url_only_input_file(&sole_input_file(&json));
+    }
+
+    #[test]
+    fn url_pdf_via_vec_message_path_omits_filename() {
+        let messages = Vec::<Message>::try_from(url_pdf_message())
+            .expect("URL PDF should convert to messages");
+        let json = serde_json::to_value(&messages).expect("messages should serialize");
+        assert_url_only_input_file(&sole_input_file(&json));
+    }
+
+    #[test]
+    fn base64_pdf_via_input_item_path_keeps_filename() {
+        let input = message::Message::User {
+            content: OneOrMany::one(message::UserContent::Document(message::Document {
+                data: DocumentSourceKind::base64("dGVzdA=="),
+                media_type: Some(message::DocumentMediaType::PDF),
+                additional_params: None,
+            })),
+        };
+
+        let items =
+            Vec::<InputItem>::try_from(input).expect("base64 PDF should convert to input items");
+        let json = serde_json::to_value(&items).expect("input items should serialize");
+        let input_file = sole_input_file(&json);
+
+        assert_eq!(
+            input_file.get("file_data").and_then(|v| v.as_str()),
+            Some("data:application/pdf;base64,dGVzdA=="),
+            "base64 PDF should carry file_data: {input_file:#}"
+        );
+        assert_eq!(
+            input_file.get("filename").and_then(|v| v.as_str()),
+            Some("document.pdf"),
+            "base64 PDF should keep the default filename: {input_file:#}"
+        );
+        assert_eq!(
+            input_file.get("file_url"),
+            None,
+            "base64 PDF should not carry file_url: {input_file:#}"
+        );
     }
 }
