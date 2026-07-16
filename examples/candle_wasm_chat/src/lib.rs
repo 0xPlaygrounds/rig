@@ -4,7 +4,7 @@ use std::cell::RefCell;
 
 use rig::{
     agent::{Agent, AgentBuilder},
-    candle::{GgufModelData, LlamaModel},
+    candle::{CandleModel, GgufModelData},
     completion::Chat,
     message::Message,
 };
@@ -29,7 +29,7 @@ const TOKENIZER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tokenizer.jso
 const WEIGHTS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/model.gguf"));
 
 struct ChatState {
-    agent: Agent<LlamaModel>,
+    agent: Agent<CandleModel>,
     history: Vec<Message>,
 }
 
@@ -60,7 +60,7 @@ pub fn initialize() -> Result<(), JsValue> {
         return Err(js_error(BrowserModelError::MissingEmbeddedModel));
     }
 
-    let model = LlamaModel::from_gguf_bytes(GgufModelData {
+    let model = CandleModel::from_gguf_bytes(GgufModelData {
         config: CONFIG,
         tokenizer: TOKENIZER,
         weights: WEIGHTS,

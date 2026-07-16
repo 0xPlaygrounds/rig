@@ -6,6 +6,7 @@ mod http;
 #[cfg(test)]
 pub(crate) mod internal_streaming_profiles;
 mod memory;
+mod model_conformance;
 mod model_listing;
 mod streaming;
 mod tools;
@@ -18,6 +19,10 @@ pub use http::{
     RecordingHttpClient, SequencedStreamingHttpClient,
 };
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
+pub use model_conformance::{
+    ConformanceToolError, ScenarioReport, optional_argument, sequential_tools,
+    streaming_structured_after_tool, streaming_tool, structured_after_tool, tool_choice_modes,
+};
 pub use model_listing::MockModelLister;
 pub use streaming::{MockResponse, MockStreamEvent};
 pub use tools::{

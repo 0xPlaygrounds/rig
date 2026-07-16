@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use futures::StreamExt;
-use rig_candle::{LlamaModel, ModelData};
+use rig_candle::{CandleModel, ModelData};
 use rig_core::completion::CompletionModel;
 use rig_core::streaming::StreamedAssistantContent;
 
@@ -24,9 +24,9 @@ async fn loads_and_generates_with_a_real_local_model()
         },
     };
     let builder = if directory.join("model.gguf").is_file() {
-        LlamaModel::builder_from_artifacts(rig_candle::ModelArtifacts::Gguf(data))
+        CandleModel::builder_from_artifacts(rig_candle::ModelArtifacts::Gguf(data))
     } else {
-        LlamaModel::builder(data)
+        CandleModel::builder(data)
     };
     let model = builder.temperature(0.0).max_tokens(16).build()?;
 

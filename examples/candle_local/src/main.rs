@@ -2,7 +2,7 @@ use std::io::Write;
 
 use anyhow::Context;
 use futures::StreamExt;
-use rig::candle::{LlamaModel, ModelData};
+use rig::candle::{CandleModel, ModelData};
 use rig::streaming::{StreamedAssistantContent, StreamingCompletion};
 use rig::{agent::AgentBuilder, message::Message};
 
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
         prompt
     };
 
-    let model = LlamaModel::from_gguf(ModelData {
+    let model = CandleModel::from_gguf(ModelData {
         config: std::fs::read(model_dir.join("config.json"))?,
         tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
         weights: std::fs::read(model_dir.join("model.gguf"))?,

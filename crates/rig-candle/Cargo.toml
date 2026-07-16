@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "Local Candle Llama-family completion models for Rig"
+description = "Local Candle Llama, SmolLM2, and Qwen3 completion models for Rig"
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
@@ -31,4 +31,5 @@ rig-core = { path = "../rig-core", version = "0.40.0", default-features = false,
 tokenizers = { workspace = true, default-features = false, features = ["unstable_wasm"] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["test-utils"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

@@ -49,7 +49,7 @@ pub mod bedrock {
     pub use rig_bedrock::*;
 }
 
-/// Local CPU inference with Llama-family safetensors and SmolLM2 Q4_K_M GGUF models.
+/// Local CPU inference with validated Llama/SmolLM2 and native tool-capable Qwen3 models.
 #[cfg(feature = "candle")]
 #[cfg_attr(docsrs, doc(cfg(feature = "candle")))]
 pub mod candle {

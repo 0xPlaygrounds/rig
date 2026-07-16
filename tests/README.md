@@ -127,6 +127,26 @@ Use the provider-specific environment variables named in the ignored test reason
 module, such as `OPENROUTER_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`,
 `HUGGINGFACE_API_KEY`, or local services such as Ollama, llamafile, and llama.cpp.
 
+## Local Artifact Model Tests
+
+`rig-candle` has an ignored native model-contract suite. It is not an HTTP
+cassette: it loads one pinned Qwen3 GGUF artifact and runs provider-neutral
+completion, history, tool, streaming, tool-choice, and synthetic structured
+output scenarios through Rig's agent driver. The same optional-argument and
+sequential-tool helpers are replayed by the Ollama cassette suite.
+
+```bash
+export RIG_CANDLE_TEST_MODEL_DIR="$PWD/crates/rig-candle/test-models/qwen3-4b-q4-k-m"
+./crates/rig-candle/tests/download_qwen3.sh
+cargo test --release -p rig-candle --test live_conformance \
+  -- --ignored --nocapture --test-threads=1
+```
+
+The 2.33-GiB model is checksum-verified, cached in an ignored directory, and
+loaded once per test binary. Use serial execution to bound CPU and memory use.
+See `crates/rig-candle/README.md` for revisions, hashes, measured performance,
+and the boundary between model-contract and provider-transport tests.
+
 ## Integration Tests
 
 External-service integration tests are collected under the `integrations` target and are gated by
