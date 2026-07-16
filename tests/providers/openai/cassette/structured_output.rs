@@ -3,6 +3,7 @@
 use rig::client::CompletionClient;
 use rig::completion::{Prompt, TypedPrompt};
 use rig::providers::openai;
+use rig::test_utils::decode_structured_output;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -101,7 +102,8 @@ async fn prompt_typed_and_output_schema() {
                 .await
                 .expect("output schema prompt should succeed");
             let parsed: WeatherForecast =
-                serde_json::from_str(&response).expect("schema response should deserialize");
+                decode_structured_output("openai_output_schema_weather", &response)
+                    .expect("schema response should deserialize");
             assert_weather_forecast(&parsed, &["chicago"]);
         },
     )

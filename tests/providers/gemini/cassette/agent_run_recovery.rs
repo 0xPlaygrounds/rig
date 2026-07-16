@@ -9,6 +9,7 @@ use rig::client::CompletionClient;
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
 use rig::providers::gemini;
+use rig::test_utils::validate_unknown_tool_failure;
 
 use super::super::agent_run_support::{
     FORCE_TOOLS_PREAMBLE, GeminiAgent, assistant_tool_call_names, call_model,
@@ -63,6 +64,9 @@ async fn fail_resolution_returns_unknown_tool_call() {
             let error = run
                 .resolve_invalid_tool_call(InvalidToolCallAction::fail())
                 .expect_err("fail resolution must error the run");
+
+            validate_unknown_tool_failure(&error, "add", &[])
+                .expect("portable unknown-tool diagnostics should hold");
 
             let PromptError::UnknownToolCall {
                 tool_name,
@@ -282,6 +286,9 @@ async fn retry_with_exhausted_budget_fails_with_unknown_tool_call() {
                 .resolve_invalid_tool_call(InvalidToolCallAction::retry("Try a different tool."))
                 .expect_err("retry without budget must error the run");
 
+            validate_unknown_tool_failure(&error, "add", &[])
+                .expect("portable retry-exhaustion diagnostics should hold");
+
             let PromptError::UnknownToolCall { tool_name, .. } = error else {
                 panic!("expected UnknownToolCall, got {error:?}");
             };
@@ -307,6 +314,9 @@ async fn repair_to_disallowed_name_fails_with_unknown_tool_call() {
             let error = run
                 .resolve_invalid_tool_call(InvalidToolCallAction::repair("multiply"))
                 .expect_err("repairing to a disallowed name must error the run");
+
+            validate_unknown_tool_failure(&error, "multiply", &["subtract"])
+                .expect("portable rejected-repair diagnostics should hold");
 
             let PromptError::UnknownToolCall {
                 tool_name,

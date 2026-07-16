@@ -1,6 +1,7 @@
 //! OpenAI extractor smoke test.
 
 use rig::providers::openai;
+use rig::test_utils::validate_extraction_fields;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
@@ -15,17 +16,18 @@ async fn extractor_smoke() {
             .await
             .expect("extractor request should succeed");
 
-        let first_name = response
-            .data
-            .first_name
-            .as_deref()
-            .expect("first_name should be present");
-        let last_name = response
-            .data
-            .last_name
-            .as_deref()
-            .expect("last_name should be present");
-        let job = response.data.job.as_deref().expect("job should be present");
+        validate_extraction_fields(
+            "openai_extractor_smoke",
+            response.data.first_name.as_deref(),
+            response.data.last_name.as_deref(),
+            response.data.job.as_deref(),
+            response.usage,
+        )
+        .expect("portable extraction contract should hold");
+
+        let first_name = response.data.first_name.as_deref().unwrap_or_default();
+        let last_name = response.data.last_name.as_deref().unwrap_or_default();
+        let job = response.data.job.as_deref().unwrap_or_default();
 
         assert_nonempty_response(first_name);
         assert_nonempty_response(last_name);

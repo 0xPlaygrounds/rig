@@ -19,6 +19,7 @@ use rig::completion::{GetTokenUsage, PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
     Add, FORCE_TOOLS_PREAMBLE, GeminiAgent, assert_canonical_assistant_order,
@@ -489,11 +490,14 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
                 }
             }
 
+            let error = prompt_error.expect("the stream should surface MaxTurnsError");
+            validate_max_turns_failure(&error, 2)
+                .expect("portable max-turn diagnostics should hold");
             let PromptError::MaxTurnsError {
                 max_turns,
                 chat_history,
                 prompt,
-            } = prompt_error.expect("the stream should surface MaxTurnsError")
+            } = error
             else {
                 panic!("expected MaxTurnsError");
             };
@@ -563,10 +567,13 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 "a cancelled run must not produce a final response"
             );
 
+            let error = prompt_error.expect("the hook should cancel the run");
+            validate_cancelled_failure(&error, "cancelled by test hook", "add")
+                .expect("portable cancellation diagnostics should hold");
             let PromptError::PromptCancelled {
                 chat_history,
                 reason,
-            } = prompt_error.expect("the hook should cancel the run")
+            } = error
             else {
                 panic!("expected PromptCancelled");
             };
