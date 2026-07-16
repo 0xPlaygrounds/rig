@@ -641,7 +641,11 @@ pub struct ResponsesToolDefinition {
     pub parameters: serde_json::Value,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
     /// or [`GenericResponsesCompletionModel::with_strict_tools`].
-    #[serde(default, skip_serializing_if = "is_false", deserialize_with = "null_to_false")]
+    #[serde(
+        default,
+        skip_serializing_if = "is_false",
+        deserialize_with = "null_to_false"
+    )]
     pub strict: bool,
     /// Tool description.
     #[serde(default, skip_serializing_if = "String::is_empty")]
