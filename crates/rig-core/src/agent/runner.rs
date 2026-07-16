@@ -26,7 +26,7 @@
 //! ```
 
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicU64, Ordering},
 };
 
@@ -54,7 +54,7 @@ use super::{
     },
 };
 use crate::{
-    completion::{CompletionError, CompletionModel, Document, Message, PromptError},
+    completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
@@ -65,6 +65,13 @@ use crate::{
 };
 
 use super::UNKNOWN_AGENT_NAME;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum UnhandledInvalidToolCallPolicy {
+    #[default]
+    Fail,
+    IgnoreForExtractor,
+}
 
 /// Build the per-turn `chat` span shared by both turn sources.
 ///
@@ -193,11 +200,12 @@ where
     pub(crate) output_tool_name: Option<String>,
     pub(crate) output_tool_description: Option<String>,
     pub(crate) augment_output_preamble: bool,
-    pub(crate) ignore_unhandled_invalid_tool_calls: bool,
+    pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
     pub(crate) concurrency: usize,
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack<M>,
+    pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
 impl<M> AgentRunner<M>
@@ -229,11 +237,12 @@ where
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
-            ignore_unhandled_invalid_tool_calls: false,
+            unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
             concurrency: 1,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
+            error_usage: None,
         }
     }
 
@@ -281,9 +290,39 @@ where
         self
     }
 
+    /// Override the agent preamble for this run.
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+        self.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Remove the agent's configured preamble for this run.
+    pub fn without_preamble(mut self) -> Self {
+        self.preamble = None;
+        self
+    }
+
+    /// Append one static context document for this run.
+    pub fn document(mut self, document: Document) -> Self {
+        self.static_context.push(document);
+        self
+    }
+
+    /// Append static context documents for this run.
+    pub fn documents(mut self, documents: impl IntoIterator<Item = Document>) -> Self {
+        self.static_context.extend(documents);
+        self
+    }
+
     /// Override the model temperature for this run.
     pub fn temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
+        self
+    }
+
+    /// Remove the agent's configured temperature for this run.
+    pub fn without_temperature(mut self) -> Self {
+        self.temperature = None;
         self
     }
 
@@ -293,21 +332,54 @@ where
         self
     }
 
-    /// Apply provider-specific parameters for this run. Object values merge
-    /// into an object baseline; any non-object value replaces the baseline.
-    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+    /// Remove the agent's configured maximum token count for this run.
+    pub fn without_max_tokens(mut self) -> Self {
+        self.max_tokens = None;
+        self
+    }
+
+    /// Shallow-merge object fields into the provider-specific parameters for
+    /// this run. Later fields win. A non-object baseline is replaced by the
+    /// supplied object. A later completion-call hook patch has final
+    /// precedence: object values shallow-merge, while a non-object on either
+    /// side causes wholesale replacement by the hook value.
+    pub fn merge_additional_params(
+        mut self,
+        params: serde_json::Map<String, serde_json::Value>,
+    ) -> Self {
+        let params = serde_json::Value::Object(params);
         self.additional_params = Some(match self.additional_params.take() {
-            Some(baseline) if baseline.is_object() && params.is_object() => {
-                crate::json_utils::merge(baseline, params)
-            }
+            Some(baseline) if baseline.is_object() => crate::json_utils::merge(baseline, params),
             _ => params,
         });
+        self
+    }
+
+    /// Replace all provider-specific parameters for this run. A later
+    /// completion-call hook patch has final precedence: object values
+    /// shallow-merge, while a non-object on either side causes wholesale
+    /// replacement by the hook value.
+    pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
+        self.additional_params = Some(params);
+        self
+    }
+
+    /// Remove the agent's configured provider-specific parameters for this run.
+    /// A later completion-call hook may still supply its own parameters.
+    pub fn without_additional_params(mut self) -> Self {
+        self.additional_params = None;
         self
     }
 
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Remove the agent's configured tool-choice policy for this run.
+    pub fn without_tool_choice(mut self) -> Self {
+        self.tool_choice = None;
         self
     }
 
@@ -331,7 +403,8 @@ where
     /// content. Hooks still receive the invalid-call event first and retain
     /// full control over recovery or termination.
     pub(crate) fn ignore_unhandled_invalid_tool_calls(mut self) -> Self {
-        self.ignore_unhandled_invalid_tool_calls = true;
+        self.unhandled_invalid_tool_call_policy =
+            UnhandledInvalidToolCallPolicy::IgnoreForExtractor;
         self
     }
 
@@ -864,7 +937,10 @@ where
                             .await;
                         let resolution = match action {
                             Some(action) => run.resolve_invalid_tool_call(action),
-                            None if runner.ignore_unhandled_invalid_tool_calls => {
+                            None
+                                if runner.unhandled_invalid_tool_call_policy
+                                    == UnhandledInvalidToolCallPolicy::IgnoreForExtractor =>
+                            {
                                 run.ignore_invalid_tool_call()
                             }
                             None => run.resolve_invalid_tool_call(InvalidToolCallAction::fail()),
@@ -981,6 +1057,19 @@ impl<M> AgentRunner<M>
 where
     M: CompletionModel,
 {
+    pub(crate) async fn run_with_error_usage(
+        mut self,
+    ) -> (Result<PromptResponse, PromptError>, Usage) {
+        let usage = Arc::new(Mutex::new(Usage::new()));
+        self.error_usage = Some(usage.clone());
+        let result = self.run().await;
+        let observed = result.as_ref().map_or_else(
+            |_| *usage.lock().unwrap_or_else(|error| error.into_inner()),
+            |response| response.usage,
+        );
+        (result, observed)
+    }
+
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
@@ -1060,7 +1149,7 @@ mod tests {
 
     use crate::{
         agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
-        completion::CompletionModel,
+        completion::{CompletionModel, Document},
         message::ToolChoice,
         test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
         tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
@@ -1186,18 +1275,45 @@ mod tests {
         }
     }
 
+    #[test]
+    fn agent_exposes_read_only_name_and_description() {
+        let named = AgentBuilder::new(MockCompletionModel::text("done"))
+            .name("researcher")
+            .description("Finds evidence")
+            .build();
+        assert_eq!(named.name(), Some("researcher"));
+        assert_eq!(named.description(), Some("Finds evidence"));
+
+        let unnamed = AgentBuilder::new(MockCompletionModel::text("done")).build();
+        assert_eq!(unnamed.name(), None);
+        assert_eq!(unnamed.description(), None);
+    }
+
     #[tokio::test]
     async fn runner_applies_per_run_request_overrides() {
         let model = MockCompletionModel::text("done");
         AgentBuilder::new(model.clone())
+            .preamble("baseline preamble")
+            .context("baseline document")
             .temperature(0.1)
             .max_tokens(10)
             .additional_params(json!({"baseline": true}))
             .build()
             .runner("go")
+            .preamble("run preamble")
+            .document(Document {
+                id: "run-one".into(),
+                text: "first run document".into(),
+                additional_props: Default::default(),
+            })
+            .documents([Document {
+                id: "run-two".into(),
+                text: "second run document".into(),
+                additional_props: Default::default(),
+            }])
             .temperature(0.7)
             .max_tokens(42)
-            .additional_params(json!({"override": true}))
+            .replace_additional_params(json!({"override": true}))
             .tool_choice(ToolChoice::None)
             .run()
             .await
@@ -1205,30 +1321,112 @@ mod tests {
 
         let requests = model.requests();
         let request = requests.first().expect("one request");
+        assert!(request.chat_history.iter().any(
+            |message| matches!(message, crate::completion::Message::System { content } if content == "run preamble")
+        ));
+        assert!(
+            request
+                .documents
+                .iter()
+                .any(|document| document.text == "baseline document")
+        );
+        assert!(
+            request
+                .documents
+                .iter()
+                .any(|document| document.id == "run-one")
+        );
+        assert!(
+            request
+                .documents
+                .iter()
+                .any(|document| document.id == "run-two")
+        );
         assert_eq!(request.temperature, Some(0.7));
         assert_eq!(request.max_tokens, Some(42));
-        assert_eq!(
-            request.additional_params,
-            Some(json!({"baseline": true, "override": true}))
-        );
+        assert_eq!(request.additional_params, Some(json!({"override": true})));
         assert_eq!(request.tool_choice, Some(ToolChoice::None));
     }
 
     #[tokio::test]
-    async fn runner_non_object_additional_params_replace_the_baseline() {
+    async fn runner_can_merge_additional_params_into_the_baseline() {
+        let model = MockCompletionModel::text("done");
+        AgentBuilder::new(model.clone())
+            .additional_params(json!({"baseline": true, "winner": "baseline"}))
+            .build()
+            .runner("go")
+            .merge_additional_params(
+                json!({"override": true, "winner": "runner"})
+                    .as_object()
+                    .expect("object")
+                    .clone(),
+            )
+            .run()
+            .await
+            .expect("runner request should succeed");
+
+        assert_eq!(
+            model
+                .requests()
+                .first()
+                .expect("one request")
+                .additional_params,
+            Some(json!({"baseline": true, "override": true, "winner": "runner"}))
+        );
+    }
+
+    #[tokio::test]
+    async fn runner_can_replace_additional_params_wholesale() {
         let model = MockCompletionModel::text("done");
         AgentBuilder::new(model.clone())
             .additional_params(json!({"baseline": true}))
             .build()
             .runner("go")
-            .additional_params(json!(["replacement"]))
+            .replace_additional_params(json!({"replacement": true}))
             .run()
             .await
             .expect("runner request should succeed");
 
         let requests = model.requests();
         let request = requests.first().expect("one request");
-        assert_eq!(request.additional_params, Some(json!(["replacement"])));
+        assert_eq!(
+            request.additional_params,
+            Some(json!({"replacement": true}))
+        );
+    }
+
+    #[tokio::test]
+    async fn runner_can_clear_configured_request_defaults() {
+        let model = MockCompletionModel::text("done");
+        AgentBuilder::new(model.clone())
+            .preamble("baseline")
+            .temperature(0.1)
+            .max_tokens(10)
+            .additional_params(json!({"baseline": true}))
+            .tool_choice(ToolChoice::Required)
+            .build()
+            .runner("go")
+            .without_preamble()
+            .without_temperature()
+            .without_max_tokens()
+            .without_additional_params()
+            .without_tool_choice()
+            .run()
+            .await
+            .expect("runner request should succeed");
+
+        let requests = model.requests();
+        let request = requests.first().expect("one request");
+        assert!(
+            !request
+                .chat_history
+                .iter()
+                .any(|message| matches!(message, crate::completion::Message::System { .. }))
+        );
+        assert_eq!(request.temperature, None);
+        assert_eq!(request.max_tokens, None);
+        assert_eq!(request.additional_params, None);
+        assert_eq!(request.tool_choice, None);
     }
 
     #[tokio::test]
@@ -6057,14 +6255,12 @@ mod migrated_tests {
                 ["add"],
                 "active_tools narrows the advertised set to `add` (drops `subtract`)"
             );
-            // additional_params is shallow-merged: the agent baseline survives and
-            // the override's key is added.
+            // The runner replaces the agent baseline, then the hook shallow-merges
+            // last and therefore wins conflicts.
             let params = req.additional_params.as_ref().expect("additional_params");
-            assert_eq!(
-                params.get("baseline").and_then(|v| v.as_str()),
-                Some("keep")
-            );
+            assert_eq!(params.get("runner").and_then(|v| v.as_str()), Some("keep"));
             assert_eq!(params.get("injected").and_then(|v| v.as_bool()), Some(true));
+            assert!(params.get("baseline").is_none());
         }
 
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
@@ -6079,6 +6275,7 @@ mod migrated_tests {
             .add_hook(PatchRequestHook)
             .build()
             .runner("go")
+            .replace_additional_params(json!({"runner": "keep", "injected": false}))
             .max_turns(2)
             .run()
             .await
@@ -6102,6 +6299,7 @@ mod migrated_tests {
             .add_hook(PatchRequestHook)
             .build()
             .runner("go")
+            .replace_additional_params(json!({"runner": "keep", "injected": false}))
             .max_turns(2)
             .stream()
             .await;

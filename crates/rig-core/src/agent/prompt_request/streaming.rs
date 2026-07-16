@@ -449,6 +449,15 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     }
 }
 
+pub(crate) fn store_error_usage<M>(runner: &AgentRunner<M>, run: &AgentRun)
+where
+    M: CompletionModel,
+{
+    if let Some(usage) = &runner.error_usage {
+        *usage.lock().unwrap_or_else(|error| error.into_inner()) = run.usage();
+    }
+}
+
 /// The single agent drive loop, shared by the blocking and streaming surfaces.
 ///
 /// Owns the medium-independent loop — `next_step` dispatch, the `CompletionCall`
@@ -483,6 +492,7 @@ where
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
+                    store_error_usage(&runner, &run);
                     yield Err(Box::new(err).into());
                     break 'outer;
                 }
@@ -499,6 +509,7 @@ where
                     let request_patch =
                         match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
+                                store_error_usage(&runner, &run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
@@ -543,6 +554,7 @@ where
                     {
                         Ok(prepared) => prepared,
                         Err(err) => {
+                            store_error_usage(&runner, &run);
                             yield Err(err.into());
                             break 'outer;
                         }
@@ -564,25 +576,27 @@ where
                         &agent_span,
                         prompt,
                     );
-                    let mut errored = false;
+                    let mut turn_error = None;
                     while let Some(item) = turn_stream.next().await {
                         match item {
                             Ok(item) => yield Ok(DriveItem::Item(item)),
                             Err(err) => {
-                                errored = true;
-                                yield Err(err);
+                                turn_error = Some(err);
                                 break;
                             }
                         }
                     }
                     drop(turn_stream);
-                    if errored {
+                    if let Some(err) = turn_error {
+                        store_error_usage(&runner, &run);
+                        yield Err(err);
                         break 'outer;
                     }
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
+                        store_error_usage(&runner, &run);
                         yield Err(StreamingError::Completion(CompletionError::ResponseError(
                             "agent requested tool execution without a prepared registry snapshot"
                                 .to_string(),
@@ -596,19 +610,20 @@ where
                         calls,
                         tool_snapshot,
                     );
-                    let mut errored = false;
+                    let mut tool_error = None;
                     while let Some(item) = tool_stream.next().await {
                         match item {
                             Ok(item) => yield Ok(DriveItem::Item(item)),
                             Err(err) => {
-                                errored = true;
-                                yield Err(err);
+                                tool_error = Some(err);
                                 break;
                             }
                         }
                     }
                     drop(tool_stream);
-                    if errored {
+                    if let Some(err) = tool_error {
+                        store_error_usage(&runner, &run);
+                        yield Err(err);
                         break 'outer;
                     }
                 }

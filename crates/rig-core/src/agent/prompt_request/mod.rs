@@ -42,9 +42,42 @@ macro_rules! forward_prompt_setters {
             self
         }
 
+        /// Override the agent preamble for this request.
+        pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+            self.$recv = self.$recv.preamble(preamble);
+            self
+        }
+
+        /// Remove the agent's configured preamble for this request.
+        pub fn without_preamble(mut self) -> Self {
+            self.$recv = self.$recv.without_preamble();
+            self
+        }
+
+        /// Append one static context document for this request.
+        pub fn document(mut self, document: crate::completion::Document) -> Self {
+            self.$recv = self.$recv.document(document);
+            self
+        }
+
+        /// Append static context documents for this request.
+        pub fn documents(
+            mut self,
+            documents: impl IntoIterator<Item = crate::completion::Document>,
+        ) -> Self {
+            self.$recv = self.$recv.documents(documents);
+            self
+        }
+
         /// Override the model temperature for this request.
         pub fn temperature(mut self, temperature: f64) -> Self {
             self.$recv = self.$recv.temperature(temperature);
+            self
+        }
+
+        /// Remove the agent's configured temperature for this request.
+        pub fn without_temperature(mut self) -> Self {
+            self.$recv = self.$recv.without_temperature();
             self
         }
 
@@ -54,16 +87,43 @@ macro_rules! forward_prompt_setters {
             self
         }
 
-        /// Apply provider-specific parameters for this request. Object values
-        /// merge into an object baseline; any non-object value replaces it.
-        pub fn additional_params(mut self, params: serde_json::Value) -> Self {
-            self.$recv = self.$recv.additional_params(params);
+        /// Remove the agent's configured maximum token count for this request.
+        pub fn without_max_tokens(mut self) -> Self {
+            self.$recv = self.$recv.without_max_tokens();
+            self
+        }
+
+        /// Shallow-merge object fields into the provider-specific parameters
+        /// for this request. Later fields win.
+        pub fn merge_additional_params(
+            mut self,
+            params: serde_json::Map<String, serde_json::Value>,
+        ) -> Self {
+            self.$recv = self.$recv.merge_additional_params(params);
+            self
+        }
+
+        /// Replace all provider-specific parameters for this request.
+        pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
+            self.$recv = self.$recv.replace_additional_params(params);
+            self
+        }
+
+        /// Remove the agent's configured provider-specific parameters for this request.
+        pub fn without_additional_params(mut self) -> Self {
+            self.$recv = self.$recv.without_additional_params();
             self
         }
 
         /// Override the tool-choice policy for this request.
         pub fn tool_choice(mut self, tool_choice: crate::message::ToolChoice) -> Self {
             self.$recv = self.$recv.tool_choice(tool_choice);
+            self
+        }
+
+        /// Remove the agent's configured tool-choice policy for this request.
+        pub fn without_tool_choice(mut self) -> Self {
+            self.$recv = self.$recv.without_tool_choice();
             self
         }
 
@@ -325,7 +385,7 @@ pub struct PromptResponse {
     /// Number of synthetic output-tool calls in the turn that finalized this
     /// response. Kept crate-private because it is runner bookkeeping rather
     /// than provider-facing response content.
-    pub(crate) output_tool_calls: usize,
+    output_tool_calls: usize,
 }
 
 /// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
@@ -421,6 +481,10 @@ impl PromptResponse {
     pub(crate) fn with_output_tool_calls(mut self, count: usize) -> Self {
         self.output_tool_calls = count;
         self
+    }
+
+    pub(crate) fn output_tool_calls(&self) -> usize {
+        self.output_tool_calls
     }
 
     /// The concatenated assistant text for the final turn.
@@ -1138,6 +1202,18 @@ mod tests {
             ]
         );
         assert_eq!(response.requests(), 2);
+    }
+
+    #[test]
+    fn prompt_response_output_tool_marker_is_never_serialized() {
+        let response = PromptResponse::new("ok", usage(1, 2)).with_output_tool_calls(3);
+
+        let value = serde_json::to_value(&response).expect("serialize prompt response");
+        assert!(value.get("output_tool_calls").is_none());
+
+        let decoded: PromptResponse =
+            serde_json::from_value(value).expect("deserialize prompt response");
+        assert_eq!(decoded.output_tool_calls(), 0);
     }
 
     #[test]

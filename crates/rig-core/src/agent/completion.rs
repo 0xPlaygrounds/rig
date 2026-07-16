@@ -684,8 +684,17 @@ impl<M> Agent<M>
 where
     M: CompletionModel,
 {
-    /// Returns the name of the agent.
-    pub(crate) fn name(&self) -> &str {
+    /// Returns the configured agent name.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// Returns the configured agent description.
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    pub(crate) fn name_or_default(&self) -> &str {
         self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
@@ -733,7 +742,7 @@ impl<M> Prompt for &Agent<M>
 where
     M: CompletionModel + 'static,
 {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
+    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name_or_default()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
@@ -747,7 +756,7 @@ impl<M> Chat for Agent<M>
 where
     M: CompletionModel + 'static,
 {
-    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
+    #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,

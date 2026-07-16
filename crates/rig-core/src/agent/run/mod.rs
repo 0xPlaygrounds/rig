@@ -22,9 +22,16 @@
 //! carries no cross-version stability guarantee yet: resume with the same rig
 //! version that suspended the run.
 //!
-//! [`crate::completion::Prompt::prompt`] on [`crate::agent::Agent`] drives
-//! this machine internally; the same machine can be driven by hand for custom
-//! control flow:
+//! `AgentRun` deliberately contains no model, tool registry, memory backend, or
+//! hook stack. Hand-driving it is a low-level provider integration: the caller
+//! owns all IO and any lifecycle policy. To execute a configured [`Agent`](crate::agent::Agent)
+//! with its hooks, tools, retrieval, and memory, use
+//! [`Agent::runner`](crate::agent::Agent::runner); constructing an `AgentRun`
+//! directly is not an alternate way to execute an `Agent`.
+//!
+//! [`crate::completion::Prompt::prompt`] and
+//! [`Agent::runner`](crate::agent::Agent::runner) drive this machine internally;
+//! the same machine can be driven by hand for custom provider control flow:
 //!
 //! ```rust,no_run
 //! use rig_core::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};

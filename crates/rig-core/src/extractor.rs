@@ -202,7 +202,7 @@ where
         text: &Message,
         messages: &[Message],
     ) -> (Result<T, ExtractionError>, Usage) {
-        let response = match self
+        let (result, error_usage) = self
             .agent
             .runner(text.clone())
             .history(messages.iter().cloned())
@@ -213,18 +213,18 @@ where
                 false,
             )
             .ignore_unhandled_invalid_tool_calls()
-            .run()
-            .await
-        {
+            .run_with_error_usage()
+            .await;
+        let response = match result {
             Ok(response) => response,
             Err(PromptError::CompletionError(e)) => {
-                return (Err(ExtractionError::CompletionError(e)), Usage::new());
+                return (Err(ExtractionError::CompletionError(e)), error_usage);
             }
-            Err(e) => return (Err(e.into()), Usage::new()),
+            Err(e) => return (Err(e.into()), error_usage),
         };
         let usage = response.usage;
 
-        let submissions = response.output_tool_calls;
+        let submissions = response.output_tool_calls();
         if submissions == 0 {
             tracing::warn!(
                 "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
@@ -454,6 +454,51 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
+    enum StopFirstBilledResponseAt {
+        CompletionResponse,
+        ModelTurnFinished,
+    }
+
+    #[derive(Clone)]
+    struct StopFirstBilledResponse {
+        phase: StopFirstBilledResponseAt,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl<M> AgentHook<M> for StopFirstBilledResponse
+    where
+        M: CompletionModel,
+    {
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionResponseEvent<'_, M>,
+        ) -> ObservationAction {
+            if matches!(self.phase, StopFirstBilledResponseAt::CompletionResponse)
+                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
+            {
+                ObservationAction::stop("stop first billed response")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::ModelTurnFinished<'_>,
+        ) -> ObservationAction {
+            if matches!(self.phase, StopFirstBilledResponseAt::ModelTurnFinished)
+                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
+            {
+                ObservationAction::stop("stop first billed model turn")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
+    }
+
     struct StopOnInvalidToolCall;
 
     impl<M> AgentHook<M> for StopOnInvalidToolCall
@@ -560,6 +605,36 @@ mod tests {
             }
         );
         assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) {
+        let model = MockCompletionModel::new([
+            submit_turn("ignored").with_usage(usage(10)),
+            submit_turn("John").with_usage(usage(5)),
+        ]);
+        let response = ExtractorBuilder::<_, Person>::new(model)
+            .retries(1)
+            .add_hook(StopFirstBilledResponse {
+                phase,
+                calls: Arc::new(AtomicUsize::new(0)),
+            })
+            .build()
+            .extract_with_usage("John")
+            .await
+            .expect("second attempt should succeed");
+
+        assert_eq!(response.data.name, "John");
+        assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn completion_response_hook_termination_preserves_billed_usage() {
+        assert_billed_hook_termination_usage(StopFirstBilledResponseAt::CompletionResponse).await;
+    }
+
+    #[tokio::test]
+    async fn model_turn_finished_hook_termination_preserves_billed_usage() {
+        assert_billed_hook_termination_usage(StopFirstBilledResponseAt::ModelTurnFinished).await;
     }
 
     #[tokio::test]
@@ -674,6 +749,39 @@ mod tests {
 
         assert_eq!(response.data.name, "John");
         assert_eq!(response.usage.total_tokens, 7);
+    }
+
+    #[tokio::test]
+    async fn submit_call_wins_before_unexpected_sibling_call() {
+        let turn = MockTurn::from_contents([
+            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+            tool_call("unknown", "unexpected", json!({})),
+        ])
+        .expect("two tool calls");
+
+        let response = extractor(MockCompletionModel::new([turn]), 0)
+            .extract("John")
+            .await
+            .expect("an earlier submit should remain authoritative");
+
+        assert_eq!(response.name, "John");
+    }
+
+    #[tokio::test]
+    async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
+        let turn = MockTurn::from_contents([
+            tool_call("unknown-before", "unexpected_before", json!({})),
+            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+            tool_call("unknown-after", "unexpected_after", json!({})),
+        ])
+        .expect("three tool calls");
+
+        let response = extractor(MockCompletionModel::new([turn]), 0)
+            .extract("John")
+            .await
+            .expect("unexpected siblings should not displace submit");
+
+        assert_eq!(response.name, "John");
     }
 
     #[tokio::test]
