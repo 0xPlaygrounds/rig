@@ -721,7 +721,11 @@ pub struct ResponsesToolDefinition {
     pub parameters: serde_json::Value,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
     /// or [`GenericResponsesCompletionModel::with_strict_tools`].
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(
+        default,
+        skip_serializing_if = "is_false",
+        deserialize_with = "json_utils::null_or_default"
+    )]
     pub strict: bool,
     /// Tool description.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -3044,6 +3048,53 @@ mod tests {
 
         let serialized = serde_json::to_value(tool).expect("tool should serialize");
         assert!(serialized.get("strict").is_none());
+    }
+
+    #[test]
+    fn responses_tool_definitions_accept_nullable_strict() {
+        let cases = [
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {}
+                }),
+                false,
+            ),
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {},
+                    "strict": null
+                }),
+                false,
+            ),
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {},
+                    "strict": false
+                }),
+                false,
+            ),
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {},
+                    "strict": true
+                }),
+                true,
+            ),
+        ];
+
+        for (value, expected) in cases {
+            let tool: ResponsesToolDefinition =
+                serde_json::from_value(value).expect("tool definition should deserialize");
+            assert_eq!(tool.strict, expected);
+        }
     }
 
     #[test]
