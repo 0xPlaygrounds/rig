@@ -18,7 +18,7 @@ use rig::agent::{
     StreamResponseFinish, TextDelta, ToolCall as ToolCallEvent, ToolCallAction, ToolCallDelta,
     ToolResultAction, ToolResultEvent,
 };
-use rig::completion::{CompletionModel, Document};
+use rig::completion::Document;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -190,7 +190,7 @@ impl EventTap {
     }
 }
 
-impl<M: CompletionModel> AgentHook<M> for EventTap {
+impl AgentHook for EventTap {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
@@ -202,7 +202,7 @@ impl<M: CompletionModel> AgentHook<M> for EventTap {
     async fn on_completion_response(
         &self,
         ctx: &HookContext,
-        _event: CompletionResponseEvent<'_, M>,
+        _event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
         self.record(ctx, "CompletionResponse");
         ObservationAction::continue_run()
@@ -260,7 +260,7 @@ impl<M: CompletionModel> AgentHook<M> for EventTap {
     async fn on_stream_response_finish(
         &self,
         ctx: &HookContext,
-        _event: StreamResponseFinish<'_, M>,
+        _event: StreamResponseFinish<'_>,
     ) -> ObservationAction {
         self.record(ctx, "StreamResponseFinish");
         ObservationAction::continue_run()
@@ -281,7 +281,7 @@ impl ScratchpadReader {
     }
 }
 
-impl<M: CompletionModel> AgentHook<M> for ScratchpadReader {
+impl AgentHook for ScratchpadReader {
     async fn on_model_turn_finished(
         &self,
         ctx: &HookContext,
@@ -307,7 +307,7 @@ impl<M: CompletionModel> AgentHook<M> for ScratchpadReader {
 #[derive(Clone)]
 pub(crate) struct ApplyPatch(pub(crate) RequestPatch);
 
-impl<M: CompletionModel> AgentHook<M> for ApplyPatch {
+impl AgentHook for ApplyPatch {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
@@ -324,7 +324,7 @@ impl<M: CompletionModel> AgentHook<M> for ApplyPatch {
 #[derive(Clone)]
 pub(crate) struct FirstTurnPatch(pub(crate) RequestPatch);
 
-impl<M: CompletionModel> AgentHook<M> for FirstTurnPatch {
+impl AgentHook for FirstTurnPatch {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
@@ -356,7 +356,7 @@ pub(crate) struct SetArg {
     pub(crate) value: serde_json::Value,
 }
 
-impl<M: CompletionModel> AgentHook<M> for SetArg {
+impl AgentHook for SetArg {
     async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
         if event.tool_name == self.tool {
             let mut parsed: serde_json::Value =
@@ -390,7 +390,7 @@ pub(crate) struct RewriteToolResult {
     pub(crate) rewrite: ResultRewrite,
 }
 
-impl<M: CompletionModel> AgentHook<M> for RewriteToolResult {
+impl AgentHook for RewriteToolResult {
     async fn on_tool_result(
         &self,
         _ctx: &HookContext,
@@ -417,7 +417,7 @@ pub(crate) struct TerminateOnResult {
     pub(crate) reason: &'static str,
 }
 
-impl<M: CompletionModel> AgentHook<M> for TerminateOnResult {
+impl AgentHook for TerminateOnResult {
     async fn on_tool_result(
         &self,
         _ctx: &HookContext,

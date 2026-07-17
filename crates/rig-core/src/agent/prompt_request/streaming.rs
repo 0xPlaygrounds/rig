@@ -331,7 +331,7 @@ where
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.runner = self.runner.add_hook(hook);
         self
@@ -986,8 +986,8 @@ pub(crate) struct StreamingTurnSource {
 }
 
 impl StreamingTurnSource {
-    pub(crate) fn new<M: CompletionModel>(
-        hooks: &HookStack<M>,
+    pub(crate) fn new(
+        hooks: &HookStack,
         agent_name: String,
         created_agent_span: bool,
         record_telemetry_content: bool,
@@ -1182,9 +1182,10 @@ where
                             }
 
                             if emit_final
-                                && let Some(StreamedAssistantContent::Final(final_resp)) =
+                                && let Some(StreamedAssistantContent::Final(_)) =
                                     item_slot.as_ref()
                             {
+                                let canonical_content = stream.accumulated_choice();
                                 if !turn_recovered
                                     && let Some(reason) = observe_action(
                                         runner
@@ -1193,7 +1194,9 @@ where
                                                 hook_ctx,
                                                 StreamResponseFinish {
                                                     prompt: &current_prompt,
-                                                    response: final_resp,
+                                                    content: &canonical_content,
+                                                    usage,
+                                                    message_id: stream.message_id.as_deref(),
                                                 },
                                             )
                                             .await,
@@ -1599,7 +1602,7 @@ mod migrated_tests {
 
     struct StopAgentStreamingBeforeCompletion;
 
-    impl AgentHook<MockCompletionModel> for StopAgentStreamingBeforeCompletion {
+    impl AgentHook for StopAgentStreamingBeforeCompletion {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -1999,7 +2002,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct PanicOnUnknownToolHook;
 
-    impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
+    impl AgentHook for PanicOnUnknownToolHook {
         async fn on_tool_call_delta(
             &self,
             _: &HookContext,
@@ -2013,7 +2016,7 @@ mod migrated_tests {
         async fn on_stream_response_finish(
             &self,
             _: &HookContext,
-            _: StreamResponseFinish<'_, MockCompletionModel>,
+            _: StreamResponseFinish<'_>,
         ) -> ObservationAction {
             panic!("unknown tool call should fail before stream finish hooks run")
         }
@@ -3141,11 +3144,11 @@ mod migrated_tests {
     #[derive(Clone)]
     struct TerminateOnStreamFinish;
 
-    impl AgentHook<MockCompletionModel> for TerminateOnStreamFinish {
+    impl AgentHook for TerminateOnStreamFinish {
         async fn on_stream_response_finish(
             &self,
             _ctx: &HookContext,
-            event: StreamResponseFinish<'_, MockCompletionModel>,
+            event: StreamResponseFinish<'_>,
         ) -> ObservationAction {
             match event {
                 StreamResponseFinish { .. } => {
@@ -3161,7 +3164,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
+    impl AgentHook for RepairDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3180,7 +3183,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
+    impl AgentHook for RetryDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3202,7 +3205,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
+    impl AgentHook for SkipDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3232,7 +3235,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+    impl AgentHook for RecordingInvalidToolCallHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3265,7 +3268,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingToolCallDeltaHook {
+    impl AgentHook for RecordingToolCallDeltaHook {
         async fn on_tool_call_delta(
             &self,
             _ctx: &HookContext,
@@ -3309,7 +3312,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingTextDeltaHook {
+    impl AgentHook for RecordingTextDeltaHook {
         async fn on_text_delta(
             &self,
             _ctx: &HookContext,
@@ -3334,7 +3337,7 @@ mod migrated_tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
+    impl AgentHook for RecordingTextAndSkipInvalidToolHook {
         async fn on_text_delta(
             &self,
             ctx: &HookContext,
@@ -3356,7 +3359,7 @@ mod migrated_tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
+    impl AgentHook for RecordingTextAndRetryInvalidToolHook {
         async fn on_text_delta(
             &self,
             ctx: &HookContext,
@@ -3378,7 +3381,7 @@ mod migrated_tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
+    impl AgentHook for RecordingDeltaAndRetryInvalidToolHook {
         async fn on_tool_call_delta(
             &self,
             ctx: &HookContext,
@@ -3400,7 +3403,7 @@ mod migrated_tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
+    impl AgentHook for RecordingDeltaAndSkipInvalidToolHook {
         async fn on_tool_call_delta(
             &self,
             ctx: &HookContext,
@@ -3431,7 +3434,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
+    impl AgentHook for TerminatingToolCallDeltaHook {
         async fn on_tool_call_delta(
             &self,
             _ctx: &HookContext,

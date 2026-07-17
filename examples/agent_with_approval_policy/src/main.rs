@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -118,7 +118,7 @@ struct ApprovalPolicy {
     max_auto_transfer: u64,
 }
 
-impl<M: CompletionModel> AgentHook<M> for ApprovalPolicy {
+impl AgentHook for ApprovalPolicy {
     async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
         let tool_name = event.tool_name;
         if self.auto_approve.contains(tool_name) {

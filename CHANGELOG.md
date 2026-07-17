@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] Remove the completion-model generic from managed
+  hooks. `AgentHook<M>`, `HookStack<M>`, and their response events are now
+  provider-independent `AgentHook`, `HookStack`, `CompletionResponseEvent<'_>`,
+  and `StreamResponseFinish<'_>`. Managed response hooks receive canonical Rig
+  assistant content, usage, prompt, and message ID; direct `CompletionModel`
+  completion and streaming APIs continue exposing typed provider responses.
+
+  ```rust
+  // Before
+  impl<M: CompletionModel> AgentHook<M> for TelemetryHook { /* ... */ }
+
+  // After
+  impl AgentHook for TelemetryHook { /* ... */ }
+  ```
 - *(agent)* [**breaking**] Remove the built-in `AgentBuilder::dynamic_context`,
   `ExtractorBuilder::dynamic_context`, and internal `DynamicContextStore`
   passive-retrieval pipeline. Static builder context remains available. For
@@ -27,9 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       samples: u64,
   }
 
-  impl<M, I> AgentHook<M> for AppRetrievalHook<I>
+  impl<I> AgentHook for AppRetrievalHook<I>
   where
-      M: CompletionModel,
       I: VectorStoreIndexDyn,
   {
       async fn on_completion_call(

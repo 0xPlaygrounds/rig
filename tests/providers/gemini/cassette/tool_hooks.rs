@@ -169,7 +169,7 @@ async fn hooks_observe_every_tool_call_and_result() {
 // builder code.
 #[allow(unused)]
 fn assert_hook_impls() {
-    fn requires_hook<H: AgentHook<gemini::completion::CompletionModel>>(_hook: H) {}
+    fn requires_hook<H: AgentHook>(_hook: H) {}
     requires_hook(ToolEventRecorder::default());
     requires_hook(SkipToolHook {
         tool_name: "add",

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, ToolResultAction, ToolResultEvent};
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
 use rig::test_utils::validate_result_redaction;
@@ -113,7 +113,7 @@ fn redact_ssn(record: &str) -> String {
 /// use case `ToolResultAction::Rewrite` exists for.
 struct RedactSsnFromResult;
 
-impl<M: CompletionModel> AgentHook<M> for RedactSsnFromResult {
+impl AgentHook for RedactSsnFromResult {
     async fn on_tool_result(
         &self,
         _ctx: &rig::agent::HookContext,

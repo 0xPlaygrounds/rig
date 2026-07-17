@@ -281,6 +281,16 @@ where
         }
     }
 
+    /// Snapshot the canonical assistant content accumulated so far.
+    ///
+    /// Managed response-finish hooks run when the provider's final-response
+    /// item arrives, before the next poll observes end-of-stream and publishes
+    /// the same items through [`Self::choice`].
+    pub(crate) fn accumulated_choice(&self) -> OneOrMany<AssistantContent> {
+        OneOrMany::from_iter_optional(self.assistant_items.clone())
+            .unwrap_or_else(|| self.choice.clone())
+    }
+
     /// Cancel the stream and immediately drop the provider's inner stream.
     /// Cancellation is surfaced as normal stream termination.
     pub fn cancel(&mut self) {

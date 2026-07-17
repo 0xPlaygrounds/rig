@@ -587,7 +587,7 @@ where
     pub(crate) default_max_turns: Option<usize>,
     /// Default hook stack applied to every prompt request and runner created
     /// from this agent. Empty by default.
-    pub(crate) hooks: HookStack<M>,
+    pub(crate) hooks: HookStack,
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub(crate) output_schema: Option<schemars::Schema>,

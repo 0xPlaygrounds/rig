@@ -123,7 +123,7 @@ where
     /// Tool configuration state (typestate pattern)
     tool_state: ToolState,
     /// Default hook stack applied to every prompt request from the built agent.
-    hooks: HookStack<M>,
+    hooks: HookStack,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
     /// How `output_schema` is enforced (tool vs native vs prompted; see #1928)
@@ -281,7 +281,7 @@ where
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.hooks.push(hook);
         self
@@ -736,7 +736,7 @@ mod tests {
     #[derive(Clone)]
     struct BuilderHook;
 
-    impl AgentHook<MockCompletionModel> for BuilderHook {}
+    impl AgentHook for BuilderHook {}
 
     #[test]
     fn hook_can_be_set_after_tool_configuration() {

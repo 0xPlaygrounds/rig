@@ -45,9 +45,8 @@ struct QuestionnaireRag<I> {
     samples: u64,
 }
 
-impl<M, I> AgentHook<M> for QuestionnaireRag<I>
+impl<I> AgentHook for QuestionnaireRag<I>
 where
-    M: CompletionModel,
     I: VectorStoreIndexDyn,
 {
     async fn on_completion_call(

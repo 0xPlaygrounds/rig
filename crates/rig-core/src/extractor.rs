@@ -28,6 +28,11 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! Extractors execute through the managed [`AgentRunner`](crate::agent::AgentRunner)
+//! lifecycle. Hooks registered with [`ExtractorBuilder::add_hook`] are
+//! provider-independent and receive canonical Rig response content, usage, and
+//! message identifiers.
 
 use std::marker::PhantomData;
 
@@ -316,7 +321,7 @@ where
     /// Add a lifecycle hook to every extraction attempt.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.agent_builder = self.agent_builder.add_hook(hook);
         self
@@ -335,13 +340,14 @@ where
 #[cfg(test)]
 mod tests {
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
 
     use serde_json::json;
 
     use super::*;
+    use crate::OneOrMany;
     use crate::agent::{
         CompletionCallAction, CompletionResponseEvent, HookContext, ObservationAction, RequestPatch,
     };
@@ -386,10 +392,34 @@ mod tests {
         invalid_tool_calls: Arc<AtomicUsize>,
     }
 
-    impl<M> AgentHook<M> for LifecycleCounts
-    where
-        M: CompletionModel,
-    {
+    #[derive(Clone)]
+    struct ExtractorResponseSnapshot {
+        prompt: Message,
+        content: OneOrMany<AssistantContent>,
+        usage: Usage,
+        message_id: Option<String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct ExtractorResponseCapture(Arc<Mutex<Option<ExtractorResponseSnapshot>>>);
+
+    impl AgentHook for ExtractorResponseCapture {
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            event: CompletionResponseEvent<'_>,
+        ) -> ObservationAction {
+            *self.0.lock().expect("extractor response capture") = Some(ExtractorResponseSnapshot {
+                prompt: event.prompt.clone(),
+                content: event.content.clone(),
+                usage: event.usage,
+                message_id: event.message_id.map(str::to_owned),
+            });
+            ObservationAction::continue_run()
+        }
+    }
+
+    impl AgentHook for LifecycleCounts {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -402,7 +432,7 @@ mod tests {
         async fn on_completion_response(
             &self,
             _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_, M>,
+            _event: CompletionResponseEvent<'_>,
         ) -> ObservationAction {
             self.completion_responses.fetch_add(1, Ordering::SeqCst);
             ObservationAction::Continue
@@ -429,10 +459,7 @@ mod tests {
 
     struct StopBeforeCompletion;
 
-    impl<M> AgentHook<M> for StopBeforeCompletion
-    where
-        M: CompletionModel,
-    {
+    impl AgentHook for StopBeforeCompletion {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -444,10 +471,7 @@ mod tests {
 
     struct ExtractorRetrievalHook;
 
-    impl<M> AgentHook<M> for ExtractorRetrievalHook
-    where
-        M: CompletionModel,
-    {
+    impl AgentHook for ExtractorRetrievalHook {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -473,14 +497,11 @@ mod tests {
         calls: Arc<AtomicUsize>,
     }
 
-    impl<M> AgentHook<M> for StopFirstBilledResponse
-    where
-        M: CompletionModel,
-    {
+    impl AgentHook for StopFirstBilledResponse {
         async fn on_completion_response(
             &self,
             _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_, M>,
+            _event: CompletionResponseEvent<'_>,
         ) -> ObservationAction {
             if matches!(self.phase, StopFirstBilledResponseAt::CompletionResponse)
                 && self.calls.fetch_add(1, Ordering::SeqCst) == 0
@@ -508,10 +529,7 @@ mod tests {
 
     struct StopOnInvalidToolCall;
 
-    impl<M> AgentHook<M> for StopOnInvalidToolCall
-    where
-        M: CompletionModel,
-    {
+    impl AgentHook for StopOnInvalidToolCall {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -525,10 +543,7 @@ mod tests {
 
     struct RepairUnexpectedAsSubmit;
 
-    impl<M> AgentHook<M> for RepairUnexpectedAsSubmit
-    where
-        M: CompletionModel,
-    {
+    impl AgentHook for RepairUnexpectedAsSubmit {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -542,10 +557,7 @@ mod tests {
 
     struct SkipUnexpected;
 
-    impl<M> AgentHook<M> for SkipUnexpected
-    where
-        M: CompletionModel,
-    {
+    impl AgentHook for SkipUnexpected {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -614,6 +626,35 @@ mod tests {
                 if reason == "extractor stopped"
         ));
         assert_eq!(model.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn extractor_hook_receives_canonical_completion_response() {
+        let capture = ExtractorResponseCapture::default();
+        let response =
+            ExtractorBuilder::<_, Person>::new(MockCompletionModel::new([submit_turn("John")
+                .with_usage(usage(9))
+                .with_message_id("extractor-message-id")]))
+            .add_hook(capture.clone())
+            .build()
+            .extract("John")
+            .await
+            .expect("extraction should succeed");
+
+        assert_eq!(response.name, "John");
+        let snapshot = capture
+            .0
+            .lock()
+            .expect("extractor response capture")
+            .clone()
+            .expect("completion response event");
+        assert!(matches!(snapshot.prompt, Message::User { .. }));
+        assert!(matches!(
+            snapshot.content.first(),
+            AssistantContent::ToolCall(call) if call.function.name == SUBMIT_TOOL_NAME
+        ));
+        assert_eq!(snapshot.usage, usage(9));
+        assert_eq!(snapshot.message_id.as_deref(), Some("extractor-message-id"));
     }
 
     #[tokio::test]

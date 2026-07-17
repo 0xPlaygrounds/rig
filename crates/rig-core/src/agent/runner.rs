@@ -203,7 +203,7 @@ where
     pub(crate) concurrency: usize,
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
-    pub(crate) hooks: HookStack<M>,
+    pub(crate) hooks: HookStack,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
@@ -252,7 +252,7 @@ where
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.hooks.push(hook);
         self
@@ -561,16 +561,13 @@ pub(crate) enum CompletionCallOutcome {
 }
 
 /// Fire the event-specific completion-call hook for a turn.
-pub(crate) async fn resolve_completion_call<M>(
-    hooks: &HookStack<M>,
+pub(crate) async fn resolve_completion_call(
+    hooks: &HookStack,
     ctx: &HookContext,
     prompt: &Message,
     history: &[Message],
     turn: usize,
-) -> CompletionCallOutcome
-where
-    M: CompletionModel,
-{
+) -> CompletionCallOutcome {
     match completion_call_decision(
         hooks
             .on_completion_call(
@@ -962,8 +959,8 @@ where
                         }
 
                         if !response_hook_suppressed {
-                            // The medium-specific raw response event fires first,
-                            // then the normalized per-turn event. Both are
+                            // The completion-response lifecycle event fires first,
+                            // then the accepted per-turn event. Both are
                             // observe-only and suppressed for recovered turns.
                             if let Some(reason) = observe_action(
                                 runner
@@ -972,7 +969,9 @@ where
                                         hook_ctx,
                                         CompletionResponseEvent {
                                             prompt: &current_prompt,
-                                            response: &resp,
+                                            content: &resp.choice,
+                                            usage: resp.usage,
+                                            message_id: resp.message_id.as_deref(),
                                         },
                                     )
                                     .await,
@@ -1146,10 +1145,18 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
-        completion::{CompletionModel, Document},
-        message::ToolChoice,
-        test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
+        OneOrMany,
+        agent::{
+            AgentBuilder, AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
+            StreamResponseFinish, ToolResultAction, ToolResultEvent,
+        },
+        completion::{
+            CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Document,
+            Message, Usage,
+        },
+        message::{AssistantContent, ToolChoice},
+        streaming::StreamingCompletionResponse,
+        test_utils::{MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
         tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
     };
 
@@ -1209,7 +1216,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct SnapshotResults(Arc<Mutex<Vec<usize>>>);
 
-    impl<M: CompletionModel> AgentHook<M> for SnapshotResults {
+    impl AgentHook for SnapshotResults {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -1252,7 +1259,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct Results(Arc<Mutex<Vec<(ToolErrorKind, String, String)>>>);
 
-    impl<M: CompletionModel> AgentHook<M> for Results {
+    impl AgentHook for Results {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -1271,6 +1278,131 @@ mod tests {
             }
             ToolResultAction::rewrite("rewritten for model")
         }
+    }
+
+    #[derive(Clone)]
+    struct AlternateMockCompletionModel(MockCompletionModel);
+
+    impl CompletionModel for AlternateMockCompletionModel {
+        type Response = MockResponse;
+        type StreamingResponse = MockResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self(MockCompletionModel::default())
+        }
+
+        async fn completion(
+            &self,
+            request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            self.0.completion(request).await
+        }
+
+        async fn stream(
+            &self,
+            request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            self.0.stream(request).await
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct CanonicalResponseSnapshot {
+        prompt: Message,
+        content: OneOrMany<AssistantContent>,
+        usage: Usage,
+        message_id: Option<String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CanonicalResponseHook {
+        blocking: Arc<Mutex<Option<CanonicalResponseSnapshot>>>,
+        streaming: Arc<Mutex<Option<CanonicalResponseSnapshot>>>,
+    }
+
+    impl AgentHook for CanonicalResponseHook {
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            event: CompletionResponseEvent<'_>,
+        ) -> ObservationAction {
+            *self.blocking.lock().expect("blocking response") = Some(CanonicalResponseSnapshot {
+                prompt: event.prompt.clone(),
+                content: event.content.clone(),
+                usage: event.usage,
+                message_id: event.message_id.map(str::to_owned),
+            });
+            ObservationAction::continue_run()
+        }
+
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            *self.streaming.lock().expect("streaming response") = Some(CanonicalResponseSnapshot {
+                prompt: event.prompt.clone(),
+                content: event.content.clone(),
+                usage: event.usage,
+                message_id: event.message_id.map(str::to_owned),
+            });
+            ObservationAction::continue_run()
+        }
+    }
+
+    #[tokio::test]
+    async fn one_provider_independent_hook_observes_equivalent_canonical_responses() {
+        let usage = Usage {
+            input_tokens: 7,
+            output_tokens: 3,
+            total_tokens: 10,
+            ..Usage::new()
+        };
+        let hook = CanonicalResponseHook::default();
+
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text(
+            "same output",
+        )
+        .with_usage(usage)
+        .with_message_id("shared-message-id")]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("same prompt")
+        .run()
+        .await
+        .expect("blocking run");
+
+        let streaming_model =
+            AlternateMockCompletionModel(MockCompletionModel::from_stream_turns([[
+                MockStreamEvent::message_id("shared-message-id"),
+                MockStreamEvent::text("same output"),
+                MockStreamEvent::final_response(usage),
+            ]]));
+        let mut stream = AgentBuilder::new(streaming_model)
+            .add_hook(hook.clone())
+            .build()
+            .runner("same prompt")
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let expected = CanonicalResponseSnapshot {
+            prompt: Message::user("same prompt"),
+            content: OneOrMany::one(AssistantContent::text("same output")),
+            usage,
+            message_id: Some("shared-message-id".to_string()),
+        };
+        assert_eq!(
+            hook.blocking.lock().expect("blocking response").clone(),
+            Some(expected.clone())
+        );
+        assert_eq!(
+            hook.streaming.lock().expect("streaming response").clone(),
+            Some(expected)
+        );
     }
 
     #[test]
@@ -1432,10 +1564,7 @@ mod tests {
         #[derive(Clone)]
         struct CountCompletionCalls(Arc<AtomicUsize>);
 
-        impl<M> AgentHook<M> for CountCompletionCalls
-        where
-            M: CompletionModel,
-        {
+        impl AgentHook for CountCompletionCalls {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -1669,7 +1798,7 @@ mod migrated_tests {
         }
     }
 
-    impl<M: CompletionModel> AgentHook<M> for RecordingHook {
+    impl AgentHook for RecordingHook {
         async fn on_completion_call(
             &self,
             _: &HookContext,
@@ -1681,7 +1810,7 @@ mod migrated_tests {
         async fn on_completion_response(
             &self,
             _: &HookContext,
-            _: crate::agent::hook::CompletionResponse<'_, M>,
+            _: crate::agent::hook::CompletionResponse<'_>,
         ) -> ObservationAction {
             self.record(StepEventKind::CompletionResponse);
             ObservationAction::continue_run()
@@ -1733,7 +1862,7 @@ mod migrated_tests {
         async fn on_stream_response_finish(
             &self,
             _: &HookContext,
-            _: StreamResponseFinish<'_, M>,
+            _: StreamResponseFinish<'_>,
         ) -> ObservationAction {
             self.record(StepEventKind::StreamResponseFinish);
             ObservationAction::continue_run()
@@ -1929,7 +2058,6 @@ mod migrated_tests {
             AgentBuilder, AgentHook, HookContext, HookStack, ToolCall, ToolCallAction,
             ToolResultAction, ToolResultEvent,
         };
-        use crate::completion::CompletionModel;
         use crate::test_utils::{
             MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool,
             MockHandledFailureTool, MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
@@ -1967,7 +2095,7 @@ mod migrated_tests {
             }
         }
 
-        impl<M: CompletionModel> AgentHook<M> for OutcomeHook {
+        impl AgentHook for OutcomeHook {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -2044,7 +2172,7 @@ mod migrated_tests {
             struct TimeoutCount(usize);
 
             struct TimeoutTerminator;
-            impl<M: CompletionModel> AgentHook<M> for TimeoutTerminator {
+            impl AgentHook for TimeoutTerminator {
                 async fn on_tool_result(
                     &self,
                     ctx: &HookContext,
@@ -2102,7 +2230,7 @@ mod migrated_tests {
             let status: Arc<Mutex<Option<u16>>> = Arc::new(Mutex::new(None));
 
             struct StatusProbe(Arc<Mutex<Option<u16>>>);
-            impl<M: CompletionModel> AgentHook<M> for StatusProbe {
+            impl AgentHook for StatusProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2162,7 +2290,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn flow_skip_produces_skipped_outcome() {
             struct SkipHook;
-            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+            impl AgentHook for SkipHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2246,7 +2374,7 @@ mod migrated_tests {
         async fn rewrite_args_then_skip_reports_rewritten_args() {
             // Rewrites the tool args, replacing whatever the model emitted.
             struct RewriteHook;
-            impl<M: CompletionModel> AgentHook<M> for RewriteHook {
+            impl AgentHook for RewriteHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2261,7 +2389,7 @@ mod migrated_tests {
             }
             // Skips *after* the rewrite (registered second).
             struct SkipHook;
-            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+            impl AgentHook for SkipHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2280,7 +2408,7 @@ mod migrated_tests {
                 args: Arc<Mutex<Option<String>>>,
                 outcome: Arc<Mutex<Option<String>>>,
             }
-            impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
+            impl AgentHook for ArgsProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2364,7 +2492,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn nested_hook_stack_rewrite_then_skip_reports_rewritten_args() {
             struct RewriteHook;
-            impl<M: CompletionModel> AgentHook<M> for RewriteHook {
+            impl AgentHook for RewriteHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2378,7 +2506,7 @@ mod migrated_tests {
                 }
             }
             struct SkipHook;
-            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+            impl AgentHook for SkipHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2396,7 +2524,7 @@ mod migrated_tests {
                 args: Arc<Mutex<Option<String>>>,
                 outcome: Arc<Mutex<Option<String>>>,
             }
-            impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
+            impl AgentHook for ArgsProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2414,8 +2542,8 @@ mod migrated_tests {
             }
 
             // The rewrite + skip live inside a *nested* stack added as one hook.
-            fn nested_stack() -> HookStack<MockCompletionModel> {
-                let mut nested = HookStack::<MockCompletionModel>::new();
+            fn nested_stack() -> HookStack {
+                let mut nested = HookStack::new();
                 nested.push(RewriteHook);
                 nested.push(SkipHook);
                 nested
@@ -2500,7 +2628,7 @@ mod migrated_tests {
                 seen: Arc<Mutex<Option<String>>>,
                 model_output: Arc<Mutex<Option<String>>>,
             }
-            impl<M: CompletionModel> AgentHook<M> for MetadataProbe {
+            impl AgentHook for MetadataProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2587,7 +2715,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn rewrite_result_does_not_mask_the_structured_outcome() {
             struct Redact;
-            impl<M: CompletionModel> AgentHook<M> for Redact {
+            impl AgentHook for Redact {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -3035,7 +3163,7 @@ mod migrated_tests {
 
         /// Redacts every tool result before the model sees it.
         struct RedactResultHook;
-        impl<M: crate::completion::CompletionModel> crate::agent::AgentHook<M> for RedactResultHook {
+        impl crate::agent::AgentHook for RedactResultHook {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -3051,7 +3179,7 @@ mod migrated_tests {
 
         /// Stops the run after observing a completed tool result.
         struct StopOnResultHook;
-        impl<M: crate::completion::CompletionModel> crate::agent::AgentHook<M> for StopOnResultHook {
+        impl crate::agent::AgentHook for StopOnResultHook {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -3675,7 +3803,7 @@ mod migrated_tests {
     struct TerminateAfterSiblingStartedHook {
         sibling_started: Arc<tokio::sync::Notify>,
     }
-    impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingStartedHook {
+    impl AgentHook for TerminateAfterSiblingStartedHook {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -3826,7 +3954,7 @@ mod migrated_tests {
         gate: Arc<tokio::sync::Notify>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for OrderedTerminateHook {
+    impl AgentHook for OrderedTerminateHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event {
                 let x = serde_json::from_str::<serde_json::Value>(args)
@@ -3940,7 +4068,7 @@ mod migrated_tests {
     /// Terminates the run from the `ToolCall` event of the first tool only
     /// (`x == 1`), letting any later tool through.
     struct TerminateOnFirstToolHook;
-    impl<M: CompletionModel> AgentHook<M> for TerminateOnFirstToolHook {
+    impl AgentHook for TerminateOnFirstToolHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event
                 && serde_json::from_str::<serde_json::Value>(args)
@@ -4081,7 +4209,7 @@ mod migrated_tests {
     struct TerminateOnArgZeroAfterSiblingHook {
         sibling_started: Arc<tokio::sync::Notify>,
     }
-    impl<M: CompletionModel> AgentHook<M> for TerminateOnArgZeroAfterSiblingHook {
+    impl AgentHook for TerminateOnArgZeroAfterSiblingHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event
                 && serde_json::from_str::<serde_json::Value>(args)
@@ -4199,7 +4327,7 @@ mod migrated_tests {
     struct TerminateAfterSiblingDoneHook {
         a_done: Arc<tokio::sync::Notify>,
     }
-    impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingDoneHook {
+    impl AgentHook for TerminateAfterSiblingDoneHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event
                 && serde_json::from_str::<serde_json::Value>(args)
@@ -4347,7 +4475,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         struct SkipHook;
-        impl<M: CompletionModel> AgentHook<M> for SkipHook {
+        impl AgentHook for SkipHook {
             async fn on_tool_call(
                 &self,
                 _ctx: &HookContext,
@@ -4423,7 +4551,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn required_with_empty_active_tools_errors_locally_without_provider_call() {
         struct EmptyActiveToolsHook;
-        impl<M: CompletionModel> AgentHook<M> for EmptyActiveToolsHook {
+        impl AgentHook for EmptyActiveToolsHook {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -4471,7 +4599,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call() {
         struct FilterToAddHook;
-        impl<M: CompletionModel> AgentHook<M> for FilterToAddHook {
+        impl AgentHook for FilterToAddHook {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -4572,7 +4700,7 @@ mod migrated_tests {
         other_calls: Arc<AtomicU32>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for ToolOnlyHook {
+    impl AgentHook for ToolOnlyHook {
         async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
             self.text_delta_calls.fetch_add(1, SeqCst);
             ObservationAction::continue_run()
@@ -4624,7 +4752,7 @@ mod migrated_tests {
     /// event as `Continue`.
     struct TerminateOn(StepEventKind);
 
-    impl<M: CompletionModel> AgentHook<M> for TerminateOn {
+    impl AgentHook for TerminateOn {
         async fn on_completion_call(
             &self,
             _: &HookContext,
@@ -4769,7 +4897,7 @@ mod migrated_tests {
     /// Renames an invalid tool call to a known tool; observes everything else.
     struct RepairInvalidToHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for RepairInvalidToHook {
+    impl AgentHook for RepairInvalidToHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -4789,7 +4917,7 @@ mod migrated_tests {
         args: Arc<Mutex<Vec<Option<String>>>>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for CaptureAndRepairInvalidHook {
+    impl AgentHook for CaptureAndRepairInvalidHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -5216,7 +5344,7 @@ mod migrated_tests {
     /// everything else.
     struct SkipInvalidHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for SkipInvalidHook {
+    impl AgentHook for SkipInvalidHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -5463,7 +5591,7 @@ mod migrated_tests {
     /// Skips a *valid* tool call before execution; observes everything else.
     struct SkipToolCallHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for SkipToolCallHook {
+    impl AgentHook for SkipToolCallHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { .. } = event {
                 ToolCallAction::skip(self.0)
@@ -5562,7 +5690,7 @@ mod migrated_tests {
     /// model emitted.
     struct RewriteToolArgsHook(serde_json::Value);
 
-    impl<M: CompletionModel> AgentHook<M> for RewriteToolArgsHook {
+    impl AgentHook for RewriteToolArgsHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { .. } = event {
                 ToolCallAction::rewrite(self.0.clone())
@@ -6038,7 +6166,7 @@ mod migrated_tests {
     /// actual output.
     struct RewriteToolResultHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for RewriteToolResultHook {
+    impl AgentHook for RewriteToolResultHook {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -6185,7 +6313,7 @@ mod migrated_tests {
     /// advertised tools to an allow-list, and injects a passthrough param.
     struct PatchRequestHook;
 
-    impl<M: CompletionModel> AgentHook<M> for PatchRequestHook {
+    impl AgentHook for PatchRequestHook {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -6329,7 +6457,7 @@ mod migrated_tests {
         text: &'static str,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for ExtraContextHook {
+    impl AgentHook for ExtraContextHook {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -6349,7 +6477,7 @@ mod migrated_tests {
     /// per-turn, non-sticky behavior).
     struct ExtraContextTurnOneHook;
 
-    impl<M: CompletionModel> AgentHook<M> for ExtraContextTurnOneHook {
+    impl AgentHook for ExtraContextTurnOneHook {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -6370,9 +6498,8 @@ mod migrated_tests {
         index: I,
     }
 
-    impl<M, I> AgentHook<M> for RetrievalHook<I>
+    impl<I> AgentHook for RetrievalHook<I>
     where
-        M: CompletionModel,
         I: VectorStoreIndexDyn,
     {
         async fn on_completion_call(
@@ -6752,7 +6879,7 @@ mod migrated_tests {
         const SENTINEL: &str = "COMPACTED-HISTORY-SENTINEL";
 
         struct HistoryOverrideHook;
-        impl<M: CompletionModel> AgentHook<M> for HistoryOverrideHook {
+        impl AgentHook for HistoryOverrideHook {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -6878,7 +7005,7 @@ mod migrated_tests {
         kinds: Arc<Mutex<Option<Vec<&'static str>>>>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for CaptureFirstTurnContent {
+    impl AgentHook for CaptureFirstTurnContent {
         async fn on_model_turn_finished(
             &self,
             _ctx: &HookContext,
@@ -6950,7 +7077,7 @@ mod migrated_tests {
             key: &'static str,
             value: i64,
         }
-        impl<M: CompletionModel> AgentHook<M> for SetArg {
+        impl AgentHook for SetArg {
             async fn on_tool_call(
                 &self,
                 _ctx: &HookContext,
@@ -6969,7 +7096,7 @@ mod migrated_tests {
 
         /// Wraps the tool result in `label(...)`.
         struct WrapResult(&'static str);
-        impl<M: CompletionModel> AgentHook<M> for WrapResult {
+        impl AgentHook for WrapResult {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -7117,7 +7244,7 @@ mod migrated_tests {
         second_turn_patch: Option<RequestPatch>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for RegisterLateFinalResultTool {
+    impl AgentHook for RegisterLateFinalResultTool {
         async fn on_model_turn_finished(
             &self,
             ctx: &HookContext,
@@ -7459,7 +7586,7 @@ mod migrated_tests {
     /// `final_result` tool.
     struct ActiveToolsAddOnly;
 
-    impl<M: CompletionModel> AgentHook<M> for ActiveToolsAddOnly {
+    impl AgentHook for ActiveToolsAddOnly {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -7542,7 +7669,7 @@ mod migrated_tests {
         saw_output_tool_call: Arc<Mutex<bool>>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for CaptureOutputToolInModelTurn {
+    impl AgentHook for CaptureOutputToolInModelTurn {
         async fn on_model_turn_finished(
             &self,
             _ctx: &HookContext,
@@ -7701,7 +7828,7 @@ mod migrated_tests {
         }
     }
 
-    impl<M: CompletionModel> AgentHook<M> for HumanApprovalHook {
+    impl AgentHook for HumanApprovalHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             let ToolCall {
                 tool_name, args, ..
@@ -7948,7 +8075,7 @@ mod migrated_tests {
         }
     }
 
-    impl<M: CompletionModel> AgentHook<M> for PolicyHook {
+    impl AgentHook for PolicyHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             let ToolCall { tool_name, .. } = event else {
                 return ToolCallAction::run();

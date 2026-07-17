@@ -14,7 +14,7 @@ use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookConte
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
     client::EmbeddingsClient,
-    completion::{CompletionModel, Document, Message, Prompt},
+    completion::{Document, Message, Prompt},
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     message::UserContent,
     prelude::CompletionClient,
@@ -30,9 +30,8 @@ struct LanceDbRag<I> {
     samples: u64,
 }
 
-impl<M, I> AgentHook<M> for LanceDbRag<I>
+impl<I> AgentHook for LanceDbRag<I>
 where
-    M: CompletionModel,
     I: rig::vector_store::VectorStoreIndexDyn,
 {
     async fn on_completion_call(

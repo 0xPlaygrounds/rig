@@ -12,7 +12,7 @@ use rig::agent::{
     ToolResultEvent,
 };
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, TypedPrompt};
+use rig::completion::TypedPrompt;
 use rig::tool::Tool;
 
 use super::support;
@@ -59,11 +59,7 @@ impl StepLogger {
     }
 }
 
-impl<M> AgentHook<M> for StepLogger
-where
-    M: CompletionModel,
-    M::Response: Serialize,
-{
+impl AgentHook for StepLogger {
     async fn on_completion_call(
         &self,
         _ctx: &rig::agent::HookContext,
@@ -79,13 +75,13 @@ where
     async fn on_completion_response(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: CompletionResponseEvent<'_, M>,
+        event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
         let call_no = self.current_completion_call();
-        println!("\n=== completion response #{call_no}: normalized choice ===");
-        println!("{}", pretty_json(&event.response.choice));
-        println!("\n=== completion response #{call_no}: raw provider payload ===");
-        println!("{}", pretty_json(&event.response.raw_response));
+        println!("\n=== completion response #{call_no}: canonical content ===");
+        println!("{}", pretty_json(event.content));
+        println!("usage: {:?}", event.usage);
+        println!("message_id: {:?}", event.message_id);
         ObservationAction::continue_run()
     }
 

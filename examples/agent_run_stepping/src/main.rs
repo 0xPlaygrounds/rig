@@ -81,7 +81,7 @@ impl Tool for Add {
 
 struct ToolLoggerHook;
 
-impl<M: CompletionModel> AgentHook<M> for ToolLoggerHook {
+impl AgentHook for ToolLoggerHook {
     async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
         println!("[hook] tool call: {}({})", event.tool_name, event.args);
         ToolCallAction::run()

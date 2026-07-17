@@ -52,13 +52,16 @@
 //! retrieves documents, and injects them with [`RequestPatch::extra_context`].
 //! Active RAG instead exposes a vector index or custom retriever as a tool so the
 //! model decides when and how to search.
+//! Agent hooks are provider-independent and receive canonical Rig lifecycle
+//! data. Use direct [`CompletionModel`](crate::completion::CompletionModel)
+//! requests when provider-specific raw responses are required.
 //!
 //! Passive RAG agent example
 //! ```no_run
 //! use rig_core::{
 //!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
 //!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
-//!     completion::{CompletionModel, Document, Message, Prompt},
+//!     completion::{Document, Message, Prompt},
 //!     embeddings::EmbeddingsBuilder,
 //!     message::UserContent,
 //!     providers::openai,
@@ -71,9 +74,8 @@
 //!
 //! struct DictionaryRag<I>(I);
 //!
-//! impl<M, I> AgentHook<M> for DictionaryRag<I>
+//! impl<I> AgentHook for DictionaryRag<I>
 //! where
-//!     M: CompletionModel,
 //!     I: VectorStoreIndexDyn,
 //! {
 //!     async fn on_completion_call(

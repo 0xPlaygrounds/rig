@@ -27,9 +27,8 @@ struct PdfRag<I> {
     samples: u64,
 }
 
-impl<M, I> AgentHook<M> for PdfRag<I>
+impl<I> AgentHook for PdfRag<I>
 where
-    M: CompletionModel,
     I: VectorStoreIndexDyn,
 {
     async fn on_completion_call(
