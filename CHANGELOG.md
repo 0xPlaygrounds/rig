@@ -13,16 +13,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(agent)* [**breaking**] Remove the built-in `AgentBuilder::dynamic_context` and
-  `ExtractorBuilder::dynamic_context` passive-retrieval APIs. Applications now own
-  retrieval query selection, formatting, and failure policy in an `AgentHook`; a
-  retrieval failure can return `CompletionCallAction::stop` before provider I/O.
-  Replace `.dynamic_context(samples, index)` with a local hook that queries the
-  index during `on_completion_call` and returns
-  `CompletionCallAction::patch(RequestPatch::new().extra_context(documents))`, then
-  register it with `.add_hook(MyRetrievalHook { index, samples })`. Use an index's
-  blanket `Tool` implementation (or a custom tool) instead when the model should
-  actively decide whether to retrieve.
+- *(agent)* [**breaking**] Remove the built-in `AgentBuilder::dynamic_context`,
+  `ExtractorBuilder::dynamic_context`, and internal `DynamicContextStore`
+  passive-retrieval pipeline. Static builder context remains available. For
+  passive RAG, applications now own query selection, retrieval, filtering,
+  reranking, formatting, caching, failure handling, and per-turn policy in a
+  local `AgentHook`:
+
+  ```rust
+  // Application code: Rig does not provide AppRetrievalHook.
+  struct AppRetrievalHook<I> {
+      index: I,
+      samples: u64,
+  }
+
+  impl<M, I> AgentHook<M> for AppRetrievalHook<I>
+  where
+      M: CompletionModel,
+      I: VectorStoreIndexDyn,
+  {
+      async fn on_completion_call(
+          &self,
+          _ctx: &HookContext,
+          event: CompletionCallEvent<'_>,
+      ) -> CompletionCallAction {
+          let message_text = |message: &Message| match message {
+              Message::User { content } => content.iter().find_map(|part| match part {
+                  UserContent::Text(text) => Some(text.text.clone()),
+                  _ => None,
+              }),
+              _ => None,
+          };
+          let Some(query) = message_text(event.prompt)
+              .or_else(|| event.history.iter().rev().find_map(message_text))
+          else {
+              return CompletionCallAction::continue_run();
+          };
+
+          let request = VectorSearchRequest::builder()
+              .query(query)
+              .samples(self.samples)
+              .build();
+          match self.index.top_n(request).await {
+              Ok(results) => {
+                  let documents = results.into_iter().map(|(_, id, value)| Document {
+                      id,
+                      text: serde_json::to_string_pretty(&value)
+                          .unwrap_or_else(|_| value.to_string()),
+                      additional_props: Default::default(),
+                  });
+                  CompletionCallAction::patch(
+                      RequestPatch::new().extra_context(documents),
+                  )
+              }
+              Err(error) => CompletionCallAction::stop(
+                  format!("application retrieval failed: {error}"),
+              ),
+          }
+      }
+  }
+
+  // Before
+  let agent = client.agent(model).dynamic_context(3, index).build();
+
+  // After
+  let agent = client
+      .agent(model)
+      .add_hook(AppRetrievalHook { index, samples: 3 })
+      .build();
+  ```
+
+  Returning `CompletionCallAction::stop(...)` prevents provider I/O for that
+  turn. The same hook-aware `AgentRunner` lifecycle is used by blocking,
+  streaming, and extractor execution; register the local hook with
+  `ExtractorBuilder::add_hook` for extraction. For active RAG, expose a vector
+  index through its blanket `Tool` implementation or provide a custom retriever
+  tool so the model decides whether and when to retrieve.
 - *(agent)* [**breaking**] Make `AgentRunner` the only execution path for configured agents: remove the raw `Completion` and `StreamingCompletion` traits and their `Agent` implementations, make agent execution state private, add runner-backed per-request overrides, and route `Extractor` through the full hook lifecycle. Raw hook-free requests remain available explicitly through `CompletionModel`.
   - For managed agent execution, replace `agent.completion(prompt, history).await?.send().await?` with `agent.runner(prompt).history(history).max_turns(3).run().await?`, choosing a turn budget large enough for tool follow-ups.
   - For managed streaming execution, replace `agent.stream_completion(prompt, history).await?.stream().await?` with `agent.runner(prompt).history(history).max_turns(3).stream().await`.

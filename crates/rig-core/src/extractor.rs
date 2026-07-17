@@ -593,7 +593,8 @@ mod tests {
             request
                 .documents
                 .iter()
-                .any(|document| document.id == "application-retrieval")
+                .any(|document| document.id == "application-retrieval"
+                    && document.text == "retrieved extractor context")
         );
     }
 

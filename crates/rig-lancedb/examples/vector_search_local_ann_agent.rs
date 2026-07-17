@@ -20,7 +20,7 @@ mod fixture;
 
 struct LanceDbRag<I> {
     index: I,
-    samples: usize,
+    samples: u64,
 }
 
 impl<M, I> AgentHook<M> for LanceDbRag<I>
@@ -48,7 +48,7 @@ where
 
         let request = VectorSearchRequest::builder()
             .query(query)
-            .samples(self.samples as u64)
+            .samples(self.samples)
             .build();
         match self.index.top_n(request).await {
             Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
@@ -132,7 +132,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("You are a helpful AI assistant.")
         .add_hook(LanceDbRag {
             index: vector_store_index,
-            samples: top_k,
+            samples: top_k as u64,
         })
         .build();
 

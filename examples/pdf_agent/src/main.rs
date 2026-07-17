@@ -24,7 +24,7 @@ struct Document {
 
 struct PdfRag<I> {
     index: I,
-    samples: usize,
+    samples: u64,
 }
 
 impl<M, I> AgentHook<M> for PdfRag<I>
@@ -52,7 +52,7 @@ where
 
         let request = VectorSearchRequest::builder()
             .query(query)
-            .samples(self.samples as u64)
+            .samples(self.samples)
             .build();
         match self.index.top_n(request).await {
             Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
