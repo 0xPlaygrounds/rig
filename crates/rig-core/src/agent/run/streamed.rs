@@ -346,6 +346,35 @@ impl StreamedTurnAssembler {
         &self.text
     }
 
+    /// Normalize a snapshot of the provider aggregate into the content that
+    /// would be committed for this turn, without consuming the assembler.
+    pub(crate) fn canonical_choice(
+        &self,
+        provider_choice: &OneOrMany<AssistantContent>,
+    ) -> OneOrMany<AssistantContent> {
+        let mut reasoning = self.accumulated_reasoning.clone();
+        if reasoning.is_empty() && !self.pending_reasoning_delta_text.is_empty() {
+            let mut assembled = Reasoning::new(&self.pending_reasoning_delta_text);
+            if let Some(id) = self.pending_reasoning_delta_id.clone() {
+                assembled = assembled.with_id(id);
+            }
+            reasoning.push(assembled);
+        }
+
+        if !self.pending_tool_calls.is_empty() || !reasoning.is_empty() {
+            let text_items = assistant_text_items_from_choice(provider_choice);
+            let tool_items = self
+                .pending_tool_calls
+                .iter()
+                .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
+                .collect::<Vec<_>>();
+            ordered_streaming_assistant_content(reasoning, text_items, tool_items)
+                .unwrap_or_else(|| provider_choice.clone())
+        } else {
+            provider_choice.clone()
+        }
+    }
+
     /// Ingest one provider stream item and return what the driver must do.
     ///
     /// # Errors

@@ -27,9 +27,8 @@ struct DictionaryRag<I> {
     samples: u64,
 }
 
-impl<M, I> AgentHook<M> for DictionaryRag<I>
+impl<I> AgentHook for DictionaryRag<I>
 where
-    M: CompletionModel,
     I: VectorStoreIndexDyn,
 {
     async fn on_completion_call(

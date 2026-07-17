@@ -6,7 +6,7 @@ use rig::agent::{
     stream_to_stdout,
 };
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::Prompt;
 use rig::providers::xai;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
@@ -142,7 +142,7 @@ struct PermissionHook {
     last_result: Arc<Mutex<Option<String>>>,
 }
 
-impl<M: CompletionModel> AgentHook<M> for PermissionHook {
+impl AgentHook for PermissionHook {
     async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,

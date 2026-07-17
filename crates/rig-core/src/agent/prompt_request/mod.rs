@@ -263,7 +263,7 @@ where
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.runner = self.runner.add_hook(hook);
         self
@@ -772,7 +772,7 @@ where
     /// already carries).
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.inner = self.inner.add_hook(hook);
         self
@@ -941,11 +941,11 @@ mod tests {
     #[derive(Clone)]
     struct PanicOnUnknownToolHook;
 
-    impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
+    impl AgentHook for PanicOnUnknownToolHook {
         async fn on_completion_response(
             &self,
             _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_, MockCompletionModel>,
+            _event: CompletionResponseEvent<'_>,
         ) -> ObservationAction {
             panic!("unknown tool response should fail before response hooks run")
         }
@@ -961,7 +961,7 @@ mod tests {
     #[derive(Clone)]
     struct PanicOnToolCallHook;
 
-    impl AgentHook<MockCompletionModel> for PanicOnToolCallHook {
+    impl AgentHook for PanicOnToolCallHook {
         async fn on_tool_call(
             &self,
             _ctx: &HookContext,
@@ -974,7 +974,7 @@ mod tests {
     #[derive(Clone)]
     struct SkipDefaultApiAndPanicOnToolCallHook;
 
-    impl AgentHook<MockCompletionModel> for SkipDefaultApiAndPanicOnToolCallHook {
+    impl AgentHook for SkipDefaultApiAndPanicOnToolCallHook {
         async fn on_invalid_tool_call(
             &self,
             ctx: &HookContext,
@@ -994,7 +994,7 @@ mod tests {
     #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
+    impl AgentHook for RepairDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -1008,7 +1008,7 @@ mod tests {
     #[derive(Clone)]
     struct RepairToSubtractHook;
 
-    impl AgentHook<MockCompletionModel> for RepairToSubtractHook {
+    impl AgentHook for RepairToSubtractHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -1021,7 +1021,7 @@ mod tests {
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
+    impl AgentHook for RetryDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -1037,7 +1037,7 @@ mod tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
+    impl AgentHook for SkipDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -1061,7 +1061,7 @@ mod tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+    impl AgentHook for RecordingInvalidToolCallHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,

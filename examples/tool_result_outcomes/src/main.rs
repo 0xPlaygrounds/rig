@@ -37,7 +37,7 @@ use rig::agent::{
     ToolResultAction, ToolResultEvent,
 };
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::openai;
 use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
@@ -155,10 +155,7 @@ fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
     })
 }
 
-impl<M> AgentHook<M> for ForceSystemProbeOnFirstTurn
-where
-    M: CompletionModel,
-{
+impl AgentHook for ForceSystemProbeOnFirstTurn {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
@@ -206,10 +203,7 @@ fn failure_record(
     })
 }
 
-impl<M> AgentHook<M> for FailureRecorder
-where
-    M: CompletionModel,
-{
+impl AgentHook for FailureRecorder {
     async fn on_tool_result(
         &self,
         ctx: &HookContext,
@@ -277,10 +271,7 @@ fn policy_action(ledger: Option<&FailureLedger>, internal_call_id: &str) -> Tool
 
 struct FatalFailurePolicy;
 
-impl<M> AgentHook<M> for FatalFailurePolicy
-where
-    M: CompletionModel,
-{
+impl AgentHook for FatalFailurePolicy {
     async fn on_tool_result(
         &self,
         ctx: &HookContext,

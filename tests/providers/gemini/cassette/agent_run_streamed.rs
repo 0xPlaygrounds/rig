@@ -521,7 +521,7 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 #[derive(Clone)]
 struct CancelOnToolCall;
 
-impl AgentHook<gemini::completion::CompletionModel> for CancelOnToolCall {
+impl AgentHook for CancelOnToolCall {
     async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,

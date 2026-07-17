@@ -10,7 +10,6 @@ use rig::agent::{
     PromptResponse, StreamingResult,
 };
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::CompletionModel;
 use rig::message::ToolResultContent;
 use rig::providers::gemini::{
     self,
@@ -149,10 +148,7 @@ impl DefaultApiRepairHook {
     }
 }
 
-impl<M> AgentHook<M> for DefaultApiRepairHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for DefaultApiRepairHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,

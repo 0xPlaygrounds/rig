@@ -3,6 +3,10 @@
 //! [`AgentHook`] replaces the old universal event/action pair with one lifecycle
 //! method and one action type per event. Unsupported combinations are therefore
 //! rejected by the compiler instead of being interpreted at runtime.
+//! Hooks are independent of the agent's [`CompletionModel`](crate::completion::CompletionModel):
+//! managed response events carry canonical Rig messages, content, usage, and
+//! message IDs. Use the direct completion or streaming APIs when a hook-like
+//! integration needs the provider's typed raw response.
 //!
 //! Hooks run in registration order through [`HookStack`]. Completion-call
 //! [`RequestPatch`] values accumulate and merge; tool-call argument rewrites and
@@ -30,7 +34,7 @@ use std::{future::Future, sync::Arc};
 use crate::tool::extensions::TypeMap;
 use crate::{
     OneOrMany,
-    completion::{CompletionModel, Document, Usage},
+    completion::{Document, Usage},
     json_utils,
     message::{AssistantContent, Message, ToolChoice},
     tool::{ToolContext, ToolOutput, ToolResult},
@@ -301,19 +305,17 @@ pub struct CompletionCall<'a> {
     pub turn: usize,
 }
 
-/// Non-streaming completion response event.
-pub struct CompletionResponse<'a, M: CompletionModel> {
+/// Canonical non-streaming completion response event.
+#[derive(Clone, Copy)]
+pub struct CompletionResponse<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
-    /// Normalized response and raw provider payload.
-    pub response: &'a crate::completion::CompletionResponse<M::Response>,
-}
-
-impl<M: CompletionModel> Copy for CompletionResponse<'_, M> {}
-impl<M: CompletionModel> Clone for CompletionResponse<'_, M> {
-    fn clone(&self) -> Self {
-        *self
-    }
+    /// Canonical assistant content returned for this turn.
+    pub content: &'a OneOrMany<AssistantContent>,
+    /// Usage reported for this turn.
+    pub usage: Usage,
+    /// Provider-assigned message ID, when available.
+    pub message_id: Option<&'a str>,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -384,19 +386,17 @@ pub struct ToolCallDelta<'a> {
     pub delta: &'a str,
 }
 
-/// Streaming response-finish event.
-pub struct StreamResponseFinish<'a, M: CompletionModel> {
+/// Canonical streaming response-finish event.
+#[derive(Clone, Copy)]
+pub struct StreamResponseFinish<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
-    /// Provider's final streaming response.
-    pub response: &'a M::StreamingResponse,
-}
-
-impl<M: CompletionModel> Copy for StreamResponseFinish<'_, M> {}
-impl<M: CompletionModel> Clone for StreamResponseFinish<'_, M> {
-    fn clone(&self) -> Self {
-        *self
-    }
+    /// Canonical assistant content aggregated for this turn.
+    pub content: &'a OneOrMany<AssistantContent>,
+    /// Usage reported for this turn.
+    pub usage: Usage,
+    /// Provider-assigned message ID, when available.
+    pub message_id: Option<&'a str>,
 }
 
 /// Hook event kind used only as an observation performance hint.
@@ -767,10 +767,7 @@ impl ObservationAction {
 }
 
 /// Per-run lifecycle observer and steerer.
-pub trait AgentHook<M>: WasmCompatSend + WasmCompatSync
-where
-    M: CompletionModel,
-{
+pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// Runs before a completion request is sent.
     ///
     /// Return a per-turn patch, continue without one, or stop the run. Patches
@@ -789,7 +786,7 @@ where
     fn on_completion_response(
         &self,
         _ctx: &HookContext,
-        _event: CompletionResponse<'_, M>,
+        _event: CompletionResponse<'_>,
     ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
         async { ObservationAction::Continue }
     }
@@ -869,13 +866,13 @@ where
         async { ObservationAction::Continue }
     }
 
-    /// Observes the provider's final streaming response.
+    /// Observes a completed streaming response in canonical Rig form.
     ///
     /// The default action continues the run.
     fn on_stream_response_finish(
         &self,
         _ctx: &HookContext,
-        _event: StreamResponseFinish<'_, M>,
+        _event: StreamResponseFinish<'_>,
     ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
         async { ObservationAction::Continue }
     }
@@ -886,135 +883,98 @@ where
     }
 }
 
-impl<M: CompletionModel> AgentHook<M> for () {
+impl AgentHook for () {
     fn observes(&self, _kind: StepEventKind) -> bool {
         false
     }
 }
 
-trait DynAgentHook<M>: WasmCompatSend + WasmCompatSync
-where
-    M: CompletionModel,
-{
+trait DynAgentHook: WasmCompatSend + WasmCompatSync {
     fn completion_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction>
-    where
-        M: 'a;
+    ) -> WasmBoxedFuture<'a, CompletionCallAction>;
     fn completion_response<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: CompletionResponse<'a, M>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a;
+        event: CompletionResponse<'a>,
+    ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn model_turn_finished<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a;
+    ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>
-    where
-        M: 'a;
+    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>;
     fn tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCall<'a>,
-    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>
-    where
-        M: 'a;
+    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
     fn tool_result<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction>
-    where
-        M: 'a;
+    ) -> WasmBoxedFuture<'a, ToolResultAction>;
     fn text_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a;
+    ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn tool_call_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a;
+    ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn stream_response_finish<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: StreamResponseFinish<'a, M>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a;
+        event: StreamResponseFinish<'a>,
+    ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn observes(&self, kind: StepEventKind) -> bool;
 }
 
-impl<M, H> DynAgentHook<M> for H
+impl<H> DynAgentHook for H
 where
-    M: CompletionModel,
-    H: AgentHook<M>,
+    H: AgentHook,
 {
     fn completion_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction>
-    where
-        M: 'a,
-    {
+    ) -> WasmBoxedFuture<'a, CompletionCallAction> {
         Box::pin(self.on_completion_call(ctx, event))
     }
     fn completion_response<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: CompletionResponse<'a, M>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a,
-    {
+        event: CompletionResponse<'a>,
+    ) -> WasmBoxedFuture<'a, ObservationAction> {
         Box::pin(self.on_completion_response(ctx, event))
     }
     fn model_turn_finished<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a,
-    {
+    ) -> WasmBoxedFuture<'a, ObservationAction> {
         Box::pin(self.on_model_turn_finished(ctx, event))
     }
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>
-    where
-        M: 'a,
-    {
+    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>> {
         Box::pin(self.on_invalid_tool_call(ctx, event))
     }
     fn tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCall<'a>,
-    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>
-    where
-        M: 'a,
-    {
+    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)> {
         Box::pin(async move {
             // Only `on_tool_call` is public dispatch. A nested `HookStack`
             // records terminal-path rewrite state into this private frame.
@@ -1027,40 +987,28 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction>
-    where
-        M: 'a,
-    {
+    ) -> WasmBoxedFuture<'a, ToolResultAction> {
         Box::pin(self.on_tool_result(ctx, event))
     }
     fn text_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a,
-    {
+    ) -> WasmBoxedFuture<'a, ObservationAction> {
         Box::pin(self.on_text_delta(ctx, event))
     }
     fn tool_call_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a,
-    {
+    ) -> WasmBoxedFuture<'a, ObservationAction> {
         Box::pin(self.on_tool_call_delta(ctx, event))
     }
     fn stream_response_finish<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: StreamResponseFinish<'a, M>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>
-    where
-        M: 'a,
-    {
+        event: StreamResponseFinish<'a>,
+    ) -> WasmBoxedFuture<'a, ObservationAction> {
         Box::pin(self.on_stream_response_finish(ctx, event))
     }
     fn observes(&self, kind: StepEventKind) -> bool {
@@ -1069,23 +1017,12 @@ where
 }
 
 /// Ordered composable hook stack.
-pub struct HookStack<M: CompletionModel> {
-    hooks: Vec<Arc<dyn DynAgentHook<M>>>,
+#[derive(Clone, Default)]
+pub struct HookStack {
+    hooks: Vec<Arc<dyn DynAgentHook>>,
 }
 
-impl<M: CompletionModel> Clone for HookStack<M> {
-    fn clone(&self) -> Self {
-        Self {
-            hooks: self.hooks.clone(),
-        }
-    }
-}
-impl<M: CompletionModel> Default for HookStack<M> {
-    fn default() -> Self {
-        Self { hooks: Vec::new() }
-    }
-}
-impl<M: CompletionModel> std::fmt::Debug for HookStack<M> {
+impl std::fmt::Debug for HookStack {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HookStack")
             .field("len", &self.hooks.len())
@@ -1093,21 +1030,21 @@ impl<M: CompletionModel> std::fmt::Debug for HookStack<M> {
     }
 }
 
-impl<M: CompletionModel> HookStack<M> {
+impl HookStack {
     /// Creates an empty hook stack.
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Creates a hook stack containing `hook`.
-    pub fn with<H: AgentHook<M> + 'static>(hook: H) -> Self {
+    pub fn with<H: AgentHook + 'static>(hook: H) -> Self {
         let mut stack = Self::new();
         stack.push(hook);
         stack
     }
 
     /// Appends a hook to the end of the stack's registration order.
-    pub fn push<H: AgentHook<M> + 'static>(&mut self, hook: H) {
+    pub fn push<H: AgentHook + 'static>(&mut self, hook: H) {
         self.hooks.push(Arc::new(hook));
     }
 
@@ -1164,7 +1101,7 @@ where
     ObservationAction::Continue
 }
 
-impl<M: CompletionModel> AgentHook<M> for HookStack<M> {
+impl AgentHook for HookStack {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
@@ -1189,7 +1126,7 @@ impl<M: CompletionModel> AgentHook<M> for HookStack<M> {
     async fn on_completion_response(
         &self,
         ctx: &HookContext,
-        event: CompletionResponse<'_, M>,
+        event: CompletionResponse<'_>,
     ) -> ObservationAction {
         let mut actions = Vec::new();
         for hook in &self.hooks {
@@ -1281,7 +1218,7 @@ impl<M: CompletionModel> AgentHook<M> for HookStack<M> {
     async fn on_stream_response_finish(
         &self,
         ctx: &HookContext,
-        event: StreamResponseFinish<'_, M>,
+        event: StreamResponseFinish<'_>,
     ) -> ObservationAction {
         for hook in &self.hooks {
             let action = hook.stream_response_finish(ctx, event).await;
@@ -1299,13 +1236,10 @@ impl<M: CompletionModel> AgentHook<M> for HookStack<M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_utils::MockCompletionModel,
-        tool::{ToolErrorKind, ToolExecutionError},
-    };
+    use crate::tool::{ToolErrorKind, ToolExecutionError};
 
     struct Patcher(f64);
-    impl AgentHook<MockCompletionModel> for Patcher {
+    impl AgentHook for Patcher {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -1346,7 +1280,7 @@ mod tests {
         replacement: serde_json::Value,
     }
 
-    impl AgentHook<MockCompletionModel> for CallRewriter {
+    impl AgentHook for CallRewriter {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             self.seen.lock().unwrap().push(event.args.to_string());
             ToolCallAction::rewrite(self.replacement.clone())
@@ -1393,7 +1327,7 @@ mod tests {
         replacement: String,
     }
 
-    impl AgentHook<MockCompletionModel> for ResultRewriter {
+    impl AgentHook for ResultRewriter {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -1466,7 +1400,7 @@ mod tests {
         calls: Arc<AtomicUsize>,
     }
 
-    impl AgentHook<MockCompletionModel> for StopThenCount {
+    impl AgentHook for StopThenCount {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -1522,10 +1456,7 @@ mod migrated_tests {
     };
 
     use super::*;
-    use crate::test_utils::MockCompletionModel;
     use serde_json::{Value, json};
-
-    type M = MockCompletionModel;
 
     fn ctx() -> HookContext {
         HookContext::new(false, Some("test-agent".to_string()))
@@ -1536,7 +1467,7 @@ mod migrated_tests {
         log: Arc<Mutex<Vec<u32>>>,
         stop: bool,
     }
-    impl AgentHook<M> for ToolRecorder {
+    impl AgentHook for ToolRecorder {
         async fn on_tool_call(&self, _ctx: &HookContext, _event: ToolCall<'_>) -> ToolCallAction {
             self.log.lock().expect("log").push(self.label);
             if self.stop {
@@ -1552,7 +1483,7 @@ mod migrated_tests {
         log: Arc<Mutex<Vec<u32>>>,
         stop: bool,
     }
-    impl AgentHook<M> for ObservationRecorder {
+    impl AgentHook for ObservationRecorder {
         async fn on_text_delta(
             &self,
             _ctx: &HookContext,
@@ -1568,7 +1499,7 @@ mod migrated_tests {
     }
 
     struct ObservesOnly(StepEventKind);
-    impl AgentHook<M> for ObservesOnly {
+    impl AgentHook for ObservesOnly {
         fn observes(&self, kind: StepEventKind) -> bool {
             kind == self.0
         }
@@ -1578,7 +1509,7 @@ mod migrated_tests {
         action: InvalidToolCallAction,
         calls: Arc<AtomicUsize>,
     }
-    impl AgentHook<M> for InvalidResponder {
+    impl AgentHook for InvalidResponder {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -1595,7 +1526,7 @@ mod migrated_tests {
         patch: RequestPatch,
         stop: bool,
     }
-    impl AgentHook<M> for Patcher {
+    impl AgentHook for Patcher {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -1644,7 +1575,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn runs_hooks_in_registration_order_and_consults_all_on_continue() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let mut stack = HookStack::<M>::with(ToolRecorder {
+        let mut stack = HookStack::with(ToolRecorder {
             label: 1,
             log: log.clone(),
             stop: false,
@@ -1664,7 +1595,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn first_stop_short_circuits_on_chained_tool_call() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let mut stack = HookStack::<M>::with(ToolRecorder {
+        let mut stack = HookStack::with(ToolRecorder {
             label: 1,
             log: log.clone(),
             stop: true,
@@ -1684,7 +1615,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn first_stop_short_circuits_observation() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let mut stack = HookStack::<M>::with(ObservationRecorder {
+        let mut stack = HookStack::with(ObservationRecorder {
             label: 1,
             log: log.clone(),
             stop: true,
@@ -1713,7 +1644,7 @@ mod migrated_tests {
     async fn explicit_fail_short_circuits_later_invalid_tool_hooks() {
         let fail_calls = Arc::new(AtomicUsize::new(0));
         let retry_calls = Arc::new(AtomicUsize::new(0));
-        let mut stack = HookStack::<M>::with(InvalidResponder {
+        let mut stack = HookStack::with(InvalidResponder {
             action: InvalidToolCallAction::fail(),
             calls: fail_calls.clone(),
         });
@@ -1734,7 +1665,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn no_invalid_tool_decision_defers_to_later_hooks() {
         let retry_calls = Arc::new(AtomicUsize::new(0));
-        let mut stack = HookStack::<M>::with(());
+        let mut stack = HookStack::with(());
         stack.push(InvalidResponder {
             action: InvalidToolCallAction::retry("try another tool"),
             calls: retry_calls.clone(),
@@ -1754,7 +1685,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn completion_patches_accumulate_and_stop_discards_prior_patch() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let mut stack = HookStack::<M>::with(Patcher {
+        let mut stack = HookStack::with(Patcher {
             label: 1,
             log: log.clone(),
             patch: RequestPatch::new().temperature(0.1),
@@ -1777,7 +1708,7 @@ mod migrated_tests {
             other => panic!("expected patch, got {other:?}"),
         }
         assert_eq!(*log.lock().unwrap(), vec![1, 2]);
-        let mut stopped = HookStack::<M>::with(Patcher {
+        let mut stopped = HookStack::with(Patcher {
             label: 3,
             log: log.clone(),
             patch: RequestPatch::new(),
@@ -1801,7 +1732,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn nested_stack_composes_patches() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let mut inner = HookStack::<M>::with(Patcher {
+        let mut inner = HookStack::with(Patcher {
             label: 1,
             log: log.clone(),
             patch: RequestPatch::new().temperature(0.2),
@@ -1813,7 +1744,7 @@ mod migrated_tests {
             patch: RequestPatch::new().max_tokens(128),
             stop: false,
         });
-        let mut outer = HookStack::<M>::with(inner);
+        let mut outer = HookStack::with(inner);
         outer.push(Patcher {
             label: 3,
             log: log.clone(),
@@ -1836,17 +1767,17 @@ mod migrated_tests {
 
     #[test]
     fn stack_observes_is_the_or_of_members() {
-        let mut stack = HookStack::<M>::with(ObservesOnly(StepEventKind::ToolCall));
+        let mut stack = HookStack::with(ObservesOnly(StepEventKind::ToolCall));
         stack.push(ObservesOnly(StepEventKind::ToolResult));
-        assert!(<HookStack<M> as AgentHook<M>>::observes(
+        assert!(<HookStack as AgentHook>::observes(
             &stack,
             StepEventKind::ToolCall
         ));
-        assert!(<HookStack<M> as AgentHook<M>>::observes(
+        assert!(<HookStack as AgentHook>::observes(
             &stack,
             StepEventKind::ToolResult
         ));
-        assert!(!<HookStack<M> as AgentHook<M>>::observes(
+        assert!(!<HookStack as AgentHook>::observes(
             &stack,
             StepEventKind::TextDelta
         ));
@@ -1854,9 +1785,9 @@ mod migrated_tests {
 
     #[test]
     fn empty_stack_observes_nothing() {
-        let empty = HookStack::<M>::new();
+        let empty = HookStack::new();
         assert!(empty.is_empty());
-        assert!(!<HookStack<M> as AgentHook<M>>::observes(
+        assert!(!<HookStack as AgentHook>::observes(
             &empty,
             StepEventKind::ToolCall
         ));
@@ -1875,7 +1806,7 @@ mod migrated_tests {
             StepEventKind::ToolCallDelta,
             StepEventKind::StreamResponseFinish,
         ] {
-            assert!(!<() as AgentHook<M>>::observes(&(), kind));
+            assert!(!<() as AgentHook>::observes(&(), kind));
         }
     }
 
@@ -1970,26 +1901,26 @@ mod migrated_tests {
     }
 
     struct RewriteHook(Value);
-    impl AgentHook<M> for RewriteHook {
+    impl AgentHook for RewriteHook {
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             ToolCallAction::rewrite(self.0.clone())
         }
     }
     struct SkipHook;
-    impl AgentHook<M> for SkipHook {
+    impl AgentHook for SkipHook {
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             ToolCallAction::skip("denied")
         }
     }
     struct StopHook;
-    impl AgentHook<M> for StopHook {
+    impl AgentHook for StopHook {
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             ToolCallAction::stop("stop")
         }
     }
     #[derive(Clone, Default)]
     struct ArgsSpy(Arc<Mutex<Vec<String>>>);
-    impl AgentHook<M> for ArgsSpy {
+    impl AgentHook for ArgsSpy {
         async fn on_tool_call(&self, _: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             self.0.lock().unwrap().push(event.args.into());
             ToolCallAction::run()
@@ -1997,7 +1928,7 @@ mod migrated_tests {
     }
 
     struct OnToolCallOnly(Arc<AtomicUsize>);
-    impl AgentHook<M> for OnToolCallOnly {
+    impl AgentHook for OnToolCallOnly {
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             self.0.fetch_add(1, Ordering::Relaxed);
             ToolCallAction::skip("called")
@@ -2005,7 +1936,7 @@ mod migrated_tests {
     }
 
     struct YieldingRewriteFromCallId;
-    impl AgentHook<M> for YieldingRewriteFromCallId {
+    impl AgentHook for YieldingRewriteFromCallId {
         async fn on_tool_call(&self, _: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             tokio::task::yield_now().await;
             ToolCallAction::rewrite(json!({"call_id": event.internal_call_id}))
@@ -2013,21 +1944,21 @@ mod migrated_tests {
     }
 
     struct YieldingSkip;
-    impl AgentHook<M> for YieldingSkip {
+    impl AgentHook for YieldingSkip {
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             tokio::task::yield_now().await;
             ToolCallAction::skip("denied")
         }
     }
 
-    async fn resolve(stack: &HookStack<M>) -> (ToolCallAction, Option<Value>) {
+    async fn resolve(stack: &HookStack) -> (ToolCallAction, Option<Value>) {
         stack.resolve_tool_call(&ctx(), tool_call_event()).await
     }
 
     #[tokio::test]
     async fn erased_dispatch_uses_the_public_on_tool_call_method() {
         let calls = Arc::new(AtomicUsize::new(0));
-        let stack = HookStack::<M>::with(OnToolCallOnly(calls.clone()));
+        let stack = HookStack::with(OnToolCallOnly(calls.clone()));
 
         let (action, salvaged) = resolve(&stack).await;
 
@@ -2040,7 +1971,7 @@ mod migrated_tests {
     async fn string_rewrite_is_json_encoded_for_later_hook_in_same_stack() {
         let spy = ArgsSpy::default();
         let replacement = Value::String("sanitized".into());
-        let mut stack = HookStack::<M>::new();
+        let mut stack = HookStack::new();
         stack.push(RewriteHook(replacement.clone()));
         stack.push(spy.clone());
 
@@ -2058,8 +1989,8 @@ mod migrated_tests {
     async fn string_rewrite_is_json_encoded_for_hook_in_nested_stack() {
         let spy = ArgsSpy::default();
         let replacement = Value::String("sanitized".into());
-        let inner = HookStack::<M>::with(spy.clone());
-        let mut outer = HookStack::<M>::new();
+        let inner = HookStack::with(spy.clone());
+        let mut outer = HookStack::new();
         outer.push(RewriteHook(replacement.clone()));
         outer.push(inner);
 
@@ -2075,10 +2006,10 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn nested_rewrite_then_skip_preserves_rewrite() {
-        let mut inner = HookStack::<M>::new();
+        let mut inner = HookStack::new();
         inner.push(RewriteHook(json!({"x":41})));
         inner.push(SkipHook);
-        let mut outer = HookStack::<M>::new();
+        let mut outer = HookStack::new();
         outer.push(inner);
         let (action, salvaged) = resolve(&outer).await;
         assert!(matches!(action, ToolCallAction::Skip(_)));
@@ -2087,10 +2018,10 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn nested_rewrite_then_stop_preserves_rewrite() {
-        let mut inner = HookStack::<M>::new();
+        let mut inner = HookStack::new();
         inner.push(RewriteHook(json!({"x":41})));
         inner.push(StopHook);
-        let mut outer = HookStack::<M>::new();
+        let mut outer = HookStack::new();
         outer.push(inner);
         let (action, salvaged) = resolve(&outer).await;
         assert!(matches!(action, ToolCallAction::Stop(_)));
@@ -2099,15 +2030,15 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn deeply_nested_terminal_action_preserves_the_last_rewrite() {
-        let mut inner = HookStack::<M>::new();
+        let mut inner = HookStack::new();
         inner.push(RewriteHook(json!({"x":3})));
         inner.push(SkipHook);
 
-        let mut middle = HookStack::<M>::new();
+        let mut middle = HookStack::new();
         middle.push(RewriteHook(json!({"x":2})));
         middle.push(inner);
 
-        let mut outer = HookStack::<M>::new();
+        let mut outer = HookStack::new();
         outer.push(RewriteHook(json!({"x":1})));
         outer.push(middle);
 
@@ -2119,10 +2050,10 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn concurrent_nested_resolutions_keep_rewrites_isolated_by_call() {
-        let mut inner = HookStack::<M>::new();
+        let mut inner = HookStack::new();
         inner.push(YieldingRewriteFromCallId);
         inner.push(YieldingSkip);
-        let outer = HookStack::<M>::with(inner);
+        let outer = HookStack::with(inner);
         let context = ctx();
 
         let first = outer.resolve_tool_call(
@@ -2151,10 +2082,10 @@ mod migrated_tests {
     #[tokio::test]
     async fn outer_rewrite_threads_into_nested_stack() {
         let spy = ArgsSpy::default();
-        let mut inner = HookStack::<M>::new();
+        let mut inner = HookStack::new();
         inner.push(spy.clone());
         inner.push(SkipHook);
-        let mut outer = HookStack::<M>::new();
+        let mut outer = HookStack::new();
         outer.push(RewriteHook(json!({"x":1})));
         outer.push(inner);
         let (action, salvaged) = resolve(&outer).await;
@@ -2168,7 +2099,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn nested_proceeding_rewrite_surfaces_as_rewrite_action() {
-        let mut proceed = HookStack::<M>::new();
+        let mut proceed = HookStack::new();
         proceed.push(RewriteHook(json!({"x":5})));
         let (action, salvaged) = resolve(&proceed).await;
         assert_eq!(action, ToolCallAction::rewrite(json!({"x":5})));

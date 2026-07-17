@@ -152,7 +152,7 @@ Use `WasmCompatSend` and `WasmCompatSync` bounds.
 
 ## Agent Hook Changes
 
-Agent hooks are per-run lifecycle observers and steerers. `AgentHook<M>` exposes
+Agent hooks are per-run lifecycle observers and steerers. `AgentHook` exposes
 one method per lifecycle event, and every method receives the run-scoped
 `HookContext` (run id, turn, streaming flag, agent name, shared `Scratchpad`).
 Each method returns an event-specific action type, so unsupported combinations

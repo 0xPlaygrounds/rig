@@ -58,7 +58,7 @@
 //! use rig_core::{
 //!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
 //!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
-//!     completion::{CompletionModel, Document, Message, Prompt},
+//!     completion::{Document, Message, Prompt},
 //!     embeddings::EmbeddingsBuilder,
 //!     message::UserContent,
 //!     providers::openai,
@@ -71,9 +71,8 @@
 //!
 //! struct DictionaryRag<I>(I);
 //!
-//! impl<M, I> AgentHook<M> for DictionaryRag<I>
+//! impl<I> AgentHook for DictionaryRag<I>
 //! where
-//!     M: CompletionModel,
 //!     I: VectorStoreIndexDyn,
 //! {
 //!     async fn on_completion_call(

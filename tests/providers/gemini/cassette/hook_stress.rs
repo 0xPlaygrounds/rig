@@ -38,8 +38,6 @@ use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract, SkipToolHook, ToolEventRecorder};
 use crate::support::assert_nonempty_response;
 
-type GeminiModel = gemini::completion::CompletionModel;
-
 /// Preamble that forces tool use and a dependent two-step chain so the model
 /// takes at least two turns (compute A, then use A to compute B).
 const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUST use the provided tools for \
@@ -114,7 +112,7 @@ impl LifecycleRecorder {
             });
     }
 }
-impl AgentHook<GeminiModel> for LifecycleRecorder {
+impl AgentHook for LifecycleRecorder {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
@@ -126,7 +124,7 @@ impl AgentHook<GeminiModel> for LifecycleRecorder {
     async fn on_completion_response(
         &self,
         ctx: &HookContext,
-        _event: CompletionResponseEvent<'_, GeminiModel>,
+        _event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
         self.record(ctx, "CompletionResponse");
         ObservationAction::continue_run()
@@ -170,7 +168,7 @@ impl ScratchpadReader {
     }
 }
 
-impl AgentHook<GeminiModel> for ScratchpadReader {
+impl AgentHook for ScratchpadReader {
     async fn on_model_turn_finished(
         &self,
         ctx: &HookContext,
@@ -195,7 +193,7 @@ struct InjectContextAndNarrowTools {
     allow: &'static [&'static str],
 }
 
-impl AgentHook<GeminiModel> for InjectContextAndNarrowTools {
+impl AgentHook for InjectContextAndNarrowTools {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
@@ -223,7 +221,7 @@ struct ForceArgs {
     args: serde_json::Value,
 }
 
-impl AgentHook<GeminiModel> for ForceArgs {
+impl AgentHook for ForceArgs {
     async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
         if event.tool_name == self.tool_name {
             ToolCallAction::rewrite(self.args.clone())
@@ -240,7 +238,7 @@ struct RedactResult {
     marker: &'static str,
 }
 
-impl AgentHook<GeminiModel> for RedactResult {
+impl AgentHook for RedactResult {
     async fn on_tool_result(
         &self,
         _ctx: &HookContext,
@@ -763,7 +761,7 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
 // Compile-time proof the fixtures implement the hook trait for the Gemini model.
 #[allow(unused)]
 fn assert_hook_impls() {
-    fn requires_hook<H: AgentHook<GeminiModel>>(_hook: H) {}
+    fn requires_hook<H: AgentHook>(_hook: H) {}
     requires_hook(LifecycleRecorder::default());
     requires_hook(ScratchpadReader::default());
     requires_hook(InjectContextAndNarrowTools {

@@ -9,7 +9,7 @@ use rig_core::agent::{
 use rig_core::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use rig_core::{
     Embed,
-    completion::{CompletionModel, Document, Message, Prompt},
+    completion::{Document, Message, Prompt},
     embeddings::EmbeddingsBuilder,
     message::UserContent,
     vector_store::{
@@ -35,9 +35,8 @@ struct DictionaryRag<I> {
     samples: u64,
 }
 
-impl<M, I> AgentHook<M> for DictionaryRag<I>
+impl<I> AgentHook for DictionaryRag<I>
 where
-    M: CompletionModel,
     I: VectorStoreIndexDyn,
 {
     async fn on_completion_call(
