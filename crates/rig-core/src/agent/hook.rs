@@ -26,6 +26,30 @@
 //! Blocking and streaming agents share the same request, tool-call, and
 //! tool-result resolution path. Streaming adds delta-specific observations, but
 //! shared lifecycle actions have identical semantics on both surfaces.
+//!
+//! # Example
+//!
+//! ```
+//! use rig_core::agent::{
+//!     AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
+//! };
+//!
+//! struct ResponseLogger;
+//!
+//! impl AgentHook for ResponseLogger {
+//!     async fn on_completion_response(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         event: CompletionResponseEvent<'_>,
+//!     ) -> ObservationAction {
+//!         println!(
+//!             "message {:?}: {:?} ({:?})",
+//!             event.message_id, event.content, event.usage
+//!         );
+//!         ObservationAction::continue_run()
+//!     }
+//! }
+//! ```
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};

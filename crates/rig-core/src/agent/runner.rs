@@ -5912,19 +5912,18 @@ mod migrated_tests {
     }
 
     #[test]
-    fn one_hook_type_attaches_to_distinct_completion_models() {
-        #[derive(Clone, Copy)]
+    fn one_hook_instance_attaches_to_distinct_completion_models() {
+        #[derive(Clone)]
         struct ProviderIndependentHook;
 
         impl AgentHook for ProviderIndependentHook {}
 
+        let hook = ProviderIndependentHook;
         let _mock_agent = AgentBuilder::new(MockCompletionModel::default())
-            .add_hook(ProviderIndependentHook)
+            .add_hook(hook.clone())
             .build();
         let (other_model, _, _) = PausingCompletionModel::new(MockCompletionModel::default());
-        let _other_agent = AgentBuilder::new(other_model)
-            .add_hook(ProviderIndependentHook)
-            .build();
+        let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
     }
 
     /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that

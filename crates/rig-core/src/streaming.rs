@@ -281,7 +281,7 @@ where
         }
     }
 
-    /// Snapshot the canonical assistant content accumulated so far.
+    /// Snapshot the assistant content accumulated so far in provider arrival order.
     ///
     /// Managed agent hooks need this when the provider's final response item
     /// arrives, before the outer stream has been polled once more to `None` and

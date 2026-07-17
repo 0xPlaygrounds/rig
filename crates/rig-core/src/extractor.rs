@@ -427,9 +427,11 @@ mod tests {
         }
     }
 
+    type ExtractorResponseSnapshot = (Message, Vec<AssistantContent>, Usage, Option<String>);
+
     #[derive(Clone, Default)]
     struct ExtractorResponseCapture {
-        snapshot: Arc<Mutex<Option<(Message, Vec<AssistantContent>, Usage, Option<String>)>>>,
+        snapshot: Arc<Mutex<Option<ExtractorResponseSnapshot>>>,
     }
 
     impl AgentHook for ExtractorResponseCapture {
