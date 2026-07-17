@@ -644,7 +644,7 @@ pub struct ResponsesToolDefinition {
     #[serde(
         default,
         skip_serializing_if = "is_false",
-        deserialize_with = "null_to_false"
+        deserialize_with = "json_utils::null_or_default"
     )]
     pub strict: bool,
     /// Tool description.
@@ -661,15 +661,6 @@ fn is_json_null(value: &Value) -> bool {
 
 fn is_false(value: &bool) -> bool {
     !value
-}
-
-fn null_to_false<'a, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: Deserializer<'a>,
-{
-    // First deserialize as Option<bool>, then map None -> false
-    let opt = Option::<bool>::deserialize(deserializer)?;
-    Ok(opt.unwrap_or(false))
 }
 
 impl ResponsesToolDefinition {
@@ -2643,6 +2634,53 @@ mod tests {
 
         let serialized = serde_json::to_value(tool).expect("tool should serialize");
         assert!(serialized.get("strict").is_none());
+    }
+
+    #[test]
+    fn responses_tool_definitions_accept_nullable_strict() {
+        let cases = [
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {}
+                }),
+                false,
+            ),
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {},
+                    "strict": null
+                }),
+                false,
+            ),
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {},
+                    "strict": false
+                }),
+                false,
+            ),
+            (
+                json!({
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {},
+                    "strict": true
+                }),
+                true,
+            ),
+        ];
+
+        for (value, expected) in cases {
+            let tool: ResponsesToolDefinition =
+                serde_json::from_value(value).expect("tool definition should deserialize");
+            assert_eq!(tool.strict, expected);
+        }
     }
 
     #[test]
