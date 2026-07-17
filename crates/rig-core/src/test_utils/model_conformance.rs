@@ -1828,7 +1828,8 @@ where
                 final_response = Some(response);
             }
             MultiTurnStreamItem::StreamAssistantItem(_)
-            | MultiTurnStreamItem::ToolExecutionCommitted { .. } => {}
+            | MultiTurnStreamItem::ToolExecutionCommitted { .. }
+            | MultiTurnStreamItem::ModelTurnRetried { .. } => {}
         }
     }
     let result = final_response.ok_or_else(|| {
