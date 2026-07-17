@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
 use rig::test_utils::validate_rewritten_arguments;
@@ -109,7 +109,7 @@ impl Tool for GetWeather {
 /// returns the rewritten object via [`ToolCallAction::rewrite`].
 struct PinUnitsToCelsius;
 
-impl<M: CompletionModel> AgentHook<M> for PinUnitsToCelsius {
+impl AgentHook for PinUnitsToCelsius {
     async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,

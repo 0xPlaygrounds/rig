@@ -26,7 +26,7 @@ use rig::agent::{
     ObservationAction, RequestPatch,
 };
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, CompletionResponse, Document, Message, Prompt};
+use rig::completion::{Document, Message, Prompt};
 use rig::message::UserContent;
 use rig::providers::openai;
 
@@ -37,10 +37,7 @@ use rig::providers::openai;
 #[derive(Clone)]
 struct LoggingHook;
 
-impl<M> AgentHook<M> for LoggingHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for LoggingHook {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
@@ -70,13 +67,14 @@ where
     async fn on_completion_response(
         &self,
         ctx: &HookContext,
-        event: CompletionResponseEvent<'_, M>,
+        event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
-        let response: &CompletionResponse<M::Response> = event.response;
         println!(
-            "[run {}] received response: {:?}",
+            "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
             ctx.run_id(),
-            response.choice
+            event.usage,
+            event.message_id,
+            event.content
         );
         ObservationAction::continue_run()
     }
@@ -89,10 +87,7 @@ where
 #[derive(Clone)]
 struct ContextHook;
 
-impl<M> AgentHook<M> for ContextHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for ContextHook {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
@@ -115,10 +110,7 @@ where
 #[derive(Clone)]
 struct SamplingHook;
 
-impl<M> AgentHook<M> for SamplingHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for SamplingHook {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
@@ -138,10 +130,7 @@ struct TurnCount(usize);
 #[derive(Clone)]
 struct TurnCounterHook;
 
-impl<M> AgentHook<M> for TurnCounterHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for TurnCounterHook {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,

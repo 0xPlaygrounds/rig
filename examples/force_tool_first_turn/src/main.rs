@@ -23,7 +23,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionModel, Prompt, PromptError};
+use rig::completion::{Prompt, PromptError};
 use rig::message::ToolChoice;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -88,10 +88,7 @@ impl Tool for Add {
 #[derive(Clone)]
 struct ForceToolEveryTurn;
 
-impl<M> AgentHook<M> for ForceToolEveryTurn
-where
-    M: CompletionModel,
-{
+impl AgentHook for ForceToolEveryTurn {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
@@ -108,10 +105,7 @@ where
 #[derive(Clone)]
 struct ForceToolOnFirstTurn;
 
-impl<M> AgentHook<M> for ForceToolOnFirstTurn
-where
-    M: CompletionModel,
-{
+impl AgentHook for ForceToolOnFirstTurn {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,

@@ -271,10 +271,11 @@ pub enum StreamedTurnEvent {
     /// then apply the outcome with
     /// [`StreamedTurnAssembler::resolve_pending_invalid`].
     InvalidToolCall(Box<StreamedInvalidToolCall>),
-    /// The provider reported the end of this completion call. Record it (see
+    /// The provider supplied its typed final payload. Record its usage (see
     /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call));
-    /// when `emit_final` is set, the turn streamed text and the driver should
-    /// run its stream-finish hook and forward the final item.
+    /// this does not establish that the provider stream reached EOF. When
+    /// `emit_final` is set, the turn streamed text and the driver should buffer
+    /// the final item until EOF finalizes the turn.
     Completed {
         /// Provider-reported usage for this call. Zero-valued usage means the
         /// provider reported no usage metrics.
@@ -344,6 +345,35 @@ impl StreamedTurnAssembler {
     /// first text delta).
     pub fn aggregated_text(&self) -> &str {
         &self.text
+    }
+
+    /// Normalize a snapshot of the provider aggregate into the content that
+    /// would be committed for this turn, without consuming the assembler.
+    fn canonical_choice(
+        &self,
+        provider_choice: &OneOrMany<AssistantContent>,
+    ) -> OneOrMany<AssistantContent> {
+        let mut reasoning = self.accumulated_reasoning.clone();
+        if reasoning.is_empty() && !self.pending_reasoning_delta_text.is_empty() {
+            let mut assembled = Reasoning::new(&self.pending_reasoning_delta_text);
+            if let Some(id) = self.pending_reasoning_delta_id.clone() {
+                assembled = assembled.with_id(id);
+            }
+            reasoning.push(assembled);
+        }
+
+        if !self.pending_tool_calls.is_empty() || !reasoning.is_empty() {
+            let text_items = assistant_text_items_from_choice(provider_choice);
+            let tool_items = self
+                .pending_tool_calls
+                .iter()
+                .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
+                .collect::<Vec<_>>();
+            ordered_streaming_assistant_content(reasoning, text_items, tool_items)
+                .unwrap_or_else(|| provider_choice.clone())
+        } else {
+            provider_choice.clone()
+        }
     }
 
     /// Ingest one provider stream item and return what the driver must do.
@@ -576,45 +606,16 @@ impl StreamedTurnAssembler {
     /// aggregated choice for the turn
     /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
     pub fn finish(
-        mut self,
+        self,
         message_id: Option<String>,
         final_choice: &OneOrMany<AssistantContent>,
     ) -> StreamedTurn {
+        let choice = self.canonical_choice(final_choice);
         let internal_call_ids: Vec<(String, String)> = self
             .pending_tool_calls
             .iter()
             .map(|(tool_call, internal_call_id)| (tool_call.id.clone(), internal_call_id.clone()))
             .collect();
-        // Providers like Gemini emit thinking as incremental deltas without
-        // signatures; assemble them into a single block so reasoning survives
-        // into the next turn's chat history.
-        if self.accumulated_reasoning.is_empty() && !self.pending_reasoning_delta_text.is_empty() {
-            let mut assembled = Reasoning::new(&self.pending_reasoning_delta_text);
-            if let Some(id) = self.pending_reasoning_delta_id.take() {
-                assembled = assembled.with_id(id);
-            }
-            self.accumulated_reasoning.push(assembled);
-        }
-
-        // Canonical replay order when the turn produced reasoning or tool
-        // calls; otherwise the provider's aggregated choice is recorded as-is.
-        let choice =
-            if !self.pending_tool_calls.is_empty() || !self.accumulated_reasoning.is_empty() {
-                let text_items = assistant_text_items_from_choice(final_choice);
-                let tool_items = self
-                    .pending_tool_calls
-                    .iter()
-                    .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
-                    .collect::<Vec<_>>();
-                ordered_streaming_assistant_content(
-                    self.accumulated_reasoning.drain(..),
-                    text_items,
-                    tool_items,
-                )
-                .unwrap_or_else(|| final_choice.clone())
-            } else {
-                final_choice.clone()
-            };
 
         StreamedTurn {
             message_id,

@@ -331,7 +331,7 @@ where
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.runner = self.runner.add_hook(hook);
         self
@@ -986,8 +986,8 @@ pub(crate) struct StreamingTurnSource {
 }
 
 impl StreamingTurnSource {
-    pub(crate) fn new<M: CompletionModel>(
-        hooks: &HookStack<M>,
+    pub(crate) fn new(
+        hooks: &HookStack,
         agent_name: String,
         created_agent_span: bool,
         record_telemetry_content: bool,
@@ -1053,6 +1053,8 @@ where
             );
             let mut completion_call_emitted = false;
             let mut turn_abandoned = false;
+            let mut provider_final_seen = false;
+            let mut pending_final = None;
             // Mirrors the blocking driver's `response_hook_suppressed`: a turn
             // whose invalid tool call was repaired is a recovered turn, so its
             // response-finish hook is suppressed.
@@ -1094,6 +1096,14 @@ where
                         return;
                     }
                 };
+                if provider_final_seen {
+                    yield Err(CompletionError::ResponseError(
+                        "provider stream emitted visible assistant content after its final response"
+                            .to_string(),
+                    )
+                    .into());
+                    return;
+                }
                 let mut events: VecDeque<StreamedTurnEvent> = match assembler.ingest(&item) {
                     Ok(events) => events.into(),
                     Err(err) => {
@@ -1180,33 +1190,15 @@ where
                                     return;
                                 }
                             }
+                            provider_final_seen = true;
 
                             if emit_final
-                                && let Some(StreamedAssistantContent::Final(final_resp)) =
-                                    item_slot.as_ref()
+                                && matches!(
+                                    item_slot.as_ref(),
+                                    Some(StreamedAssistantContent::Final(_))
+                                )
                             {
-                                if !turn_recovered
-                                    && let Some(reason) = observe_action(
-                                        runner
-                                            .hooks
-                                            .on_stream_response_finish(
-                                                hook_ctx,
-                                                StreamResponseFinish {
-                                                    prompt: &current_prompt,
-                                                    response: final_resp,
-                                                },
-                                            )
-                                            .await,
-                                    )
-                                {
-                                    yield Err(StreamingError::Prompt(Box::new(
-                                        run.cancel_error(reason),
-                                    )));
-                                    return;
-                                }
-                                if let Some(item) = item_slot.take() {
-                                    yield Ok(MultiTurnStreamItem::stream_item(item));
-                                }
+                                pending_final = item_slot.take();
                             }
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
@@ -1309,8 +1301,31 @@ where
             }
 
             let final_turn_content = stream.choice.clone();
-            self.last_message_id = stream.message_id.clone();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            if pending_final.is_some()
+                && !turn_recovered
+                && let Some(reason) = observe_action(
+                    runner
+                        .hooks
+                        .on_stream_response_finish(
+                            hook_ctx,
+                            StreamResponseFinish {
+                                prompt: &current_prompt,
+                                content: &streamed_turn.choice,
+                                usage: last_usage,
+                                message_id: streamed_turn.message_id.as_deref(),
+                            },
+                        )
+                        .await,
+                )
+            {
+                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                return;
+            }
+            if let Some(item) = pending_final {
+                yield Ok(MultiTurnStreamItem::stream_item(item));
+            }
+            self.last_message_id = streamed_turn.message_id.clone();
             // The canonical (committed) assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
             // `stream.choice` aggregate. `ModelTurnFinished` — the normalized
@@ -1599,7 +1614,7 @@ mod migrated_tests {
 
     struct StopAgentStreamingBeforeCompletion;
 
-    impl AgentHook<MockCompletionModel> for StopAgentStreamingBeforeCompletion {
+    impl AgentHook for StopAgentStreamingBeforeCompletion {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -1999,7 +2014,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct PanicOnUnknownToolHook;
 
-    impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
+    impl AgentHook for PanicOnUnknownToolHook {
         async fn on_tool_call_delta(
             &self,
             _: &HookContext,
@@ -2013,7 +2028,7 @@ mod migrated_tests {
         async fn on_stream_response_finish(
             &self,
             _: &HookContext,
-            _: StreamResponseFinish<'_, MockCompletionModel>,
+            _: StreamResponseFinish<'_>,
         ) -> ObservationAction {
             panic!("unknown tool call should fail before stream finish hooks run")
         }
@@ -3141,11 +3156,11 @@ mod migrated_tests {
     #[derive(Clone)]
     struct TerminateOnStreamFinish;
 
-    impl AgentHook<MockCompletionModel> for TerminateOnStreamFinish {
+    impl AgentHook for TerminateOnStreamFinish {
         async fn on_stream_response_finish(
             &self,
             _ctx: &HookContext,
-            event: StreamResponseFinish<'_, MockCompletionModel>,
+            event: StreamResponseFinish<'_>,
         ) -> ObservationAction {
             match event {
                 StreamResponseFinish { .. } => {
@@ -3161,7 +3176,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
+    impl AgentHook for RepairDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3180,7 +3195,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
+    impl AgentHook for RetryDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3202,7 +3217,7 @@ mod migrated_tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
+    impl AgentHook for SkipDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3232,7 +3247,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+    impl AgentHook for RecordingInvalidToolCallHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -3265,7 +3280,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingToolCallDeltaHook {
+    impl AgentHook for RecordingToolCallDeltaHook {
         async fn on_tool_call_delta(
             &self,
             _ctx: &HookContext,
@@ -3309,7 +3324,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingTextDeltaHook {
+    impl AgentHook for RecordingTextDeltaHook {
         async fn on_text_delta(
             &self,
             _ctx: &HookContext,
@@ -3334,7 +3349,7 @@ mod migrated_tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
+    impl AgentHook for RecordingTextAndSkipInvalidToolHook {
         async fn on_text_delta(
             &self,
             ctx: &HookContext,
@@ -3356,7 +3371,7 @@ mod migrated_tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
+    impl AgentHook for RecordingTextAndRetryInvalidToolHook {
         async fn on_text_delta(
             &self,
             ctx: &HookContext,
@@ -3378,7 +3393,7 @@ mod migrated_tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
+    impl AgentHook for RecordingDeltaAndRetryInvalidToolHook {
         async fn on_tool_call_delta(
             &self,
             ctx: &HookContext,
@@ -3400,7 +3415,7 @@ mod migrated_tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl AgentHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
+    impl AgentHook for RecordingDeltaAndSkipInvalidToolHook {
         async fn on_tool_call_delta(
             &self,
             ctx: &HookContext,
@@ -3431,7 +3446,7 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
+    impl AgentHook for TerminatingToolCallDeltaHook {
         async fn on_tool_call_delta(
             &self,
             _ctx: &HookContext,

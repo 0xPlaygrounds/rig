@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
@@ -118,7 +118,7 @@ impl Tool for GetTime {
 /// override is per-turn and non-sticky), so the model can answer with text.
 struct ForceWeatherOnlyOnFirstTurn;
 
-impl<M: CompletionModel> AgentHook<M> for ForceWeatherOnlyOnFirstTurn {
+impl AgentHook for ForceWeatherOnlyOnFirstTurn {
     async fn on_completion_call(
         &self,
         _ctx: &rig::agent::HookContext,

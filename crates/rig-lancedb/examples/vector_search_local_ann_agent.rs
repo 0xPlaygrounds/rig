@@ -4,7 +4,7 @@ use rig_core::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
 };
 use rig_core::client::{EmbeddingsClient, ProviderClient};
-use rig_core::completion::{CompletionModel, Document, Message, Prompt};
+use rig_core::completion::{Document, Message, Prompt};
 use rig_core::message::UserContent;
 use rig_core::prelude::CompletionClient;
 use rig_core::providers::openai;
@@ -23,9 +23,8 @@ struct LanceDbRag<I> {
     samples: u64,
 }
 
-impl<M, I> AgentHook<M> for LanceDbRag<I>
+impl<I> AgentHook for LanceDbRag<I>
 where
-    M: CompletionModel,
     I: VectorStoreIndexDyn,
 {
     async fn on_completion_call(

@@ -1003,8 +1003,8 @@ impl AgentRun {
     /// This is the extractor driver's fallback after every invalid-tool hook
     /// has declined to act. Keeping it distinct from [`InvalidToolCallAction::Skip`]
     /// preserves the extractor's legacy response semantics: unrelated calls
-    /// disappear, a sibling output call can still finalize the turn, and raw
-    /// response observers still receive the provider response.
+    /// disappear, a sibling output call can still finalize the turn, and
+    /// response observers still receive the canonical response fields.
     pub(crate) fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::ResolvingToolCalls(resolving) => resolving,

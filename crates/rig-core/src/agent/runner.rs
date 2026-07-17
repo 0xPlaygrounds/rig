@@ -203,7 +203,7 @@ where
     pub(crate) concurrency: usize,
     pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
     pub(crate) conversation_id: Option<String>,
-    pub(crate) hooks: HookStack<M>,
+    pub(crate) hooks: HookStack,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
@@ -252,7 +252,7 @@ where
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        H: AgentHook<M> + 'static,
+        H: AgentHook + 'static,
     {
         self.hooks.push(hook);
         self
@@ -561,16 +561,13 @@ pub(crate) enum CompletionCallOutcome {
 }
 
 /// Fire the event-specific completion-call hook for a turn.
-pub(crate) async fn resolve_completion_call<M>(
-    hooks: &HookStack<M>,
+pub(crate) async fn resolve_completion_call(
+    hooks: &HookStack,
     ctx: &HookContext,
     prompt: &Message,
     history: &[Message],
     turn: usize,
-) -> CompletionCallOutcome
-where
-    M: CompletionModel,
-{
+) -> CompletionCallOutcome {
     match completion_call_decision(
         hooks
             .on_completion_call(
@@ -962,9 +959,10 @@ where
                         }
 
                         if !response_hook_suppressed {
-                            // The medium-specific raw response event fires first,
-                            // then the normalized per-turn event. Both are
-                            // observe-only and suppressed for recovered turns.
+                            // The response-finish event fires first, then the
+                            // normalized per-turn event. Both carry canonical
+                            // Rig data, are observe-only, and are suppressed for
+                            // recovered turns.
                             if let Some(reason) = observe_action(
                                 runner
                                     .hooks
@@ -972,7 +970,9 @@ where
                                         hook_ctx,
                                         CompletionResponseEvent {
                                             prompt: &current_prompt,
-                                            response: &resp,
+                                            content: &resp.choice,
+                                            usage: resp.usage,
+                                            message_id: resp.message_id.as_deref(),
                                         },
                                     )
                                     .await,
@@ -1209,7 +1209,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct SnapshotResults(Arc<Mutex<Vec<usize>>>);
 
-    impl<M: CompletionModel> AgentHook<M> for SnapshotResults {
+    impl AgentHook for SnapshotResults {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -1252,7 +1252,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct Results(Arc<Mutex<Vec<(ToolErrorKind, String, String)>>>);
 
-    impl<M: CompletionModel> AgentHook<M> for Results {
+    impl AgentHook for Results {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -1432,10 +1432,7 @@ mod tests {
         #[derive(Clone)]
         struct CountCompletionCalls(Arc<AtomicUsize>);
 
-        impl<M> AgentHook<M> for CountCompletionCalls
-        where
-            M: CompletionModel,
-        {
+        impl AgentHook for CountCompletionCalls {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -1583,7 +1580,7 @@ mod migrated_tests {
 
     use std::sync::{
         Arc, Mutex,
-        atomic::{AtomicU32, Ordering::SeqCst},
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     };
 
     use futures::StreamExt;
@@ -1597,7 +1594,7 @@ mod migrated_tests {
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{
-        CompletionError, CompletionModel, Document, Message, Prompt, PromptError,
+        CompletionError, CompletionModel, Document, Message, Prompt, PromptError, Usage,
     };
     use crate::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
@@ -1669,7 +1666,7 @@ mod migrated_tests {
         }
     }
 
-    impl<M: CompletionModel> AgentHook<M> for RecordingHook {
+    impl AgentHook for RecordingHook {
         async fn on_completion_call(
             &self,
             _: &HookContext,
@@ -1681,7 +1678,7 @@ mod migrated_tests {
         async fn on_completion_response(
             &self,
             _: &HookContext,
-            _: crate::agent::hook::CompletionResponse<'_, M>,
+            _: crate::agent::hook::CompletionResponse<'_>,
         ) -> ObservationAction {
             self.record(StepEventKind::CompletionResponse);
             ObservationAction::continue_run()
@@ -1733,11 +1730,479 @@ mod migrated_tests {
         async fn on_stream_response_finish(
             &self,
             _: &HookContext,
-            _: StreamResponseFinish<'_, M>,
+            _: StreamResponseFinish<'_>,
         ) -> ObservationAction {
             self.record(StepEventKind::StreamResponseFinish);
             ObservationAction::continue_run()
         }
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct CanonicalResponseSnapshot {
+        prompt: Message,
+        content: OneOrMany<AssistantContent>,
+        usage: Usage,
+        message_id: Option<String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CanonicalResponseHook {
+        blocking: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
+        streaming: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
+        committed: Arc<Mutex<Vec<OneOrMany<AssistantContent>>>>,
+    }
+
+    impl AgentHook for CanonicalResponseHook {
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            event: crate::agent::hook::CompletionResponse<'_>,
+        ) -> ObservationAction {
+            self.blocking
+                .lock()
+                .expect("blocking snapshots")
+                .push(CanonicalResponseSnapshot {
+                    prompt: event.prompt.clone(),
+                    content: event.content.clone(),
+                    usage: event.usage,
+                    message_id: event.message_id.map(str::to_owned),
+                });
+            ObservationAction::continue_run()
+        }
+
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            self.streaming
+                .lock()
+                .expect("streaming snapshots")
+                .push(CanonicalResponseSnapshot {
+                    prompt: event.prompt.clone(),
+                    content: event.content.clone(),
+                    usage: event.usage,
+                    message_id: event.message_id.map(str::to_owned),
+                });
+            ObservationAction::continue_run()
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ObservationAction {
+            self.committed
+                .lock()
+                .expect("committed snapshots")
+                .push(event.content.clone());
+            ObservationAction::continue_run()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct FinishLifecycleHook {
+        snapshots: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
+        model_turns: Arc<AtomicU32>,
+        stop: Arc<AtomicBool>,
+    }
+
+    impl FinishLifecycleHook {
+        fn stopping() -> Self {
+            let hook = Self::default();
+            hook.stop.store(true, SeqCst);
+            hook
+        }
+    }
+
+    impl AgentHook for FinishLifecycleHook {
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            self.snapshots
+                .lock()
+                .expect("finish snapshots")
+                .push(CanonicalResponseSnapshot {
+                    prompt: event.prompt.clone(),
+                    content: event.content.clone(),
+                    usage: event.usage,
+                    message_id: event.message_id.map(str::to_owned),
+                });
+            if self.stop.load(SeqCst) {
+                ObservationAction::stop("stop at stream EOF")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            _event: ModelTurnFinished<'_>,
+        ) -> ObservationAction {
+            self.model_turns.fetch_add(1, SeqCst);
+            ObservationAction::continue_run()
+        }
+    }
+
+    fn canonical_usage() -> Usage {
+        Usage {
+            input_tokens: 11,
+            output_tokens: 7,
+            total_tokens: 18,
+            ..Usage::new()
+        }
+    }
+
+    #[tokio::test]
+    async fn blocking_completion_response_hook_receives_canonical_fields() {
+        let hook = CanonicalResponseHook::default();
+        let prompt = Message::user("canonical prompt");
+        AgentBuilder::new(MockCompletionModel::new([MockTurn::text(
+            "canonical response",
+        )
+        .with_usage(canonical_usage())
+        .with_message_id("msg-canonical")]))
+        .add_hook(hook.clone())
+        .build()
+        .runner(prompt.clone())
+        .run()
+        .await
+        .expect("blocking response");
+
+        assert_eq!(
+            *hook.blocking.lock().expect("blocking snapshots"),
+            [CanonicalResponseSnapshot {
+                prompt,
+                content: OneOrMany::one(AssistantContent::text("canonical response")),
+                usage: canonical_usage(),
+                message_id: Some("msg-canonical".to_string()),
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_matches_blocking_canonical_fields() {
+        let prompt = Message::user("canonical prompt");
+        let blocking_hook = CanonicalResponseHook::default();
+        AgentBuilder::new(MockCompletionModel::new([MockTurn::text(
+            "canonical response",
+        )
+        .with_usage(canonical_usage())
+        .with_message_id("msg-canonical")]))
+        .add_hook(blocking_hook.clone())
+        .build()
+        .runner(prompt.clone())
+        .run()
+        .await
+        .expect("blocking response");
+
+        let streaming_hook = CanonicalResponseHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::message_id("msg-canonical"),
+        ]]))
+        .add_hook(streaming_hook.clone())
+        .build()
+        .runner(prompt)
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let blocking = blocking_hook
+            .blocking
+            .lock()
+            .expect("blocking snapshots")
+            .clone();
+        let streaming = streaming_hook
+            .streaming
+            .lock()
+            .expect("streaming snapshots")
+            .clone();
+        assert_eq!(streaming, blocking);
+        assert_eq!(streaming[0].usage, canonical_usage());
+        assert_eq!(streaming[0].message_id.as_deref(), Some("msg-canonical"));
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_without_provider_message_id_reports_none() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let snapshots = hook.snapshots.lock().expect("finish snapshots");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].message_id, None);
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_runs_before_buffered_final_is_exposed() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::message_id("msg-after-final"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        let mut provider_finals = 0;
+        while let Some(item) = stream.next().await {
+            if matches!(
+                item.expect("stream item"),
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))
+            ) {
+                provider_finals += 1;
+                let snapshots = hook.snapshots.lock().expect("finish snapshots");
+                assert_eq!(snapshots.len(), 1, "hook must run before final exposure");
+                assert_eq!(snapshots[0].message_id.as_deref(), Some("msg-after-final"));
+                assert_eq!(
+                    hook.model_turns.load(SeqCst),
+                    0,
+                    "the turn must remain uncommitted while the final item is yielded"
+                );
+            }
+        }
+
+        assert_eq!(provider_finals, 1);
+        assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
+        assert_eq!(hook.model_turns.load(SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_stop_suppresses_final_and_turn_commit() {
+        let hook = FinishLifecycleHook::stopping();
+        let prompt = Message::user("canonical prompt");
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::message_id("msg-after-final"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner(prompt.clone())
+        .stream()
+        .await;
+        let mut saw_provider_final = false;
+        let mut saw_run_final = false;
+        let mut error = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                ))) => saw_provider_final = true,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_run_final = true,
+                Ok(_) => {}
+                Err(err) => error = Some(err),
+            }
+        }
+
+        assert!(!saw_provider_final, "the buffered final must remain hidden");
+        assert!(
+            !saw_run_final,
+            "the cancelled run must not produce a response"
+        );
+        assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
+        assert_eq!(hook.model_turns.load(SeqCst), 0);
+        assert!(matches!(
+            error,
+            Some(StreamingError::Prompt(error))
+                if matches!(
+                    error.as_ref(),
+                    PromptError::PromptCancelled { chat_history, reason }
+                        if chat_history == &[prompt] && reason == "stop at stream EOF"
+                )
+        ));
+    }
+
+    #[tokio::test]
+    async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::error("post-final failure"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        let mut saw_provider_final = false;
+        let mut error = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                ))) => saw_provider_final = true,
+                Ok(_) => {}
+                Err(err) => error = Some(err),
+            }
+        }
+
+        assert!(!saw_provider_final, "the buffered final must remain hidden");
+        assert!(hook.snapshots.lock().expect("finish snapshots").is_empty());
+        assert_eq!(hook.model_turns.load(SeqCst), 0);
+        assert!(matches!(
+            error,
+            Some(StreamingError::Completion(CompletionError::ProviderError(message)))
+                if message == "post-final failure"
+        ));
+    }
+
+    #[tokio::test]
+    async fn visible_assistant_items_after_final_are_rejected() {
+        let cases = [
+            ("text", MockStreamEvent::text("late text")),
+            ("reasoning", MockStreamEvent::reasoning("late reasoning")),
+            (
+                "reasoning delta",
+                MockStreamEvent::reasoning_delta(None::<String>, "late reasoning"),
+            ),
+            (
+                "tool call",
+                MockStreamEvent::tool_call("late", "add", json!({"x": 1, "y": 2})),
+            ),
+            (
+                "tool-call delta",
+                MockStreamEvent::tool_call_name_delta("late", "internal-late", "add"),
+            ),
+            ("unknown", MockStreamEvent::unknown(json!({"type": "late"}))),
+        ];
+
+        for (case, visible_item) in cases {
+            let hook = FinishLifecycleHook::default();
+            let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+                MockStreamEvent::text("canonical response"),
+                MockStreamEvent::final_response(canonical_usage()),
+                visible_item,
+            ]]))
+            .add_hook(hook.clone())
+            .build()
+            .runner("canonical prompt")
+            .stream()
+            .await;
+            let mut saw_provider_final = false;
+            let mut error = None;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(MultiTurnStreamItem::StreamAssistantItem(
+                        StreamedAssistantContent::Final(_),
+                    )) => saw_provider_final = true,
+                    Ok(_) => {}
+                    Err(err) => error = Some(err),
+                }
+            }
+
+            assert!(
+                !saw_provider_final,
+                "{case}: buffered final must remain hidden"
+            );
+            assert!(
+                hook.snapshots.lock().expect("finish snapshots").is_empty(),
+                "{case}: finish hook must not run"
+            );
+            assert_eq!(hook.model_turns.load(SeqCst), 0, "{case}");
+            assert!(
+                matches!(
+                    error,
+                    Some(StreamingError::Completion(CompletionError::ResponseError(ref message)))
+                        if message.contains("visible assistant content after its final response")
+                ),
+                "{case}: expected malformed-response error, got {error:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn visible_item_after_non_emittable_final_is_rejected() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("think"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::text("late text"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        let mut error = None;
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                error = Some(err);
+            }
+        }
+
+        assert!(hook.snapshots.lock().expect("finish snapshots").is_empty());
+        assert_eq!(hook.model_turns.load(SeqCst), 0);
+        assert!(matches!(
+            error,
+            Some(StreamingError::Completion(CompletionError::ResponseError(message)))
+                if message.contains("visible assistant content after its final response")
+        ));
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_normalizes_interleaved_content() {
+        let hook = CanonicalResponseHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::reasoning("think"),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::text("answer"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]))
+        .tool(MockAddTool)
+        .add_hook(hook.clone())
+        .build()
+        .runner("go")
+        .max_turns(3)
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let snapshots = hook.streaming.lock().expect("streaming snapshots");
+        let committed = hook.committed.lock().expect("committed snapshots");
+        let kinds = snapshots[0]
+            .content
+            .iter()
+            .map(|content| match content {
+                AssistantContent::Reasoning(_) => "reasoning",
+                AssistantContent::Text(_) => "text",
+                AssistantContent::ToolCall(_) => "tool_call",
+                _ => "other",
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(kinds, ["reasoning", "text", "tool_call"]);
+        assert_eq!(
+            snapshots[0].content, committed[0],
+            "finish hook and committed turn must share one canonical choice"
+        );
     }
 
     fn blocking_model() -> MockCompletionModel {
@@ -1929,7 +2394,6 @@ mod migrated_tests {
             AgentBuilder, AgentHook, HookContext, HookStack, ToolCall, ToolCallAction,
             ToolResultAction, ToolResultEvent,
         };
-        use crate::completion::CompletionModel;
         use crate::test_utils::{
             MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool,
             MockHandledFailureTool, MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
@@ -1967,7 +2431,7 @@ mod migrated_tests {
             }
         }
 
-        impl<M: CompletionModel> AgentHook<M> for OutcomeHook {
+        impl AgentHook for OutcomeHook {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -2044,7 +2508,7 @@ mod migrated_tests {
             struct TimeoutCount(usize);
 
             struct TimeoutTerminator;
-            impl<M: CompletionModel> AgentHook<M> for TimeoutTerminator {
+            impl AgentHook for TimeoutTerminator {
                 async fn on_tool_result(
                     &self,
                     ctx: &HookContext,
@@ -2102,7 +2566,7 @@ mod migrated_tests {
             let status: Arc<Mutex<Option<u16>>> = Arc::new(Mutex::new(None));
 
             struct StatusProbe(Arc<Mutex<Option<u16>>>);
-            impl<M: CompletionModel> AgentHook<M> for StatusProbe {
+            impl AgentHook for StatusProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2162,7 +2626,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn flow_skip_produces_skipped_outcome() {
             struct SkipHook;
-            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+            impl AgentHook for SkipHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2246,7 +2710,7 @@ mod migrated_tests {
         async fn rewrite_args_then_skip_reports_rewritten_args() {
             // Rewrites the tool args, replacing whatever the model emitted.
             struct RewriteHook;
-            impl<M: CompletionModel> AgentHook<M> for RewriteHook {
+            impl AgentHook for RewriteHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2261,7 +2725,7 @@ mod migrated_tests {
             }
             // Skips *after* the rewrite (registered second).
             struct SkipHook;
-            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+            impl AgentHook for SkipHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2280,7 +2744,7 @@ mod migrated_tests {
                 args: Arc<Mutex<Option<String>>>,
                 outcome: Arc<Mutex<Option<String>>>,
             }
-            impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
+            impl AgentHook for ArgsProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2364,7 +2828,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn nested_hook_stack_rewrite_then_skip_reports_rewritten_args() {
             struct RewriteHook;
-            impl<M: CompletionModel> AgentHook<M> for RewriteHook {
+            impl AgentHook for RewriteHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2378,7 +2842,7 @@ mod migrated_tests {
                 }
             }
             struct SkipHook;
-            impl<M: CompletionModel> AgentHook<M> for SkipHook {
+            impl AgentHook for SkipHook {
                 async fn on_tool_call(
                     &self,
                     _ctx: &HookContext,
@@ -2396,7 +2860,7 @@ mod migrated_tests {
                 args: Arc<Mutex<Option<String>>>,
                 outcome: Arc<Mutex<Option<String>>>,
             }
-            impl<M: CompletionModel> AgentHook<M> for ArgsProbe {
+            impl AgentHook for ArgsProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2414,8 +2878,8 @@ mod migrated_tests {
             }
 
             // The rewrite + skip live inside a *nested* stack added as one hook.
-            fn nested_stack() -> HookStack<MockCompletionModel> {
-                let mut nested = HookStack::<MockCompletionModel>::new();
+            fn nested_stack() -> HookStack {
+                let mut nested = HookStack::new();
                 nested.push(RewriteHook);
                 nested.push(SkipHook);
                 nested
@@ -2500,7 +2964,7 @@ mod migrated_tests {
                 seen: Arc<Mutex<Option<String>>>,
                 model_output: Arc<Mutex<Option<String>>>,
             }
-            impl<M: CompletionModel> AgentHook<M> for MetadataProbe {
+            impl AgentHook for MetadataProbe {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -2587,7 +3051,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn rewrite_result_does_not_mask_the_structured_outcome() {
             struct Redact;
-            impl<M: CompletionModel> AgentHook<M> for Redact {
+            impl AgentHook for Redact {
                 async fn on_tool_result(
                     &self,
                     _ctx: &HookContext,
@@ -3035,7 +3499,7 @@ mod migrated_tests {
 
         /// Redacts every tool result before the model sees it.
         struct RedactResultHook;
-        impl<M: crate::completion::CompletionModel> crate::agent::AgentHook<M> for RedactResultHook {
+        impl crate::agent::AgentHook for RedactResultHook {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -3051,7 +3515,7 @@ mod migrated_tests {
 
         /// Stops the run after observing a completed tool result.
         struct StopOnResultHook;
-        impl<M: crate::completion::CompletionModel> crate::agent::AgentHook<M> for StopOnResultHook {
+        impl crate::agent::AgentHook for StopOnResultHook {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -3675,7 +4139,7 @@ mod migrated_tests {
     struct TerminateAfterSiblingStartedHook {
         sibling_started: Arc<tokio::sync::Notify>,
     }
-    impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingStartedHook {
+    impl AgentHook for TerminateAfterSiblingStartedHook {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -3826,7 +4290,7 @@ mod migrated_tests {
         gate: Arc<tokio::sync::Notify>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for OrderedTerminateHook {
+    impl AgentHook for OrderedTerminateHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event {
                 let x = serde_json::from_str::<serde_json::Value>(args)
@@ -3940,7 +4404,7 @@ mod migrated_tests {
     /// Terminates the run from the `ToolCall` event of the first tool only
     /// (`x == 1`), letting any later tool through.
     struct TerminateOnFirstToolHook;
-    impl<M: CompletionModel> AgentHook<M> for TerminateOnFirstToolHook {
+    impl AgentHook for TerminateOnFirstToolHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event
                 && serde_json::from_str::<serde_json::Value>(args)
@@ -4081,7 +4545,7 @@ mod migrated_tests {
     struct TerminateOnArgZeroAfterSiblingHook {
         sibling_started: Arc<tokio::sync::Notify>,
     }
-    impl<M: CompletionModel> AgentHook<M> for TerminateOnArgZeroAfterSiblingHook {
+    impl AgentHook for TerminateOnArgZeroAfterSiblingHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event
                 && serde_json::from_str::<serde_json::Value>(args)
@@ -4199,7 +4663,7 @@ mod migrated_tests {
     struct TerminateAfterSiblingDoneHook {
         a_done: Arc<tokio::sync::Notify>,
     }
-    impl<M: CompletionModel> AgentHook<M> for TerminateAfterSiblingDoneHook {
+    impl AgentHook for TerminateAfterSiblingDoneHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { args, .. } = event
                 && serde_json::from_str::<serde_json::Value>(args)
@@ -4347,7 +4811,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         struct SkipHook;
-        impl<M: CompletionModel> AgentHook<M> for SkipHook {
+        impl AgentHook for SkipHook {
             async fn on_tool_call(
                 &self,
                 _ctx: &HookContext,
@@ -4423,7 +4887,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn required_with_empty_active_tools_errors_locally_without_provider_call() {
         struct EmptyActiveToolsHook;
-        impl<M: CompletionModel> AgentHook<M> for EmptyActiveToolsHook {
+        impl AgentHook for EmptyActiveToolsHook {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -4471,7 +4935,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call() {
         struct FilterToAddHook;
-        impl<M: CompletionModel> AgentHook<M> for FilterToAddHook {
+        impl AgentHook for FilterToAddHook {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -4572,7 +5036,7 @@ mod migrated_tests {
         other_calls: Arc<AtomicU32>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for ToolOnlyHook {
+    impl AgentHook for ToolOnlyHook {
         async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
             self.text_delta_calls.fetch_add(1, SeqCst);
             ObservationAction::continue_run()
@@ -4624,7 +5088,7 @@ mod migrated_tests {
     /// event as `Continue`.
     struct TerminateOn(StepEventKind);
 
-    impl<M: CompletionModel> AgentHook<M> for TerminateOn {
+    impl AgentHook for TerminateOn {
         async fn on_completion_call(
             &self,
             _: &HookContext,
@@ -4769,7 +5233,7 @@ mod migrated_tests {
     /// Renames an invalid tool call to a known tool; observes everything else.
     struct RepairInvalidToHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for RepairInvalidToHook {
+    impl AgentHook for RepairInvalidToHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -4789,7 +5253,7 @@ mod migrated_tests {
         args: Arc<Mutex<Vec<Option<String>>>>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for CaptureAndRepairInvalidHook {
+    impl AgentHook for CaptureAndRepairInvalidHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -5216,7 +5680,7 @@ mod migrated_tests {
     /// everything else.
     struct SkipInvalidHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for SkipInvalidHook {
+    impl AgentHook for SkipInvalidHook {
         async fn on_invalid_tool_call(
             &self,
             _ctx: &HookContext,
@@ -5463,7 +5927,7 @@ mod migrated_tests {
     /// Skips a *valid* tool call before execution; observes everything else.
     struct SkipToolCallHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for SkipToolCallHook {
+    impl AgentHook for SkipToolCallHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { .. } = event {
                 ToolCallAction::skip(self.0)
@@ -5562,7 +6026,7 @@ mod migrated_tests {
     /// model emitted.
     struct RewriteToolArgsHook(serde_json::Value);
 
-    impl<M: CompletionModel> AgentHook<M> for RewriteToolArgsHook {
+    impl AgentHook for RewriteToolArgsHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             if let ToolCall { .. } = event {
                 ToolCallAction::rewrite(self.0.clone())
@@ -5741,6 +6205,21 @@ mod migrated_tests {
             self.inspect_and_pause(&request).await;
             self.inner.stream(request).await
         }
+    }
+
+    #[test]
+    fn one_hook_instance_attaches_to_distinct_completion_models() {
+        #[derive(Clone)]
+        struct ProviderIndependentHook;
+
+        impl AgentHook for ProviderIndependentHook {}
+
+        let hook = ProviderIndependentHook;
+        let _mock_agent = AgentBuilder::new(MockCompletionModel::default())
+            .add_hook(hook.clone())
+            .build();
+        let (other_model, _, _) = PausingCompletionModel::new(MockCompletionModel::default());
+        let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
     }
 
     /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
@@ -6038,7 +6517,7 @@ mod migrated_tests {
     /// actual output.
     struct RewriteToolResultHook(&'static str);
 
-    impl<M: CompletionModel> AgentHook<M> for RewriteToolResultHook {
+    impl AgentHook for RewriteToolResultHook {
         async fn on_tool_result(
             &self,
             _ctx: &HookContext,
@@ -6185,7 +6664,7 @@ mod migrated_tests {
     /// advertised tools to an allow-list, and injects a passthrough param.
     struct PatchRequestHook;
 
-    impl<M: CompletionModel> AgentHook<M> for PatchRequestHook {
+    impl AgentHook for PatchRequestHook {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -6329,7 +6808,7 @@ mod migrated_tests {
         text: &'static str,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for ExtraContextHook {
+    impl AgentHook for ExtraContextHook {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -6349,7 +6828,7 @@ mod migrated_tests {
     /// per-turn, non-sticky behavior).
     struct ExtraContextTurnOneHook;
 
-    impl<M: CompletionModel> AgentHook<M> for ExtraContextTurnOneHook {
+    impl AgentHook for ExtraContextTurnOneHook {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -6370,9 +6849,8 @@ mod migrated_tests {
         index: I,
     }
 
-    impl<M, I> AgentHook<M> for RetrievalHook<I>
+    impl<I> AgentHook for RetrievalHook<I>
     where
-        M: CompletionModel,
         I: VectorStoreIndexDyn,
     {
         async fn on_completion_call(
@@ -6752,7 +7230,7 @@ mod migrated_tests {
         const SENTINEL: &str = "COMPACTED-HISTORY-SENTINEL";
 
         struct HistoryOverrideHook;
-        impl<M: CompletionModel> AgentHook<M> for HistoryOverrideHook {
+        impl AgentHook for HistoryOverrideHook {
             async fn on_completion_call(
                 &self,
                 _ctx: &HookContext,
@@ -6872,13 +7350,41 @@ mod migrated_tests {
         );
     }
 
+    #[tokio::test]
+    async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
+        let hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("think"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("reason")
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("reasoning-only stream item");
+        }
+
+        assert_eq!(
+            hook.count(StepEventKind::StreamResponseFinish),
+            0,
+            "reasoning-only turns must not fire StreamResponseFinish"
+        );
+        assert_eq!(
+            hook.count(StepEventKind::ModelTurnFinished),
+            1,
+            "the accepted reasoning-only turn still fires ModelTurnFinished"
+        );
+    }
+
     /// Records the content kinds of the first turn's `ModelTurnFinished`.
     #[derive(Clone, Default)]
     struct CaptureFirstTurnContent {
         kinds: Arc<Mutex<Option<Vec<&'static str>>>>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for CaptureFirstTurnContent {
+    impl AgentHook for CaptureFirstTurnContent {
         async fn on_model_turn_finished(
             &self,
             _ctx: &HookContext,
@@ -6950,7 +7456,7 @@ mod migrated_tests {
             key: &'static str,
             value: i64,
         }
-        impl<M: CompletionModel> AgentHook<M> for SetArg {
+        impl AgentHook for SetArg {
             async fn on_tool_call(
                 &self,
                 _ctx: &HookContext,
@@ -6969,7 +7475,7 @@ mod migrated_tests {
 
         /// Wraps the tool result in `label(...)`.
         struct WrapResult(&'static str);
-        impl<M: CompletionModel> AgentHook<M> for WrapResult {
+        impl AgentHook for WrapResult {
             async fn on_tool_result(
                 &self,
                 _ctx: &HookContext,
@@ -7117,7 +7623,7 @@ mod migrated_tests {
         second_turn_patch: Option<RequestPatch>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for RegisterLateFinalResultTool {
+    impl AgentHook for RegisterLateFinalResultTool {
         async fn on_model_turn_finished(
             &self,
             ctx: &HookContext,
@@ -7459,7 +7965,7 @@ mod migrated_tests {
     /// `final_result` tool.
     struct ActiveToolsAddOnly;
 
-    impl<M: CompletionModel> AgentHook<M> for ActiveToolsAddOnly {
+    impl AgentHook for ActiveToolsAddOnly {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
@@ -7542,7 +8048,7 @@ mod migrated_tests {
         saw_output_tool_call: Arc<Mutex<bool>>,
     }
 
-    impl<M: CompletionModel> AgentHook<M> for CaptureOutputToolInModelTurn {
+    impl AgentHook for CaptureOutputToolInModelTurn {
         async fn on_model_turn_finished(
             &self,
             _ctx: &HookContext,
@@ -7701,7 +8207,7 @@ mod migrated_tests {
         }
     }
 
-    impl<M: CompletionModel> AgentHook<M> for HumanApprovalHook {
+    impl AgentHook for HumanApprovalHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             let ToolCall {
                 tool_name, args, ..
@@ -7948,7 +8454,7 @@ mod migrated_tests {
         }
     }
 
-    impl<M: CompletionModel> AgentHook<M> for PolicyHook {
+    impl AgentHook for PolicyHook {
         async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
             let ToolCall { tool_name, .. } = event else {
                 return ToolCallAction::run();

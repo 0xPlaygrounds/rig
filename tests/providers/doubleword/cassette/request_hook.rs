@@ -8,7 +8,7 @@ use rig::agent::{
     ObservationAction,
 };
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Message, Prompt};
+use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
@@ -21,10 +21,7 @@ struct ObservingHook {
     seen_prompt: Arc<Mutex<Option<String>>>,
 }
 
-impl<M> AgentHook<M> for ObservingHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for ObservingHook {
     async fn on_completion_call(
         &self,
         _ctx: &rig::agent::HookContext,
@@ -49,7 +46,7 @@ where
     async fn on_completion_response(
         &self,
         _ctx: &rig::agent::HookContext,
-        _event: CompletionResponseEvent<'_, M>,
+        _event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
         self.response_calls.fetch_add(1, Ordering::SeqCst);
         ObservationAction::continue_run()

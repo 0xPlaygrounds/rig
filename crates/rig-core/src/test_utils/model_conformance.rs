@@ -534,10 +534,7 @@ struct RewriteArgument {
     value: serde_json::Value,
 }
 
-impl<M> AgentHook<M> for RewriteArgument
-where
-    M: CompletionModel,
-{
+impl AgentHook for RewriteArgument {
     async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
         if event.tool_name != CountingAdd::NAME {
             return ToolCallAction::run();
@@ -556,10 +553,7 @@ where
 #[derive(Clone, Default)]
 struct ObserveArguments(Arc<Mutex<Vec<serde_json::Value>>>);
 
-impl<M> AgentHook<M> for ObserveArguments
-where
-    M: CompletionModel,
-{
+impl AgentHook for ObserveArguments {
     async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
         let value = serde_json::from_str(event.args)
             .unwrap_or_else(|_| serde_json::Value::String(event.args.to_string()));
@@ -571,10 +565,7 @@ where
 #[derive(Clone)]
 struct ReplaceResult(&'static str);
 
-impl<M> AgentHook<M> for ReplaceResult
-where
-    M: CompletionModel,
-{
+impl AgentHook for ReplaceResult {
     async fn on_tool_result(
         &self,
         _ctx: &HookContext,
@@ -591,10 +582,7 @@ where
 #[derive(Clone)]
 struct WrapResult;
 
-impl<M> AgentHook<M> for WrapResult
-where
-    M: CompletionModel,
-{
+impl AgentHook for WrapResult {
     async fn on_tool_result(
         &self,
         _ctx: &HookContext,
@@ -611,10 +599,7 @@ where
 #[derive(Clone)]
 struct FirstTurnPatch(RequestPatch);
 
-impl<M> AgentHook<M> for FirstTurnPatch
-where
-    M: CompletionModel,
-{
+impl AgentHook for FirstTurnPatch {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
@@ -631,10 +616,7 @@ where
 #[derive(Clone)]
 struct StopAfterResult(&'static str);
 
-impl<M> AgentHook<M> for StopAfterResult
-where
-    M: CompletionModel,
-{
+impl AgentHook for StopAfterResult {
     async fn on_tool_result(
         &self,
         _ctx: &HookContext,
@@ -1411,19 +1393,16 @@ where
     #[derive(Clone)]
     struct CaptureTurn(Arc<Mutex<Option<ModelTurn>>>);
 
-    impl<M> AgentHook<M> for CaptureTurn
-    where
-        M: CompletionModel,
-    {
+    impl AgentHook for CaptureTurn {
         async fn on_completion_response(
             &self,
             _ctx: &HookContext,
-            event: CompletionResponseEvent<'_, M>,
+            event: CompletionResponseEvent<'_>,
         ) -> ObservationAction {
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                event.response.message_id.clone(),
-                event.response.choice.clone(),
-                event.response.usage,
+                event.message_id.map(str::to_owned),
+                event.content.clone(),
+                event.usage,
                 BTreeSet::new(),
                 BTreeSet::new(),
             ));

@@ -27,7 +27,7 @@ use rig::OneOrMany;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
-use rig::completion::{CompletionModel, ToolDefinition};
+use rig::completion::ToolDefinition;
 use rig::message::{ImageMediaType, ToolResultContent};
 use rig::tool::server::ToolServerHandle;
 use rig::tool::{Tool, ToolEmbedding, ToolOutput};
@@ -417,10 +417,7 @@ impl ToolEventRecorder {
     }
 }
 
-impl<M> AgentHook<M> for ToolEventRecorder
-where
-    M: CompletionModel,
-{
+impl AgentHook for ToolEventRecorder {
     async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,
@@ -457,10 +454,7 @@ pub(crate) struct SkipToolHook {
     pub(crate) reason: &'static str,
 }
 
-impl<M> AgentHook<M> for SkipToolHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for SkipToolHook {
     async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,
@@ -481,10 +475,7 @@ pub(crate) struct TerminateOnToolHook {
     pub(crate) reason: &'static str,
 }
 
-impl<M> AgentHook<M> for TerminateOnToolHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for TerminateOnToolHook {
     async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,
@@ -506,10 +497,7 @@ pub(crate) struct RemoveToolBeforeExecutionHook {
     pub(crate) tool_name: &'static str,
 }
 
-impl<M> AgentHook<M> for RemoveToolBeforeExecutionHook
-where
-    M: CompletionModel,
-{
+impl AgentHook for RemoveToolBeforeExecutionHook {
     async fn on_tool_call(
         &self,
         _ctx: &rig::agent::HookContext,

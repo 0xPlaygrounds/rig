@@ -9,7 +9,7 @@ use rig::agent::{
     ObservationAction,
 };
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Message, Prompt};
+use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette_result};
@@ -24,10 +24,7 @@ struct SessionIdHook<'a> {
     seen_response: Arc<Mutex<Option<String>>>,
 }
 
-impl<'a, M> AgentHook<M> for SessionIdHook<'a>
-where
-    M: CompletionModel,
-{
+impl AgentHook for SessionIdHook<'_> {
     async fn on_completion_call(
         &self,
         _ctx: &rig::agent::HookContext,
@@ -57,12 +54,12 @@ where
     async fn on_completion_response(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: CompletionResponseEvent<'_, M>,
+        event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
         self.response_calls.fetch_add(1, Ordering::SeqCst);
         match self.seen_response.lock() {
             Ok(mut seen_response) => {
-                *seen_response = Some(format!("{:?}", event.response.choice));
+                *seen_response = Some(format!("{:?}", event.content));
                 ObservationAction::continue_run()
             }
             Err(_) => ObservationAction::stop("response hook state unavailable"),
