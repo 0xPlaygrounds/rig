@@ -3,10 +3,18 @@ use std::vec;
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
+use rig_core::agent::{
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
+};
 use rig_core::client::{CompletionClient, EmbeddingsClient, ProviderClient};
 use rig_core::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    completion::{CompletionModel, Document, Message, Prompt},
+    embeddings::EmbeddingsBuilder,
+    message::UserContent,
+    vector_store::{
+        VectorStoreIndexDyn, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
+    },
 };
 use serde::Serialize;
 use tracing::info;
@@ -20,6 +28,54 @@ struct WordDefinition {
     word: String,
     #[embed]
     definitions: Vec<String>,
+}
+
+struct DictionaryRag<I> {
+    index: I,
+    samples: u64,
+}
+
+impl<M, I> AgentHook<M> for DictionaryRag<I>
+where
+    M: CompletionModel,
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let message_text = |message: &Message| match message {
+            Message::User { content } => content.iter().find_map(|item| match item {
+                UserContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        };
+        let Some(query) = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text))
+        else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.samples)
+            .build();
+        match self.index.top_n(request).await {
+            Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text:
+                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+                    additional_props: Default::default(),
+                }),
+            )),
+            Err(error) => {
+                CompletionCallAction::stop(format!("dictionary retrieval failed: {error}"))
+            }
+        }
+    }
 }
 
 #[tokio::main]
@@ -74,7 +130,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .dynamic_context(1, index)
+        .add_hook(DictionaryRag { index, samples: 1 })
         .build();
 
     // Prompt the agent and print the response

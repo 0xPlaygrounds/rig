@@ -1,12 +1,11 @@
 //! This module contains the implementation of the [Agent] struct and its builder.
 //!
 //! The [Agent] struct represents an LLM agent, which combines an LLM model with a preamble (system prompt),
-//! a set of context documents, and a set of tools. Note: both context documents and tools can be either
-//! static (i.e.: they are always provided) or dynamic (i.e.: they are RAGged at prompt-time).
+//! a set of static context documents, and a set of tools. Tools can be always
+//! available or selected from a retrieval index at prompt time.
 //!
 //! The [Agent] struct is highly configurable, allowing the user to define anything from
-//! a simple bot with a specific system prompt to a complex RAG system with a set of dynamic
-//! context documents and tools.
+//! a simple bot with a specific system prompt to a complex RAG system.
 //!
 //! The [Agent] struct implements the runner-backed [crate::completion::Prompt],
 //! [crate::completion::TypedPrompt], and [crate::completion::Chat] traits. All
@@ -49,15 +48,66 @@
 //! # }
 //! ```
 //!
-//! RAG Agent example
+//! Passive RAG is application-defined: a completion-call hook chooses the query,
+//! retrieves documents, and injects them with [`RequestPatch::extra_context`].
+//! Active RAG instead exposes a vector index or custom retriever as a tool so the
+//! model decides when and how to search.
+//!
+//! Passive RAG agent example
 //! ```no_run
 //! use rig_core::{
+//!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
 //!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
-//!     completion::Prompt,
+//!     completion::{CompletionModel, Document, Message, Prompt},
 //!     embeddings::EmbeddingsBuilder,
+//!     message::UserContent,
 //!     providers::openai,
-//!     vector_store::in_memory_store::InMemoryVectorStore,
+//!     vector_store::{
+//!         VectorStoreIndexDyn,
+//!         in_memory_store::InMemoryVectorStore,
+//!         request::VectorSearchRequest,
+//!     },
 //! };
+//!
+//! struct DictionaryRag<I>(I);
+//!
+//! impl<M, I> AgentHook<M> for DictionaryRag<I>
+//! where
+//!     M: CompletionModel,
+//!     I: VectorStoreIndexDyn,
+//! {
+//!     async fn on_completion_call(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         event: CompletionCallEvent<'_>,
+//!     ) -> CompletionCallAction {
+//!         let message_text = |message: &Message| match message {
+//!             Message::User { content } => content.iter().find_map(|item| match item {
+//!                 UserContent::Text(text) => Some(text.text.clone()),
+//!                 _ => None,
+//!             }),
+//!             _ => None,
+//!         };
+//!         let Some(query) = message_text(event.prompt)
+//!             .or_else(|| event.history.iter().rev().find_map(message_text))
+//!         else {
+//!             return CompletionCallAction::continue_run();
+//!         };
+//!
+//!         let request = VectorSearchRequest::builder().query(query).samples(1).build();
+//!         match self.0.top_n(request).await {
+//!             Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+//!                 results.into_iter().map(|(_, id, value)| Document {
+//!                     id,
+//!                     text: serde_json::to_string_pretty(&value)
+//!                         .unwrap_or_else(|_| value.to_string()),
+//!                     additional_props: Default::default(),
+//!                 }),
+//!             )),
+//!             Err(error) => CompletionCallAction::stop(format!("retrieval failed: {error}")),
+//!         }
+//!     }
+//! }
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize OpenAI client
@@ -88,7 +138,7 @@
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
 //!     ")
-//!     .dynamic_context(1, index)
+//!     .add_hook(DictionaryRag(index))
 //!     .build();
 //!
 //! // Prompt the agent and print the response

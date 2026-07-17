@@ -10,11 +10,13 @@ use serde_json::json;
 
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
+use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
     client::EmbeddingsClient,
-    completion::Prompt,
+    completion::{CompletionModel, Document, Message, Prompt},
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    message::UserContent,
     prelude::CompletionClient,
     providers::openai,
     vector_store::{VectorStoreIndex, request::VectorSearchRequest},
@@ -22,6 +24,52 @@ use rig::{
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
+
+struct LanceDbRag<I> {
+    index: I,
+    samples: u64,
+}
+
+impl<M, I> AgentHook<M> for LanceDbRag<I>
+where
+    M: CompletionModel,
+    I: rig::vector_store::VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let message_text = |message: &Message| match message {
+            Message::User { content } => content.iter().find_map(|item| match item {
+                UserContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        };
+        let Some(query) = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text))
+        else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.samples)
+            .build();
+        match rig::vector_store::VectorStoreIndexDyn::top_n(&self.index, request).await {
+            Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text:
+                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+                    additional_props: Default::default(),
+                }),
+            )),
+            Err(error) => CompletionCallAction::stop(format!("LanceDB retrieval failed: {error}")),
+        }
+    }
+}
 
 #[tokio::test]
 async fn vector_search_test() {
@@ -206,7 +254,7 @@ async fn vector_search_test() {
 }
 
 #[tokio::test]
-async fn agent_with_dynamic_context_test() {
+async fn agent_with_application_defined_context_test() {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 
@@ -393,12 +441,15 @@ async fn agent_with_dynamic_context_test() {
         .await
         .unwrap();
 
-    // Build RAG agent with dynamic context
+    // Build passive RAG with an application-defined retrieval hook.
     let agent = openai_client
         .completion_model(openai::GPT_4O)
         .completions_api()
         .into_agent_builder()
-        .dynamic_context(top_k, vector_store_index)
+        .add_hook(LanceDbRag {
+            index: vector_store_index,
+            samples: top_k as u64,
+        })
         .build();
 
     let query = "My boss says I zindle too much, what does that mean?";

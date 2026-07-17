@@ -34,7 +34,7 @@ use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
+    completion::{Agent, PreparedCompletionRequest},
     hook::{
         AgentHook, CompletionCall, CompletionCallAction,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
@@ -193,7 +193,6 @@ where
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
-    pub(crate) dynamic_context: DynamicContextStore,
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
     pub(crate) output_mode: OutputMode,
@@ -230,7 +229,6 @@ where
             record_telemetry_content: agent.record_telemetry_content,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
-            dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             output_mode: agent.output_mode.clone(),
@@ -1593,11 +1591,14 @@ mod migrated_tests {
     use serde_json::json;
     use tokio::sync::Notify;
 
+    use crate::OneOrMany;
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
-    use crate::completion::{CompletionError, CompletionModel, Message, Prompt, PromptError};
+    use crate::completion::{
+        CompletionError, CompletionModel, Document, Message, Prompt, PromptError,
+    };
     use crate::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
@@ -1611,7 +1612,8 @@ mod migrated_tests {
         server::{ToolServer, ToolServerHandle},
     };
     use crate::vector_store::{
-        VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+        VectorSearchRequest, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
+        request::Filter,
     };
     use crate::wasm_compat::WasmCompatSend;
 
@@ -6364,6 +6366,96 @@ mod migrated_tests {
         }
     }
 
+    struct RetrievalHook<I> {
+        index: I,
+    }
+
+    impl<M, I> AgentHook<M> for RetrievalHook<I>
+    where
+        M: CompletionModel,
+        I: VectorStoreIndexDyn,
+    {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            event: CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            let Message::User { content } = event.prompt else {
+                return CompletionCallAction::continue_run();
+            };
+            let Some(query) = content.iter().find_map(|item| match item {
+                UserContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            }) else {
+                return CompletionCallAction::continue_run();
+            };
+            let request = VectorSearchRequest::builder()
+                .query(query)
+                .samples(1)
+                .build();
+            match self.index.top_n(request).await {
+                Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                    results.into_iter().map(|(_, id, value)| Document {
+                        id,
+                        text: value.to_string(),
+                        additional_props: Default::default(),
+                    }),
+                )),
+                Err(error) => CompletionCallAction::stop(format!("retrieval failed: {error}")),
+            }
+        }
+    }
+
+    struct FailingContextIndex;
+
+    impl VectorStoreIndex for FailingContextIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            Err(VectorStoreError::BuilderError(
+                "context index unavailable".to_string(),
+            ))
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            Err(VectorStoreError::BuilderError(
+                "context index unavailable".to_string(),
+            ))
+        }
+    }
+
+    struct QueryRecordingToolIndex {
+        queries: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl VectorStoreIndex for QueryRecordingToolIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn top_n_ids(
+            &self,
+            req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            self.queries
+                .lock()
+                .expect("query recorder lock")
+                .push(req.query().to_string());
+            Ok(vec![(1.0, MockAddTool::NAME.to_string())])
+        }
+    }
+
     fn one_text_stream_turn(text: &'static str) -> Vec<MockStreamEvent> {
         vec![
             MockStreamEvent::text(text),
@@ -6455,6 +6547,154 @@ mod migrated_tests {
             ids,
             vec!["first", "second"],
             "hook extras append in registration order"
+        );
+    }
+
+    #[tokio::test]
+    async fn retrieval_failure_stops_before_provider_io_on_both_surfaces() {
+        let blocking_model = MockCompletionModel::from_turns([MockTurn::text("unused")]);
+        let blocking_probe = blocking_model.clone();
+        let error = AgentBuilder::new(blocking_model)
+            .add_hook(RetrievalHook {
+                index: FailingContextIndex,
+            })
+            .build()
+            .runner("retrieve this")
+            .run()
+            .await
+            .expect_err("failed retrieval should stop the run");
+        assert!(matches!(
+            error,
+            PromptError::PromptCancelled { reason, .. }
+                if reason.contains("context index unavailable")
+        ));
+        assert_eq!(blocking_probe.request_count(), 0);
+
+        let streaming_model =
+            MockCompletionModel::from_stream_turns([one_text_stream_turn("unused")]);
+        let streaming_probe = streaming_model.clone();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .add_hook(RetrievalHook {
+                index: FailingContextIndex,
+            })
+            .build()
+            .runner("retrieve this")
+            .stream()
+            .await;
+        let error = stream
+            .next()
+            .await
+            .expect("stream should report retrieval failure")
+            .expect_err("failed retrieval should stop the stream");
+        assert!(matches!(
+            error,
+            StreamingError::Prompt(prompt_error)
+                if matches!(
+                    prompt_error.as_ref(),
+                    PromptError::PromptCancelled { reason, .. }
+                        if reason.contains("context index unavailable")
+                )
+        ));
+        assert_eq!(streaming_probe.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
+        let queries = Arc::new(Mutex::new(Vec::new()));
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+            .retrieved_tools(
+                1,
+                QueryRecordingToolIndex {
+                    queries: queries.clone(),
+                },
+                ToolSet::from_tools(vec![MockAddTool]),
+            )
+            .build()
+            .runner("blocking retrieval query")
+            .history(vec![Message::user("blocking history query")])
+            .run()
+            .await
+            .expect("blocking run should succeed");
+
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+            .retrieved_tools(
+                1,
+                QueryRecordingToolIndex {
+                    queries: queries.clone(),
+                },
+                ToolSet::from_tools(vec![MockAddTool]),
+            )
+            .build()
+            .runner(Message::User {
+                content: OneOrMany::one(UserContent::image_url(
+                    "https://example.com/blocking.png",
+                    None,
+                    None,
+                )),
+            })
+            .history(vec![
+                Message::user("older blocking history query"),
+                Message::user("latest blocking history query"),
+            ])
+            .run()
+            .await
+            .expect("blocking history fallback should succeed");
+
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+            one_text_stream_turn("done"),
+        ]))
+        .retrieved_tools(
+            1,
+            QueryRecordingToolIndex {
+                queries: queries.clone(),
+            },
+            ToolSet::from_tools(vec![MockAddTool]),
+        )
+        .build()
+        .runner("streaming retrieval query")
+        .history(vec![Message::user("streaming history query")])
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item should succeed");
+        }
+
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+            one_text_stream_turn("done"),
+        ]))
+        .retrieved_tools(
+            1,
+            QueryRecordingToolIndex {
+                queries: queries.clone(),
+            },
+            ToolSet::from_tools(vec![MockAddTool]),
+        )
+        .build()
+        .runner(Message::User {
+            content: OneOrMany::one(UserContent::image_url(
+                "https://example.com/streaming.png",
+                None,
+                None,
+            )),
+        })
+        .history(vec![
+            Message::user("older streaming history query"),
+            Message::user("latest streaming history query"),
+        ])
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item should succeed");
+        }
+
+        assert_eq!(
+            *queries.lock().expect("query recorder lock"),
+            vec![
+                "blocking retrieval query",
+                "latest blocking history query",
+                "streaming retrieval query",
+                "latest streaming history query",
+            ]
         );
     }
 

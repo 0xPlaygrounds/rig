@@ -69,8 +69,15 @@
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
 //! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
 //! trait, which can be implemented to define vector stores and indices respectively.
-//! Those can then be used as the knowledge base for a RAG enabled [Agent](crate::agent::Agent), or
-//! as a source of context documents in a custom architecture that use multiple LLMs or agents.
+//! There are two complementary ways to use an index with an [Agent](crate::agent::Agent):
+//! - For passive RAG, implement an [`AgentHook`](crate::agent::AgentHook) that queries the index
+//!   in `on_completion_call` and returns a
+//!   [`RequestPatch::extra_context`](crate::agent::RequestPatch::extra_context). This keeps
+//!   query selection, document formatting, and retrieval failure policy in application code.
+//! - For active RAG, expose the index through its blanket [`Tool`](crate::tool::Tool)
+//!   implementation, or through a custom tool, so the model decides when and how to retrieve.
+//!
+//! Indexes can also serve custom architectures that use multiple LLMs or agents.
 //!
 //! ## Conversation memory
 //! Rig can transparently load and persist per-conversation history through the

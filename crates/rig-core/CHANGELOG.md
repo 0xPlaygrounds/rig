@@ -9,6 +9,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] Remove `AgentBuilder::dynamic_context`,
+  `ExtractorBuilder::dynamic_context`, and the internal `DynamicContextStore`
+  passive-retrieval pipeline. Static builder context remains available. Rig no
+  longer imposes passive-retrieval query selection, retrieval, filtering,
+  reranking, formatting, caching, failure handling, or per-turn policy; those
+  decisions belong in an application-defined `AgentHook`.
+
+  Migration example:
+
+  ```rust
+  // Application code: Rig does not provide AppRetrievalHook.
+  struct AppRetrievalHook<I> {
+      index: I,
+      samples: u64,
+  }
+
+  impl<M, I> AgentHook<M> for AppRetrievalHook<I>
+  where
+      M: CompletionModel,
+      I: VectorStoreIndexDyn,
+  {
+      async fn on_completion_call(
+          &self,
+          _ctx: &HookContext,
+          event: CompletionCallEvent<'_>,
+      ) -> CompletionCallAction {
+          let message_text = |message: &Message| match message {
+              Message::User { content } => content.iter().find_map(|part| match part {
+                  UserContent::Text(text) => Some(text.text.clone()),
+                  _ => None,
+              }),
+              _ => None,
+          };
+          let Some(query) = message_text(event.prompt)
+              .or_else(|| event.history.iter().rev().find_map(message_text))
+          else {
+              return CompletionCallAction::continue_run();
+          };
+
+          let request = VectorSearchRequest::builder()
+              .query(query)
+              .samples(self.samples)
+              .build();
+          match self.index.top_n(request).await {
+              Ok(results) => {
+                  let documents = results.into_iter().map(|(_, id, value)| Document {
+                      id,
+                      text: serde_json::to_string_pretty(&value)
+                          .unwrap_or_else(|_| value.to_string()),
+                      additional_props: Default::default(),
+                  });
+                  CompletionCallAction::patch(
+                      RequestPatch::new().extra_context(documents),
+                  )
+              }
+              Err(error) => CompletionCallAction::stop(
+                  format!("application retrieval failed: {error}"),
+              ),
+          }
+      }
+  }
+
+  // Before
+  let agent = client.agent(model).dynamic_context(3, index).build();
+
+  // After
+  let agent = client
+      .agent(model)
+      .add_hook(AppRetrievalHook { index, samples: 3 })
+      .build();
+  ```
+
+  `CompletionCallAction::patch(RequestPatch::new().extra_context(documents))`
+  appends application-retrieved documents after static context. Returning
+  `CompletionCallAction::stop(...)` on retrieval failure prevents provider I/O
+  for that turn. The same hook-aware `AgentRunner` lifecycle powers blocking,
+  streaming, and extractor execution; register the local hook with
+  `ExtractorBuilder::add_hook` for extraction. Multiple hook context patches
+  append in registration order. For active RAG, expose an index through its
+  blanket `Tool` implementation or provide a custom retriever tool so the model
+  decides whether and when to retrieve.
 - *(agent)* [**breaking**] Make `AgentRunner` the only execution path for configured agents: remove the raw `Completion` and `StreamingCompletion` traits and their `Agent` implementations, make agent execution state private, add runner-backed per-request overrides, and route `Extractor` through the full hook lifecycle. Raw hook-free requests remain available explicitly through `CompletionModel`.
 
   Migration examples:

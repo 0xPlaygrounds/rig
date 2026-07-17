@@ -2,7 +2,12 @@ use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::client::Client;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+    completion::{Document, Message},
+    embeddings::EmbeddingsBuilder,
+    message::UserContent,
+    vector_store::{VectorStoreIndexDyn, in_memory_store::InMemoryVectorStore},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,6 +38,52 @@ struct Answer {
 struct QuestionnaireResponses {
     /// The list of responses to the questionnaire
     responses: Vec<Answer>,
+}
+
+struct QuestionnaireRag<I> {
+    index: I,
+    samples: u64,
+}
+
+impl<M, I> AgentHook<M> for QuestionnaireRag<I>
+where
+    M: CompletionModel,
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let message_text = |message: &Message| match message {
+            Message::User { content } => content.iter().find_map(|item| match item {
+                UserContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        };
+        let Some(query) = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text))
+        else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.samples)
+            .build();
+        match self.index.top_n(request).await {
+            Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text:
+                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+                    additional_props: Default::default(),
+                }),
+            )),
+            Err(error) => CompletionCallAction::stop(format!("question retrieval failed: {error}")),
+        }
+    }
 }
 
 const APPLICANT_INFO: &str = r#"
@@ -100,7 +151,8 @@ async fn main() -> Result<(), anyhow::Error> {
             You are provided with the questions and based on the information available, you must answer the questions with the right format.
             Use the answer ID field to map the answer to the right question ID. Answer as much as possible without inventing information.
             ")
-        .dynamic_context(3, index) // Samples should match the number of questions
+        // Samples should match the number of questions.
+        .add_hook(QuestionnaireRag { index, samples: 3 })
         .build();
 
     // Prompt the agent and print the response
