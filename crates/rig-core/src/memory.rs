@@ -2,7 +2,7 @@
 //!
 //! Memory differs from existing agent context features:
 //! - [`crate::agent::AgentBuilder::context`]: static documents always included in prompts.
-//! - [`crate::agent::AgentBuilder::dynamic_context`]: RAG documents fetched from a vector store.
+//! - [`crate::agent::AgentHook`]: per-run policies such as passive retrieval and context injection.
 //! - [`crate::agent::prompt_request::PromptRequest::history`]: caller-managed message history.
 //! - **Memory** (this module): Rig-managed history loaded and saved automatically per
 //!   conversation id.

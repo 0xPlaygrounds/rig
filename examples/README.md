@@ -43,7 +43,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so an `AgentHook` gates the patch on `ctx.turn() == 1` to force the tool only up front. |
 | `gemini_deep_research` | See source. |
 | `gemini_default_api_recovery` | Demonstrates recovering from Gemini emitting a legacy `default_api` tool name. |
-| `gemini_extractor_with_rag` | See source. |
+| `gemini_extractor_with_rag` | Uses an application-defined completion-call hook to retrieve questionnaire context for an extractor. |
 | `gemini_nanobanana_image_generation` | See source. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
@@ -55,11 +55,11 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `openai_agent_completions_api_otel` | This example shows how you can use OpenAI's Completions API. |
 | `openai_streaming_per_call_usage` | Shows how to inspect per-completion-call usage in an agent stream. |
 | `openai_streaming_with_tools_otel` | See source. |
-| `pdf_agent` | See source. |
-| `rag_dynamic_tools_multi_turn` | See source. |
-| `rag_dynamic_tools` | See source. |
-| `rag_ollama` | See source. |
-| `rag` | See source. |
+| `pdf_agent` | Uses an application-defined completion-call hook to retrieve PDF chunks for passive RAG. |
+| `rag_dynamic_tools_multi_turn` | Demonstrates active multi-turn RAG through retrieval-backed tools. |
+| `rag_dynamic_tools` | Demonstrates active RAG through retrieval-backed tools. |
+| `rag_ollama` | Implements passive RAG as an application-defined completion-call hook using Ollama. |
+| `rag` | Implements passive RAG as an application-defined completion-call hook using OpenAI. |
 | `reasoning_loop` | See source. |
 | `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking two `AgentHook`s with `add_hook`. |
 | `reqwest_middleware` | Demonstrates supplying a custom reqwest client with retry middleware. |

@@ -11,17 +11,70 @@ use serde_json::json;
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
+use rig::message::UserContent;
 use rig::{
+    agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
     client::EmbeddingsClient,
-    completion::Prompt,
+    completion::{CompletionModel, Document, Message, Prompt},
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     prelude::CompletionClient,
     providers::openai,
-    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::{VectorStoreIndex, VectorStoreIndexDyn, request::VectorSearchRequest},
 };
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
+
+struct RetrieveContext<I> {
+    index: I,
+    samples: u64,
+}
+
+fn message_text(message: &Message) -> Option<String> {
+    let Message::User { content } = message else {
+        return None;
+    };
+    content.iter().find_map(|part| match part {
+        UserContent::Text(text) => Some(text.text.clone()),
+        _ => None,
+    })
+}
+
+impl<M, I> AgentHook<M> for RetrieveContext<I>
+where
+    M: CompletionModel,
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let query = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text));
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.samples)
+            .build();
+        match VectorStoreIndexDyn::top_n(&self.index, request).await {
+            Ok(results) => {
+                let documents = results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text: value.to_string(),
+                    additional_props: Default::default(),
+                });
+                CompletionCallAction::patch(RequestPatch::new().extra_context(documents))
+            }
+            Err(error) => CompletionCallAction::stop(format!(
+                "failed to retrieve context before model request: {error}"
+            )),
+        }
+    }
+}
 
 #[tokio::test]
 async fn vector_search_test() {
@@ -186,8 +239,7 @@ async fn vector_search_test() {
         .build();
 
     // Query the index
-    let results = vector_store_index
-        .top_n::<serde_json::Value>(req)
+    let results = VectorStoreIndex::top_n::<serde_json::Value>(&vector_store_index, req)
         .await
         .unwrap();
 
@@ -206,7 +258,7 @@ async fn vector_search_test() {
 }
 
 #[tokio::test]
-async fn agent_with_dynamic_context_test() {
+async fn agent_with_retrieval_hook_test() {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 
@@ -393,12 +445,15 @@ async fn agent_with_dynamic_context_test() {
         .await
         .unwrap();
 
-    // Build RAG agent with dynamic context
+    // Build a RAG agent with application-defined retrieval policy.
     let agent = openai_client
         .completion_model(openai::GPT_4O)
         .completions_api()
         .into_agent_builder()
-        .dynamic_context(top_k, vector_store_index)
+        .add_hook(RetrieveContext {
+            index: vector_store_index,
+            samples: top_k as u64,
+        })
         .build();
 
     let query = "My boss says I zindle too much, what does that mean?";

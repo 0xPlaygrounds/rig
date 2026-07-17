@@ -34,7 +34,7 @@ use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, DynamicContextStore, PreparedCompletionRequest},
+    completion::{Agent, PreparedCompletionRequest},
     hook::{
         AgentHook, CompletionCall, CompletionCallAction,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
@@ -193,7 +193,6 @@ where
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
-    pub(crate) dynamic_context: DynamicContextStore,
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
     pub(crate) output_mode: OutputMode,
@@ -230,7 +229,6 @@ where
             record_telemetry_content: agent.record_telemetry_content,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
-            dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             output_mode: agent.output_mode.clone(),
@@ -6364,11 +6362,70 @@ mod migrated_tests {
         }
     }
 
+    /// Models an application retrieval policy that fails before it can produce
+    /// context. The hook owns that failure policy and stops the run explicitly.
+    struct FailingRetrievalHook;
+
+    impl<M: CompletionModel> AgentHook<M> for FailingRetrievalHook {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            let retrieval: Result<Vec<crate::completion::Document>, &str> =
+                Err("vector store unavailable");
+            match retrieval {
+                Ok(documents) => {
+                    CompletionCallAction::patch(RequestPatch::new().extra_context(documents))
+                }
+                Err(error) => CompletionCallAction::stop(format!("retrieval failed: {error}")),
+            }
+        }
+    }
+
     fn one_text_stream_turn(text: &'static str) -> Vec<MockStreamEvent> {
         vec![
             MockStreamEvent::text(text),
             MockStreamEvent::final_response_with_total_tokens(0),
         ]
+    }
+
+    #[tokio::test]
+    async fn application_retrieval_failure_stops_before_provider_io_on_both_surfaces() {
+        let blocking_model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
+        let blocking_probe = blocking_model.clone();
+        let error = AgentBuilder::new(blocking_model)
+            .add_hook(FailingRetrievalHook)
+            .build()
+            .runner("go")
+            .run()
+            .await
+            .expect_err("retrieval failure should cancel the run");
+        assert!(error.to_string().contains("vector store unavailable"));
+        assert!(
+            blocking_probe.requests().is_empty(),
+            "blocking retrieval failure must prevent provider IO"
+        );
+
+        let streaming_model =
+            MockCompletionModel::from_stream_turns([one_text_stream_turn("unreachable")]);
+        let streaming_probe = streaming_model.clone();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .add_hook(FailingRetrievalHook)
+            .build()
+            .runner("go")
+            .stream()
+            .await;
+        let error = stream
+            .next()
+            .await
+            .expect("stream should report cancellation")
+            .expect_err("retrieval failure should cancel the stream");
+        assert!(error.to_string().contains("vector store unavailable"));
+        assert!(
+            streaming_probe.requests().is_empty(),
+            "streaming retrieval failure must prevent provider IO"
+        );
     }
 
     /// A single hook's `extra_context` document appears in the completion request,
@@ -6865,6 +6922,73 @@ mod migrated_tests {
                 Ok(vec![(1.0, "final_result".to_string())])
             }
         }
+    }
+
+    struct QueryRecordingToolIndex {
+        queries: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl VectorStoreIndex for QueryRecordingToolIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _request: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn top_n_ids(
+            &self,
+            request: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            self.queries
+                .lock()
+                .expect("query recorder lock")
+                .push(request.query().to_string());
+            Ok(vec![(1.0, "add".to_string())])
+        }
+    }
+
+    #[tokio::test]
+    async fn retrieved_tools_keep_current_prompt_and_history_fallback_query_behavior() {
+        async fn run_with(
+            queries: Arc<Mutex<Vec<String>>>,
+            prompt: Message,
+            history: Vec<Message>,
+        ) {
+            AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+                .retrieved_tools(
+                    1,
+                    QueryRecordingToolIndex { queries },
+                    ToolSet::from_tools(vec![MockAddTool]),
+                )
+                .build()
+                .runner(prompt)
+                .history(history)
+                .run()
+                .await
+                .expect("retrieved-tool agent run should succeed");
+        }
+
+        let queries = Arc::new(Mutex::new(Vec::new()));
+        run_with(
+            queries.clone(),
+            Message::from("current prompt query"),
+            vec![Message::from("older history query")],
+        )
+        .await;
+        run_with(
+            queries.clone(),
+            Message::system("current message has no retrieval text"),
+            vec![Message::from("history fallback query")],
+        )
+        .await;
+
+        assert_eq!(
+            *queries.lock().expect("query recorder lock"),
+            vec!["current prompt query", "history fallback query"]
+        );
     }
 
     /// Registers a real `final_result` tool after the first model turn, once the

@@ -1,8 +1,15 @@
 use rig::client::Nothing;
+use rig::message::UserContent;
 use rig::prelude::*;
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+    completion::{CompletionModel, Document, Message, Prompt},
+    embeddings::EmbeddingsBuilder,
+    providers::ollama::Client,
+    vector_store::{
+        VectorStoreIndexDyn, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
+    },
 };
 use serde::Serialize;
 
@@ -15,6 +22,57 @@ struct WordDefinition {
     word: String,
     #[embed]
     definitions: Vec<String>,
+}
+
+struct RetrieveContext<I> {
+    index: I,
+    samples: u64,
+}
+
+fn message_text(message: &Message) -> Option<String> {
+    let Message::User { content } = message else {
+        return None;
+    };
+    content.iter().find_map(|part| match part {
+        UserContent::Text(text) => Some(text.text.clone()),
+        _ => None,
+    })
+}
+
+impl<M, I> AgentHook<M> for RetrieveContext<I>
+where
+    M: CompletionModel,
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let query = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text));
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.samples)
+            .build();
+        match VectorStoreIndexDyn::top_n(&self.index, request).await {
+            Ok(results) => {
+                let documents = results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text: value.to_string(),
+                    additional_props: Default::default(),
+                });
+                CompletionCallAction::patch(RequestPatch::new().extra_context(documents))
+            }
+            Err(error) => CompletionCallAction::stop(format!(
+                "failed to retrieve context before model request: {error}"
+            )),
+        }
+    }
 }
 
 #[tokio::main]
@@ -70,7 +128,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .dynamic_context(1, index)
+        .add_hook(RetrieveContext { index, samples: 1 })
         .build();
 
     // Prompt the agent and print the response

@@ -4,7 +4,7 @@
 //!
 //! - [`VectorStoreIndex`]: Query a vector store for similar documents.
 //! - [`InsertDocuments`]: Insert documents and their embeddings.
-//! - [`VectorStoreIndexDyn`]: Type-erased version for dynamic contexts.
+//! - [`VectorStoreIndexDyn`]: Type-erased access for runtime retrieval workflows.
 //!
 //! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
 //!
@@ -259,4 +259,57 @@ pub enum IndexStrategy {
         /// Number of hyperplanes to use for LSH.
         num_hyperplanes: usize,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tool::ToolContext;
+
+    struct ActiveRetrievalIndex;
+
+    impl VectorStoreIndex for ActiveRetrievalIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            request: VectorSearchRequest<Self::Filter>,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            let document = serde_json::from_value(json!({
+                "answer": format!("result for {}", request.query())
+            }))?;
+            Ok(vec![(0.9, "doc-1".to_string(), document)])
+        }
+
+        async fn top_n_ids(
+            &self,
+            _request: VectorSearchRequest<Self::Filter>,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            Ok(vec![(0.9, "doc-1".to_string())])
+        }
+    }
+
+    #[tokio::test]
+    async fn vector_store_index_remains_available_as_an_active_retrieval_tool() {
+        let request = VectorSearchRequest::builder()
+            .query("the question")
+            .samples(1)
+            .build();
+        let output = <ActiveRetrievalIndex as Tool>::call(
+            &ActiveRetrievalIndex,
+            &mut ToolContext::new(),
+            request,
+        )
+        .await
+        .expect("vector index should remain callable as a tool");
+
+        assert_eq!(output.len(), 1);
+        let result = output.first().expect("one active retrieval result");
+        assert_eq!(result.score, 0.9);
+        assert_eq!(result.id, "doc-1");
+        assert_eq!(
+            result.document,
+            json!({ "answer": "result for the question" })
+        );
+    }
 }

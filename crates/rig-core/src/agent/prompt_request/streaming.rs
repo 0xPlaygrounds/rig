@@ -542,7 +542,6 @@ where
                         runner.record_telemetry_content,
                         runner.tool_choice.as_ref(),
                         &runner.tool_server_handle,
-                        &runner.dynamic_context,
                         runner.output_schema.as_ref(),
                         &runner.output_mode,
                         committed_output_tool.as_deref(),

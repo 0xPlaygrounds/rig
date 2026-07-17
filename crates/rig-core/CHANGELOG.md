@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] Remove the hardcoded `AgentBuilder::dynamic_context` and `ExtractorBuilder::dynamic_context` passive-RAG pipeline. Static context remains configured on the builder; per-turn retrieval is now an application policy implemented with a completion-call hook. Vector-store traits, retrieval-backed tools, and vector indexes exposed as active tools are unchanged.
+
+  Migration example:
+
+  ```rust
+  // Before: Rig chose the query, queried the index on every model turn, and
+  // inserted the results through hidden Agent state.
+  let agent = client
+      .agent(model)
+      .dynamic_context(3, index)
+      .build();
+
+  // After: the application owns query selection, retrieval, serialization,
+  // failure policy, and turn policy in an ordinary hook.
+  impl<M: CompletionModel> AgentHook<M> for MyRetrievalHook {
+      async fn on_completion_call(
+          &self,
+          _ctx: &HookContext,
+          event: CompletionCallEvent<'_>,
+      ) -> CompletionCallAction {
+          let documents = match self.retrieve(event.prompt, event.history).await {
+              Ok(documents) => documents,
+              Err(error) => return CompletionCallAction::stop(error.to_string()),
+          };
+          CompletionCallAction::patch(
+              RequestPatch::new().extra_context(documents)
+          )
+      }
+  }
+
+  let agent = client
+      .agent(model)
+      .add_hook(MyRetrievalHook::new(index, 3))
+      .build();
+  ```
+
+  This is not a Rig-provided `MyRetrievalHook`: applications define it for their own vector store and retrieval policy. Passive RAG uses `RequestPatch::extra_context`; active RAG exposes a vector index or custom retriever as a tool. Extractors run through `AgentRunner`, so the same application-defined hooks can be registered with `ExtractorBuilder::add_hook`.
+
 - *(agent)* [**breaking**] Make `AgentRunner` the only execution path for configured agents: remove the raw `Completion` and `StreamingCompletion` traits and their `Agent` implementations, make agent execution state private, add runner-backed per-request overrides, and route `Extractor` through the full hook lifecycle. Raw hook-free requests remain available explicitly through `CompletionModel`.
 
   Migration examples:

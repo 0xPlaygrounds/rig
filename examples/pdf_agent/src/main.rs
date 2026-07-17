@@ -1,11 +1,18 @@
 use anyhow::{Context, Result};
 use rig::client::Nothing;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
+use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+    completion::{CompletionModel, Document as ContextDocument, Message},
+    embeddings::EmbeddingsBuilder,
+    loaders::PdfFileLoader,
+    vector_store::{
+        VectorStoreIndexDyn, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -15,6 +22,56 @@ struct Document {
     id: String,
     #[embed]
     content: String,
+}
+
+struct RetrievePdfContext<I> {
+    index: I,
+}
+
+fn message_text(message: &Message) -> Option<String> {
+    let Message::User { content } = message else {
+        return None;
+    };
+    content.iter().find_map(|part| match part {
+        UserContent::Text(text) => Some(text.text.clone()),
+        _ => None,
+    })
+}
+
+impl<M, I> AgentHook<M> for RetrievePdfContext<I>
+where
+    M: CompletionModel,
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let query = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text));
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(1)
+            .build();
+        match VectorStoreIndexDyn::top_n(&self.index, request).await {
+            Ok(results) => {
+                let documents = results.into_iter().map(|(_, id, value)| ContextDocument {
+                    id,
+                    text: value.to_string(),
+                    additional_props: Default::default(),
+                });
+                CompletionCallAction::patch(RequestPatch::new().extra_context(documents))
+            }
+            Err(error) => CompletionCallAction::stop(format!(
+                "failed to retrieve PDF context before model request: {error}"
+            )),
+        }
+    }
 }
 
 fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
@@ -94,7 +151,7 @@ async fn main() -> Result<()> {
     let rag_agent = client
         .agent("deepseek-r1")
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
-        .dynamic_context(1, index)
+        .add_hook(RetrievePdfContext { index })
         .build();
 
     println!("Starting CLI chatbot...");

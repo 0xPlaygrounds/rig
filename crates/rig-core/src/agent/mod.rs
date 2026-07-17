@@ -1,12 +1,13 @@
 //! This module contains the implementation of the [Agent] struct and its builder.
 //!
 //! The [Agent] struct represents an LLM agent, which combines an LLM model with a preamble (system prompt),
-//! a set of context documents, and a set of tools. Note: both context documents and tools can be either
-//! static (i.e.: they are always provided) or dynamic (i.e.: they are RAGged at prompt-time).
+//! a set of static context documents, and a set of tools. Applications can add
+//! per-turn context with a completion-call hook, while tools can be selected by
+//! retrieval at prompt time.
 //!
 //! The [Agent] struct is highly configurable, allowing the user to define anything from
-//! a simple bot with a specific system prompt to a complex RAG system with a set of dynamic
-//! context documents and tools.
+//! a simple bot with a specific system prompt to a complex RAG system with
+//! application-defined retrieval policy.
 //!
 //! The [Agent] struct implements the runner-backed [crate::completion::Prompt],
 //! [crate::completion::TypedPrompt], and [crate::completion::Chat] traits. All
@@ -49,15 +50,64 @@
 //! # }
 //! ```
 //!
-//! RAG Agent example
+//! # Retrieval-augmented generation
+//!
+//! Passive RAG is an application-defined [`AgentHook`] that retrieves context
+//! during [`CompletionCallEvent`] and returns a [`RequestPatch`] with
+//! [`RequestPatch::extra_context`]. Active RAG instead exposes a vector index
+//! or custom retriever as a tool so the model chooses whether and when to
+//! search. Rig does not impose query, filtering, reranking, caching, failure,
+//! or per-turn policies for passive retrieval.
+//!
+//! Passive RAG example
 //! ```no_run
 //! use rig_core::{
 //!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
-//!     completion::Prompt,
+//!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+//!     completion::{CompletionModel, Document, Message, Prompt},
 //!     embeddings::EmbeddingsBuilder,
+//!     message::UserContent,
 //!     providers::openai,
-//!     vector_store::in_memory_store::InMemoryVectorStore,
+//!     vector_store::{VectorStoreIndexDyn, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 //! };
+//!
+//! struct RetrieveContext<I>(I);
+//!
+//! fn message_text(message: &Message) -> Option<String> {
+//!     let Message::User { content } = message else { return None };
+//!     content.iter().find_map(|part| match part {
+//!         UserContent::Text(text) => Some(text.text.clone()),
+//!         _ => None,
+//!     })
+//! }
+//!
+//! impl<M, I> AgentHook<M> for RetrieveContext<I>
+//! where
+//!     M: CompletionModel,
+//!     I: VectorStoreIndexDyn,
+//! {
+//!     async fn on_completion_call(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         event: CompletionCallEvent<'_>,
+//!     ) -> CompletionCallAction {
+//!         let Some(query) = message_text(event.prompt) else {
+//!             return CompletionCallAction::continue_run();
+//!         };
+//!         let request = VectorSearchRequest::builder().query(query).samples(1).build();
+//!         match VectorStoreIndexDyn::top_n(&self.0, request).await {
+//!             Ok(results) => {
+//!                 let documents = results.into_iter().map(|(_, id, value)| Document {
+//!                     id,
+//!                     text: value.to_string(),
+//!                     additional_props: Default::default(),
+//!                 });
+//!                 CompletionCallAction::patch(RequestPatch::new().extra_context(documents))
+//!             }
+//!             Err(error) => CompletionCallAction::stop(format!("context retrieval failed: {error}")),
+//!         }
+//!     }
+//! }
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize OpenAI client
@@ -88,7 +138,7 @@
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
 //!     ")
-//!     .dynamic_context(1, index)
+//!     .add_hook(RetrieveContext(index))
 //!     .build();
 //!
 //! // Prompt the agent and print the response

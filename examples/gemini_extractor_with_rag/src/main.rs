@@ -1,8 +1,15 @@
+use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::client::Client;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed,
+    agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+    completion::{CompletionModel, Document, Message},
+    embeddings::EmbeddingsBuilder,
+    vector_store::{
+        VectorStoreIndexDyn, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
+    },
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,6 +40,56 @@ struct Answer {
 struct QuestionnaireResponses {
     /// The list of responses to the questionnaire
     responses: Vec<Answer>,
+}
+
+struct RetrieveQuestions<I> {
+    index: I,
+}
+
+fn message_text(message: &Message) -> Option<String> {
+    let Message::User { content } = message else {
+        return None;
+    };
+    content.iter().find_map(|part| match part {
+        UserContent::Text(text) => Some(text.text.clone()),
+        _ => None,
+    })
+}
+
+impl<M, I> AgentHook<M> for RetrieveQuestions<I>
+where
+    M: CompletionModel,
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let query = message_text(event.prompt)
+            .or_else(|| event.history.iter().rev().find_map(message_text));
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(3)
+            .build();
+        match VectorStoreIndexDyn::top_n(&self.index, request).await {
+            Ok(results) => {
+                let documents = results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text: value.to_string(),
+                    additional_props: Default::default(),
+                });
+                CompletionCallAction::patch(RequestPatch::new().extra_context(documents))
+            }
+            Err(error) => CompletionCallAction::stop(format!(
+                "failed to retrieve questionnaire context before extraction: {error}"
+            )),
+        }
+    }
 }
 
 const APPLICANT_INFO: &str = r#"
@@ -100,7 +157,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are provided with the questions and based on the information available, you must answer the questions with the right format.
             Use the answer ID field to map the answer to the right question ID. Answer as much as possible without inventing information.
             ")
-        .dynamic_context(3, index) // Samples should match the number of questions
+        .add_hook(RetrieveQuestions { index })
         .build();
 
     // Prompt the agent and print the response

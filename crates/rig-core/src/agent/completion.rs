@@ -12,22 +12,11 @@ use crate::{
     message::ToolChoice,
     streaming::{StreamingChat, StreamingPrompt},
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
-    vector_store::{VectorStoreError, request::VectorSearchRequest},
     wasm_compat::WasmCompatSend,
 };
-use std::{
-    collections::{BTreeSet, HashMap},
-    sync::Arc,
-};
+use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
-
-pub type DynamicContextStore = Arc<
-    Vec<(
-        usize,
-        Arc<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
-    )>,
->;
 
 /// A prepared completion request plus the executable Rig tool names advertised
 /// to the provider for this turn.
@@ -239,7 +228,6 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     record_telemetry_content: bool,
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
-    dynamic_context: &DynamicContextStore,
     output_schema: Option<&schemars::Schema>,
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
@@ -286,71 +274,13 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             .find_map(|message| message.rag_text())
     });
 
-    // Fetch dynamic (RAG) documents and the real executable tool set first, so we
-    // can resolve the output mode (which depends on whether tools exist) before
-    // building the preamble and request.
-    let (mut tool_snapshot, fetched_context): (ToolRegistrySnapshot, Vec<Document>) =
-        match &rag_text {
-            Some(text) => {
-                let search_futures = dynamic_context.iter().map(|(num_sample, index)| {
-                    let text = text.clone();
-                    let num_sample = *num_sample;
-                    let index = index.clone();
-
-                    async move {
-                        let req = VectorSearchRequest::builder()
-                            .query(text)
-                            .samples(num_sample as u64)
-                            .build();
-
-                        let docs = index
-                            .top_n(req)
-                            .await?
-                            .into_iter()
-                            .map(|(_, id, doc)| {
-                                let text = serde_json::to_string_pretty(&doc)
-                                    .unwrap_or_else(|_| doc.to_string());
-
-                                Document {
-                                    id,
-                                    text,
-                                    additional_props: HashMap::new(),
-                                }
-                            })
-                            .collect::<Vec<_>>();
-
-                        Ok::<_, VectorStoreError>(docs)
-                    }
-                });
-
-                let fetched_context: Vec<Document> = futures::future::try_join_all(search_futures)
-                    .await
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?
-                    .into_iter()
-                    .flatten()
-                    .collect();
-
-                let tool_snapshot = tool_server_handle
-                    .snapshot_tool_defs(Some(text.to_string()))
-                    .await
-                    .map_err(|_| {
-                        CompletionError::RequestError("Failed to get tool definitions".into())
-                    })?;
-
-                (tool_snapshot, fetched_context)
-            }
-            None => {
-                let tool_snapshot =
-                    tool_server_handle
-                        .snapshot_tool_defs(None)
-                        .await
-                        .map_err(|_| {
-                            CompletionError::RequestError("Failed to get tool definitions".into())
-                        })?;
-
-                (tool_snapshot, Vec::new())
-            }
-        };
+    // Dynamic tools still use the current prompt to select definitions. Passive
+    // retrieval belongs in application-defined `CompletionCall` hooks, which
+    // inject per-turn documents through `RequestPatch::extra_context`.
+    let mut tool_snapshot = tool_server_handle
+        .snapshot_tool_defs(rag_text)
+        .await
+        .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
 
     // When a per-turn `active_tools` allow-list is present, capture the full tool
     // set BEFORE filtering: the synthetic output-tool name must avoid colliding
@@ -550,13 +480,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         .documents(static_context.to_vec())
         .tools(tooldefs);
 
-    if !fetched_context.is_empty() {
-        completion_request = completion_request.documents(fetched_context);
-    }
-
-    // Hook-supplied extra context documents (passive RAG) are appended last, so
-    // document order is static → dynamic (vector-store) → hook extras, with the
-    // extras in the hooks' registration order (they were merged in that order).
+    // Hook-supplied context documents are appended after static context, with
+    // extras in hook registration order (they were merged in that order).
     // Per-turn and non-sticky: the next turn re-resolves from the baseline.
     if let Some(patch) = request_patch
         && !patch.extra_context.is_empty()
@@ -658,8 +583,6 @@ where
     /// backend storage and query costs.
     pub(crate) record_telemetry_content: bool,
     pub(crate) tool_server_handle: ToolServerHandle,
-    /// List of vector store, with the sample number
-    pub(crate) dynamic_context: DynamicContextStore,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub(crate) tool_choice: Option<ToolChoice>,
     /// Default total model-call budget, including the initial call and every
