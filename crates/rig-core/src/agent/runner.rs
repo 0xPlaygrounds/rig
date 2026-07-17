@@ -1869,6 +1869,46 @@ mod migrated_tests {
         assert_eq!(streaming[0].message_id.as_deref(), Some("msg-canonical"));
     }
 
+    #[tokio::test]
+    async fn streaming_response_finish_normalizes_interleaved_content() {
+        let hook = CanonicalResponseHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::reasoning("think"),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::text("answer"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]))
+        .tool(MockAddTool)
+        .add_hook(hook.clone())
+        .build()
+        .runner("go")
+        .max_turns(3)
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let snapshots = hook.streaming.lock().expect("streaming snapshots");
+        let kinds = snapshots[0]
+            .content
+            .iter()
+            .map(|content| match content {
+                AssistantContent::Reasoning(_) => "reasoning",
+                AssistantContent::Text(_) => "text",
+                AssistantContent::ToolCall(_) => "tool_call",
+                _ => "other",
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(kinds, ["reasoning", "text", "tool_call"]);
+    }
+
     fn blocking_model() -> MockCompletionModel {
         MockCompletionModel::from_turns([
             MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
