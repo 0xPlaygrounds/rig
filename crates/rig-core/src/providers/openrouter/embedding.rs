@@ -1,7 +1,4 @@
-use super::{
-    Client, Usage,
-    client::{ApiErrorResponse, ApiResponse},
-};
+use super::{Client, Usage, client::ApiResponse};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
 use crate::wasm_compat::WasmCompatSend;
@@ -16,21 +13,6 @@ pub struct EmbeddingResponse {
     pub model: String,
     pub usage: Option<Usage>,
     pub id: Option<String>,
-}
-
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -112,11 +94,12 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+        let status = response.status();
+        if status.is_success() {
+            let response_body: Vec<u8> = response.into_body().await?;
+            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
-            match body {
+            match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenRouter embedding token usage: {:?}",
@@ -143,11 +126,17 @@ where
                         })
                         .collect())
                 }
-                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }

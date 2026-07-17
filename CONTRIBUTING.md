@@ -11,7 +11,7 @@ Additionally, please ensure that if you are submitting a bug ticket (ie, somethi
 
 ## Pull Requests
 
-Contributions are always encouraged and welcome. Before creating a pull request, create a new issue that tracks that pull request describing the problem in more detail. Pull request descriptions should include information about it's implementation, especially if it makes changes to existing abstractions.
+Contributions are always encouraged and welcome. Before creating a pull request, create a new issue that tracks that pull request describing the problem in more detail. Pull request descriptions should include information about its implementation, especially if it makes changes to existing abstractions.
 
 PRs should be small and focused and should avoid interacting with multiple facets of the library. This may result in a larger PR being split into two or more smaller PRs. Commit messages should follow the [Conventional Commit](https://conventionalcommits.org/en/v1.0.0) format (prefixing with `feat`, `fix`, etc.) as this integrates into our auto-releases via a [release-plz](https://github.com/MarcoIeni/release-plz) Github action.
 
@@ -34,7 +34,9 @@ Most non-trivial open source projects often have a set of code contribution guid
 While we will not strictly enforce any guidelines as such because we want to make it as easy as possible to contribute to Rig, we do have three policies that we advise contributors to stick to:
 - Use docstrings on any new public items (structs, enums, methods whether free-standing or associated).
 - Ensure that you use full syntax for trait bounds where possible. This makes the code much easier to read.
-- If your PR adds additional functionality to Rig, it must include relevant tests that pass (if the code does not directly interact with an API model provider), or alternatively an example that compiles if the code is user-facing.
+- If your PR adds additional functionality to Rig, it must include relevant tests that pass. Provider behavior changes should usually include cassette-backed regression tests when feasible; user-facing changes should also update examples or documentation as appropriate.
+
+The workspace enforces strict clippy lints, including forbidding `unwrap`, `expect`, `todo`, and `unimplemented` in workspace code. Prefer explicit error types, `?`, and complete edge-case handling.
 
 As a contributor, you are welcome to use AI assistance for coding. Using AI does not change the quality bar or transfer responsibility away from you.
 
@@ -68,7 +70,19 @@ This will be reviewed on a case by case basis, but generally unjustifiable break
 
 ## Project Structure
 
-Rig is split up into multiple crates in a monorepo structure. The main crate `rig-core` contains all of the foundational abstractions for building with LLMs. This crate avoids adding many new dependencies to keep to lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without over burdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
+Rig is split up into multiple crates in a monorepo structure:
+
+- `rig`: the root facade crate. It re-exports `rig-core` and exposes companion crates behind feature flags.
+- `crates/rig-core`: foundational abstractions for agents, completion, embeddings, tools, vector stores, providers, telemetry, loaders, memory traits, and test utilities.
+- `crates/rig-derive`: derive macros.
+- `crates/rig-*`: first-party provider, vector-store, memory, and companion integration crates.
+- `examples/*`: workspace example packages.
+- `tests/*.rs`: root integration test targets.
+- `tests/providers/<provider>/`: provider-specific test modules.
+- `tests/cassettes/<provider>/`: committed HTTP cassette fixtures for replayable provider tests.
+- `tests/integrations/`: external-service and vector-store integration tests.
+
+The main crate `rig-core` avoids adding many new dependencies to keep it lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without overburdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
 
 If you are unsure whether a side-crate should live in the main repo, you can spin up a personal repo containing your crate and create an issue in our repo making the case on whether this side-crate should be integrated in the main repo and maintained by the Rig team.
 
@@ -96,15 +110,62 @@ cargo fmt -- --check
 
 ### Tests
 
-Make sure to test against the test suite before making a pull request.
+Make sure to test against the relevant test suite before making a pull request. See `tests/README.md` for the most current provider, cassette, live, and integration test commands.
+
+Common checks:
 
 ```bash
-cargo test
+cargo test -p rig
+cargo test -p rig --all-features
+```
+
+Provider-agnostic core tests:
+
+```bash
+cargo test -p rig --test core
+```
+
+External-service integration tests are collected under the `integrations` target and may require feature flags, Docker, credentials, or pre-provisioned services. For example:
+
+```bash
+cargo test -p rig --features qdrant --test integrations qdrant -- --nocapture
+cargo test -p rig --all-features --test integrations
+```
+
+### Cassette regression tests
+
+Provider behavior changes should include cassette-backed regression tests when feasible. Cassette tests replay committed HTTP interactions and usually do not require provider API keys.
+
+Test code lives under `tests/providers/<provider>/cassette/`; fixtures live under `tests/cassettes/<provider>/...`.
+
+Replay an existing cassette suite with:
+
+```bash
+cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
+```
+
+Record or update fixtures with the relevant provider API key set:
+
+```bash
+RIG_PROVIDER_TEST_MODE=record \
+  cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
+```
+
+Keep record runs targeted to the provider and test being changed. Review cassette diffs carefully for secrets, bearer tokens, cookies, provider account identifiers, unrelated request/response churn, and unexpected provider behavior. Mention in your PR whether cassettes were replayed, recorded, or not applicable.
+
+Run one cassette test by passing a test-name substring after the test target:
+
+```bash
+cargo test -p rig --all-features --test gemini \
+  streaming_tools_smoke \
+  -- --nocapture --test-threads=1
 ```
 
 ## AI Agent Instructions
 
 Rig keeps one canonical AI instruction source in `AGENTS.md`.
+
+As a contributor, you are responsible for AI-assisted changes exactly as if you had written them manually. Review the generated code and docs, understand the design, and run the relevant checks, including cassette or integration tests when they apply.
 
 When updating AI guidance:
 

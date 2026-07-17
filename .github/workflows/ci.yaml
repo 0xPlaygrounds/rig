@@ -35,6 +35,21 @@ jobs:
       - name: Run cargo fmt
         run: cargo fmt -- --check
 
+      # Guard against CWD-relative test fixture paths. `cargo test` runs from the
+      # crate root while `cargo nextest` (CI's runner) runs from the workspace
+      # root, so a bare `tests/data/...` path passes under one and fails under the
+      # other — letting a broken fixture path stay green in CI. Real test code
+      # must anchor fixtures to CARGO_MANIFEST_DIR (see
+      # crates/rig-core/src/loaders/test_fixtures.rs). Doc-comment example
+      # snippets (`///`, `//!`) are exempt.
+      - name: Check test fixture paths are CWD-independent
+        run: |
+          if grep -rnE '"(\./)?tests/data' crates/*/src crates/*/tests --include='*.rs' \
+            | grep -vE ':[[:space:]]*//[/!]'; then
+            echo "::error::Found a CWD-relative 'tests/data' path in test code. Anchor it to CARGO_MANIFEST_DIR via crate::loaders::test_fixtures (see crates/rig-core/src/loaders/test_fixtures.rs)."
+            exit 1
+          fi
+
   # Special check to make sure rig-core is compatible with the wasm target
   check-wasm:
     name: stable / check rig-core wasm target
@@ -108,6 +123,31 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+
+  # `cargo nextest` (used by the `test` job) does NOT run doctests, and the
+  # `doc` job only builds documentation — so without this job nothing executes
+  # the `///` code examples and a broken doctest can sail through CI.
+  doctest:
+    name: stable / doctest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      # Required to compile rig-lancedb
+      - name: Install Protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      # No API keys needed: the doctests that actually execute are pure (the
+      # provider examples are all `no_run`/compile-only), so this job stays
+      # hermetic and non-flaky.
+      - name: Run doctests
+        run: cargo test --doc --workspace --all-features
 
   doc:
     name: stable / doc

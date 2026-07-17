@@ -1,0 +1,103 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"},{"description":"Return the beta signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_orchard_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":700,"output_tokens":5,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"I'll call both tools","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" simultaneously right away!","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"lookup_harbor_label","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{},"name":"lookup_orchard_label","type":"tool_use"},"index":2,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":2,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":700,"output_tokens":70}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll call both tools simultaneously right away!","type":"text"},{"id":"toolu_REDACTED_1","input":{},"name":"lookup_harbor_label","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{},"name":"lookup_orchard_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"},{"content":[{"text":"silver-orchard","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"},{"description":"Return the beta signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_orchard_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":846,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"The","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":846,"output_tokens":26}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

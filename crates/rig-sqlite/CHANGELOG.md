@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.38.2...rig-sqlite-v0.39.0) - 2026-06-19
+
+### Fixed
+
+- *(sqlite)* brute-force scan when KNN candidate count exceeds sqlite-vec's k cap ([#1920](https://github.com/0xPlaygrounds/rig/pull/1920)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.3.0...rig-sqlite-v0.38.1) - 2026-06-02
 
 ### Other

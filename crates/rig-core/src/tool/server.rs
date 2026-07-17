@@ -4,9 +4,20 @@ use tokio::sync::RwLock;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{Tool, ToolDyn, ToolSet, ToolSetError},
+    tool::{Tool, ToolCallExtensions, ToolDyn, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
+
+/// Append `name` to the advertised static-tool list unless already present.
+/// Registration is last-wins on the toolset, so the name list only needs
+/// first-occurrence order: a re-registered name keeps its original position
+/// while the toolset swaps in the new implementation. Providers reject
+/// duplicate function declarations, so the list must stay unique.
+fn push_unique_name(names: &mut Vec<String>, name: String) {
+    if !names.contains(&name) {
+        names.push(name);
+    }
+}
 
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
@@ -44,7 +55,13 @@ impl ToolServer {
     }
 
     pub(crate) fn static_tool_names(mut self, names: Vec<String>) -> Self {
-        self.static_tool_names = names;
+        // Last-wins registration replaces the implementation but keeps the
+        // original position, so the advertised list dedupes to first
+        // occurrence (duplicate declarations are rejected by providers).
+        self.static_tool_names = Vec::with_capacity(names.len());
+        for name in names {
+            push_unique_name(&mut self.static_tool_names, name);
+        }
         self
     }
 
@@ -61,23 +78,42 @@ impl ToolServer {
         self
     }
 
-    /// Add a static tool to the agent
+    /// Add a static tool to the agent. Re-registering an existing name
+    /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.toolset.add_tool(tool);
-        self.static_tool_names.push(toolname);
+        push_unique_name(&mut self.static_tool_names, toolname);
         self
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent
+    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
+    /// to change or disable it.
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
-    pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
+    pub fn rmcp_tool(self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
+        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    }
+
+    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
+    /// disable the timeout (unbounded).
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    #[cfg(feature = "rmcp")]
+    pub fn rmcp_tool_with_timeout(
+        mut self,
+        tool: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> Self {
         use crate::tool::rmcp::McpTool;
-        let toolname = tool.name.clone();
+        let toolname = tool.name.to_string();
         self.toolset
-            .add_tool(McpTool::from_mcp_server(tool, client));
-        self.static_tool_names.push(toolname.to_string());
+            .add_tool(McpTool::from_mcp_server(tool, client).with_timeout(timeout));
+        push_unique_name(&mut self.static_tool_names, toolname);
         self
     }
 
@@ -113,22 +149,26 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
-    /// Register a new static tool.
+    /// Register a new static tool. Re-registering an existing name replaces
+    /// the implementation (last wins) and keeps its position.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        state.static_tool_names.push(tool.name());
+        let toolname = tool.name();
+        push_unique_name(&mut state.static_tool_names, toolname);
         state.toolset.add_tool_boxed(Box::new(tool));
         Ok(())
     }
 
     /// Merge an entire toolset into the server. Tool names from `toolset`
-    /// are appended to the static-tool list, so the tools become visible
-    /// to the LLM via [`Self::get_tool_defs`].
+    /// are appended to the static-tool list in `toolset`'s registration
+    /// order, so the tools become visible to the LLM via
+    /// [`Self::get_tool_defs`]. Existing names are replaced (last wins) and
+    /// keep their position.
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        state
-            .static_tool_names
-            .extend(toolset.tools.keys().cloned());
+        for name in toolset.ordered_names() {
+            push_unique_name(&mut state.static_tool_names, name.clone());
+        }
         state.toolset.add_tools(toolset);
         Ok(())
     }
@@ -146,6 +186,22 @@ impl ToolServerHandle {
     /// The tool handle is cloned under a brief read lock so that
     /// long-running tool executions never block writers.
     pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
+        self.call_tool_with_extensions(tool_name, args, &ToolCallExtensions::EMPTY)
+            .await
+    }
+
+    /// Look up and execute a tool by name with per-call runtime extensions.
+    ///
+    /// The extensions are threaded through to [`Tool::call_with_extensions`],
+    /// allowing tools to access caller-provided values (auth tokens, session
+    /// IDs, etc.). The tool handle is cloned under a brief read lock so that
+    /// long-running tool executions never block writers.
+    pub async fn call_tool_with_extensions(
+        &self,
+        tool_name: &str,
+        args: &str,
+        extensions: &ToolCallExtensions,
+    ) -> Result<String, ToolServerError> {
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
@@ -157,7 +213,7 @@ impl ToolServerHandle {
                     "Calling tool {tool_name} with args:\n{}",
                     serde_json::to_string_pretty(&args).unwrap_or_default()
                 );
-                tool.call(args.to_string())
+                tool.call_with_extensions(args.to_string(), extensions)
                     .await
                     .map_err(|e| ToolSetError::ToolCallError(e).into())
             }
@@ -255,6 +311,22 @@ impl ToolServerHandle {
             tools.push(tool.definition(String::new()).await);
         }
 
+        // One shared toolset backs both lists, so a name appearing in the
+        // dynamic AND static lists (or retrieved by two indexes) refers to
+        // the same tool. Keep the first definition and drop exact-name
+        // repeats: providers reject duplicate function declarations.
+        let mut seen = std::collections::HashSet::new();
+        tools.retain(|def| {
+            let fresh = seen.insert(def.name.clone());
+            if !fresh {
+                tracing::debug!(
+                    tool_name = %def.name,
+                    "dropping duplicate tool definition from the request"
+                );
+            }
+            fresh
+        });
+
         Ok(tools)
     }
 }
@@ -329,6 +401,46 @@ mod tests {
                 .all(|(a, b)| a.name == b.name),
             "append_toolset must surface the same LLM-visible tools as add_tool",
         );
+    }
+
+    #[tokio::test]
+    pub async fn get_tool_defs_dedupes_dynamic_and_static_overlap() {
+        // One shared toolset backs both lists, so a dynamically retrieved
+        // name that is also static must yield a single definition.
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .dynamic_tools(1, MockToolIndex::new(["add"]), ToolSet::default())
+            .run();
+
+        let defs = handle
+            .get_tool_defs(Some("add two numbers".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            defs.len(),
+            1,
+            "dynamic/static name overlap must not produce duplicate declarations: {:?}",
+            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
+        );
+        assert_eq!(defs[0].name, "add");
+    }
+
+    #[tokio::test]
+    pub async fn duplicate_registration_advertises_one_definition() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        handle.add_tool(MockAddTool).await.unwrap();
+
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(MockAddTool);
+        handle.append_toolset(toolset).await.unwrap();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            defs.len(),
+            1,
+            "re-registering a name must not advertise duplicate declarations"
+        );
+        assert_eq!(defs[0].name, "add");
     }
 
     #[tokio::test]
@@ -494,5 +606,89 @@ mod tests {
         let tool_names: Vec<&str> = defs.iter().map(|t| t.name.as_str()).collect();
         assert!(tool_names.contains(&"add"));
         assert!(tool_names.contains(&"subtract"));
+    }
+
+    // --- call_with_extensions tests ---
+
+    #[derive(Clone)]
+    struct SessionId(String);
+
+    #[derive(serde::Deserialize, serde::Serialize)]
+    struct ExtensionsReader;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("context reader error")]
+    struct ExtensionsReaderError;
+
+    impl crate::tool::Tool for ExtensionsReader {
+        const NAME: &'static str = "context_reader";
+        type Error = ExtensionsReaderError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
+            crate::completion::ToolDefinition {
+                name: "context_reader".to_string(),
+                description: "Reads SessionId from context".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok("no context".to_string())
+        }
+
+        async fn call_with_extensions(
+            &self,
+            _args: Self::Args,
+            extensions: &crate::tool::ToolCallExtensions,
+        ) -> Result<Self::Output, Self::Error> {
+            match extensions.get::<SessionId>() {
+                Some(session) => Ok(format!("session:{}", session.0)),
+                None => Ok("no session".to_string()),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_with_extensions_reaches_tool() {
+        let server = ToolServer::new().tool(ExtensionsReader);
+        let handle = server.run();
+
+        let mut extensions = crate::tool::ToolCallExtensions::new();
+        extensions.insert(SessionId("abc-123".to_string()));
+
+        let result = handle
+            .call_tool_with_extensions("context_reader", "{}", &extensions)
+            .await
+            .unwrap();
+
+        assert_eq!(result, "session:abc-123");
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_without_extensions_uses_default() {
+        let server = ToolServer::new().tool(ExtensionsReader);
+        let handle = server.run();
+
+        let result = handle.call_tool("context_reader", "{}").await.unwrap();
+        assert_eq!(result, "no session");
+    }
+
+    #[tokio::test]
+    async fn test_tool_ignoring_extensions_still_works() {
+        let server = ToolServer::new().tool(MockAddTool);
+        let handle = server.run();
+
+        let mut extensions = crate::tool::ToolCallExtensions::new();
+        extensions.insert(SessionId("ignored".to_string()));
+
+        let args = serde_json::to_string(&serde_json::json!({"x": 3, "y": 7})).unwrap();
+        let result = handle
+            .call_tool_with_extensions("add", &args, &extensions)
+            .await
+            .unwrap();
+
+        assert_eq!(result, "10");
     }
 }

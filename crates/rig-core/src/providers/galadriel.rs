@@ -66,6 +66,7 @@ impl<H> Capabilities<H> for GaladrielExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for GaladrielExt {
@@ -229,12 +230,6 @@ pub struct CompletionResponse {
     pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -459,16 +454,14 @@ impl TryFrom<(&str, CompletionRequest)> for GaladrielCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Galadriel");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        // Build up the order of messages (context, chat_history, prompt)
+        // Build up the order of messages.
         let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(req.chat_history);
+        partial_history.extend(chat_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -590,7 +583,8 @@ where
         async move {
             let response = self.client.send(req).await?;
 
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let t = http_client::text(response).await?;
 
                 if enabled!(tracing::Level::TRACE) {
@@ -614,12 +608,15 @@ where
                         }
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::from_http_response(status, t))
+                    }
                 }
             } else {
                 let text = http_client::text(response).await?;
 
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::from_http_response(status, text))
             }
         }
         .instrument(span)

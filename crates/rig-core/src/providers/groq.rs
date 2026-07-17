@@ -66,6 +66,7 @@ impl<H> Capabilities<H> for GroqExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for GroqExt {}
@@ -184,16 +185,14 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, mut req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Groq");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        // Build up the order of messages (context, chat_history, prompt)
+        // Build up the order of messages.
         let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(req.chat_history);
+        partial_history.extend(chat_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<OpenAIMessage> = match &req.preamble {
@@ -436,10 +435,17 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
+                        ))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(
+                Err(CompletionError::from_http_response(
+                    status,
                     String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
@@ -591,12 +597,17 @@ where
         if status.is_success() {
             match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
-                    api_error_response.message,
-                )),
+                ApiResponse::Err(api_error_response) => {
+                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
+                    Err(TranscriptionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
-            Err(TranscriptionError::ProviderError(
+            Err(TranscriptionError::from_http_response(
+                status,
                 String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
@@ -636,7 +647,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }
@@ -786,5 +797,106 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"model overloaded","type":"server_error","code":"503"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("llama-3.3-70b-versatile");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
+                assert_eq!(error.provider_response_body(), Some(body));
+                let json = error
+                    .provider_response_json()
+                    .expect("raw body should be valid JSON")
+                    .expect("parsed JSON should be present");
+                assert_eq!(json["code"], "503");
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"service unavailable","code":"503"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("llama-3.3-70b-versatile");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+
+        let body = r#"{"error":{"message":"bad audio","code":"400"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model("whisper-large-v3");
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

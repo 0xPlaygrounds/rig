@@ -36,6 +36,24 @@ pub enum Error {
     Instance(#[from] Box<dyn std::error::Error + 'static>),
 }
 
+impl Error {
+    pub(crate) fn non_success_status(&self) -> Option<StatusCode> {
+        match self {
+            Self::InvalidStatusCode(status) | Self::InvalidStatusCodeWithMessage(status, _) => {
+                Some(*status)
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn non_success_body(&self) -> Option<&str> {
+        match self {
+            Self::InvalidStatusCodeWithMessage(_, body) => Some(body.as_str()),
+            _ => None,
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(not(target_family = "wasm"))]

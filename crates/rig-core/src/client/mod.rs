@@ -6,6 +6,7 @@ pub mod completion;
 pub mod embeddings;
 pub mod image_generation;
 pub mod model_listing;
+pub mod rerank;
 pub mod transcription;
 pub mod verify;
 
@@ -14,6 +15,7 @@ pub use completion::CompletionClient;
 pub use embeddings::EmbeddingsClient;
 use http::{HeaderMap, HeaderName, HeaderValue};
 pub use model_listing::{ModelLister, ModelListingClient};
+pub use rerank::RerankingClient;
 use std::{env::VarError, fmt::Debug, marker::PhantomData, sync::Arc};
 use thiserror::Error;
 pub use verify::{VerifyClient, VerifyError};
@@ -36,6 +38,7 @@ use crate::{
     },
     markers::Missing,
     prelude::TranscriptionClient,
+    rerank::RerankModel,
     transcription::TranscriptionModel,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -230,8 +233,6 @@ pub enum Transport {
     Http,
     /// Server-sent events streaming transport.
     Sse,
-    /// Newline-delimited JSON streaming transport.
-    NdJson,
 }
 
 /// An API provider extension, this abstracts over extensions which may be used in conjunction with
@@ -248,13 +249,14 @@ pub trait Provider: Sized {
     /// Build a complete request URI for the given base URL, provider path, and transport.
     fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
         // Some providers (like Azure) have a blank base URL to allow users to input their own endpoints.
-        let base_url = if base_url.is_empty() {
+        let base_url = if base_url.is_empty() || base_url.ends_with('/') {
             base_url.to_string()
         } else {
+            // Only add a slash to the base_url when it doesn't already end with a slash
             base_url.to_string() + "/"
         };
 
-        base_url.to_string() + path.trim_start_matches('/')
+        base_url + path.trim_start_matches('/')
     }
 
     /// Apply provider-specific request customization before sending.
@@ -286,6 +288,8 @@ pub trait Capabilities<H = reqwest::Client> {
     type Completion: Capability;
     /// Embedding model capability marker.
     type Embeddings: Capability;
+    /// Rerank model capability marker.
+    type Rerank: Capability;
     /// Audio transcription model capability marker.
     type Transcription: Capability;
     /// Model listing capability marker.
@@ -537,11 +541,18 @@ where
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
                 let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
+                Err(VerifyError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        text,
+                    ),
+                ))
             }
             status if status.as_u16() == 529 => {
                 let text = http_client::text(response).await?;
-                Err(VerifyError::ProviderError(text))
+                Err(VerifyError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                ))
             }
             _ => {
                 let status = response.status();
@@ -550,9 +561,9 @@ where
                     Ok(())
                 } else {
                     let text: String = String::from_utf8_lossy(&response.into_body().await?).into();
-                    Err(VerifyError::HttpError(http_client::Error::Instance(
-                        format!("Failed with '{status}': {text}").into(),
-                    )))
+                    Err(VerifyError::HttpError(
+                        http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                    ))
                 }
             }
         }
@@ -782,6 +793,18 @@ where
         ndims: usize,
     ) -> Self::EmbeddingModel {
         M::make(self, model, Some(ndims))
+    }
+}
+
+impl<M, Ext, H> RerankingClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, Rerank = Capable<M>>,
+    M: RerankModel<Client = Self>,
+{
+    type RerankModel = M;
+
+    fn rerank_model(&self, model: impl Into<String>) -> Self::RerankModel {
+        M::make(self, model)
     }
 }
 

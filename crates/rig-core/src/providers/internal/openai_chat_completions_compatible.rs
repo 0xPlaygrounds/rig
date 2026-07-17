@@ -20,6 +20,27 @@ use crate::json_utils;
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::wasm_compat::WasmCompatSend;
 
+fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
+    let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
+    // Treat the chunk as an error only when `error` is present AND carries a
+    // payload: either an object (`{"error":{...}}`, the canonical OpenAI-compatible
+    // error event) or a non-empty string (`{"error":"oops"}`, used by some
+    // gateways). A `{"error":null}` or `{"error":""}` chunk — which some providers
+    // send alongside the terminal usage event — must not terminate the stream.
+    let error = value
+        .get("error")
+        .filter(|error| error.is_object() || error.as_str().is_some_and(|s| !s.is_empty()))?;
+    if value.get("choices").is_some() {
+        return None;
+    }
+
+    if let Some(message) = error.get("message").and_then(serde_json::Value::as_str) {
+        tracing::warn!(message, "provider returned a streaming error event");
+    }
+
+    Some(crate::provider_response::completion_error_from_body(data))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
     ToolCalls,
@@ -223,6 +244,12 @@ where
                         continue;
                     }
 
+                    if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
+                        terminated_with_error = true;
+                        yield Err(error);
+                        break;
+                    }
+
                     let chunk = match profile.normalize_chunk(&message.data) {
                         Ok(Some(chunk)) => chunk,
                         Ok(None) => continue,
@@ -339,7 +366,7 @@ where
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
                     terminated_with_error = true;
-                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    yield Err(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
@@ -378,9 +405,12 @@ where
         return;
     }
 
-    let Some(usage) = usage.token_usage() else {
+    let usage = usage.token_usage();
+    if !usage.has_values() {
+        // Zero-valued usage is the documented sentinel for missing provider
+        // usage metrics; leave the span fields unset.
         return;
-    };
+    }
 
     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
@@ -444,8 +474,33 @@ fn append_tool_call_arguments(tool_call: &mut RawStreamingToolCall, chunk: &str)
 pub(crate) fn finalize_completed_streaming_tool_call(
     mut tool_call: RawStreamingToolCall,
 ) -> RawStreamingToolCall {
-    if tool_call.arguments.is_null() {
-        tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+    // The eviction path (distinct-named tool calls within one assistant turn)
+    // previously only normalized a `null` arguments value to `{}` and otherwise
+    // passed the value through verbatim. Streamed OpenAI-compatible tool-call
+    // arguments accumulate as a JSON *string* (`Value::String`), so an evicted
+    // tool call leaked a bare string into `ToolCall.function.arguments`. A
+    // downstream serializer that expects an object (e.g. the Anthropic protocol's
+    // `tool_use.input`) then emitted a string, which strict providers reject with
+    // `tool_use.input: Input should be a valid dictionary`. Mirror
+    // `finalize_pending_tool_call`: parse a string payload into the underlying
+    // object (empty string -> `{}`, unparseable -> `{}` rather than a bare string).
+    match &tool_call.arguments {
+        serde_json::Value::Null => {
+            tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+        }
+        serde_json::Value::String(arguments) => {
+            let parsed = json_utils::parse_tool_arguments(arguments)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+            // Guarantee an object even if the string parsed to valid-but-non-object
+            // JSON (a bare scalar/array would still trip the provider's
+            // `Input should be a valid dictionary` check).
+            tool_call.arguments = if parsed.is_object() {
+                parsed
+            } else {
+                serde_json::Value::Object(serde_json::Map::new())
+            };
+        }
+        _ => {}
     }
 
     tool_call
@@ -597,7 +652,12 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
-    use super::{finalize_pending_tool_call, send_compatible_streaming_request};
+    use super::{
+        finalize_completed_streaming_tool_call, finalize_pending_tool_call,
+        send_compatible_streaming_request,
+    };
+    use crate::completion::CompletionError;
+    use crate::http_client;
     use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
@@ -606,6 +666,39 @@ mod tests {
         FinishReasonCleanupProfile,
     };
     use futures::StreamExt;
+
+    #[test]
+    fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
+        use super::provider_response_from_compatible_sse_data as detect;
+
+        // An empty `error` (`null` or `""`) with no choices must NOT terminate the
+        // stream — some providers send one with the terminal usage event. Each of
+        // these should be treated as "not an error chunk".
+        assert!(detect(r#"{"error":null}"#).is_none());
+        assert!(detect(r#"{"error":null,"usage":{"total_tokens":3}}"#).is_none());
+        assert!(detect(r#"{"error":""}"#).is_none());
+        // A normal content chunk (no `error` key) is also not an error.
+        assert!(detect(r#"{"choices":[{"delta":{"content":"hi"}}]}"#).is_none());
+        // A live content chunk that ALSO carries an `error` field must NOT terminate
+        // the stream — the `choices` guard wins regardless of the error value.
+        assert!(detect(r#"{"error":"metadata","choices":[{"delta":{"content":"hi"}}]}"#).is_none());
+        assert!(
+            detect(r#"{"error":{"message":"x"},"choices":[{"delta":{"content":"hi"}}]}"#).is_none()
+        );
+
+        // A non-empty string `error` IS detected, preserving the raw body.
+        let string_body = r#"{"error":"oops"}"#;
+        let string_error = detect(string_body).expect("string error should be detected");
+        assert_eq!(string_error.provider_response_body(), Some(string_body));
+        assert_eq!(string_error.provider_response_status(), None);
+
+        // A real provider error envelope IS detected, preserving the raw body.
+        let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
+        let error = detect(body).expect("object error envelope should be detected");
+        assert_eq!(error.provider_response_body(), Some(body));
+        // It arrives mid-stream with no HTTP status attached.
+        assert_eq!(error.provider_response_status(), None);
+    }
 
     #[test]
     fn eof_cleanup_preserves_parameterless_tool_calls() {
@@ -635,6 +728,128 @@ mod tests {
             finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
 
         assert_eq!(finalized.arguments, serde_json::json!({}));
+    }
+
+    // Regression guard: the eviction finalizer must parse a JSON-string
+    // arguments payload into the underlying object, exactly like
+    // `finalize_pending_tool_call`. Before the fix it only normalized `null` and
+    // passed a `Value::String` through verbatim, so an evicted tool call leaked a
+    // string into `function.arguments`. A downstream serializer expecting an
+    // object (e.g. Anthropic's `tool_use.input`) then emitted a bare string,
+    // which strict providers reject with
+    // `tool_use.input: Input should be a valid dictionary`.
+    #[test]
+    fn eviction_finalizer_parses_string_arguments_into_object() {
+        let tool_call = RawStreamingToolCall::new(
+            "call_evicted".to_owned(),
+            "memory_search".to_owned(),
+            // The accumulated state when eviction fires before the args were
+            // recognized as a complete `{...}` object (e.g. whitespace/fragment).
+            serde_json::Value::String("{\"query\":\"one\"}".to_owned()),
+        );
+
+        let finalized = finalize_completed_streaming_tool_call(tool_call);
+
+        assert!(
+            finalized.arguments.is_object(),
+            "evicted tool_use input must be a JSON object, got: {:?}",
+            finalized.arguments
+        );
+        assert_eq!(finalized.arguments, serde_json::json!({"query": "one"}));
+    }
+
+    #[test]
+    fn eviction_finalizer_normalizes_empty_and_unparseable_strings_to_object() {
+        // Empty string -> {}.
+        let empty = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+            "c1".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::String(String::new()),
+        ));
+        assert_eq!(empty.arguments, serde_json::json!({}));
+
+        // Null -> {} (pre-existing behavior, kept).
+        let null = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+            "c2".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::Null,
+        ));
+        assert_eq!(null.arguments, serde_json::json!({}));
+
+        // Valid-but-non-object JSON (a bare scalar) -> {} so the provider never
+        // sees a non-dict input.
+        let scalar = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
+            "c3".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::String("5".to_owned()),
+        ));
+        assert!(scalar.arguments.is_object());
+        assert_eq!(scalar.arguments, serde_json::json!({}));
+    }
+
+    #[tokio::test]
+    async fn evicted_tool_call_emits_object_input_end_to_end() {
+        // Regression guard for #1958, end-to-end through the streaming aggregator.
+        //
+        // The first tool call is evicted (a distinct second call starts at the
+        // same index) **while its arguments are still a partial, non-object
+        // string** (`first_args_partial` streams `{"query":` — a fragment the
+        // accumulator holds as a bare `Value::String`). Before the fix,
+        // `finalize_completed_streaming_tool_call` forwarded that string verbatim,
+        // so the evicted call emerged with a string `function.arguments`; a
+        // downstream object-typed serializer (e.g. Anthropic's `tool_use.input`)
+        // then sent a bare string and strict providers rejected it.
+        //
+        // This sequence is what makes the test load-bearing: with the fix
+        // reverted the evicted call's arguments are `String("{\"query\":")` and
+        // the `is_object()` assertion below fails; the sibling
+        // `distinct_same_name_tool_calls_evict_by_id_when_a_new_call_starts` test
+        // (which lets the first call's args *complete* before eviction) does not
+        // exercise this path.
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "first_start",
+                "first_args_partial",
+                "second_start",
+                "second_args",
+                "finish",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, DistinctToolCallEvictionProfile)
+                .await
+                .expect("stream should start");
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::ToolCall { tool_call, .. } =
+                item.expect("stream item should be ok")
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(collected_tool_calls.len(), 2);
+        for tc in &collected_tool_calls {
+            assert!(
+                tc.function.arguments.is_object(),
+                "tool_use input must be an object, got {:?} for {}",
+                tc.function.arguments,
+                tc.function.name
+            );
+        }
+        // Pin the evicted call specifically: its unparseable partial string is
+        // normalized to `{}` (not forwarded as a string, not dropped).
+        let evicted = &collected_tool_calls[0];
+        assert_eq!(evicted.id, "call_aaa");
+        assert_eq!(evicted.function.arguments, serde_json::json!({}));
     }
 
     #[test]
@@ -766,6 +981,211 @@ mod tests {
             collected_tool_calls[1].function.arguments,
             serde_json::json!({"query":"two"})
         );
+    }
+
+    #[tokio::test]
+    async fn streaming_http_non_success_preserves_status_and_body() {
+        use crate::test_utils::HttpErrorStreamingClient;
+
+        let body = r#"{"error":{"type":"rate_limit","message":"slow down"}}"#;
+        let client = HttpErrorStreamingClient::new(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield transport error")
+            .expect_err("HTTP non-success should surface as a stream error");
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "HttpError: Invalid status code {} with message: {}",
+                http::StatusCode::TOO_MANY_REQUESTS,
+                body
+            )
+        );
+        assert_eq!(
+            err.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert_eq!(
+            err.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "type": "rate_limit",
+                    "message": "slow down"
+                }
+            }))
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after HTTP non-success"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_in_band_error_envelope_preserves_full_payload() {
+        use crate::providers::openai::send_compatible_streaming_request;
+        use crate::test_utils::MockStreamingClient;
+
+        let body = r#"{"error":{"message":"upstream unavailable","type":"server_error"}}"#;
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"partial\",\"tool_calls\":[]}}],\"usage\":null}",
+                body,
+            ]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield partial content")
+            .expect("partial content should be ok");
+        assert!(matches!(
+            first,
+            StreamedAssistantContent::Text(text) if text.text == "partial"
+        ));
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            Some(Ok(_)) => panic!("expected in-band provider error after partial content"),
+            None => panic!("stream ended before in-band provider error"),
+        };
+        assert!(matches!(err, CompletionError::ProviderResponse(_)));
+        assert_eq!(err.provider_response_status(), None);
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after in-band provider error"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
+        use crate::providers::openai::send_compatible_streaming_request;
+        use crate::test_utils::SequencedStreamingHttpClient;
+
+        let body = r#"{"error":{"message":"upstream unavailable"}}"#;
+        let chunks = vec![
+            Ok(sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"partial\",\"tool_calls\":[]}}],\"usage\":null}",
+            ])),
+            Err(http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::BAD_GATEWAY,
+                body.to_string(),
+            )),
+        ];
+        let client = SequencedStreamingHttpClient::new(chunks);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield partial content")
+            .expect("partial content should be ok");
+        assert!(matches!(
+            first,
+            StreamedAssistantContent::Text(text) if text.text == "partial"
+        ));
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            Some(Ok(_)) => panic!("expected HTTP transport error after partial content"),
+            None => panic!("stream ended before HTTP transport error"),
+        };
+        assert_eq!(
+            err.provider_response_status(),
+            Some(http::StatusCode::BAD_GATEWAY)
+        );
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after mid-stream HTTP non-success"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_http_non_success_json_parse_error_is_visible() {
+        use crate::test_utils::HttpErrorStreamingClient;
+
+        let client = HttpErrorStreamingClient::new(http::StatusCode::BAD_REQUEST, "not json");
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            _ => panic!("expected HTTP transport error"),
+        };
+        assert_eq!(err.provider_response_body(), Some("not json"));
+        assert!(err.provider_response_json().is_err());
+    }
+
+    #[tokio::test]
+    async fn streaming_non_http_transport_error_stays_provider_error() {
+        use crate::test_utils::SequencedStreamingHttpClient;
+
+        use crate::providers::openai::send_compatible_streaming_request;
+
+        let chunks = vec![Err(http_client::Error::InvalidContentType(
+            http::HeaderValue::from_static("application/json"),
+        ))];
+        let client = SequencedStreamingHttpClient::new(chunks);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            Some(Ok(_)) => panic!("expected non-HTTP transport error"),
+            None => panic!("stream ended before transport error"),
+        };
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: Invalid content type was returned: \"application/json\""
+        );
+        assert!(matches!(err, CompletionError::ProviderError(_)));
+        // Rig-generated transport diagnostics are not provider response bodies.
+        assert_eq!(err.provider_response_body(), None);
+        assert_eq!(err.provider_response_status(), None);
     }
 
     #[tokio::test]

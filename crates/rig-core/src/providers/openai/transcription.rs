@@ -109,13 +109,55 @@ where
         if status.is_success() {
             match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
-                    api_error_response.message,
-                )),
+                ApiResponse::Err(api_error_response) => {
+                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
+                    Err(TranscriptionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
             let str = String::from_utf8_lossy(&response_body).to_string();
-            Err(TranscriptionError::ProviderError(str))
+            Err(TranscriptionError::from_http_response(status, str))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::transcription::TranscriptionClient;
+    use crate::test_utils::RecordingHttpClient;
+    use crate::transcription::TranscriptionModel as _;
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"bad audio","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(WHISPER_1);
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

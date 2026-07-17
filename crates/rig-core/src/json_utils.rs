@@ -17,6 +17,10 @@ pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     }
 }
 
+// Only the feature-gated `image` / `audio` provider request builders call this
+// now; the default feature set has no caller, so allow it to be unused there
+// rather than warning on an otherwise-live utility.
+#[cfg_attr(not(any(feature = "image", feature = "audio")), allow(dead_code))]
 pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
     if let (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) = (a, b) {
         b_map.into_iter().for_each(|(key, value)| {

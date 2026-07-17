@@ -10,7 +10,6 @@
 
 use crate::OneOrMany;
 use crate::agent::Agent;
-use crate::agent::prompt_request::hooks::PromptHook;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
@@ -133,6 +132,14 @@ where
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Captured silently into `StreamingCompletionResponse::message_id`.
     MessageId(String),
+
+    /// A provider-native output item this version does not model — e.g. an
+    /// OpenAI Responses hosted-tool result (`web_search_call`, `file_search_call`,
+    /// `computer_call`, `code_interpreter_call`). Carries the raw item object
+    /// verbatim. Forwarded to the stream consumer as
+    /// [`StreamedAssistantContent::Unknown`] but not folded into the accumulated
+    /// assistant message (there is no `AssistantContent::Unknown` history slot).
+    Unknown(serde_json::Value),
 }
 
 /// Describes a streaming tool call response (in its entirety)
@@ -159,7 +166,7 @@ impl RawStreamingToolCall {
     pub fn empty() -> Self {
         Self {
             id: String::new(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: crate::id::generate(),
             call_id: None,
             name: String::new(),
             arguments: serde_json::Value::Null,
@@ -172,7 +179,7 @@ impl RawStreamingToolCall {
     pub fn new(id: String, name: String, arguments: serde_json::Value) -> Self {
         Self {
             id,
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: crate::id::generate(),
             call_id: None,
             name,
             arguments,
@@ -298,6 +305,16 @@ where
         self.pause_control.is_paused()
     }
 
+    /// Token usage reported by the provider for this response.
+    ///
+    /// Returns the usage carried by the final response once the stream has
+    /// produced it. Until then — or when the provider does not report streamed
+    /// usage — this returns [`Usage::new`], the zero-valued sentinel for missing
+    /// usage metrics.
+    pub fn usage(&self) -> Usage {
+        self.response.token_usage()
+    }
+
     fn append_text_chunk(&mut self, text: &str) {
         if let Some(index) = self.text_item_index
             && let Some(AssistantContent::Text(existing_text)) = self.assistant_items.get_mut(index)
@@ -399,7 +416,10 @@ where
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
         CompletionResponse {
             choice: value.choice,
-            usage: Usage::new(), // Usage is not tracked in streaming responses
+            // Derive usage from the final response. `Option<R>: GetTokenUsage`
+            // yields the provider's usage when present and the zero sentinel
+            // (`Usage::new`) when the stream produced no final response.
+            usage: value.response.token_usage(),
             raw_response: value.response,
             message_id: value.message_id,
         }
@@ -525,6 +545,12 @@ where
                     stream.message_id = Some(id);
                     stream.poll_next_unpin(cx)
                 }
+                RawStreamingChoice::Unknown(value) => {
+                    // Pass an unmodeled provider item straight through to the
+                    // consumer; it is intentionally not pushed into
+                    // `assistant_items` (no `AssistantContent::Unknown` exists).
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
+                }
             },
         }
     }
@@ -541,30 +567,14 @@ where
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     R: Clone + Unpin + GetTokenUsage,
 {
-    /// The hook type used by this streaming prompt implementation.
+    /// Stream a simple prompt to the model.
     ///
-    /// If your implementation does not need prompt hooks, use `()` as the hook type:
-    ///
-    /// ```ignore
-    /// impl<M, R> StreamingPrompt<M, R> for MyType<M>
-    /// where
-    ///     M: CompletionModel + 'static,
-    ///     // ... other bounds ...
-    /// {
-    ///     type Hook = ();
-    ///
-    ///     fn stream_prompt(&self, prompt: impl Into<Message>) -> StreamingPromptRequest<M, ()> {
-    ///         // ...
-    ///     }
-    /// }
-    /// ```
-    type Hook: PromptHook<M>;
-
-    /// Stream a simple prompt to the model
+    /// Attach hooks to observe or steer the run via
+    /// [`StreamingPromptRequest::add_hook`].
     fn stream_prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest<M, Self::Hook>;
+    ) -> StreamingPromptRequest<M>;
 }
 
 /// Trait for high-level streaming chat interface with conversation history.
@@ -578,29 +588,6 @@ where
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     R: Clone + Unpin + GetTokenUsage,
 {
-    /// The hook type used by this streaming chat implementation.
-    ///
-    /// If your implementation does not need prompt hooks, use `()` as the hook type:
-    ///
-    /// ```ignore
-    /// impl<M, R> StreamingChat<M, R> for MyType<M>
-    /// where
-    ///     M: CompletionModel + 'static,
-    ///     // ... other bounds ...
-    /// {
-    ///     type Hook = ();
-    ///
-    ///     fn stream_chat(
-    ///         &self,
-    ///         prompt: impl Into<Message>,
-    ///         chat_history: Vec<Message>,
-    ///     ) -> StreamingPromptRequest<M, ()> {
-    ///         // ...
-    ///     }
-    /// }
-    /// ```
-    type Hook: PromptHook<M>;
-
     /// Stream a chat with history to the model.
     ///
     /// The messages returned by the model can be accessed via `FinalResponse::history()`
@@ -629,7 +616,7 @@ where
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: I,
-    ) -> StreamingPromptRequest<M, Self::Hook>
+    ) -> StreamingPromptRequest<M>
     where
         I: IntoIterator<Item = T> + WasmCompatSend,
         T: Into<Message>;
@@ -863,6 +850,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn into_completion_response_derives_usage_from_final_response() {
+        let mut stream = create_mock_stream();
+
+        // Drain the stream so the final response (and its usage) is captured.
+        while stream.next().await.is_some() {}
+
+        // usage() surfaces the final response's token usage...
+        assert_eq!(stream.usage().total_tokens, 15);
+
+        // ...and the From conversion carries it instead of a zero sentinel.
+        let response: CompletionResponse<Option<MockResponse>> = stream.into();
+        assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn usage_is_zero_sentinel_before_final_response() {
+        // A stream that never yields a FinalResponse reports the zero sentinel.
+        let stream = StreamingCompletionResponse::stream(to_stream_result(stream! {
+            yield Ok(RawStreamingChoice::Message("no final response".to_string()));
+        }));
+        assert_eq!(stream.usage().total_tokens, 0);
+    }
+
+    #[tokio::test]
     async fn test_stream_cancellation() {
         let mut stream = create_mock_stream();
 
@@ -902,6 +913,10 @@ mod tests {
                 }
                 Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
                     println!("Reasoning delta: {reasoning}");
+                    chunk_count += 1;
+                }
+                Ok(StreamedAssistantContent::Unknown(value)) => {
+                    println!("\nUnknown item: {value:?}");
                     chunk_count += 1;
                 }
                 Err(e) => {
@@ -996,6 +1011,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_choice_reaches_consumer_but_not_aggregated_choice() {
+        let unknown = serde_json::json!({
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+        });
+        let yielded = unknown.clone();
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Unknown(yielded));
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(1)));
+        };
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream));
+
+        let mut consumer_unknown = None;
+        let mut consumer_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Unknown(value) => consumer_unknown = Some(value),
+                StreamedAssistantContent::Text(text) => consumer_text.push_str(&text.text),
+                _ => {}
+            }
+        }
+
+        // The consumer receives the unmodeled item verbatim ...
+        assert_eq!(consumer_unknown.as_ref(), Some(&unknown));
+        assert_eq!(consumer_text, "done");
+
+        // ... but it is structurally absent from the aggregated assistant choice
+        // (the sole source of persisted history): only the text item remains.
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 1);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Text(Text { text, .. })) if text == "done"
+        ));
+    }
+
+    #[tokio::test]
     async fn test_stream_keeps_non_contiguous_text_chunks_split_by_tool_call() {
         let mut stream = create_text_tool_text_stream();
         while stream.next().await.is_some() {}
@@ -1084,6 +1138,14 @@ pub enum StreamedAssistantContent<R> {
     },
     /// Final provider response object, if yielded by the provider stream.
     Final(R),
+    /// A provider-native output item rig does not model, preserved verbatim —
+    /// e.g. an OpenAI Responses hosted-tool result (`web_search_call`,
+    /// `file_search_call`, `computer_call`, `code_interpreter_call`). It is
+    /// yielded to the consumer for inspection/forwarding but is not added to the
+    /// accumulated assistant message or persisted history. Kept last because the
+    /// enum is `#[serde(untagged)]` and a raw [`Value`](serde_json::Value)
+    /// matches anything, so earlier (typed) variants must be tried first.
+    Unknown(serde_json::Value),
 }
 
 impl<R> StreamedAssistantContent<R>

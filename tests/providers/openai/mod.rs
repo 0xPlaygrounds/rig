@@ -4,6 +4,7 @@ mod cassette {
     mod agent;
     mod chat_history;
     mod completions_api;
+    mod document_ordering;
     mod extractor;
     mod extractor_usage;
     mod models;

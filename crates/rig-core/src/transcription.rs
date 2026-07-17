@@ -3,12 +3,16 @@
 //! handling transcription responses, and defining transcription models.
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{http_client, json_utils};
+use crate::{http_client, json_utils, provider_response};
 use std::io;
 use std::{fs, path::Path};
 use thiserror::Error;
 
 // Errors
+/// Errors returned by transcription models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TranscriptionError {
@@ -37,7 +41,13 @@ pub enum TranscriptionError {
     /// Error returned by the transcription model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Raw error response preserved from the transcription model provider
+    #[error("ProviderResponseError: {0}")]
+    ProviderResponse(provider_response::ProviderResponseError),
 }
+
+crate::provider_response::impl_provider_response_helpers!(TranscriptionError);
 
 /// Trait defining a low-level LLM transcription interface
 pub trait Transcription<M>
@@ -294,5 +304,78 @@ where
     pub async fn send(self) -> Result<TranscriptionResponse<M::Response>, TranscriptionError> {
         let model = self.model.clone();
         model.transcription(self.build()).await
+    }
+}
+
+#[cfg(test)]
+mod provider_response_tests {
+    use super::*;
+    use http::StatusCode;
+
+    #[test]
+    fn transcription_error_provider_response_helpers_with_preserved_json_body() {
+        let body = r#"{"error":{"message":"rate limited"}}"#;
+        let error =
+            TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
+                status: None,
+                body: body.to_string(),
+            });
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON"),
+            Some(serde_json::json!({ "error": { "message": "rate limited" } }))
+        );
+    }
+
+    #[test]
+    fn transcription_error_provider_response_helpers_with_http_non_success() {
+        let body = r#"{"error":{"message":"bad request"}}"#;
+        let error =
+            TranscriptionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+                StatusCode::BAD_REQUEST,
+                body.to_string(),
+            ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON"),
+            Some(serde_json::json!({ "error": { "message": "bad request" } }))
+        );
+    }
+
+    #[test]
+    fn transcription_error_provider_response_helpers_with_preserved_plain_text_body() {
+        let error =
+            TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
+                status: None,
+                body: "not json".to_string(),
+            });
+
+        assert_eq!(error.provider_response_body(), Some("not json"));
+        assert!(error.provider_response_json().is_err());
+    }
+
+    #[test]
+    fn transcription_error_provider_error_is_not_a_provider_response() {
+        let error = TranscriptionError::ProviderError("internal diagnostic".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(error.provider_response_json().expect("no body"), None);
+    }
+
+    #[test]
+    fn transcription_error_provider_response_helpers_with_unrelated_variant() {
+        let error = TranscriptionError::ResponseError("parse failed".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(error.provider_response_json().expect("no body"), None);
     }
 }

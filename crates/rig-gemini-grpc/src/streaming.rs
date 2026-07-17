@@ -30,7 +30,7 @@ pub(crate) async fn stream(
     let mut response_stream = grpc_client
         .stream_generate_content(request)
         .await
-        .map_err(|e| CompletionError::ProviderError(e.to_string()))?
+        .map_err(super::completion::rpc_error)?
         .into_inner();
 
     let stream = stream! {
@@ -101,7 +101,7 @@ pub(crate) async fn stream(
                     }
                 }
                 Err(status) => {
-                    yield Err(CompletionError::ProviderError(status.to_string()));
+                    yield Err(super::completion::rpc_error(status));
                     return;
                 }
             }
@@ -144,5 +144,23 @@ fn prost_value_to_json(v: &proto::Value) -> Value {
         Some(proto::value::Kind::ListValue(list)) => {
             Value::Array(list.values.iter().map(prost_value_to_json).collect())
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+mod tests {
+    // The streaming path maps both the initial `stream_generate_content` RPC
+    // failure and any per-item iteration error through `rpc_error`. Pin that the
+    // mapping preserves the provider's status text and exposes no HTTP status.
+    #[test]
+    fn stream_rpc_error_preserves_status_text_without_http_status() {
+        let status = tonic::Status::unavailable("boom");
+        let expected = status.to_string();
+
+        let err = super::super::completion::rpc_error(status);
+
+        assert_eq!(err.provider_response_body(), Some(expected.as_str()));
+        assert_eq!(err.provider_response_status(), None);
     }
 }

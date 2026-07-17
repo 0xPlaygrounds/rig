@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"format":{"properties":{"city":{"type":"string"},"summary":{"type":"string"}},"required":["city","summary"],"type":"object"},"messages":[{"content":"You are a weather assistant.","role":"system"},{"content":"Give me the weather in Tokyo as JSON with a city and a one-sentence summary.","role":"user"}],"model":"qwen3:4b","options":{"temperature":null},"stream":false,"think":false,"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"stop","eval_count":32,"eval_duration":345458749,"load_duration":59350000,"message":{"content":"{\n  \"city\": \"Tokyo\",\n  \"summary\": \"The current weather in Tokyo is clear with a temperature of 25°C.\"\n}\n","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":172,"prompt_eval_duration":975776667,"total_duration":1551771750}'

@@ -36,6 +36,7 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
+use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
 use crate::tool::server::ToolServerError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -45,6 +46,7 @@ use crate::{
     message::{Message, UserContent},
     tool::ToolSetError,
 };
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -52,7 +54,38 @@ use std::ops::{Add, AddAssign};
 use thiserror::Error;
 
 // Errors
+/// Errors returned by completion models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
+/// These recover the provider's raw HTTP status and response body so you can
+/// branch on a provider error code or surface a precise diagnostic. The same
+/// helpers are available on `EmbeddingError`, `ImageGenerationError`,
+/// `AudioGenerationError`, `TranscriptionError`, `RerankError`, and (forwarded)
+/// [`PromptError`].
+///
+/// ```
+/// use rig_core::completion::CompletionError;
+///
+/// /// Log the provider's raw error response when a completion fails.
+/// fn report(error: &CompletionError) {
+///     if let Some(status) = error.provider_response_status() {
+///         // Note: this can be a 2xx status for providers that return an error
+///         // envelope alongside a success status — the error itself means failure.
+///         eprintln!("provider returned HTTP {status}");
+///     }
+///     match error.provider_response_json() {
+///         Ok(Some(json)) => eprintln!("provider error payload: {json}"),
+///         Ok(None) => eprintln!("no provider response body (e.g. a transport error)"),
+///         Err(_) => eprintln!(
+///             "provider response body was not valid JSON: {:?}",
+///             error.provider_response_body(),
+///         ),
+///     }
+/// }
+/// ```
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum CompletionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
@@ -83,9 +116,34 @@ pub enum CompletionError {
     /// Error returned by the completion model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Raw error response preserved from the completion model provider
+    #[error("ProviderResponseError: {0}")]
+    ProviderResponse(provider_response::ProviderResponseError),
 }
 
-/// Prompt errors
+crate::provider_response::impl_provider_response_helpers!(CompletionError);
+
+impl CompletionError {
+    /// Maps an SSE transport error into a completion error without flattening HTTP failures.
+    ///
+    /// Non-success HTTP responses remain [`CompletionError::HttpError`] so provider response
+    /// helpers can read status and body. Other transport failures keep the existing
+    /// [`CompletionError::ProviderError`] display string behavior.
+    pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
+        if error.non_success_status().is_some() {
+            Self::HttpError(error)
+        } else {
+            Self::ProviderError(error.to_string())
+        }
+    }
+}
+
+/// Errors from agent prompting.
+///
+/// When the failure wraps [`CompletionError`], [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`] forward
+/// to the inner completion error's helpers.
 #[derive(Debug, Error)]
 pub enum PromptError {
     /// Something went wrong with the completion
@@ -103,7 +161,7 @@ pub enum PromptError {
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
     /// or increase the amount of turns given in `.multi_turn()`.
-    #[error("MaxTurnError: (reached max turn limit: {max_turns})")]
+    #[error("MaxTurnsError: reached max turns limit: {max_turns}")]
     MaxTurnsError {
         max_turns: usize,
         chat_history: Box<Vec<Message>>,
@@ -140,6 +198,36 @@ impl From<crate::memory::MemoryError> for PromptError {
 }
 
 impl PromptError {
+    /// Returns the provider response body when this wraps a completion error that exposes one.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        match self {
+            Self::CompletionError(error) => error.provider_response_body(),
+            _ => None,
+        }
+    }
+
+    /// Parses the provider response body as JSON when available through a wrapped completion error.
+    ///
+    /// Returns:
+    /// - `Ok(Some(value))` when a body is present and valid JSON.
+    /// - `Ok(None)` when no provider response body is available.
+    /// - `Err(error)` when a body is present but isn't valid JSON.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        match self {
+            Self::CompletionError(error) => error.provider_response_json(),
+            _ => Ok(None),
+        }
+    }
+
+    /// Returns the HTTP status when this wraps a completion error that preserves
+    /// one, including from non-success HTTP responses and 2xx error envelopes.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::CompletionError(error) => error.provider_response_status(),
+            _ => None,
+        }
+    }
+
     pub(crate) fn prompt_cancelled(
         chat_history: impl IntoIterator<Item = Message>,
         reason: impl Into<String>,
@@ -152,6 +240,11 @@ impl PromptError {
 }
 
 /// Errors that can occur when using typed structured output via [`TypedPrompt::prompt_typed`].
+///
+/// When the failure wraps [`PromptError`] that in turn wraps a [`CompletionError`]
+/// exposing a provider response, [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`] forward
+/// through the chain.
 #[derive(Debug, Error)]
 pub enum StructuredOutputError {
     /// An error occurred during the prompt execution.
@@ -165,6 +258,37 @@ pub enum StructuredOutputError {
     /// The model returned an empty response.
     #[error("EmptyResponse: model returned no content")]
     EmptyResponse,
+}
+
+impl StructuredOutputError {
+    /// Returns the provider response body when this wraps a prompt error that exposes one.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        match self {
+            Self::PromptError(error) => error.provider_response_body(),
+            _ => None,
+        }
+    }
+
+    /// Parses the provider response body as JSON when available through a wrapped prompt error.
+    ///
+    /// Returns:
+    /// - `Ok(Some(value))` when a body is present and valid JSON.
+    /// - `Ok(None)` when no provider response body is available.
+    /// - `Err(error)` when a body is present but isn't valid JSON.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        match self {
+            Self::PromptError(error) => error.provider_response_json(),
+            _ => Ok(None),
+        }
+    }
+
+    /// Returns the HTTP status when this wraps a prompt error that preserves one.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::PromptError(error) => error.provider_response_status(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -378,13 +502,15 @@ pub struct CompletionResponse<T> {
 ///
 /// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
 pub trait GetTokenUsage {
-    /// Returns token usage when the response type carries it.
-    fn token_usage(&self) -> Option<crate::completion::Usage>;
+    /// Returns token usage for this response. Zero-valued usage is
+    /// [`Usage`]'s documented sentinel for missing provider usage metrics;
+    /// response types that carry no usage return [`Usage::new`].
+    fn token_usage(&self) -> crate::completion::Usage;
 }
 
 impl GetTokenUsage for () {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        None
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::completion::Usage::new()
     }
 }
 
@@ -392,11 +518,11 @@ impl<T> GetTokenUsage for Option<T>
 where
     T: GetTokenUsage,
 {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         if let Some(usage) = self {
             usage.token_usage()
         } else {
-            None
+            crate::completion::Usage::new()
         }
     }
 }
@@ -435,6 +561,14 @@ impl Usage {
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
+    }
+
+    /// Whether any usage values are set and non-zero.
+    ///
+    /// Zero-valued usage is this type's documented sentinel for "the provider
+    /// supplied no usage metrics", so `false` means usage was not reported.
+    pub fn has_values(&self) -> bool {
+        *self != Self::new()
     }
 }
 
@@ -513,6 +647,20 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
+
+    /// Whether this provider's native structured output (`output_schema` ->
+    /// `format`/`response_format`) composes with tool calls in the same
+    /// multi-turn request without suppressing them.
+    ///
+    /// Defaults to `false` (the safe assumption: the native constraint may make
+    /// the model emit schema JSON instead of calling its tools — see issue
+    /// #1928). Providers that enforce structured output *and* tool use together
+    /// (e.g. OpenAI, Anthropic) override this to `true`, which lets the agent's
+    /// [`OutputMode::Auto`](crate::agent::OutputMode::Auto) keep using guaranteed
+    /// native structured output even when the agent has tools.
+    fn composes_native_output_with_tools(&self) -> bool {
+        false
+    }
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
@@ -563,14 +711,17 @@ impl CompletionRequest {
     /// Most providers do not accept documents directly as input, so it needs to convert into a
     /// `Message` so that it can be incorporated into `chat_history`.
     pub fn normalized_documents(&self) -> Option<Message> {
-        if self.documents.is_empty() {
+        Self::normalized_documents_from(&self.documents)
+    }
+
+    fn normalized_documents_from(documents: &[Document]) -> Option<Message> {
+        if documents.is_empty() {
             return None;
         }
 
         // Most providers will convert documents into a text unless it can handle document messages.
         // We use `UserContent::document` for those who handle it directly!
-        let messages = self
-            .documents
+        let messages = documents
             .iter()
             .map(|doc| {
                 UserContent::document(
@@ -583,6 +734,18 @@ impl CompletionRequest {
             .collect::<Vec<_>>();
 
         OneOrMany::from_iter_optional(messages).map(|content| Message::User { content })
+    }
+
+    pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
+        let mut chat_history = self.chat_history.iter().cloned().collect::<Vec<_>>();
+        if let Some(documents) = self.normalized_documents() {
+            let insert_at = chat_history
+                .iter()
+                .position(|message| !matches!(message, Message::System { .. }))
+                .unwrap_or(chat_history.len());
+            chat_history.insert(insert_at, documents);
+        }
+        chat_history
     }
 
     /// Adds a provider-hosted tool by storing it in `additional_params.tools`.
@@ -885,6 +1048,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         if let Some(preamble) = self.preamble {
             chat_history.insert(0, Message::system(preamble));
         }
+
         chat_history.push(prompt.clone());
 
         let chat_history =
@@ -929,9 +1093,41 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn usage_has_values_reflects_the_zero_sentinel() {
+        use super::Usage;
+
+        assert!(!Usage::new().has_values());
+
+        let mut usage = Usage::new();
+        usage.reasoning_tokens = 1;
+        assert!(usage.has_values());
+    }
 
     use super::*;
     use crate::test_utils::MockCompletionModel;
+
+    fn test_document(id: &str, text: &str) -> Document {
+        Document {
+            id: id.to_string(),
+            text: text.to_string(),
+            additional_props: HashMap::new(),
+        }
+    }
+
+    fn is_document_message(message: &Message, expected_id: &str) -> bool {
+        let Message::User { content } = message else {
+            return false;
+        };
+
+        content.iter().any(|content| {
+            matches!(
+                content,
+                UserContent::Document(document)
+                    if document.data.to_string().contains(&format!("<file id: {expected_id}>"))
+            )
+        })
+    }
 
     #[test]
     fn test_document_display_without_metadata() {
@@ -1060,5 +1256,371 @@ mod tests {
         let history = request.chat_history.into_iter().collect::<Vec<_>>();
         assert_eq!(history.len(), 1);
         assert!(matches!(&history[0], Message::User { .. }));
+    }
+
+    #[test]
+    fn build_places_documents_after_preamble_system_message() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .preamble("System prompt".to_string())
+                .document(test_document("doc1", "Document text."))
+                .build();
+
+        assert_eq!(request.documents.len(), 1);
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 3);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "System prompt"
+        ));
+        assert!(is_document_message(history[1], "doc1"));
+        assert!(matches!(history[2], Message::User { .. }));
+    }
+
+    #[test]
+    fn build_places_documents_after_leading_system_messages_before_prior_history() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .message(Message::system("System one"))
+                .message(Message::system("System two"))
+                .message(Message::user("Earlier user turn"))
+                .message(Message::assistant("Earlier assistant turn"))
+                .document(test_document("doc1", "Document text."))
+                .build();
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 6);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "System one"
+        ));
+        assert!(matches!(
+            history[1],
+            Message::System { content } if content == "System two"
+        ));
+        assert!(is_document_message(history[2], "doc1"));
+        assert!(matches!(history[3], Message::User { .. }));
+        assert!(matches!(history[4], Message::Assistant { .. }));
+        assert!(matches!(history[5], Message::User { .. }));
+    }
+
+    #[test]
+    fn build_without_documents_keeps_message_order_unchanged() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .message(Message::system("System prompt"))
+                .message(Message::user("Earlier user turn"))
+                .build();
+
+        let history = request.chat_history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 3);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "System prompt"
+        ));
+        assert!(matches!(history[1], Message::User { .. }));
+        assert!(matches!(history[2], Message::User { .. }));
+    }
+
+    #[test]
+    fn chat_history_with_documents_places_documents_after_leading_system_messages() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::user("Earlier user turn"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        assert_eq!(request.documents.len(), 1);
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 5);
+        assert!(matches!(history[0], Message::System { .. }));
+        assert!(is_document_message(history[1], "doc1"));
+        assert!(matches!(history[2], Message::Assistant { .. }));
+        assert!(matches!(history[3], Message::User { .. }));
+        assert!(matches!(history[4], Message::User { .. }));
+    }
+
+    #[test]
+    fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("Leading system prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::system("Mid-conversation instruction"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 5);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "Leading system prompt"
+        ));
+        assert!(is_document_message(history[1], "doc1"));
+        assert!(matches!(history[2], Message::Assistant { .. }));
+        assert!(matches!(
+            history[3],
+            Message::System { content } if content == "Mid-conversation instruction"
+        ));
+        assert!(matches!(history[4], Message::User { .. }));
+    }
+
+    #[test]
+    fn chat_history_with_documents_does_not_duplicate_documents() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System prompt"),
+                Message::user("Earlier user turn"),
+                Message::assistant("Earlier assistant turn"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let history = request.chat_history_with_documents();
+        let document_messages = history
+            .iter()
+            .filter(|message| is_document_message(message, "doc1"))
+            .count();
+        assert_eq!(document_messages, 1);
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_preserved_json_body() {
+        let body = r#"{"error":{"code":"rate_limit","message":"slow down"}}"#;
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: body.to_string(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("fixture body should parse as valid JSON"),
+            Some(serde_json::json!({
+                "error": {
+                    "code": "rate_limit",
+                    "message": "slow down"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_preserved_status() {
+        let body = r#"{"error":{"message":"too many requests"}}"#;
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: Some(http::StatusCode::TOO_MANY_REQUESTS),
+            body: body.to_string(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_preserved_plain_text_body() {
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: "provider exploded".to_string(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some("provider exploded"));
+        assert_eq!(error.provider_response_status(), None);
+        assert!(error.provider_response_json().is_err());
+    }
+
+    #[test]
+    fn completion_error_provider_error_is_not_a_provider_response() {
+        // `ProviderError` also carries Rig-generated diagnostics, so the helpers
+        // must not report its string as a provider response body.
+        let error = CompletionError::ProviderError("stream transport failed".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_http_non_success_body_and_status() {
+        let body = r#"{"error":{"type":"invalid_request","message":"bad request"}}"#;
+        let error = CompletionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+            http::StatusCode::BAD_REQUEST,
+            body.to_string(),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "type": "invalid_request",
+                    "message": "bad request"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_unrelated_variant() {
+        let error = CompletionError::ResponseError("failed to parse provider response".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
+        let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
+        let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+            provider_response::ProviderResponseError {
+                status: None,
+                body: body.to_string(),
+            },
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "code": "invalid_request",
+                    "message": "bad input"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
+        let body = r#"{"error":{"message":"unauthorized"}}"#;
+        let error = PromptError::CompletionError(CompletionError::HttpError(
+            http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::UNAUTHORIZED,
+                body.to_string(),
+            ),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": { "message": "unauthorized" }
+            }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
+        let error = PromptError::PromptCancelled {
+            chat_history: vec![Message::user("hi")],
+            reason: "cancelled".to_string(),
+        };
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
+    }
+
+    #[test]
+    fn structured_output_error_provider_response_helpers_forward_prompt_error() {
+        let body = r#"{"error":{"message":"bad input"}}"#;
+        let error = StructuredOutputError::PromptError(Box::new(PromptError::CompletionError(
+            CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+                status: Some(http::StatusCode::BAD_REQUEST),
+                body: body.to_string(),
+            }),
+        )));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+    }
+
+    #[test]
+    fn provider_response_json_returns_none_for_empty_preserved_body() {
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: String::new(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some(""));
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("empty body is not a JSON parse error"),
+            None
+        );
     }
 }

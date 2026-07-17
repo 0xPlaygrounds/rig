@@ -32,6 +32,9 @@ pub enum MockHttpResponse {
     Success(Bytes),
     /// Return a status-code error with the given body text.
     Error(http::StatusCode, String),
+    /// Return an HTTP response with the given (typically non-success) status
+    /// and body, instead of a transport-level error.
+    ErrorResponse(http::StatusCode, Bytes),
 }
 
 impl MockHttpResponse {
@@ -77,6 +80,18 @@ impl RecordingHttpClient {
         }
     }
 
+    /// Create a client that returns a non-success HTTP response (status and body)
+    /// for unary requests, instead of a transport-level error.
+    pub fn with_error_response(status: http::StatusCode, body: impl Into<Bytes>) -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(Vec::new())),
+            response: Arc::new(Mutex::new(MockHttpResponse::ErrorResponse(
+                status,
+                body.into(),
+            ))),
+        }
+    }
+
     /// Return the requests captured so far.
     pub fn requests(&self) -> Vec<CapturedHttpRequest> {
         self.requests_guard().clone()
@@ -100,6 +115,33 @@ impl RecordingHttpClient {
             Err(poisoned) => poisoned.into_inner(),
         }
     }
+
+    fn record_request(&self, uri: String, headers: http::HeaderMap, body: Bytes) {
+        self.requests_guard()
+            .push(CapturedHttpRequest { uri, headers, body });
+    }
+
+    fn build_unary_response<U>(
+        response: MockHttpResponse,
+    ) -> http_client::Result<Response<LazyBody<U>>>
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        let (status, response_body) = match response {
+            MockHttpResponse::Success(response_body) => (http::StatusCode::OK, response_body),
+            MockHttpResponse::Error(status, message) => {
+                return Err(http_client::Error::InvalidStatusCodeWithMessage(
+                    status, message,
+                ));
+            }
+            MockHttpResponse::ErrorResponse(status, response_body) => (status, response_body),
+        };
+        let body: LazyBody<U> = Box::pin(async move { Ok(U::from(response_body)) });
+        Response::builder()
+            .status(status)
+            .body(body)
+            .map_err(http_client::Error::Protocol)
+    }
 }
 
 impl HttpClientExt for RecordingHttpClient {
@@ -111,47 +153,25 @@ impl HttpClientExt for RecordingHttpClient {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        let requests = Arc::clone(&self.requests);
         let response = self.response_guard().clone();
         let (parts, body) = req.into_parts();
-        let uri = parts.uri.to_string();
-        let headers = parts.headers;
-        let body = body.into();
+        self.record_request(parts.uri.to_string(), parts.headers, body.into());
 
-        match requests.lock() {
-            Ok(mut guard) => guard.push(CapturedHttpRequest { uri, headers, body }),
-            Err(poisoned) => poisoned
-                .into_inner()
-                .push(CapturedHttpRequest { uri, headers, body }),
-        }
-
-        async move {
-            let response_body = match response {
-                MockHttpResponse::Success(response_body) => response_body,
-                MockHttpResponse::Error(status, message) => {
-                    return Err(http_client::Error::InvalidStatusCodeWithMessage(
-                        status, message,
-                    ));
-                }
-            };
-            let body: LazyBody<U> = Box::pin(async move { Ok(U::from(response_body)) });
-            Response::builder()
-                .status(http::StatusCode::OK)
-                .body(body)
-                .map_err(http_client::Error::Protocol)
-        }
+        async move { Self::build_unary_response(response) }
     }
 
     fn send_multipart<U>(
         &self,
-        _req: Request<MultipartForm>,
+        req: Request<MultipartForm>,
     ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
-            http::StatusCode::NOT_IMPLEMENTED,
-        )))
+        let response = self.response_guard().clone();
+        let (parts, _body) = req.into_parts();
+        self.record_request(parts.uri.to_string(), parts.headers, Bytes::new());
+
+        async move { Self::build_unary_response(response) }
     }
 
     fn send_streaming<T>(
@@ -220,6 +240,75 @@ impl HttpClientExt for MockStreamingClient {
                 .header(http::header::CONTENT_TYPE, "text/event-stream")
                 .body(boxed_stream)
                 .map_err(http_client::Error::Protocol)
+        }
+    }
+}
+
+/// An [`HttpClientExt`] implementation whose `send_streaming` fails immediately
+/// with a non-success HTTP status and response body.
+#[derive(Debug, Clone)]
+pub struct HttpErrorStreamingClient {
+    pub status: http::StatusCode,
+    pub body: String,
+}
+
+impl HttpErrorStreamingClient {
+    /// Create a streaming client that fails `send_streaming` with the given status and body.
+    pub fn new(status: http::StatusCode, body: impl Into<String>) -> Self {
+        Self {
+            status,
+            body: body.into(),
+        }
+    }
+}
+
+impl Default for HttpErrorStreamingClient {
+    /// The completion-model client bound requires `H: Default`; this lets the
+    /// streaming error client back a real model in tests.
+    fn default() -> Self {
+        Self::new(http::StatusCode::INTERNAL_SERVER_ERROR, String::new())
+    }
+}
+
+impl HttpClientExt for HttpErrorStreamingClient {
+    fn send<T, U>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::InvalidStatusCode(
+            http::StatusCode::NOT_IMPLEMENTED,
+        )))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        _req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::InvalidStatusCode(
+            http::StatusCode::NOT_IMPLEMENTED,
+        )))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let status = self.status;
+        let body = self.body.clone();
+        async move {
+            Err(http_client::Error::InvalidStatusCodeWithMessage(
+                status, body,
+            ))
         }
     }
 }

@@ -5,6 +5,8 @@ use crate::client::{
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
 use crate::http_client::{self, HttpClientExt};
+use crate::rerank;
+use crate::rerank::RerankError;
 use bytes::Bytes;
 use serde::Deserialize;
 use serde_json::json;
@@ -32,6 +34,7 @@ impl Provider for VoyageExt {
 impl<H> Capabilities<H> for VoyageExt {
     type Completion = Nothing;
     type Embeddings = Capable<EmbeddingModel<H>>;
+    type Rerank = Capable<RerankModel<H>>;
     type Transcription = Nothing;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
@@ -145,26 +148,11 @@ pub struct ApiErrorResponse {
     pub(crate) message: String,
 }
 
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -269,15 +257,196 @@ where
 
                     Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
-                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
             }
         } else {
-            Err(EmbeddingError::ProviderError(
-                String::from_utf8_lossy(&response_body).to_string(),
+            Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body),
             ))
         }
     }
 }
+
+// ================================================================
+// Voyage AI Rerank API
+// ================================================================
+
+/// `rerank-2.5` reranker model (Voyage AI)
+pub const RERANK_2_5: &str = "rerank-2.5";
+/// `rerank-2.5-lite` reranker model (Voyage AI)
+pub const RERANK_2_5_LITE: &str = "rerank-2.5-lite";
+/// `rerank-2` reranker model (Voyage AI)
+pub const RERANK_2: &str = "rerank-2";
+/// `rerank-2-lite` reranker model (Voyage AI)
+pub const RERANK_2_LITE: &str = "rerank-2-lite";
+/// `rerank-1` reranker model (Voyage AI)
+pub const RERANK_1: &str = "rerank-1";
+/// `rerank-lite-1` reranker model (Voyage AI)
+pub const RERANK_LITE_1: &str = "rerank-lite-1";
+
+#[derive(Debug, Deserialize)]
+pub struct RerankApiResponse {
+    pub data: Vec<RerankApiData>,
+    pub model: String,
+    pub usage: RerankApiUsage,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RerankApiUsage {
+    pub total_tokens: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RerankApiData {
+    pub index: usize,
+    pub relevance_score: f64,
+    #[serde(default)]
+    pub document: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct RerankModel<T = reqwest::Client> {
+    client: Client<T>,
+    pub model: String,
+    pub top_k: Option<usize>,
+    pub return_documents: bool,
+    pub truncation: Option<bool>,
+}
+
+impl<T> RerankModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            top_k: None,
+            return_documents: false,
+            truncation: None,
+        }
+    }
+
+    pub fn top_k(mut self, top_k: usize) -> Self {
+        self.top_k = Some(top_k);
+        self
+    }
+
+    pub fn return_documents(mut self, return_documents: bool) -> Self {
+        self.return_documents = return_documents;
+        self
+    }
+
+    pub fn truncation(mut self, truncation: bool) -> Self {
+        self.truncation = Some(truncation);
+        self
+    }
+}
+
+impl<T> rerank::RerankModel for RerankModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    const MAX_DOCUMENTS: usize = 1000;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
+    async fn rerank(
+        &self,
+        query: &str,
+        documents: Vec<String>,
+    ) -> Result<rerank::RerankResponse, RerankError> {
+        let mut body = json!({
+            "query": query,
+            "documents": documents,
+            "model": self.model,
+        });
+
+        let body_obj = body.as_object_mut().ok_or_else(|| {
+            RerankError::ResponseError("rerank request body must be a JSON object".into())
+        })?;
+
+        if let Some(top_k) = self.top_k {
+            body_obj.insert("top_k".to_owned(), json!(top_k));
+        }
+
+        body_obj.insert("return_documents".to_owned(), json!(self.return_documents));
+
+        if let Some(truncation) = self.truncation {
+            body_obj.insert("truncation".to_owned(), json!(truncation));
+        }
+
+        let body = serde_json::to_vec(&body)?;
+
+        let req = self
+            .client
+            .post("/rerank")?
+            .body(body)
+            .map_err(|x| RerankError::HttpError(x.into()))?;
+
+        let response = self.client.send::<_, Bytes>(req).await?;
+        let status = response.status();
+        let response_body = response.into_body().into_future().await?.to_vec();
+
+        if status.is_success() {
+            match serde_json::from_slice::<ApiResponse<RerankApiResponse>>(&response_body)? {
+                ApiResponse::Ok(response) => {
+                    tracing::info!(target: "rig",
+                        "VoyageAI rerank token usage: {}",
+                        response.usage.total_tokens
+                    );
+
+                    let usage = crate::completion::Usage {
+                        input_tokens: response.usage.total_tokens as u64,
+                        output_tokens: 0,
+                        total_tokens: response.usage.total_tokens as u64,
+                        cached_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                        reasoning_tokens: 0,
+                        tool_use_prompt_tokens: 0,
+                    };
+
+                    let results = response
+                        .data
+                        .into_iter()
+                        .map(|d| rerank::RerankResult {
+                            index: d.index,
+                            document: d.document,
+                            relevance_score: d.relevance_score,
+                        })
+                        .collect();
+
+                    Ok(rerank::RerankResponse {
+                        results,
+                        model: response.model,
+                        usage,
+                    })
+                }
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(RerankError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
+            }
+        } else {
+            Err(RerankError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body),
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -288,5 +457,63 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn rerank_non_success_preserves_status_and_body() {
+        use crate::client::RerankingClient;
+        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.rerank_model(super::RERANK_2_5);
+
+        let error = model
+            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
+            .await
+            .expect_err("rerank should fail with non-success status");
+
+        assert!(matches!(error, RerankError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn rerank_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::RerankingClient;
+        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"boom"}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.rerank_model(super::RERANK_2_5);
+
+        let error = model
+            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
+            .await
+            .expect_err("rerank should fail with provider error envelope");
+
+        match &error {
+            RerankError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }

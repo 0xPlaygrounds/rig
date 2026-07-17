@@ -8,12 +8,17 @@
 
 use crate::{
     completion::Usage,
-    http_client,
+    http_client, provider_response,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
 
+/// Errors returned by embedding models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum EmbeddingError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
@@ -44,7 +49,13 @@ pub enum EmbeddingError {
     /// Error returned by the embedding model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Raw error response preserved from the embedding model provider
+    #[error("ProviderResponseError: {0}")]
+    ProviderResponse(provider_response::ProviderResponseError),
 }
+
+crate::provider_response::impl_provider_response_helpers!(EmbeddingError);
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
@@ -179,3 +190,73 @@ impl PartialEq for Embedding {
 }
 
 impl Eq for Embedding {}
+
+#[cfg(test)]
+mod provider_response_tests {
+    use super::*;
+    use http::StatusCode;
+
+    #[test]
+    fn embedding_error_provider_response_helpers_with_preserved_json_body() {
+        let body = r#"{"error":{"message":"rate limited"}}"#;
+        let error = EmbeddingError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: body.to_string(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON"),
+            Some(serde_json::json!({ "error": { "message": "rate limited" } }))
+        );
+    }
+
+    #[test]
+    fn embedding_error_provider_error_is_not_a_provider_response() {
+        let error = EmbeddingError::ProviderError("internal diagnostic".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(error.provider_response_json().expect("no body"), None);
+    }
+
+    #[test]
+    fn embedding_error_provider_response_helpers_with_http_non_success() {
+        let body = r#"{"error":{"message":"bad request"}}"#;
+        let error = EmbeddingError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+            StatusCode::BAD_REQUEST,
+            body.to_string(),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON"),
+            Some(serde_json::json!({ "error": { "message": "bad request" } }))
+        );
+    }
+
+    #[test]
+    fn embedding_error_provider_response_helpers_with_preserved_plain_text_body() {
+        let error = EmbeddingError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: "not json".to_string(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some("not json"));
+        assert!(error.provider_response_json().is_err());
+    }
+
+    #[test]
+    fn embedding_error_provider_response_helpers_with_unrelated_variant() {
+        let error = EmbeddingError::ResponseError("parse failed".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(error.provider_response_json().expect("no body"), None);
+    }
+}

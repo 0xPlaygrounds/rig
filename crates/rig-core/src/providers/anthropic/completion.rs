@@ -131,7 +131,7 @@ impl std::fmt::Display for Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens;
@@ -143,7 +143,7 @@ impl GetTokenUsage for Usage {
             + self.cache_creation_input_tokens.unwrap_or_default()
             + self.output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -284,7 +284,11 @@ pub enum Content {
         text: String,
         /// Citations returned by Claude pointing back into the source documents.
         /// Empty (and skipped during serialization) on request-side blocks.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(
+            default,
+            deserialize_with = "null_as_empty_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
         citations: Vec<Citation>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
@@ -699,6 +703,20 @@ impl<'de> Deserialize<'de> for Citation {
     }
 }
 
+/// Deserialize a `Vec<T>`, treating an explicit JSON `null` as an empty vec.
+///
+/// `#[serde(default)]` only fills in a *missing* field, but the Anthropic
+/// Messages API emits an explicit `"citations": null` on text
+/// `content_block_start` events. Without this, `Vec` deserialization rejects the
+/// null and the whole stream fails before any text arrives.
+fn null_as_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// Decoded Anthropic document fields lifted out of [`message::Document::additional_params`]:
 /// optional `title`, optional `context`, and optional [`CitationsConfig`].
 type AnthropicDocParams = (Option<String>, Option<String>, Option<CitationsConfig>);
@@ -1062,7 +1080,7 @@ impl TryFrom<message::AssistantContent> for Content {
                 Ok(Content::ToolUse {
                     id,
                     name: function.name,
-                    input: function.arguments,
+                    input: coerce_tool_input(function.arguments),
                 })
             }
             message::AssistantContent::Reasoning(reasoning) => Ok(Content::Thinking {
@@ -1070,6 +1088,28 @@ impl TryFrom<message::AssistantContent> for Content {
                 signature: reasoning.first_signature().map(str::to_owned),
             }),
         }
+    }
+}
+
+/// The Anthropic Messages API requires `tool_use.input` to be a JSON OBJECT.
+/// `ToolCall.function.arguments` can arrive as a JSON-encoded STRING (some
+/// providers / replayed conversation history) or as `null`/empty (a tool called
+/// with no arguments); sending any of those verbatim is rejected with
+/// `messages.N.content.M.tool_use.input: Input should be a valid dictionary` (a
+/// deterministic 400 that breaks every multi-turn tool conversation, e.g. on the
+/// managed / MiniMax anthropic-shaped endpoint). Coerce to an object at the send
+/// boundary so the contract holds regardless of how `arguments` was built. This
+/// re-adds the fork's tool_use.input invariant that a rig version bump dropped;
+/// the server-tool path already guards empty input in streaming.rs.
+fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
+    match input {
+        v @ serde_json::Value::Object(_) => v,
+        serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(&s) {
+            Ok(serde_json::Value::Object(m)) => serde_json::Value::Object(m),
+            _ => serde_json::json!({}),
+        },
+        // null / array / number / bool: no valid object form -> empty args.
+        _ => serde_json::json!({}),
     }
 }
 
@@ -1087,7 +1127,7 @@ fn anthropic_content_from_assistant_content(
             Ok(vec![Content::ToolUse {
                 id,
                 name: function.name,
-                input: function.arguments,
+                input: coerce_tool_input(function.arguments),
             }])
         }
         message::AssistantContent::Reasoning(reasoning) => {
@@ -1786,7 +1826,7 @@ struct OutputConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct AnthropicCompletionRequest {
+pub(super) struct AnthropicCompletionRequest {
     model: String,
     messages: Vec<Message>,
     max_tokens: u64,
@@ -2265,6 +2305,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             automatic_caching,
             automatic_caching_ttl,
         } = params;
+        let chat_history = req.chat_history_with_documents();
 
         // Check if max_tokens is set, required for Anthropic
         let Some(max_tokens) = req.max_tokens else {
@@ -2273,15 +2314,11 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             ));
         };
 
-        let docs = req.normalized_documents();
         let (history_system, chat_history) = split_system_messages_from_history(
-            req.chat_history.into_iter().collect(),
+            chat_history,
             supports_mid_conversation_system_messages(model),
         );
         let mut full_history = vec![];
-        if let Some(docs) = docs {
-            full_history.push(docs);
-        }
         full_history.extend(chat_history);
 
         let mut messages = full_history
@@ -2341,7 +2378,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             max_tokens,
             system,
             temperature: req.temperature,
-            tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
+            tool_choice: req.tool_choice.map(ToolChoice::try_from).transpose()?,
             tools,
             output_config,
             // Automatic caching: one top-level field; the API moves the breakpoint automatically.
@@ -2403,6 +2440,13 @@ where
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
+    }
+
+    // Anthropic's native structured outputs (constrained decoding) are designed
+    // to compose with strict tool use, so the schema constraint does not suppress
+    // tool calls. See issue #1928.
+    fn composes_native_output_with_tools(&self) -> bool {
+        true
     }
 
     async fn completion(
@@ -2474,41 +2518,40 @@ where
                 .await
                 .map_err(CompletionError::HttpError)?;
 
-            if response.status().is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(
-                    response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?
-                        .to_vec()
-                        .as_slice(),
-                )? {
-                    ApiResponse::Message(completion) => {
-                        let span = tracing::Span::current();
-                        span.record_response_metadata(&completion);
-                        span.record_token_usage(&completion.usage);
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(
-                                target: "rig::completions",
-                                "Anthropic completion response: {}",
-                                serde_json::to_string_pretty(&completion)?
-                            );
-                        }
-                        completion.try_into()
+            let status = response.status();
+            let body = response
+                .into_body()
+                .await
+                .map_err(CompletionError::HttpError)?;
+
+            if !status.is_success() {
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ));
+            }
+
+            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&body)? {
+                ApiResponse::Message(completion) => {
+                    let span = tracing::Span::current();
+                    span.record_response_metadata(&completion);
+                    span.record_token_usage(&completion.usage);
+                    if enabled!(Level::TRACE) {
+                        tracing::trace!(
+                            target: "rig::completions",
+                            "Anthropic completion response: {}",
+                            serde_json::to_string_pretty(&completion)?
+                        );
                     }
-                    ApiResponse::Error(ApiErrorResponse { message }) => {
-                        Err(CompletionError::ResponseError(message))
-                    }
+                    completion.try_into()
                 }
-            } else {
-                let text: String = String::from_utf8_lossy(
-                    &response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?,
-                )
-                .into();
-                Err(CompletionError::ProviderError(text))
+                ApiResponse::Error(ApiErrorResponse { message }) => {
+                    tracing::warn!(message = %message, "provider returned an error response");
+                    Err(CompletionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&body),
+                    ))
+                }
             }
         }
         .instrument(span)
@@ -3134,6 +3177,9 @@ mod tests {
                     content: "Global history instruction.".to_string(),
                 },
                 message::Message::assistant("Acknowledged."),
+                message::Message::System {
+                    content: "Mid-conversation instruction.".to_string(),
+                },
                 message::Message::user("Answer from the document."),
             ],
             None,
@@ -3155,12 +3201,25 @@ mod tests {
 
         let value = serde_json::to_value(request).unwrap();
         assert_eq!(value["system"][0]["text"], "Global history instruction.");
+        assert_eq!(value["system"][1]["text"], "Mid-conversation instruction.");
 
         let messages = value["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0]["role"], "user");
         assert_eq!(messages[1]["role"], "assistant");
         assert_eq!(messages[2]["role"], "user");
+        assert!(
+            messages[0].to_string().contains("<file id: doc>"),
+            "document message should follow top-level system: {messages:?}"
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc>"))
+                .count(),
+            1,
+            "document message should appear exactly once: {messages:?}"
+        );
         assert!(
             messages
                 .iter()
@@ -5695,5 +5754,138 @@ mod tests {
         };
 
         assert_eq!(document.additional_params, None);
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::anthropic::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::anthropic::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        // Anthropic's `ApiResponse` is internally tagged on `type`; the `Error`
+        // arm flattens `ApiErrorResponse { message }`, so a 200-OK error envelope
+        // deserializes from `{"type":"error","message":"..."}` and routes through
+        // `from_http_response(OK, ..)` into `ProviderResponse`.
+        let body = r#"{"type":"error","message":"model overloaded"}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completion_streaming_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::anthropic::Client;
+        use crate::test_utils::HttpErrorStreamingClient;
+        use futures::StreamExt;
+
+        let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
+        let http_client =
+            HttpErrorStreamingClient::new(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        // The transport failure surfaces as the first error item yielded by the stream.
+        let error = loop {
+            match stream.next().await {
+                Some(Ok(_)) => continue,
+                Some(Err(error)) => break error,
+                None => panic!("stream ended without yielding the transport error"),
+            }
+        };
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[test]
+    fn coerce_tool_input_normalizes_non_object_arguments() {
+        use serde_json::json;
+
+        // Object passes through untouched.
+        assert_eq!(
+            coerce_tool_input(json!({"q": "rust", "n": 3})),
+            json!({"q": "rust", "n": 3})
+        );
+
+        // A JSON string that encodes an object is parsed into that object.
+        assert_eq!(
+            coerce_tool_input(json!("{\"q\":\"rust\"}")),
+            json!({"q": "rust"})
+        );
+
+        // A non-JSON string, a JSON string that is not an object, null, arrays,
+        // numbers and bools all collapse to an empty object: the only shape the
+        // Anthropic API accepts for tool_use.input.
+        assert_eq!(coerce_tool_input(json!("not json")), json!({}));
+        assert_eq!(coerce_tool_input(json!("[1,2,3]")), json!({}));
+        assert_eq!(coerce_tool_input(json!(null)), json!({}));
+        assert_eq!(coerce_tool_input(json!([1, 2, 3])), json!({}));
+        assert_eq!(coerce_tool_input(json!(42)), json!({}));
+        assert_eq!(coerce_tool_input(json!(true)), json!({}));
     }
 }

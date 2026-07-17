@@ -104,7 +104,7 @@ pub struct Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         if let Some(ref billed_units) = self.billed_units {
@@ -113,7 +113,7 @@ impl GetTokenUsage for Usage {
             usage.total_tokens = usage.input_tokens + usage.output_tokens;
         }
 
-        Some(usage)
+        usage
     }
 }
 
@@ -555,15 +555,13 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let documents = req.documents.clone();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Cohere");
         }
 
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
         partial_history.extend(req.chat_history);
 
         let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
@@ -595,7 +593,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
-            documents: req.documents,
+            documents,
             temperature: req.temperature,
             tools: req.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
             tool_choice,
@@ -694,8 +692,9 @@ where
                     json_response.try_into()?;
                 Ok(completion)
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&body).to_string(),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
                 ))
             }
         }
@@ -819,5 +818,55 @@ mod tests {
 
         let completion_message: completion::Message = message.clone().try_into().unwrap();
         let _converted_back: Vec<Message> = completion_message.try_into().unwrap();
+    }
+
+    #[test]
+    fn cohere_builder_request_preserves_native_documents() {
+        let request = crate::completion::CompletionRequestBuilder::new(
+            crate::test_utils::MockCompletionModel::default(),
+            "What is glarb-glarb?",
+        )
+        .document(crate::completion::request::Document {
+            id: "doc_1".to_string(),
+            text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+            additional_props: Default::default(),
+        })
+        .build();
+
+        let request = CohereCompletionRequest::try_from(("command-r", request))
+            .expect("request conversion should succeed");
+
+        assert_eq!(request.documents.len(), 1);
+        assert_eq!(request.documents[0].id, "doc_1");
+    }
+
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = crate::providers::cohere::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

@@ -1,7 +1,7 @@
 //! DeepSeek permission-control regression coverage.
 
 use anyhow::Result;
-use rig::agent::{HookAction, PromptHook, ToolCallHookAction, stream_to_stdout};
+use rig::agent::{AgentHook, Flow, StepEvent, stream_to_stdout};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
 use rig::providers::deepseek;
@@ -16,21 +16,30 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use super::support::with_deepseek_cassette_result;
 use crate::support::assert_nonempty_response;
 
-const TEST_FILE: &str = "test.txt";
 const TEST_CONTENT: &str = "hello world\n";
 
-struct FileCleanup;
+/// A per-test fixture file. The two tests in this module run in parallel
+/// within one target, so a shared path would let one test's cleanup race the
+/// other's tool executions. Only the local path is unique; everything on the
+/// wire still says `test.txt`, so the cassettes are unaffected.
+struct FileCleanup {
+    path: std::path::PathBuf,
+}
 
 impl FileCleanup {
-    fn new() -> Result<Self> {
-        std::fs::write(TEST_FILE, TEST_CONTENT)?;
-        Ok(Self)
+    fn new(label: &str) -> Result<Self> {
+        let path = std::env::temp_dir().join(format!(
+            "rig-deepseek-permission-{label}-{}.txt",
+            std::process::id()
+        ));
+        std::fs::write(&path, TEST_CONTENT)?;
+        Ok(Self { path })
     }
 }
 
 impl Drop for FileCleanup {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(TEST_FILE);
+        let _ = std::fs::remove_file(&self.path);
     }
 }
 
@@ -42,7 +51,10 @@ struct ReadFileArgs {}
 struct FileError;
 
 #[derive(Deserialize, Serialize)]
-struct ReadFileHead;
+struct ReadFileHead {
+    #[serde(skip)]
+    path: std::path::PathBuf,
+}
 
 impl Tool for ReadFileHead {
     const NAME: &'static str = "read_file_head";
@@ -64,7 +76,7 @@ impl Tool for ReadFileHead {
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
-            .arg(TEST_FILE)
+            .arg(&self.path)
             .output()
             .map_err(|_| FileError)?;
 
@@ -73,7 +85,10 @@ impl Tool for ReadFileHead {
 }
 
 #[derive(Deserialize, Serialize)]
-struct ReadFileTail;
+struct ReadFileTail {
+    #[serde(skip)]
+    path: std::path::PathBuf,
+}
 
 impl Tool for ReadFileTail {
     const NAME: &'static str = "read_file_tail";
@@ -95,7 +110,7 @@ impl Tool for ReadFileTail {
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
-            .arg(TEST_FILE)
+            .arg(&self.path)
             .output()
             .map_err(|_| FileError)?;
 
@@ -109,43 +124,34 @@ struct PermissionHook {
     last_result: Arc<Mutex<Option<String>>>,
 }
 
-impl<M: CompletionModel> PromptHook<M> for PermissionHook {
-    async fn on_tool_call(
-        &self,
-        tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-    ) -> ToolCallHookAction {
-        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+impl<M: CompletionModel> AgentHook<M> for PermissionHook {
+    async fn on_event(&self, event: StepEvent<'_, M>) -> Flow {
+        match event {
+            StepEvent::ToolCall { tool_name, .. } => {
+                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
 
-        if count == 0 {
-            ToolCallHookAction::Skip {
-                reason: format!(
-                    "Tool '{}' is currently unavailable. \
-                     Please use 'read_file_tail' instead to read the file.",
-                    tool_name
-                ),
+                if count == 0 {
+                    Flow::Skip {
+                        reason: format!(
+                            "Tool '{}' is currently unavailable. \
+                             Please use 'read_file_tail' instead to read the file.",
+                            tool_name
+                        ),
+                    }
+                } else {
+                    Flow::Continue
+                }
             }
-        } else {
-            ToolCallHookAction::Continue
+            StepEvent::ToolResult { result, .. } => {
+                let normalized =
+                    serde_json::from_str::<String>(result).unwrap_or_else(|_| result.to_string());
+                let mut last = self.last_result.lock().expect("lock last_result");
+                *last = Some(normalized);
+
+                Flow::cont()
+            }
+            _ => Flow::cont(),
         }
-    }
-
-    async fn on_tool_result(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-        result: &str,
-    ) -> HookAction {
-        let normalized =
-            serde_json::from_str::<String>(result).unwrap_or_else(|_| result.to_string());
-        let mut last = self.last_result.lock().expect("lock last_result");
-        *last = Some(normalized);
-
-        HookAction::cont()
     }
 }
 
@@ -154,13 +160,17 @@ async fn permission_control_prompt_example() -> Result<()> {
     with_deepseek_cassette_result(
         "permission_control/permission_control_prompt_example",
         |client| async move {
-            let _cleanup = FileCleanup::new()?;
+            let _cleanup = FileCleanup::new("prompt")?;
 
             let agent = client
                 .agent(deepseek::DEEPSEEK_V4_FLASH)
                 .preamble("You are a helpful assistant that can read files using different methods.")
-                .tool(ReadFileHead)
-                .tool(ReadFileTail)
+                .tool(ReadFileHead {
+                    path: _cleanup.path.clone(),
+                })
+                .tool(ReadFileTail {
+                    path: _cleanup.path.clone(),
+                })
                 .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
@@ -176,7 +186,7 @@ async fn permission_control_prompt_example() -> Result<()> {
                      Do not ask any follow-up questions; just read the file and report its content.",
                 )
                 .max_turns(5)
-                .with_hook(hook)
+                .add_hook(hook)
                 .await?;
 
             let last = last_result.lock().expect("lock last_result").clone();
@@ -200,13 +210,17 @@ async fn permission_control_streaming_example() -> Result<()> {
     with_deepseek_cassette_result(
         "permission_control/permission_control_streaming_example",
         |client| async move {
-            let _cleanup = FileCleanup::new()?;
+            let _cleanup = FileCleanup::new("streaming")?;
 
             let agent = client
                 .agent(deepseek::DEEPSEEK_V4_FLASH)
                 .preamble("You are a helpful assistant that can read files using different methods.")
-                .tool(ReadFileHead)
-                .tool(ReadFileTail)
+                .tool(ReadFileHead {
+                    path: _cleanup.path.clone(),
+                })
+                .tool(ReadFileTail {
+                    path: _cleanup.path.clone(),
+                })
                 .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
@@ -222,7 +236,7 @@ async fn permission_control_streaming_example() -> Result<()> {
                      Do not ask any follow-up questions; just read the file and report its content.",
                 )
                 .multi_turn(5)
-                .with_hook(hook)
+                .add_hook(hook)
                 .await;
 
             let final_response = stream_to_stdout(&mut stream).await?;

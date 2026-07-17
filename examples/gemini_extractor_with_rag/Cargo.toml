@@ -1,0 +1,17 @@
+[package]
+name = "gemini_extractor_with_rag"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rig = { workspace = true, features = ["derive"] }
+anyhow = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

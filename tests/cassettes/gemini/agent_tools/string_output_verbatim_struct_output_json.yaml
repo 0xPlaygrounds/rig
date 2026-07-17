@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call fetch_motto and fetch_config, then summarize both outputs in one sentence.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the provided tools before answering.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Fetch the service configuration object.","name":"fetch_config","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{},"name":"fetch_motto"},"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{},"name":"fetch_config"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":21,"promptTokenCount":86,"promptTokensDetails":[{"modality":"TEXT","tokenCount":86}],"serviceTier":"standard","thoughtsTokenCount":71,"totalTokenCount":178}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call fetch_motto and fetch_config, then summarize both outputs in one sentence.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"fetch_motto"},"thought":false,"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{},"name":"fetch_config"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"fetch_motto","response":{"result":"steady hands\ncalm waters"}},"thought":false},{"functionResponse":{"name":"fetch_config","response":{"result":{"max_retries":3,"service":"cassette-lab"}}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the provided tools before answering.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Fetch the service configuration object.","name":"fetch_config","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The workshop motto is \"steady hands, calm waters,\" and the service configuration for \"cassette-lab\" is set with a maximum of 3 retries.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":33,"promptTokenCount":158,"promptTokensDetails":[{"modality":"TEXT","tokenCount":158}],"serviceTier":"standard","thoughtsTokenCount":118,"totalTokenCount":309}}'

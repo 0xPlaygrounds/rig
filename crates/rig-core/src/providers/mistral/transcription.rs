@@ -147,8 +147,10 @@ where
             .await
             .map_err(TranscriptionError::HttpError)?;
 
-        if response.status().is_success() {
-            let response_bytes = response.into_body().await?;
+        let status = response.status();
+        let response_bytes = response.into_body().await?;
+
+        if status.is_success() {
             let response_body: MistralTranscriptionResponse =
                 serde_json::from_slice(&response_bytes)?;
 
@@ -158,8 +160,10 @@ where
                 response_body,
             )?)
         } else {
-            let text = String::from_utf8_lossy(&response.into_body().await?).into();
-            Err(TranscriptionError::ProviderError(text))
+            Err(TranscriptionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_bytes),
+            ))
         }
     }
 }
@@ -263,5 +267,39 @@ mod test {
         );
         assert_eq!(response.response.model, VOXTRAL_MINI);
         assert_eq!(response.response.language, Some("en".to_string()));
+    }
+
+    #[tokio::test]
+    async fn transcription_non_success_preserves_status_and_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(VOXTRAL_MINI);
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

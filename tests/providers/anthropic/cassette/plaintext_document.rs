@@ -6,11 +6,14 @@ use rig::completion::{CompletionModel, Prompt};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
+use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use serde_json::json;
 
-use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
+use crate::support::{
+    assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
+};
 
 fn rust_document() -> String {
     r#"
@@ -129,6 +132,28 @@ async fn plaintext_document_with_instruction() {
                 })
                 .await
                 .expect("instruction prompt should succeed");
+
+            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn streaming_document_citations_accepts_null_citation_start() {
+    super::super::support::with_anthropic_cassette(
+        "plaintext_document/streaming_document_citations_accepts_null_citation_start",
+        |client| async move {
+            let agent = client
+                .agent(CLAUDE_SONNET_4_6)
+                .preamble("Answer using the supplied document and citation metadata.")
+                .temperature(0.0)
+                .build();
+
+            let mut stream = agent.stream_prompt(citation_prompt()).await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming document citations should accept null citations on text start");
 
             assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
         },

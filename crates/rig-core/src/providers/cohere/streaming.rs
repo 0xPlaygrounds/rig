@@ -67,7 +67,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let tokens = self
             .usage
             .clone()
@@ -79,14 +79,14 @@ impl GetTokenUsage for StreamingCompletionResponse {
                 )
             });
         let Some((Some(input), Some(output))) = tokens else {
-            return None;
+            return crate::completion::Usage::new();
         };
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = input;
         usage.output_tokens = output;
         usage.total_tokens = input + output;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -204,7 +204,7 @@ where
                                 let Some(name) = function.name.clone() else { continue; };
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
-                                let internal_call_id = nanoid::nanoid!();
+                                let internal_call_id = crate::id::generate();
                                 current_tool_call = Some((id.clone(), internal_call_id.clone(), name.clone(), arguments));
 
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
@@ -259,7 +259,7 @@ where
                     }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
-                        yield Err(CompletionError::ProviderError(err.to_string()));
+                        yield Err(CompletionError::from_stream_transport(err));
                         break;
                     }
                 }

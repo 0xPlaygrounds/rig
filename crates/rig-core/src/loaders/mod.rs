@@ -14,6 +14,11 @@ pub mod file;
 
 pub use file::FileLoader;
 
+// Test-only helpers for resolving on-disk fixtures in a CWD-independent way.
+// Gated to the features whose tests use them so it never warns as dead code.
+#[cfg(all(test, any(feature = "pdf", feature = "epub")))]
+mod test_fixtures;
+
 #[cfg(feature = "pdf")]
 #[cfg_attr(docsrs, doc(cfg(feature = "pdf")))]
 pub mod pdf;

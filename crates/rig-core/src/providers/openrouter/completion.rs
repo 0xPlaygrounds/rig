@@ -1,5 +1,5 @@
 use super::{
-    client::{ApiErrorResponse, ApiResponse, Client, Usage},
+    client::{ApiResponse, Client, Usage},
     streaming::StreamingCompletionResponse,
 };
 use crate::message::{
@@ -583,12 +583,6 @@ pub struct CompletionResponse {
     pub choices: Vec<Choice>,
     pub system_fingerprint: Option<String>,
     pub usage: Option<Usage>,
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -1794,20 +1788,15 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             request: req,
             strict_tools,
         } = params;
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
 
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<Message>>, _>>()?
@@ -2024,10 +2013,17 @@ where
                             "OpenRouter response: {response:?}");
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
+                        ))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(
+                Err(CompletionError::from_http_response(
+                    status,
                     String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
@@ -2074,6 +2070,41 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "google/gemini-2.5-flash");
+    }
+
+    #[test]
+    fn openrouter_params_include_direct_request_documents() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one(crate::message::Message::user(
+                "What is glarb-glarb?",
+            )),
+            documents: vec![crate::completion::request::Document {
+                id: "doc_1".to_string(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                additional_props: Default::default(),
+            }],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o-mini",
+            request,
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(request).expect("serialization should succeed");
+
+        assert!(
+            serialized["messages"].to_string().contains("glarb-glarb"),
+            "direct request documents should be normalized through public params"
+        );
     }
 
     #[test]
@@ -3459,6 +3490,84 @@ mod tests {
             media_type: Some(message::AudioMediaType::WAV),
             additional_params: None,
         });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("base64"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_video_file_id_error() {
+        let rig_content = message::UserContent::Video(message::Video {
+            data: DocumentSourceKind::FileId("file-123".to_string()),
+            media_type: Some(message::VideoMediaType::MP4),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("File IDs are not supported for video")
+        );
+    }
+
+    #[test]
+    fn test_user_content_from_rig_audio_file_id_error() {
+        let rig_content = message::UserContent::Audio(message::Audio {
+            data: DocumentSourceKind::FileId("file-123".to_string()),
+            media_type: Some(message::AudioMediaType::MP3),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("File IDs are not supported for audio")
+        );
+    }
+
+    #[test]
+    fn test_video_helper_converts_to_data_uri() {
+        // `UserContent::video(..)` carries base64 data and should become a
+        // `video_url` data URI.
+        let rig_content =
+            message::UserContent::video("SGVsbG8=", Some(message::VideoMediaType::MP4));
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "data:video/mp4;base64,SGVsbG8=");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_video_url_helper_passes_url_through() {
+        // `UserContent::video_url(..)` passes the URL through unchanged and does
+        // not require a media type.
+        let rig_content = message::UserContent::video_url("https://example.com/video.mp4", None);
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "https://example.com/video.mp4");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_video_raw_helper_errors() {
+        // `UserContent::video_raw(..)` carries raw bytes, which OpenRouter cannot
+        // accept; the caller must base64-encode first.
+        let rig_content =
+            message::UserContent::video_raw(vec![1, 2, 3], Some(message::VideoMediaType::MP4));
         let result: Result<UserContent, _> = rig_content.try_into();
 
         assert!(result.is_err());

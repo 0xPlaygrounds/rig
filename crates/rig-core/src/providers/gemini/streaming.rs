@@ -21,6 +21,7 @@ use crate::telemetry::SpanCombinator;
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PartialUsage {
+    #[serde(default)]
     pub total_token_count: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_content_token_count: Option<i32>,
@@ -45,7 +46,7 @@ pub struct PartialUsage {
 }
 
 impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.prompt_token_count as u64;
@@ -55,7 +56,7 @@ impl GetTokenUsage for PartialUsage {
         usage.tool_use_prompt_tokens = self.tool_use_prompt_token_count.unwrap_or_default() as u64;
         usage.total_tokens = self.total_token_count as u64;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -82,7 +83,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage_metadata.token_usage()
     }
 }
@@ -282,7 +283,7 @@ where
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
                         stream_failed = true;
-                        yield Err(CompletionError::ProviderError(error.to_string()));
+                        yield Err(CompletionError::from_stream_transport(error));
                         break;
                     }
                 }
@@ -433,7 +434,7 @@ mod tests {
         let usage = response
             .usage_metadata
             .as_ref()
-            .and_then(GetTokenUsage::token_usage)
+            .map(GetTokenUsage::token_usage)
             .unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
@@ -679,7 +680,7 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
         assert_eq!(token_usage.input_tokens, 40);
         assert_eq!(token_usage.cached_input_tokens, 20);
         assert_eq!(token_usage.output_tokens, 30);
@@ -704,12 +705,22 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
         assert_eq!(token_usage.input_tokens, 20);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.output_tokens, 30);
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.total_tokens, 50);
+    }
+
+    #[test]
+    fn test_partial_usage_deserializes_without_total_token_count() {
+        // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
+        // so `totalTokenCount` is absent on short/empty/blocked generations.
+        let usage: PartialUsage =
+            serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
+        assert_eq!(usage.total_token_count, 0);
+        assert_eq!(usage.prompt_token_count, 12);
     }
 
     #[test]
@@ -762,7 +773,7 @@ mod tests {
             model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
-        let token_usage = response.token_usage().unwrap();
+        let token_usage = response.token_usage();
         assert_eq!(token_usage.input_tokens, 75);
         assert_eq!(token_usage.output_tokens, 75);
         assert_eq!(token_usage.reasoning_tokens, 0);
@@ -817,7 +828,7 @@ mod tests {
             Some(TrafficType::ProvisionedThroughput)
         ));
 
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
         assert_eq!(token_usage.output_tokens, 50);

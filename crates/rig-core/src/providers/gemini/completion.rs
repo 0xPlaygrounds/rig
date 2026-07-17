@@ -18,6 +18,10 @@ pub const GEMINI_2_5_FLASH_PREVIEW_04_17: &str = "gemini-2.5-flash-preview-04-17
 pub const GEMINI_2_5_PRO_EXP_03_25: &str = "gemini-2.5-pro-exp-03-25";
 /// `gemini-2.5-flash` completion model
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
+/// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
+#[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
+pub const GEMINI_2_5_FLASH_IMAGE: &str = "gemini-2.5-flash-image";
 /// `gemini-2.0-flash-lite` completion model
 pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
@@ -166,15 +170,16 @@ where
 
                 response.try_into()
             } else {
-                let text = String::from_utf8_lossy(
-                    &response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?,
-                )
-                .into();
+                let status = response.status();
+                let body = response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?;
 
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ))
             }
         }
         .instrument(span)
@@ -195,12 +200,12 @@ where
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
-    let documents_message = completion_request.normalized_documents();
+    let chat_history = completion_request.chat_history_with_documents();
 
     let CompletionRequest {
         model: _,
         preamble,
-        chat_history,
+        chat_history: _,
         documents: _,
         tools: function_tools,
         temperature,
@@ -211,9 +216,6 @@ pub(crate) fn create_request_body(
     } = completion_request;
 
     let mut full_history = Vec::new();
-    if let Some(msg) = documents_message {
-        full_history.push(msg);
-    }
     full_history.extend(chat_history);
     let (history_system, full_history) = split_system_messages_from_history(full_history);
 
@@ -517,7 +519,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .and_then(GetTokenUsage::token_usage)
+            .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -1339,6 +1341,7 @@ pub mod gemini_api_types {
         pub cached_content_token_count: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub candidates_token_count: Option<i32>,
+        #[serde(default)]
         pub total_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thoughts_token_count: Option<i32>,
@@ -1402,7 +1405,7 @@ pub mod gemini_api_types {
     }
 
     impl GetTokenUsage for UsageMetadata {
-        fn token_usage(&self) -> Option<crate::completion::Usage> {
+        fn token_usage(&self) -> crate::completion::Usage {
             let mut usage = crate::completion::Usage::new();
 
             usage.input_tokens = self.prompt_token_count as u64;
@@ -1413,7 +1416,7 @@ pub mod gemini_api_types {
                 self.tool_use_prompt_token_count.unwrap_or_default() as u64;
             usage.total_tokens = self.total_token_count as u64;
 
-            Some(usage)
+            usage
         }
     }
 
@@ -1606,6 +1609,9 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
+        /// Response modalities requested from models that support multimodal output.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_modalities: Option<Vec<ResponseModality>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub image_config: Option<ImageConfig>,
     }
@@ -1628,9 +1634,19 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
+                response_modalities: None,
                 image_config: None,
             }
         }
+    }
+
+    /// Response modalities supported by Gemini multimodal output models.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    pub enum ResponseModality {
+        Text,
+        Image,
+        Audio,
     }
 
     /// Thinking depth level for Gemini 3 models.
@@ -2158,6 +2174,16 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_usage_metadata_deserializes_without_total_token_count() {
+        // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
+        // so `totalTokenCount` is absent on short/empty/blocked generations.
+        let usage: UsageMetadata =
+            serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
+        assert_eq!(usage.total_token_count, 0);
+        assert_eq!(usage.prompt_token_count, 12);
+    }
 
     #[test]
     fn test_resolve_request_model_uses_override() {
@@ -3025,10 +3051,29 @@ mod tests {
             },
         ];
 
+        let documents_message = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(Message::user("placeholder")),
+            documents,
+            tools: vec![],
+            temperature: None,
+            model: None,
+            output_schema: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        }
+        .normalized_documents()
+        .unwrap();
+
         let completion_request = CompletionRequest {
             preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: OneOrMany::one(Message::user("What are my notes about?")),
-            documents: documents.clone(),
+            chat_history: OneOrMany::many(vec![
+                documents_message,
+                Message::user("What are my notes about?"),
+            ])
+            .unwrap(),
+            documents: vec![],
             tools: vec![],
             temperature: None,
             model: None,
@@ -3213,5 +3258,36 @@ mod tests {
         anyhow::ensure!(!response_text.is_empty(), "Response should not be empty");
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::completion::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::gemini::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

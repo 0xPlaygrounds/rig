@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use schemars::{JsonSchema, Schema, schema_for};
 
 use crate::{
-    agent::prompt_request::hooks::PromptHook,
+    agent::hook::{AgentHook, HookStack},
     completion::{CompletionModel, Document},
     memory::ConversationMemory,
     message::ToolChoice,
@@ -18,7 +18,26 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
-use super::Agent;
+use super::{Agent, OutputMode};
+
+/// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
+/// timeout to each (`None` disables it; see issue #1914). Returns
+/// `(tool_name, tool)` pairs.
+#[cfg(feature = "rmcp")]
+fn build_rmcp_tools(
+    tools: Vec<rmcp::model::Tool>,
+    client: rmcp::service::ServerSink,
+    timeout: Option<std::time::Duration>,
+) -> Vec<(String, RmcpTool)> {
+    tools
+        .into_iter()
+        .map(|tool| {
+            let name = tool.name.to_string();
+            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
+            (name, rmcp_tool)
+        })
+        .collect()
+}
 
 /// Marker type indicating no tool configuration has been set yet.
 ///
@@ -74,10 +93,9 @@ pub struct WithBuilderTools {
 /// # Ok(())
 /// # }
 /// ```
-pub struct AgentBuilder<M, P = (), ToolState = NoToolConfig>
+pub struct AgentBuilder<M, ToolState = NoToolConfig>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
@@ -103,20 +121,21 @@ where
     default_max_turns: Option<usize>,
     /// Tool configuration state (typestate pattern)
     tool_state: ToolState,
-    /// Prompt hook
-    hook: Option<P>,
+    /// Default hook stack applied to every prompt request from the built agent.
+    hooks: HookStack<M>,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    /// How `output_schema` is enforced (tool vs native vs prompted; see #1928)
+    output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
     default_conversation_id: Option<String>,
 }
 
-impl<M, P, ToolState> AgentBuilder<M, P, ToolState>
+impl<M, ToolState> AgentBuilder<M, ToolState>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Set the name of the agent
     pub fn name(mut self, name: &str) -> Self {
@@ -216,11 +235,20 @@ where
         self
     }
 
+    /// Set how `output_schema` is enforced — [`OutputMode::Tool`] (output as a
+    /// tool call, the default when the agent has tools), [`OutputMode::Native`]
+    /// (provider structured output), or [`OutputMode::Prompted`] (see #1928).
+    /// Has no effect unless `output_schema`/`output_schema_raw` is also set.
+    pub fn output_mode(mut self, mode: OutputMode) -> Self {
+        self.output_mode = mode;
+        self
+    }
+
     /// Attach a [`ConversationMemory`] backend.
     ///
     /// When set, the agent will automatically load prior conversation history before
     /// each prompt and append the new turn after a successful response. A
-    /// `conversation_id` must be supplied either via [`AgentBuilder::conversation_id`]
+    /// `conversation_id` must be supplied either via [`AgentBuilder::conversation`]
     /// or per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
     /// If neither is set, memory is silently bypassed.
     pub fn memory<B>(mut self, memory: B) -> Self
@@ -235,41 +263,25 @@ where
     ///
     /// Most agents are reused across users or threads; prefer setting the id
     /// per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
-    pub fn conversation_id(mut self, id: impl Into<String>) -> Self {
+    pub fn conversation(mut self, id: impl Into<String>) -> Self {
         self.default_conversation_id = Some(id.into());
         self
     }
 
-    /// Set the default hook for the agent.
-    ///
-    /// This hook will be used for all prompt requests unless overridden
-    /// via `.with_hook()` on the request.
-    pub fn hook<P2>(self, hook: P2) -> AgentBuilder<M, P2, ToolState>
+    /// Attach a default hook to the agent. Each call appends to the agent's hook
+    /// stack; hooks run for every prompt request (unless more are added per
+    /// request) in registration order, and the first to return a non-`Continue`
+    /// result short-circuits the rest.
+    pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        P2: PromptHook<M>,
+        H: AgentHook<M> + 'static,
     {
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            tool_state: self.tool_state,
-            hook: Some(hook),
-            output_schema: self.output_schema,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
+        self.hooks.push(hook);
+        self
     }
 }
 
-impl<M> AgentBuilder<M, (), NoToolConfig>
+impl<M> AgentBuilder<M, NoToolConfig>
 where
     M: CompletionModel,
 {
@@ -288,18 +300,18 @@ where
             tool_choice: None,
             default_max_turns: None,
             tool_state: NoToolConfig,
-            hook: None,
+            hooks: HookStack::new(),
             output_schema: None,
+            output_mode: OutputMode::default(),
             memory: None,
             default_conversation_id: None,
         }
     }
 }
 
-impl<M, P> AgentBuilder<M, P, NoToolConfig>
+impl<M> AgentBuilder<M, NoToolConfig>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Set a pre-existing ToolServerHandle for the agent.
     ///
@@ -309,7 +321,7 @@ where
     pub fn tool_server_handle(
         self,
         handle: ToolServerHandle,
-    ) -> AgentBuilder<M, P, WithToolServerHandle> {
+    ) -> AgentBuilder<M, WithToolServerHandle> {
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -323,8 +335,9 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             tool_state: WithToolServerHandle { handle },
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -334,7 +347,7 @@ where
     ///
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
-    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, P, WithBuilderTools> {
+    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
         let toolname = tool.name();
         AgentBuilder {
             name: self.name,
@@ -353,8 +366,9 @@ where
                 tools: ToolSet::from_tools(vec![tool]),
                 dynamic_tools: vec![],
             },
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -364,7 +378,7 @@ where
     ///
     /// This is useful when you need to dynamically add static tools to the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, P, WithBuilderTools> {
+    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
         let static_tools = tools.iter().map(|tool| tool.name()).collect();
         let tools = ToolSet::from_tools_boxed(tools);
 
@@ -380,8 +394,9 @@ where
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
@@ -392,7 +407,10 @@ where
         }
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent.
+    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
+    /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -401,35 +419,31 @@ where
         self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<M, P, WithBuilderTools> {
-        let toolname = tool.name.clone().to_string();
-        let tools = ToolSet::from_tools(vec![RmcpTool::from_mcp_server(tool, client)]);
-
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hook: self.hook,
-            output_schema: self.output_schema,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                static_tools: vec![toolname],
-                tools,
-                dynamic_tools: vec![],
-            },
-        }
+    ) -> AgentBuilder<M, WithBuilderTools> {
+        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent.
+    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
+    /// disable the timeout (unbounded). On timeout the call resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tool_with_timeout(
+        self,
+        tool: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> AgentBuilder<M, WithBuilderTools> {
+        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
+    }
+
+    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
+    /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -438,19 +452,36 @@ where
         self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<M, P, WithBuilderTools> {
-        let (static_tools, tools) = tools.into_iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut toolnames, mut toolset), tool| {
-                let tool_name = tool.name.to_string();
-                let tool = RmcpTool::from_mcp_server(tool, client.clone());
-                toolnames.push(tool_name);
-                toolset.push(tool);
-                (toolnames, toolset)
-            },
-        );
+    ) -> AgentBuilder<M, WithBuilderTools> {
+        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    }
 
-        let tools = ToolSet::from_tools(tools);
+    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
+    /// issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
+    /// disable the timeout (unbounded). On timeout a call resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tools_with_timeout(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> AgentBuilder<M, WithBuilderTools> {
+        self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
+    }
+
+    /// Transition into the `WithBuilderTools` state carrying the given built
+    /// MCP tools.
+    #[cfg(feature = "rmcp")]
+    fn with_rmcp_toolset(
+        self,
+        built: Vec<(String, RmcpTool)>,
+    ) -> AgentBuilder<M, WithBuilderTools> {
+        let (static_tools, toolset): (Vec<String>, Vec<RmcpTool>) = built.into_iter().unzip();
 
         AgentBuilder {
             name: self.name,
@@ -464,13 +495,14 @@ where
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
-                tools,
+                tools: ToolSet::from_tools(toolset),
                 dynamic_tools: vec![],
             },
         }
@@ -485,7 +517,7 @@ where
         sample: usize,
         dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
-    ) -> AgentBuilder<M, P, WithBuilderTools> {
+    ) -> AgentBuilder<M, WithBuilderTools> {
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -498,8 +530,9 @@ where
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
@@ -513,7 +546,7 @@ where
     /// Build the agent with no tools configured.
     ///
     /// An empty `ToolServer` will be created for the agent.
-    pub fn build(self) -> Agent<M, P> {
+    pub fn build(self) -> Agent<M> {
         let tool_server_handle = ToolServer::new().run();
 
         Agent {
@@ -529,21 +562,21 @@ where
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
     }
 }
 
-impl<M, P> AgentBuilder<M, P, WithToolServerHandle>
+impl<M> AgentBuilder<M, WithToolServerHandle>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Build the agent using the pre-configured ToolServerHandle.
-    pub fn build(self) -> Agent<M, P> {
+    pub fn build(self) -> Agent<M> {
         Agent {
             name: self.name,
             description: self.description,
@@ -557,18 +590,18 @@ where
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle: self.tool_state.handle,
             default_max_turns: self.default_max_turns,
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
     }
 }
 
-impl<M, P> AgentBuilder<M, P, WithBuilderTools>
+impl<M> AgentBuilder<M, WithBuilderTools>
 where
     M: CompletionModel,
-    P: PromptHook<M>,
 {
     /// Add another static tool to the agent.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
@@ -587,18 +620,41 @@ where
         self
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent.
+    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
+    /// to change or disable it.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
-        mut self,
+        self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
     ) -> Self {
-        for tool in tools {
-            let tool_name = tool.name.to_string();
-            let tool = RmcpTool::from_mcp_server(tool, client.clone());
-            self.tool_state.static_tools.push(tool_name);
+        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    }
+
+    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
+    /// issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
+    /// disable the timeout (unbounded). On timeout a call resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tools_with_timeout(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> Self {
+        self.add_rmcp_tools(build_rmcp_tools(tools, client, timeout.into()))
+    }
+
+    #[cfg(feature = "rmcp")]
+    fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
+        for (name, tool) in built {
+            self.tool_state.static_tools.push(name);
             self.tool_state.tools.add_tool(tool);
         }
 
@@ -624,7 +680,7 @@ where
     ///
     /// A new `ToolServer` will be created containing all tools added via
     /// `.tool()`, `.tools()`, `.dynamic_tools()`, etc.
-    pub fn build(self) -> Agent<M, P> {
+    pub fn build(self) -> Agent<M> {
         let tool_server_handle = ToolServer::new()
             .static_tool_names(self.tool_state.static_tools)
             .add_tools(self.tool_state.tools)
@@ -644,8 +700,9 @@ where
             dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
-            hook: self.hook,
+            hooks: self.hooks,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -660,13 +717,98 @@ mod tests {
     #[derive(Clone)]
     struct BuilderHook;
 
-    impl PromptHook<MockCompletionModel> for BuilderHook {}
+    impl AgentHook<MockCompletionModel> for BuilderHook {}
 
     #[test]
     fn hook_can_be_set_after_tool_configuration() {
         let _agent = AgentBuilder::new(MockCompletionModel::text("ok"))
             .tool(MockAddTool)
-            .hook(BuilderHook)
+            .add_hook(BuilderHook)
             .build();
+    }
+
+    /// The builder's shared MCP helper threads the configured timeout (default,
+    /// explicit, or `None`/disabled) onto every built tool, and the threaded
+    /// timeout actually bounds a hanging call. This covers the plumbing behind
+    /// `rmcp_tool[s]` / `rmcp_tool[s]_with_timeout` (see issue #1914).
+    #[cfg(feature = "rmcp")]
+    #[tokio::test]
+    async fn build_rmcp_tools_threads_timeout_into_built_tools() {
+        use crate::tool::ToolDyn;
+        use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
+        use rmcp::model::{
+            CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
+            ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+        };
+        use rmcp::service::RequestContext;
+        use rmcp::{RoleServer, ServerHandler, ServiceExt};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        #[derive(Clone)]
+        struct HangingServer;
+        impl ServerHandler for HangingServer {
+            fn get_info(&self) -> ServerInfo {
+                ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                    .with_protocol_version(ProtocolVersion::LATEST)
+                    .with_server_info(Implementation::new("builder-timeout-test", "0.1.0"))
+            }
+            async fn call_tool(
+                &self,
+                _request: CallToolRequestParams,
+                _context: RequestContext<RoleServer>,
+            ) -> Result<CallToolResult, ErrorData> {
+                std::future::pending::<Result<CallToolResult, ErrorData>>().await
+            }
+        }
+
+        fn tool(name: &str) -> Tool {
+            Tool::new(
+                name.to_string(),
+                String::new(),
+                Arc::new(serde_json::Map::new()),
+            )
+        }
+
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let server_task = tokio::spawn(async move {
+            let running = HangingServer.serve((sfc, s2c)).await.expect("server start");
+            running.waiting().await.expect("server error");
+        });
+        let client = ClientInfo::default()
+            .serve((cfs, c2s))
+            .await
+            .expect("client connect");
+        let peer = client.peer().clone();
+
+        // The configured timeout (default, explicit, or disabled) is threaded
+        // onto each built tool.
+        let built_default = build_rmcp_tools(
+            vec![tool("a")],
+            peer.clone(),
+            Some(DEFAULT_MCP_TOOL_TIMEOUT),
+        );
+        assert_eq!(built_default[0].1.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
+        let built_none = build_rmcp_tools(vec![tool("b")], peer.clone(), None);
+        assert_eq!(built_none[0].1.timeout(), None);
+
+        // ...and the threaded timeout actually bounds a hanging call.
+        let built = build_rmcp_tools(
+            vec![tool("hang_forever")],
+            peer,
+            Some(Duration::from_millis(200)),
+        );
+        assert_eq!(built.len(), 1);
+        assert_eq!(built[0].0, "hang_forever");
+        let timed =
+            tokio::time::timeout(Duration::from_secs(5), built[0].1.call("{}".to_string())).await;
+        let err = timed
+            .expect("built tool hung past the safety timeout")
+            .expect_err("call should time out");
+        assert!(err.to_string().contains("timed out"), "got: {err}");
+
+        drop(client);
+        server_task.abort();
     }
 }

@@ -50,6 +50,7 @@ impl<H> Capabilities<H> for MiraExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for MiraExt {}
@@ -89,11 +90,6 @@ pub enum MiraError {
     Utf8Error(#[from] FromUtf8Error),
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -224,6 +220,7 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Mira");
         }
@@ -237,40 +234,25 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
             });
         }
 
-        if let Some(Message::User { content }) = req.normalized_documents() {
-            let text = content
-                .into_iter()
-                .filter_map(|doc| match doc {
-                    UserContent::Document(Document {
-                        data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
-                        ..
-                    }) => Some(data),
-                    UserContent::Text(text) => Some(text.text),
-
-                    // This should always be `Document`
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            messages.push(RawMessage {
-                role: "user".to_string(),
-                content: text,
-            });
-        }
-
-        for msg in req.chat_history {
+        for msg in chat_history {
             let (role, content) = match msg {
                 Message::System { content } => ("system", content),
                 Message::User { content } => {
-                    let text = content
-                        .iter()
-                        .map(|c| match c {
-                            UserContent::Text(text) => &text.text,
-                            _ => "",
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    let text =
+                        content
+                            .iter()
+                            .map(|c| match c {
+                                UserContent::Text(text) => &text.text,
+                                UserContent::Document(Document {
+                                    data:
+                                        DocumentSourceKind::Base64(data)
+                                        | DocumentSourceKind::String(data),
+                                    ..
+                                }) => data,
+                                _ => "",
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
                     ("user", text)
                 }
                 Message::Assistant { content, .. } => {
@@ -397,11 +379,10 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                let status = status.as_u16();
-                let error_text = String::from_utf8_lossy(&response_body).to_string();
-                return Err(CompletionError::ProviderError(format!(
-                    "API error: {status} - {error_text}"
-                )));
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
+                ));
             }
 
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
@@ -495,12 +476,6 @@ where
         send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
-    }
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
     }
 }
 
@@ -823,5 +798,38 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    // Proves a non-success HTTP response from `/v1/chat/completions` preserves
+    // the provider's status + body through the `provider_response_*` helpers
+    // (issue #1931).
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("deepseek-r1");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

@@ -111,9 +111,11 @@ where
             .await
             .map_err(EmbeddingError::HttpError)?;
 
-        if response.status().is_success() {
-            let body: ApiResponse<EmbeddingResponse> =
-                serde_json::from_slice(response.into_body().await?.as_slice())?;
+        let status = response.status();
+        let raw_body = response.into_body().await?;
+
+        if status.is_success() {
+            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(raw_body.as_slice())?;
 
             match body {
                 ApiResponse::Ok(response) => {
@@ -148,11 +150,22 @@ where
                         })
                         .collect())
                 }
-                ApiResponse::Err(error) => Err(EmbeddingError::ProviderError(error.message)),
+                ApiResponse::Err(error) => {
+                    tracing::warn!(
+                        message = %error.message,
+                        "Cohere returned an error response"
+                    );
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&raw_body),
+                    ))
+                }
             }
         } else {
-            let text = String::from_utf8_lossy(&response.into_body().await?).into();
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&raw_body),
+            ))
         }
     }
 }
@@ -178,6 +191,74 @@ impl<T> EmbeddingModel<T> {
             model: model.into(),
             input_type: input_type.into(),
             ndims,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn embeddings_non_success_preserves_status_and_body() {
+        use crate::embeddings::EmbeddingModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = crate::providers::cohere::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(
+            crate::providers::cohere::EMBED_ENGLISH_V3,
+            "search_document",
+        );
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
+        use crate::embeddings::EmbeddingModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        // Deserializes to `ApiResponse::Err(ApiErrorResponse { message })` on a 200 OK.
+        let body = r#"{"message":"boom"}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = crate::providers::cohere::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(
+            crate::providers::cohere::EMBED_ENGLISH_V3,
+            "search_document",
+        );
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("should fail with provider error envelope");
+
+        match &error {
+            EmbeddingError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
         }
     }
 }

@@ -127,6 +127,7 @@ impl<H> Capabilities<H> for OllamaExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for OllamaExt {}
@@ -178,20 +179,6 @@ impl ProviderClient for Client {
     }
 }
 
-// ---------- API Error and Response Structures ----------
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
 // ---------- Embedding API ----------
 
 pub const ALL_MINILM: &str = "all-minilm";
@@ -215,21 +202,6 @@ pub struct EmbeddingResponse {
     pub load_duration: Option<u64>,
     #[serde(default)]
     pub prompt_eval_count: Option<u64>,
-}
-
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
 }
 
 // ---------- Embedding Model ----------
@@ -297,9 +269,10 @@ where
 
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let text = http_client::text(response).await?;
-            return Err(EmbeddingError::ProviderError(text));
+            return Err(EmbeddingError::from_http_response(status, text));
         }
 
         let bytes: Vec<u8> = response.into_body().await?;
@@ -359,6 +332,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 ..
             } => {
                 let mut assistant_contents = Vec::new();
+                // Preserve the model's reasoning so it round-trips into agent
+                // history and is echoed back to Ollama on the next turn (issue
+                // #1926). Without this, non-streaming `thinking` is kept only in
+                // `raw_response` and lost from `choice`, unlike the streaming path
+                // (see `RawStreamingChoice::ReasoningDelta` below).
+                if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
+                    assistant_contents.push(completion::AssistantContent::reasoning(thinking));
+                }
                 // Add the assistant's text content if any.
                 if !content.is_empty() {
                     assistant_contents.push(completion::AssistantContent::text(&content));
@@ -443,16 +424,14 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
-        // Build up the order of messages (context, chat_history, prompt)
+        // Build up the order of messages.
         let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(req.chat_history);
+        partial_history.extend(chat_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -583,7 +562,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         let input_tokens = self.prompt_eval_count.unwrap_or_default();
         let output_tokens = self.eval_count.unwrap_or_default();
@@ -591,7 +570,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.output_tokens = output_tokens;
         usage.total_tokens = input_tokens + output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -686,8 +665,9 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
                 ));
             }
 
@@ -767,9 +747,20 @@ where
         let mut byte_stream = response.into_body();
 
         if !status.is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "Got error status code trying to send a request to Ollama: {status}"
-            )));
+            let mut body = Vec::new();
+            while let Some(chunk) = byte_stream.next().await {
+                match chunk {
+                    Ok(bytes) => body.extend_from_slice(&bytes),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
+                        break;
+                    }
+                }
+            }
+            return Err(CompletionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body),
+            ));
         }
 
         let stream = try_stream! {
@@ -1135,13 +1126,20 @@ impl From<Message> for crate::completion::Message {
             },
             Message::Assistant {
                 content,
+                thinking,
                 tool_calls,
                 ..
             } => {
-                let mut assistant_contents =
-                    vec![crate::completion::message::AssistantContent::Text(
-                        Text::new(content),
-                    )];
+                let mut assistant_contents = Vec::new();
+                // Preserve reasoning so it survives the round-trip (issue #1926).
+                if let Some(thinking) = thinking.filter(|t| !t.is_empty()) {
+                    assistant_contents.push(
+                        crate::completion::message::AssistantContent::reasoning(thinking),
+                    );
+                }
+                assistant_contents.push(crate::completion::message::AssistantContent::Text(
+                    Text::new(content),
+                ));
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
@@ -1520,6 +1518,60 @@ mod tests {
         } else {
             panic!("Expected Assistant message with thinking");
         }
+    }
+
+    /// Regression test for issue #1926: a non-streaming `/api/chat` response that
+    /// carries `thinking` alongside `tool_calls` (the shape qwen3 thinking models
+    /// emit on a tool-call turn) must surface the reasoning as an
+    /// `AssistantContent::Reasoning` in `choice` — otherwise it never enters
+    /// agent history and is never echoed back to Ollama, degrading multi-turn
+    /// tool-call accuracy. Before the fix `choice` contained only the `ToolCall`.
+    #[tokio::test]
+    async fn nonstreaming_response_preserves_thinking_as_reasoning() {
+        let sample_response = json!({
+            "model": "qwen3:4b",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "thinking": "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
+                "images": null,
+                "tool_calls": [
+                    { "type": "function", "function": { "name": "get_weather", "arguments": { "location": "Berlin" } } }
+                ]
+            },
+            "done": true,
+            "done_reason": "stop",
+            "total_duration": 8000000000u64,
+            "load_duration": 6000000u64,
+            "prompt_eval_count": 61u64,
+            "prompt_eval_duration": 400000000u64,
+            "eval_count": 468u64,
+            "eval_duration": 7700000000u64
+        });
+
+        let raw: CompletionResponse =
+            serde_json::from_value(sample_response).expect("deserialize ollama response");
+        let completed: completion::CompletionResponse<CompletionResponse> =
+            raw.try_into().expect("convert to completion response");
+
+        let reasoning = completed.choice.iter().find_map(|c| match c {
+            completion::AssistantContent::Reasoning(r) => Some(r.clone()),
+            _ => None,
+        });
+        let has_tool_call = completed
+            .choice
+            .iter()
+            .any(|c| matches!(c, completion::AssistantContent::ToolCall(_)));
+
+        assert!(has_tool_call, "tool call should survive the conversion");
+        let reasoning = reasoning.expect(
+            "non-streaming response must surface `thinking` as AssistantContent::Reasoning (issue #1926)",
+        );
+        assert_eq!(
+            reasoning.display_text(),
+            "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
+        );
     }
 
     // Test empty thinking content is handled correctly
@@ -2153,5 +2205,70 @@ mod tests {
         assert_eq!(received.len(), 2);
         assert_eq!(received[0]["message"]["content"], "hi");
         assert_eq!(received[1]["done"], true);
+    }
+
+    // Proves a non-success HTTP response from `/api/chat` preserves the
+    // provider's status + body through the `provider_response_*` helpers
+    // (issue #1931).
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"model not found"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    // Proves a non-success HTTP response from `/api/embed` preserves the
+    // provider's status + body through the `provider_response_*` helpers
+    // (issue #1931).
+    #[tokio::test]
+    async fn embeddings_non_success_preserves_status_and_body() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"model not found"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(ALL_MINILM);
+
+        let error = model
+            .embed_texts(vec!["hello".to_string()])
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

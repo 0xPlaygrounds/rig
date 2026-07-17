@@ -106,6 +106,7 @@ impl<H> Capabilities<H> for AzureExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Capable<AudioGenerationModel<H>>;
+    type Rerank = Nothing;
 }
 
 impl ProviderBuilder for AzureExtBuilder {
@@ -378,21 +379,6 @@ pub struct EmbeddingResponse {
     pub usage: Usage,
 }
 
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingData {
     pub object: String,
@@ -407,14 +393,14 @@ pub struct Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.prompt_tokens as u64;
         usage.total_tokens = self.total_tokens as u64;
         usage.output_tokens = usage.total_tokens - usage.input_tokens;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -479,11 +465,12 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+        let status = response.status();
+        if status.is_success() {
+            let response_body: Vec<u8> = response.into_body().await?;
+            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
-            match body {
+            match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "Azure embedding token usage: {}",
@@ -506,11 +493,17 @@ where
                         })
                         .collect())
                 }
-                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }
@@ -589,6 +582,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("Tool choice is currently not supported in Azure OpenAI.");
@@ -599,14 +593,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
             None => vec![],
         };
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<openai::Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<openai::Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<openai::Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
@@ -755,10 +742,17 @@ where
                         }
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
+                        ))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(
+                Err(CompletionError::from_http_response(
+                    status,
                     String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
@@ -900,12 +894,17 @@ where
         if status.is_success() {
             match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
-                    api_error_response.message,
-                )),
+                ApiResponse::Err(api_error_response) => {
+                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
+                    Err(TranscriptionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
-            Err(TranscriptionError::ProviderError(
+            Err(TranscriptionError::from_http_response(
+                status,
                 String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
@@ -975,15 +974,21 @@ mod image_generation {
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(ImageGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
+                return Err(ImageGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).into_owned(),
+                ));
             }
 
             match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(ImageGenerationError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         }
     }
@@ -1057,10 +1062,10 @@ mod audio_generation {
             let response_body = response.into_body().into_future().await?;
 
             if !status.is_success() {
-                return Err(AudioGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
+                return Err(AudioGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).into_owned(),
+                ));
             }
 
             Ok(AudioGenerationResponse {
@@ -1083,6 +1088,190 @@ mod azure_tests {
     use crate::embeddings::EmbeddingModel;
     use crate::prelude::TypedPrompt;
     use crate::providers::openai::GPT_5_MINI;
+
+    #[cfg(any(feature = "image", feature = "audio"))]
+    fn test_client(
+        http_client: crate::test_utils::RecordingHttpClient,
+    ) -> Client<crate::test_utils::RecordingHttpClient> {
+        Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client")
+    }
+
+    #[cfg(feature = "image")]
+    #[tokio::test]
+    async fn image_generation_non_success_response_preserves_status_and_body() {
+        use crate::image_generation::{
+            ImageGenerationError, ImageGenerationModel as ImageGenerationModelTrait,
+            ImageGenerationRequest,
+        };
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"invalid image request"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let model = ImageGenerationModel::make(&test_client(http_client), "dall-e-3");
+
+        let error = model
+            .image_generation(ImageGenerationRequest {
+                prompt: "draw a cat".to_string(),
+                width: 256,
+                height: 256,
+                additional_params: None,
+            })
+            .await
+            .expect_err("image generation should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[cfg(feature = "audio")]
+    #[tokio::test]
+    async fn audio_generation_non_success_response_preserves_status_and_body() {
+        use crate::audio_generation::{
+            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
+        };
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"invalid voice"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNPROCESSABLE_ENTITY, body);
+        let model = AudioGenerationModel::new(test_client(http_client), "tts-1");
+
+        let error = match model
+            .audio_generation(AudioGenerationRequest {
+                text: "hello".to_string(),
+                voice: "alloy".to_string(),
+                speed: 1.0,
+                additional_params: None,
+            })
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("audio generation should fail with non-success status"),
+        };
+
+        assert!(matches!(error, AudioGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNPROCESSABLE_ENTITY)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+
+        let body = r#"{"error":{"message":"bad audio","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = TranscriptionModel::new(client, "whisper");
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn embedding_http_non_success_preserves_status_and_body() {
+        use crate::embeddings::EmbeddingModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"bad embedding","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = super::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, None);
+
+        let error = match model.embed_texts(vec!["Hello, world!".to_string()]).await {
+            Err(error) => error,
+            Ok(_) => panic!("embedding should fail with non-success status"),
+        };
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"bad completion","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = super::CompletionModel::new(client, GPT_4O_MINI);
+
+        let error = match model
+            .completion(CompletionRequest {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: OneOrMany::one("Hello!".into()),
+                documents: vec![],
+                max_tokens: Some(100),
+                temperature: Some(0.0),
+                tools: vec![],
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("completion should fail with non-success status"),
+        };
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
 
     #[tokio::test]
     #[ignore]

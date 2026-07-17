@@ -43,6 +43,7 @@ impl<H> Capabilities<H> for CohereExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for CohereExt {}

@@ -9,12 +9,16 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
+mod extensions;
 pub mod server;
+
+pub use extensions::{MissingExtension, ToolCallExtensions};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
 use futures::Future;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -140,6 +144,29 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         &self,
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
+
+    /// Tool execution with per-call runtime extensions.
+    ///
+    /// Override this to access runtime values (auth, session IDs, etc.)
+    /// injected by the caller via [`ToolCallExtensions`]. The default ignores
+    /// the extensions and delegates to [`Tool::call`].
+    ///
+    /// **Override contract:** when you override this method it becomes the
+    /// single entry point for the tool under *dynamic dispatch* — every
+    /// [`ToolDyn`] path (the extension-free [`ToolDyn::call`] and the agent
+    /// loop) routes here, with an empty [`ToolCallExtensions`] when no caller
+    /// supplied one. So put your logic here and treat a missing value as the
+    /// no-extensions case (e.g. via [`ToolCallExtensions::get`] returning
+    /// `None`); do not split behavior between `call` and `call_with_extensions`,
+    /// as `call`'s body is then unreachable through dynamic dispatch (a direct
+    /// `Tool::call` call still runs its own body).
+    fn call_with_extensions(
+        &self,
+        args: Self::Args,
+        _extensions: &ToolCallExtensions,
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend {
+        self.call(args)
+    }
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
@@ -180,6 +207,19 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
 
     /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
+
+    /// Dynamic dispatch variant of tool execution with per-call runtime extensions.
+    ///
+    /// The default ignores the extensions and delegates to [`ToolDyn::call`].
+    /// The blanket impl for [`Tool`] types overrides this to thread the
+    /// extensions through to [`Tool::call_with_extensions`].
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        _extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.call(args)
+    }
 }
 
 fn serialize_tool_output(output: impl Serialize) -> serde_json::Result<String> {
@@ -199,6 +239,14 @@ impl<T: Tool> ToolDyn for T {
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        ToolDyn::call_with_extensions(self, args, &ToolCallExtensions::EMPTY)
+    }
+
+    fn call_with_extensions<'a>(
+        &'a self,
+        args: String,
+        extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
             // LLMs frequently send `null` for tools whose arguments are all optional.
             // `serde_json::from_str::<T>("null")` fails for struct types even when
@@ -212,7 +260,7 @@ impl<T: Tool> ToolDyn for T {
                 Err(err) => Err(err),
             };
             match args {
-                Ok(args) => <Self as Tool>::call(self, args)
+                Ok(args) => <Self as Tool>::call_with_extensions(self, args, extensions)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| serialize_tool_output(output).map_err(ToolError::JsonError)),
@@ -269,10 +317,14 @@ impl ToolType {
         }
     }
 
-    pub async fn call(&self, args: String) -> Result<String, ToolError> {
+    pub async fn call_with_extensions(
+        &self,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> Result<String, ToolError> {
         match self {
-            ToolType::Simple(tool) => tool.call(args).await,
-            ToolType::Embedding(tool) => tool.call(args).await,
+            ToolType::Simple(tool) => tool.call_with_extensions(args, extensions).await,
+            ToolType::Embedding(tool) => tool.call_with_extensions(args, extensions).await,
         }
     }
 }
@@ -296,10 +348,15 @@ pub enum ToolSetError {
     Interrupted,
 }
 
-/// A struct that holds a set of tools
+/// A struct that holds a set of tools.
+///
+/// Tools are stored in an [`IndexMap`] keyed by name, so iteration
+/// (definitions, documents, schemas) follows registration order and the tool
+/// list sent to providers is deterministic across processes. Re-registering an
+/// existing name replaces the implementation but keeps its original position.
 #[derive(Default)]
 pub struct ToolSet {
-    pub(crate) tools: HashMap<String, ToolType>,
+    pub(crate) tools: IndexMap<String, ToolType>,
 }
 
 impl ToolSet {
@@ -333,34 +390,61 @@ impl ToolSet {
 
     /// Add a tool to the toolset
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
-        self.tools
-            .insert(tool.name(), ToolType::Simple(Arc::new(tool)));
+        self.insert(ToolType::Simple(Arc::new(tool)));
     }
 
     /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
     pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
-        self.tools
-            .insert(tool.name(), ToolType::Simple(Arc::from(tool)));
+        self.insert(ToolType::Simple(Arc::from(tool)));
+    }
+
+    pub(crate) fn insert(&mut self, tool: ToolType) {
+        let name = tool.name();
+        // `IndexMap::insert` replaces the value while keeping the existing
+        // slot position, and returns the previous value when the name was
+        // already registered.
+        if self.tools.insert(name.clone(), tool).is_some() {
+            tracing::warn!(
+                tool_name = %name,
+                "a tool named {name:?} was already registered; replacing it with the new registration"
+            );
+        }
     }
 
     /// Remove a tool by name. Missing tools are ignored.
     pub fn delete_tool(&mut self, tool_name: &str) {
-        let _ = self.tools.remove(tool_name);
+        // `shift_remove` preserves the order of the remaining tools;
+        // `swap_remove` would not.
+        self.tools.shift_remove(tool_name);
     }
 
-    /// Merge another toolset into this one
+    /// Merge another toolset into this one. Tools keep `toolset`'s
+    /// registration order; names that already exist are replaced in place.
     pub fn add_tools(&mut self, toolset: ToolSet) {
-        self.tools.extend(toolset.tools);
+        for (_, tool) in toolset.tools {
+            self.insert(tool);
+        }
     }
 
     pub(crate) fn get(&self, toolname: &str) -> Option<&ToolType> {
         self.tools.get(toolname)
     }
 
-    /// Return definitions for all tools currently registered in the set.
+    /// Tool names in registration order.
+    pub(crate) fn ordered_names(&self) -> impl Iterator<Item = &String> {
+        self.tools.keys()
+    }
+
+    /// Tools in registration order.
+    fn ordered_tools(&self) -> impl Iterator<Item = &ToolType> {
+        self.tools.values()
+    }
+
+    /// Return definitions for all tools currently registered in the set, in
+    /// registration order.
     pub async fn get_tool_definitions(&self) -> Result<Vec<ToolDefinition>, ToolSetError> {
         let mut defs = Vec::new();
-        for tool in self.tools.values() {
+        for tool in self.ordered_tools() {
             let def = tool.definition(String::new()).await;
             defs.push(def);
         }
@@ -369,12 +453,27 @@ impl ToolSet {
 
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
+        self.call_with_extensions(toolname, args, &ToolCallExtensions::EMPTY)
+            .await
+    }
+
+    /// Call a tool with the given name, arguments, and per-call runtime extensions.
+    ///
+    /// The extensions are threaded through to [`Tool::call_with_extensions`],
+    /// allowing tools to access caller-provided values (auth tokens, session
+    /// IDs, etc.).
+    pub async fn call_with_extensions(
+        &self,
+        toolname: &str,
+        args: String,
+        extensions: &ToolCallExtensions,
+    ) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::debug!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
                 args
             );
-            Ok(tool.call(args).await?)
+            Ok(tool.call_with_extensions(args, extensions).await?)
         } else {
             Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
         }
@@ -383,7 +482,7 @@ impl ToolSet {
     /// Get the documents of all the tools in the toolset
     pub async fn documents(&self) -> Result<Vec<completion::Document>, ToolSetError> {
         let mut docs = Vec::new();
-        for tool in self.tools.values() {
+        for tool in self.ordered_tools() {
             match tool {
                 ToolType::Simple(tool) => {
                     docs.push(completion::Document {
@@ -424,8 +523,7 @@ impl ToolSet {
     /// This is necessary because when adding tools to the EmbeddingBuilder because all
     /// documents added to the builder must all be of the same type.
     pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
-        self.tools
-            .values()
+        self.ordered_tools()
             .filter_map(|tool_type| {
                 if let ToolType::Embedding(tool) = tool_type {
                     Some(ToolSchema::try_from(&**tool))
@@ -458,13 +556,11 @@ impl ToolSetBuilder {
 
     /// Build the tool set, keyed by each tool's name.
     pub fn build(self) -> ToolSet {
-        ToolSet {
-            tools: self
-                .tools
-                .into_iter()
-                .map(|tool| (tool.name(), tool))
-                .collect(),
+        let mut toolset = ToolSet::default();
+        for tool in self.tools {
+            toolset.insert(tool);
         }
+        toolset
     }
 }
 
@@ -497,6 +593,132 @@ mod tests {
         toolset.delete_tool("add");
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
+        assert_eq!(
+            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            vec!["subtract".to_string()]
+        );
+    }
+
+    #[test]
+    fn deleting_a_middle_tool_preserves_order_of_survivors() {
+        // Guards the `shift_remove` (not `swap_remove`) choice in `delete_tool`.
+        // `swap_remove` would move the last tool into the deleted slot, so this
+        // only catches a regression with 3+ tools and a non-last deletion: here
+        // a `swap_remove("beta")` would yield [alpha, delta, gamma].
+        let mut toolset = ToolSet::default();
+        for name in ["alpha", "beta", "gamma", "delta"] {
+            toolset.add_tool(named_tool(name, "test tool"));
+        }
+
+        toolset.delete_tool("beta");
+
+        assert_eq!(
+            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            vec![
+                "alpha".to_string(),
+                "gamma".to_string(),
+                "delta".to_string()
+            ],
+            "survivors must keep their registration order after a middle deletion"
+        );
+    }
+
+    /// A tool whose name and definition are chosen at runtime, for ordering
+    /// and duplicate-registration tests.
+    struct NamedTool {
+        name: String,
+        description: String,
+    }
+
+    impl ToolDyn for NamedTool {
+        fn name(&self) -> String {
+            self.name.clone()
+        }
+
+        fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
+            Box::pin(async move {
+                ToolDefinition {
+                    name: self.name.clone(),
+                    description: self.description.clone(),
+                    parameters: json!({ "type": "object", "properties": {} }),
+                }
+            })
+        }
+
+        fn call(&self, _args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
+            let output = format!("called {}", self.description);
+            Box::pin(async move { Ok(output) })
+        }
+    }
+
+    fn named_tool(name: &str, description: &str) -> NamedTool {
+        NamedTool {
+            name: name.to_string(),
+            description: description.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_definitions_follow_registration_order() {
+        // Enough names that any non-order-preserving storage would almost
+        // surely surface a regression: its iteration order would differ from
+        // insertion order.
+        let names: Vec<String> = (0..32).map(|i| format!("tool_{i:02}")).collect();
+        let mut toolset = ToolSet::default();
+        for name in &names {
+            toolset.add_tool(named_tool(name, "test tool"));
+        }
+
+        let defs = toolset.get_tool_definitions().await.unwrap();
+        let def_names: Vec<String> = defs.into_iter().map(|def| def.name).collect();
+        assert_eq!(def_names, names);
+
+        let docs = toolset.documents().await.unwrap();
+        let doc_ids: Vec<String> = docs.into_iter().map(|doc| doc.id).collect();
+        assert_eq!(doc_ids, names);
+    }
+
+    #[tokio::test]
+    async fn duplicate_registration_replaces_in_place() {
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(named_tool("alpha", "first alpha"));
+        toolset.add_tool(named_tool("beta", "beta"));
+        toolset.add_tool(named_tool("alpha", "second alpha"));
+
+        let defs = toolset.get_tool_definitions().await.unwrap();
+        assert_eq!(
+            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
+            vec!["alpha", "beta"],
+            "the duplicate should be deduped and keep its original position"
+        );
+        assert_eq!(
+            defs[0].description, "second alpha",
+            "the last registration should win"
+        );
+
+        let output = toolset.call("alpha", "{}".to_string()).await.unwrap();
+        assert_eq!(output, "called second alpha");
+    }
+
+    #[tokio::test]
+    async fn add_tools_merges_in_order_and_replaces_existing() {
+        let mut base = ToolSet::default();
+        base.add_tool(named_tool("alpha", "base alpha"));
+        base.add_tool(named_tool("beta", "base beta"));
+
+        let mut incoming = ToolSet::default();
+        incoming.add_tool(named_tool("gamma", "incoming gamma"));
+        incoming.add_tool(named_tool("alpha", "incoming alpha"));
+
+        base.add_tools(incoming);
+
+        let defs = base.get_tool_definitions().await.unwrap();
+        assert_eq!(
+            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
+            vec!["alpha", "beta", "gamma"],
+            "merged tools should follow registration order with replaced names keeping position"
+        );
+        assert_eq!(defs[0].description, "incoming alpha");
     }
 
     #[tokio::test]

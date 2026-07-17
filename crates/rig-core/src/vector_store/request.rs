@@ -193,35 +193,55 @@ where
 }
 
 impl Filter<serde_json::Value> {
-    /// Tests whether a JSON value satisfies this filter.
+    /// Tests whether a JSON document satisfies this filter.
+    ///
+    /// Leaf filters (`Eq`/`Gt`/`Lt`) look their key up in `value` (expected to be
+    /// a JSON object) and compare the resulting field against the filter operand.
+    /// A missing field, or an operand that is not order-comparable with the field,
+    /// never satisfies the leaf. `And`/`Or` combine leaf results.
     pub fn satisfies(&self, value: &serde_json::Value) -> bool {
         use Filter::*;
-        use serde_json::{Value, Value::*, json};
+        use serde_json::{Value, Value::*};
         use std::cmp::Ordering;
 
-        fn compare_pair(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
+        fn compare_pair(l: &Value, r: &Value) -> Option<Ordering> {
             match (l, r) {
-                (Number(l), Number(r)) => l
-                    .as_f64()
-                    .zip(r.as_f64())
-                    .and_then(|(l, r)| l.partial_cmp(&r))
-                    .or(l.as_i64().zip(r.as_i64()).map(|(l, r)| l.cmp(&r)))
-                    .or(l.as_u64().zip(r.as_u64()).map(|(l, r)| l.cmp(&r))),
+                // Compare integers exactly; fall back to f64 only for floats or
+                // mixed int/float operands. Trying `as_f64` first (as the old
+                // code did) would lose precision for integers beyond 2^53.
+                (Number(l), Number(r)) => {
+                    if let (Some(l), Some(r)) = (l.as_i64(), r.as_i64()) {
+                        Some(l.cmp(&r))
+                    } else if let (Some(l), Some(r)) = (l.as_u64(), r.as_u64()) {
+                        Some(l.cmp(&r))
+                    } else {
+                        l.as_f64()
+                            .zip(r.as_f64())
+                            .and_then(|(l, r)| l.partial_cmp(&r))
+                    }
+                }
                 (String(l), String(r)) => Some(l.cmp(r)),
-                (Null, Null) => Some(std::cmp::Ordering::Equal),
+                (Null, Null) => Some(Ordering::Equal),
                 (Bool(l), Bool(r)) => Some(l.cmp(r)),
                 _ => None,
             }
         }
 
         match self {
-            Eq(k, v) => &json!({ k: v }) == value,
-            Gt(k, v) => {
-                compare_pair(&json!({k: v}), value).is_some_and(|ord| ord == Ordering::Greater)
-            }
-            Lt(k, v) => {
-                compare_pair(&json!({k: v}), value).is_some_and(|ord| ord == Ordering::Less)
-            }
+            // Numbers compare numerically so `5` matches `5.0`, consistent with
+            // `Gt`/`Lt`; other JSON types fall back to structural equality so
+            // strings/bools/arrays/objects still match exactly.
+            Eq(k, v) => value
+                .get(k)
+                .is_some_and(|field| compare_pair(field, v) == Some(Ordering::Equal) || field == v),
+            Gt(k, v) => value
+                .get(k)
+                .and_then(|field| compare_pair(field, v))
+                .is_some_and(|ord| ord == Ordering::Greater),
+            Lt(k, v) => value
+                .get(k)
+                .and_then(|field| compare_pair(field, v))
+                .is_some_and(|ord| ord == Ordering::Less),
             And(l, r) => l.satisfies(value) && r.satisfies(value),
             Or(l, r) => l.satisfies(value) || r.satisfies(value),
         }
@@ -312,5 +332,69 @@ impl<F> VectorSearchRequestBuilder<F, Provided<String>, Provided<u64>> {
             additional_params: self.additional_params,
             filter: self.filter,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Filter, SearchFilter};
+    use serde_json::json;
+
+    type F = Filter<serde_json::Value>;
+
+    #[test]
+    fn eq_matches_field_within_multi_field_document() {
+        let doc = json!({ "category": "fruit", "text": "banana" });
+        assert!(F::eq("category", json!("fruit")).satisfies(&doc));
+        assert!(!F::eq("category", json!("veg")).satisfies(&doc));
+        // A field that does not exist never matches.
+        assert!(!F::eq("missing", json!("fruit")).satisfies(&doc));
+    }
+
+    #[test]
+    fn gt_and_lt_compare_the_named_field() {
+        let doc = json!({ "price": 10, "text": "banana" });
+        assert!(F::gt("price", json!(5)).satisfies(&doc));
+        assert!(!F::gt("price", json!(10)).satisfies(&doc));
+        assert!(F::lt("price", json!(20)).satisfies(&doc));
+        assert!(!F::lt("price", json!(10)).satisfies(&doc));
+        // Missing / non-comparable fields never satisfy an ordering filter.
+        assert!(!F::gt("missing", json!(1)).satisfies(&doc));
+        assert!(!F::gt("text", json!(1)).satisfies(&doc));
+    }
+
+    #[test]
+    fn eq_matches_integer_and_float_representations() {
+        // A field stored as a float still matches an integer operand and vice
+        // versa, consistent with Gt/Lt numeric coercion.
+        assert!(F::eq("score", json!(5)).satisfies(&json!({ "score": 5.0 })));
+        assert!(F::eq("score", json!(5.0)).satisfies(&json!({ "score": 5 })));
+        assert!(!F::eq("score", json!(6)).satisfies(&json!({ "score": 5.0 })));
+        // Non-numeric fields still use structural equality.
+        assert!(F::eq("tag", json!("a")).satisfies(&json!({ "tag": "a" })));
+        assert!(F::eq("tags", json!(["a", "b"])).satisfies(&json!({ "tags": ["a", "b"] })));
+        assert!(!F::eq("tags", json!(["a"])).satisfies(&json!({ "tags": ["a", "b"] })));
+    }
+
+    #[test]
+    fn ordering_compares_large_integers_exactly() {
+        // Integers beyond 2^53 must not collapse to the same f64.
+        let doc = json!({ "id": 9007199254740993_u64 }); // 2^53 + 1
+        assert!(F::gt("id", json!(9007199254740992_u64)).satisfies(&doc)); // > 2^53
+        assert!(!F::gt("id", json!(9007199254740993_u64)).satisfies(&doc));
+        assert!(F::lt("id", json!(9007199254740994_u64)).satisfies(&doc));
+    }
+
+    #[test]
+    fn and_or_combine_leaf_filters() {
+        let doc = json!({ "category": "fruit", "price": 10 });
+        let both = F::eq("category", json!("fruit")).and(F::gt("price", json!(5)));
+        assert!(both.satisfies(&doc));
+
+        let missing_branch = F::eq("category", json!("fruit")).and(F::gt("price", json!(50)));
+        assert!(!missing_branch.satisfies(&doc));
+
+        let either = F::eq("category", json!("veg")).or(F::lt("price", json!(50)));
+        assert!(either.satisfies(&doc));
     }
 }

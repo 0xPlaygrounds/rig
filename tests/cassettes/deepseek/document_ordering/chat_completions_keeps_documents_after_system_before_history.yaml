@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Answer with the exact token from the document only.","role":"system"},{"content":"<file id: ordering-note>\nThe ordering token is violet-needle.\n</file>\n","role":"user"},{"content":"Acknowledged.","role":"assistant"},{"content":"According to the document, what is the ordering token?","role":"user"}],"model":"deepseek-v4-flash","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"violet-needle","reasoning_content":"We need to answer with the exact token from the document. The document says: \"The ordering token is violet-needle.\" So the answer is \"violet-needle\".","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":43,"completion_tokens_details":{"reasoning_tokens":37},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":53,"prompt_tokens":53,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":96}}'

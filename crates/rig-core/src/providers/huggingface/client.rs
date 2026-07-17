@@ -129,6 +129,7 @@ impl<H> Capabilities<H> for HuggingFaceExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for HuggingFaceExt {

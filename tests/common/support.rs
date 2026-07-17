@@ -83,6 +83,8 @@ pub(crate) const IMAGE_FIXTURE_PATH: &str = concat!(
 );
 pub(crate) const PDF_FIXTURE_PATH: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/pages.pdf");
+pub(crate) const VIDEO_FIXTURE_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/sample_video.mp4");
 
 pub(crate) const EMBEDDING_INPUTS: [&str; 3] = [
     "Rust values memory safety and predictable performance.",
@@ -512,6 +514,9 @@ pub(crate) async fn collect_stream_observation<R>(
                 StreamedAssistantContent::Final(_) => {
                     observation.events.push("stream_final");
                 }
+                StreamedAssistantContent::Unknown(_) => {
+                    observation.events.push("unknown");
+                }
             },
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 observation.tool_results += 1;
@@ -569,6 +574,9 @@ where
             Ok(StreamedAssistantContent::Final(_)) => {
                 observation.got_final = true;
                 observation.events.push("final");
+            }
+            Ok(StreamedAssistantContent::Unknown(_)) => {
+                observation.events.push("unknown");
             }
             Err(error) => {
                 observation.errors.push(error.to_string());
@@ -855,6 +863,45 @@ pub(crate) fn assert_raw_stream_contains_distinct_tool_calls_before_text(
             expected_tools.len(),
             tool_calls_before_text,
             observation.events
+        );
+    }
+}
+
+/// Every tool call surfaced on the raw stream must carry a JSON **object** as
+/// its `function.arguments` (never a bare string), the invariant fixed in #1958:
+/// a downstream object-typed serializer (e.g. Anthropic's `tool_use.input`)
+/// rejects a string input. This guards the streaming aggregator end-to-end on
+/// real provider traffic, complementing the in-crate eviction unit tests.
+pub(crate) fn assert_raw_stream_tool_call_arguments_are_objects(
+    observation: &RawStreamObservation,
+    expected_tools: &[&str],
+) {
+    assert!(
+        observation.errors.is_empty(),
+        "raw stream should not emit errors: {:?}",
+        observation.errors
+    );
+    assert!(
+        observation.got_final,
+        "raw stream should emit a final response"
+    );
+    assert!(
+        observation.tool_calls.len() >= expected_tools.len(),
+        "expected at least {} raw stream tool calls, saw {:?}",
+        expected_tools.len(),
+        observation
+            .tool_calls
+            .iter()
+            .map(|tool_call| tool_call.function.name.clone())
+            .collect::<Vec<_>>(),
+    );
+
+    for tool_call in &observation.tool_calls {
+        assert!(
+            tool_call.function.arguments.is_object(),
+            "tool call `{}` must surface object arguments, got {:?}",
+            tool_call.function.name,
+            tool_call.function.arguments,
         );
     }
 }

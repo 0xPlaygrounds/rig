@@ -24,7 +24,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think briefly, then answer in one sentence why usage accounting matters.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"\n\nUsage accounting matters because it ensures fair resource allocation, tracks cost efficiency, and helps optimize spending based on actual consumption.","type":"input_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"/no_think Reply with exactly: OK","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"Qwen/Qwen3-4B"}'
+  body: '{"input":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think briefly, then answer in one sentence why usage accounting matters.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"\n\nUsage accounting matters because it ensures fair resource allocation, tracks cost efficiency, and helps optimize spending based on actual consumption.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"/no_think Reply with exactly: OK","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"Qwen/Qwen3-4B"}'
 then:
   status: 200
   header:

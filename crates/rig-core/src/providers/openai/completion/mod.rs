@@ -2,10 +2,7 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{
-    client::{ApiErrorResponse, ApiResponse},
-    streaming::StreamingCompletionResponse,
-};
+use super::{client::ApiResponse, streaming::StreamingCompletionResponse};
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
@@ -125,12 +122,6 @@ pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
 pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
 /// `gpt-4.1` completion model
 pub const GPT_4_1: &str = "gpt-4.1";
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
@@ -1111,8 +1102,8 @@ impl fmt::Display for Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        Some(crate::providers::internal::completion_usage(
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
             (self.total_tokens - self.prompt_tokens) as u64,
             self.total_tokens as u64,
@@ -1120,7 +1111,7 @@ impl GetTokenUsage for Usage {
                 .as_ref()
                 .map(|d| d.cached_tokens as u64)
                 .unwrap_or(0),
-        ))
+        )
     }
 }
 
@@ -1215,15 +1206,12 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             strict_tools,
             tool_result_array_content,
         } = params;
+        let chat_history = req.chat_history_with_documents();
 
-        let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
         let CoreCompletionRequest {
             model: request_model,
             preamble,
-            chat_history,
+            chat_history: _,
             tools,
             temperature,
             max_tokens,
@@ -1233,6 +1221,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
+        let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
 
         let mut full_history: Vec<Message> =
@@ -1341,44 +1330,6 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
     }
 }
 
-impl crate::telemetry::ProviderRequestExt for CompletionRequest {
-    type InputMessage = Message;
-
-    fn get_input_messages(&self) -> Vec<Self::InputMessage> {
-        self.messages.clone()
-    }
-
-    fn get_system_prompt(&self) -> Option<String> {
-        let first_message = self.messages.first()?;
-
-        let Message::System { ref content, .. } = first_message.clone() else {
-            return None;
-        };
-
-        let SystemContent { text, .. } = content.first();
-
-        Some(text)
-    }
-
-    fn get_prompt(&self) -> Option<String> {
-        let last_message = self.messages.last()?;
-
-        let Message::User { ref content, .. } = last_message.clone() else {
-            return None;
-        };
-
-        let UserContent::Text { text, .. } = content.first() else {
-            return None;
-        };
-
-        Some(text)
-    }
-
-    fn get_model_name(&self) -> String {
-        self.model.clone()
-    }
-}
-
 impl GenericCompletionModel<super::OpenAICompletionsExt, reqwest::Client> {
     pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
         crate::agent::AgentBuilder::new(self)
@@ -1404,6 +1355,17 @@ where
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
+    }
+
+    // OpenAI Chat Completions *defers* `response_format` while tools are present
+    // and no tool result exists yet (see `should_apply_response_format`), then
+    // applies it once a tool result is in the history. So the native constraint
+    // does not suppress tool calls — they compose — which is what this flag
+    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
+    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
+    // See issue #1928.
+    fn composes_native_output_with_tools(&self) -> bool {
+        true
     }
 
     async fn completion(
@@ -1454,7 +1416,8 @@ where
         async move {
             let response = self.client.send(req).await?;
 
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let text = http_client::text(response).await?;
 
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
@@ -1473,11 +1436,14 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::from_http_response(status, text))
+                    }
                 }
             } else {
                 let text = http_client::text(response).await?;
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::from_http_response(status, text))
             }
         }
         .instrument(span)
@@ -1512,7 +1478,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::CompletionRequestBuilder;
     use crate::telemetry::ProviderResponseExt;
+    use crate::test_utils::MockCompletionModel;
+    use std::collections::HashMap;
+
+    fn test_document(id: &str, text: &str) -> crate::completion::Document {
+        crate::completion::Document {
+            id: id.to_string(),
+            text: text.to_string(),
+            additional_props: HashMap::new(),
+        }
+    }
 
     #[test]
     fn test_openai_request_uses_request_model_override() {
@@ -1568,6 +1545,106 @@ mod tests {
             serde_json::to_value(openai_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "gpt-4o-mini");
+    }
+
+    #[test]
+    fn openai_chat_request_keeps_documents_after_system_messages() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
+            .message(crate::completion::Message::system("System prompt"))
+            .message(crate::completion::Message::user("Earlier user turn"))
+            .message(crate::completion::Message::assistant(
+                "Earlier assistant turn",
+            ))
+            .document(test_document("doc1", "Document text."))
+            .build();
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(&openai_request.messages).expect("messages should serialize");
+        let messages = serialized.as_array().expect("messages should be an array");
+
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[1]["role"], "user");
+        assert!(
+            messages[1].to_string().contains("<file id: doc1>"),
+            "document message should follow system message: {messages:?}"
+        );
+        assert_eq!(messages[2]["role"], "user");
+        assert!(
+            messages[2].to_string().contains("Earlier user turn"),
+            "prior user history should follow document message: {messages:?}"
+        );
+        assert_eq!(messages[3]["role"], "assistant");
+        assert!(
+            messages[3].to_string().contains("Earlier assistant turn"),
+            "prior assistant history should follow prior user history: {messages:?}"
+        );
+        assert_eq!(messages[4]["role"], "user");
+        assert!(
+            messages[4].to_string().contains("Prompt"),
+            "prompt should remain last: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn openai_chat_direct_request_keeps_documents_after_system_messages() {
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::many(vec![
+                crate::completion::Message::system("System prompt"),
+                crate::completion::Message::assistant("Earlier assistant turn"),
+                crate::completion::Message::system("Mid-conversation instruction"),
+                crate::completion::Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(&openai_request.messages).expect("messages should serialize");
+        let messages = serialized.as_array().expect("messages should be an array");
+
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[1]["role"], "user");
+        assert!(
+            messages[1].to_string().contains("<file id: doc1>"),
+            "document message should follow leading system messages: {messages:?}"
+        );
+        assert_eq!(messages[2]["role"], "assistant");
+        assert_eq!(messages[3]["role"], "system");
+        assert_eq!(messages[4]["role"], "user");
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc1>"))
+                .count(),
+            1,
+            "document message should appear exactly once: {messages:?}"
+        );
     }
 
     #[test]
@@ -2245,5 +2322,84 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert!(matches!(parts[0], UserContent::Text { .. }));
         assert!(matches!(parts[1], UserContent::File { .. }));
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::providers::openai::CompletionsClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"slow down","type":"rate_limit","code":"rate_limit_exceeded"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o-mini");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(
+                    error.provider_response_status(),
+                    Some(http::StatusCode::ACCEPTED)
+                );
+                let json = error
+                    .provider_response_json()
+                    .expect("raw body should be valid JSON")
+                    .expect("parsed JSON should be present");
+                assert_eq!(json["code"], "rate_limit_exceeded");
+                assert_eq!(json["type"], "rate_limit");
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::providers::openai::CompletionsClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o-mini");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        let json = error
+            .provider_response_json()
+            .expect("raw body should be valid JSON")
+            .expect("parsed JSON should be present");
+        assert_eq!(json["error"]["type"], "rate_limit_error");
     }
 }

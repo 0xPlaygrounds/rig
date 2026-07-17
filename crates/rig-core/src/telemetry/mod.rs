@@ -6,21 +6,6 @@
 use crate::completion::GetTokenUsage;
 use serde::Serialize;
 
-/// Provider request metadata used to populate GenAI telemetry spans.
-pub trait ProviderRequestExt {
-    /// Provider-native message type used for serialized input messages.
-    type InputMessage: Serialize;
-
-    /// Returns serialized input messages sent to the provider.
-    fn get_input_messages(&self) -> Vec<Self::InputMessage>;
-    /// Returns the system prompt, if represented separately by the provider.
-    fn get_system_prompt(&self) -> Option<String>;
-    /// Returns the model name requested from the provider.
-    fn get_model_name(&self) -> String;
-    /// Returns the primary prompt text, when available.
-    fn get_prompt(&self) -> Option<String>;
-}
-
 /// Provider response metadata used to populate GenAI telemetry spans.
 pub trait ProviderResponseExt {
     /// Provider-native output message type.
@@ -77,7 +62,10 @@ impl SpanCombinator for tracing::Span {
             return;
         }
 
-        if let Some(usage) = usage.token_usage() {
+        let usage = usage.token_usage();
+        // Zero-valued usage is the documented sentinel for missing provider
+        // usage metrics; leave the span fields unset.
+        if usage.has_values() {
             self.record("gen_ai.usage.input_tokens", usage.input_tokens);
             self.record("gen_ai.usage.output_tokens", usage.output_tokens);
             self.record(
@@ -154,8 +142,8 @@ mod tests {
     struct TestUsage(Usage);
 
     impl GetTokenUsage for TestUsage {
-        fn token_usage(&self) -> Option<Usage> {
-            Some(self.0)
+        fn token_usage(&self) -> Usage {
+            self.0
         }
     }
 
@@ -222,6 +210,9 @@ mod tests {
             reasoning_tokens: 5,
         });
 
+        // Scoped-subscriber tests must not run concurrently; see
+        // `test_utils::scoped_tracing_subscriber_guard`.
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
             let span = tracing::info_span!(
                 "usage_recording",

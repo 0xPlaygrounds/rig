@@ -11,10 +11,7 @@ use crate::{
     http_client::{self, HttpClientExt},
 };
 
-use super::{
-    Client,
-    client::together_ai_api_types::{ApiErrorResponse, ApiResponse},
-};
+use super::{Client, client::together_ai_api_types::ApiResponse};
 
 // ================================================================
 // Together AI Embedding API
@@ -34,21 +31,6 @@ pub struct EmbeddingResponse {
     pub model: String,
     pub object: String,
     pub data: Vec<EmbeddingData>,
-}
-
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message())
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Error(err) => Err(EmbeddingError::ProviderError(err.message())),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,11 +88,12 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+        let status = response.status();
+        if status.is_success() {
+            let response_body: Vec<u8> = response.into_body().await?;
+            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
-            match body {
+            match parsed {
                 ApiResponse::Ok(response) => {
                     if response.data.len() != documents.len() {
                         return Err(EmbeddingError::ResponseError(
@@ -132,11 +115,20 @@ where
                         })
                         .collect())
                 }
-                ApiResponse::Error(err) => Err(EmbeddingError::ProviderError(err.message())),
+                ApiResponse::Error(err) => {
+                    tracing::warn!(
+                        message = %err.error,
+                        "provider returned an error response"
+                    );
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }

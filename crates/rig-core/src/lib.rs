@@ -156,6 +156,7 @@ pub mod embeddings;
 pub mod evals;
 pub mod extractor;
 pub mod http_client;
+pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
@@ -166,9 +167,10 @@ pub mod markers;
 pub mod memory;
 pub mod model;
 pub mod one_or_many;
-pub mod pipeline;
 pub mod prelude;
+pub(crate) mod provider_response;
 pub mod providers;
+pub mod rerank;
 
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
@@ -185,6 +187,7 @@ pub use completion::message;
 pub use embeddings::Embed;
 pub use extractor::ExtractionResponse;
 pub use one_or_many::{EmptyListError, OneOrMany};
+pub use provider_response::ProviderResponseError;
 pub use schemars;
 
 #[cfg(feature = "derive")]

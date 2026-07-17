@@ -71,6 +71,7 @@ impl<H> Capabilities<H> for LlamafileExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for LlamafileExt {}
@@ -292,25 +293,19 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs may not be supported by llamafile");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
-        // Build message history: preamble -> documents -> chat history
+        // Build message history.
         let mut full_history: Vec<openai::Message> = match &req.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<openai::Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<openai::Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<openai::Message> = chat_history
             .into_iter()
             .map(|msg| msg.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
@@ -441,10 +436,17 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
+                        ))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(
+                Err(CompletionError::from_http_response(
+                    status,
                     String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
@@ -539,7 +541,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }
@@ -690,11 +692,13 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<openai::EmbeddingResponse> = serde_json::from_slice(&body)?;
+        let status = response.status();
+        if status.is_success() {
+            let response_body: Vec<u8> = response.into_body().await?;
+            let parsed: ApiResponse<openai::EmbeddingResponse> =
+                serde_json::from_slice(&response_body)?;
 
-            match body {
+            match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "Llamafile embedding token usage: {:?}",
@@ -721,11 +725,17 @@ where
                         })
                         .collect())
                 }
-                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(EmbeddingError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }
@@ -792,37 +802,24 @@ mod tests {
 
     #[test]
     fn test_completion_request_flattens_text_only_document_arrays() {
-        use crate::OneOrMany;
-        use crate::completion::Message as CompletionMessage;
-        use crate::message::{Text, UserContent};
+        use crate::completion::CompletionRequestBuilder;
+        use crate::test_utils::MockCompletionModel;
 
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new(
-                    "What does glarb-glarb mean?".to_string(),
-                ))),
-            }),
-            documents: vec![
-                Document {
-                    id: "doc-1".into(),
-                    text: "Definition of flurbo: a green alien.".into(),
-                    additional_props: HashMap::new(),
-                },
-                Document {
-                    id: "doc-2".into(),
-                    text: "Definition of glarb-glarb: an ancient farming tool.".into(),
-                    additional_props: HashMap::new(),
-                },
-            ],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        };
+        let completion_request = CompletionRequestBuilder::new(
+            MockCompletionModel::default(),
+            "What does glarb-glarb mean?",
+        )
+        .document(Document {
+            id: "doc-1".into(),
+            text: "Definition of flurbo: a green alien.".into(),
+            additional_props: HashMap::new(),
+        })
+        .document(Document {
+            id: "doc-2".into(),
+            text: "Definition of glarb-glarb: an ancient farming tool.".into(),
+            additional_props: HashMap::new(),
+        })
+        .build();
 
         let request = LlamafileCompletionRequest::try_from((LLAMA_CPP, completion_request))
             .expect("Failed to create request");

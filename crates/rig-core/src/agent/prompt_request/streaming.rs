@@ -1,29 +1,30 @@
 use crate::{
     OneOrMany,
-    agent::completion::{DynamicContextStore, build_prepared_completion_request},
-    agent::prompt_request::{
-        HookAction, InvalidToolCallResolution, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
-        hooks::PromptHook, resolve_invalid_tool_call, validate_tool_call_name,
+    agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
+    agent::hook::{AgentHook, HookStack, InvalidToolCallHookAction, StepEvent, StepEventKind},
+    agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
+    agent::run::{
+        AgentRun, AgentRunStep, PendingToolCall,
+        streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
-    completion::{Document, GetTokenUsage},
-    json_utils,
-    memory::ConversationMemory,
-    message::{
-        AssistantContent, ToolCall, ToolChoice, ToolFunction, ToolResult, ToolResultContent,
-        UserContent,
+    agent::runner::{
+        AgentRunner, CompletionCallOutcome, InvalidDecision, acquire_agent_span,
+        append_run_messages, build_chat_span, flow_into_invalid, new_execute_tool_span,
+        observe_flow, resolve_completion_call, run_single_tool,
     },
+    completion::GetTokenUsage,
+    message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     telemetry::SpanCombinator,
-    tool::server::ToolServerHandle,
+    tool::ToolCallExtensions,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, pin::Pin, sync::Arc};
-use tracing::info_span;
+use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing_futures::Instrument;
 
-use super::{CompletionCall, ToolCallHookAction, reported_usage};
+use super::{CompletionCall, PromptResponse};
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -56,7 +57,10 @@ pub enum MultiTurnStreamItem<R> {
     /// ```rust,ignore
     /// match item {
     ///     MultiTurnStreamItem::CompletionCall(completion_call) => {
-    ///         let context_tokens = completion_call.usage.map(|usage| usage.input_tokens);
+    ///         // Zero-valued usage means the provider reported no metrics.
+    ///         if completion_call.usage.has_values() {
+    ///             let context_tokens = completion_call.usage.input_tokens;
+    ///         }
     ///     }
     ///     _ => {}
     /// }
@@ -127,12 +131,17 @@ impl FinalResponse {
 
     /// Returns successfully completed completion requests made by this agent stream, with usage when available.
     ///
-    /// Each entry represents one provider completion request. When present,
-    /// usage is a whole-request provider snapshot, not incremental usage per
-    /// streamed token. Streaming providers may omit usage for some calls; those
-    /// calls have an entry with `None` usage.
+    /// Each entry represents one provider completion request. Usage is a
+    /// whole-request provider snapshot, not incremental usage per streamed
+    /// token. Streaming providers may omit usage for some calls; those calls
+    /// have an entry with zero-valued usage.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
+    }
+
+    /// Number of completion requests this agent run made.
+    pub fn requests(&self) -> usize {
+        self.completion_calls.len()
     }
 
     pub fn history(&self) -> Option<&[Message]> {
@@ -172,172 +181,28 @@ impl<R> MultiTurnStreamItem<R> {
     }
 }
 
-fn merge_reasoning_blocks(
-    accumulated_reasoning: &mut Vec<crate::message::Reasoning>,
-    incoming: &crate::message::Reasoning,
-) {
-    let ids_match = |existing: &crate::message::Reasoning| {
-        matches!(
-            (&existing.id, &incoming.id),
-            (Some(existing_id), Some(incoming_id)) if existing_id == incoming_id
-        )
-    };
-
-    if let Some(existing) = accumulated_reasoning
-        .iter_mut()
-        .rev()
-        .find(|existing| ids_match(existing))
-    {
-        existing.content.extend(incoming.content.clone());
-    } else {
-        accumulated_reasoning.push(incoming.clone());
-    }
-}
-
-fn flush_pending_reasoning_delta(
-    accumulated_reasoning: &mut Vec<crate::message::Reasoning>,
-    pending_reasoning_delta_text: &mut String,
-    pending_reasoning_delta_id: &mut Option<String>,
-) {
-    if accumulated_reasoning.is_empty() && !pending_reasoning_delta_text.is_empty() {
-        let mut assembled = crate::message::Reasoning::new(&*pending_reasoning_delta_text);
-        if let Some(id) = pending_reasoning_delta_id.take() {
-            assembled = assembled.with_id(id);
-        }
-        accumulated_reasoning.push(assembled);
-        pending_reasoning_delta_text.clear();
-    }
-}
-
-/// Build full history for error reporting (input + new messages).
-fn build_full_history(
-    chat_history: Option<&[Message]>,
-    new_messages: Vec<Message>,
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().cloned().chain(new_messages).collect()
-}
-
-struct ToolCallValidationHistory<'a> {
-    chat_history: Option<&'a [Message]>,
-    new_messages: &'a [Message],
-    assistant_message_id: &'a Option<String>,
-    final_turn_content: Option<&'a OneOrMany<AssistantContent>>,
-    text_delta_response: Option<&'a str>,
-    accumulated_reasoning: &'a [crate::message::Reasoning],
-    pending_reasoning_delta_text: &'a str,
-    pending_reasoning_delta_id: &'a Option<String>,
-    pending_tool_calls: &'a [(ToolCall, String)],
-    current_tool_call: Option<ToolCall>,
-}
-
-fn build_tool_call_validation_history(input: ToolCallValidationHistory<'_>) -> Vec<Message> {
-    let mut messages = input.new_messages.to_vec();
-
-    if let Some(final_turn_content) = input.final_turn_content
-        && !is_empty_assistant_choice(final_turn_content)
-    {
-        messages.push(Message::Assistant {
-            id: input.assistant_message_id.clone(),
-            content: final_turn_content.clone(),
-        });
-        return build_full_history(input.chat_history, messages);
-    }
-
-    let mut content_items = Vec::new();
-    if let Some(text) = input.text_delta_response
-        && !text.is_empty()
-    {
-        content_items.push(AssistantContent::text(text.to_string()));
-    }
-    content_items.extend(
-        input
-            .accumulated_reasoning
-            .iter()
-            .cloned()
-            .map(AssistantContent::Reasoning),
-    );
-    if input.accumulated_reasoning.is_empty() && !input.pending_reasoning_delta_text.is_empty() {
-        let mut reasoning = crate::message::Reasoning::new(input.pending_reasoning_delta_text);
-        if let Some(id) = input.pending_reasoning_delta_id.clone() {
-            reasoning = reasoning.with_id(id);
-        }
-        content_items.push(AssistantContent::Reasoning(reasoning));
-    }
-    content_items.extend(
-        input
-            .pending_tool_calls
-            .iter()
-            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
-    );
-    if let Some(tool_call) = input.current_tool_call {
-        content_items.push(AssistantContent::ToolCall(tool_call));
-    }
-
-    if let Some(content) = OneOrMany::from_iter_optional(content_items) {
-        messages.push(Message::Assistant {
-            id: input.assistant_message_id.clone(),
-            content,
-        });
-    }
-
-    build_full_history(input.chat_history, messages)
-}
-
-async fn drain_recovered_stream_usage<R>(
+/// Drain a provider stream abandoned by invalid tool-call recovery so the
+/// reported usage for the recovered completion call is not lost.
+async fn drain_stream_usage<R>(
     stream: &mut crate::streaming::StreamingCompletionResponse<R>,
-    tool_call_delta_states: &HashMap<(String, String), ToolCallDeltaState>,
-    current_call_usage: &mut Option<crate::completion::Usage>,
-    aggregated_usage: &mut crate::completion::Usage,
-) -> Result<(), StreamingError>
+) -> Result<crate::completion::Usage, StreamingError>
 where
     R: Clone + Unpin + GetTokenUsage,
 {
-    if let Some(err) = pending_tool_call_delta_error(tool_call_delta_states) {
-        return Err(err.into());
-    }
-
     while let Some(content) = stream.next().await {
         match content {
             Ok(StreamedAssistantContent::Final(final_resp)) => {
-                if let Some(usage) = final_resp.token_usage() {
-                    *current_call_usage = reported_usage(usage);
-                }
-                if let Some(usage) = *current_call_usage {
-                    *aggregated_usage += usage;
-                }
-                return Ok(());
+                return Ok(final_resp.token_usage());
             }
             Ok(_) => {}
             Err(err) => return Err(err.into()),
         }
     }
 
-    Ok(())
+    Ok(crate::completion::Usage::new())
 }
 
-fn record_completion_call_if_needed(
-    completion_calls: &mut Vec<CompletionCall>,
-    completion_call_emitted: &mut bool,
-    call_index: usize,
-    current_call_usage: Option<crate::completion::Usage>,
-    chat_stream_span: &tracing::Span,
-) -> Option<CompletionCall> {
-    if *completion_call_emitted {
-        return None;
-    }
-
-    if let Some(usage) = current_call_usage {
-        record_usage_on_span(chat_stream_span, usage);
-    }
-
-    let completion_call = CompletionCall::new(call_index, current_call_usage);
-    completion_calls.push(completion_call);
-    *completion_call_emitted = true;
-    Some(completion_call)
-}
-
-fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
+pub(crate) fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
     span.record(
@@ -355,196 +220,43 @@ fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
     span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 }
 
-/// Combine input history with new messages for building completion requests.
-fn build_history_for_request(
-    chat_history: Option<&[Message]>,
-    new_messages: &[Message],
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().chain(new_messages.iter()).cloned().collect()
-}
-
-async fn cancelled_prompt_error(
-    chat_history: Option<&[Message]>,
-    new_messages: Vec<Message>,
-    reason: String,
-) -> StreamingError {
-    StreamingError::Prompt(
-        PromptError::prompt_cancelled(build_full_history(chat_history, new_messages), reason)
-            .into(),
+/// Build the final streamed content for a finished run (#1928).
+///
+/// When the finishing turn carries a tool call it is a Tool-mode output-tool
+/// call (a real tool call would have routed to `CallTools`, not `Done`). In that
+/// case the tool call AND the model's prose are dropped, any reasoning/image
+/// content is kept, and `output` is appended as the final text — so the streamed
+/// `response()` string is the structured output rather than the prose, with no
+/// unanswered tool_use, matching the non-streaming `output`. Note this shapes
+/// only the surfaced `FinalResponse.content()`; the persisted message history is
+/// built by the state machine (which keeps the prose, like the blocking driver),
+/// so `content()` and `history()` intentionally differ on prose in this case.
+/// Otherwise returns `None` and the caller surfaces the turn's content unchanged.
+fn finalize_streamed_choice(
+    last_final_choice: &OneOrMany<AssistantContent>,
+    output: &str,
+) -> Option<OneOrMany<AssistantContent>> {
+    let finalized_via_output_tool = last_final_choice
+        .iter()
+        .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+    if !finalized_via_output_tool {
+        return None;
+    }
+    let mut items: Vec<AssistantContent> = last_final_choice
+        .iter()
+        .filter(|item| {
+            !matches!(
+                item,
+                AssistantContent::ToolCall(_) | AssistantContent::Text(_)
+            )
+        })
+        .cloned()
+        .collect();
+    items.push(AssistantContent::text(output.to_string()));
+    Some(
+        OneOrMany::from_iter_optional(items)
+            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(output.to_string()))),
     )
-}
-
-fn tool_result_user_content(
-    id: String,
-    call_id: Option<String>,
-    tool_result: String,
-) -> UserContent {
-    let content = ToolResultContent::from_tool_output(tool_result);
-    match call_id {
-        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
-        None => UserContent::tool_result(id, content),
-    }
-}
-
-fn invalid_streaming_tool_retry_messages(
-    assistant_message_id: &Option<String>,
-    text_delta_response: Option<&str>,
-    accumulated_reasoning: &[crate::message::Reasoning],
-    pending_tool_calls: &[(ToolCall, String)],
-    invalid_tool_call: ToolCall,
-    feedback: String,
-) -> Option<(Message, Message)> {
-    let mut assistant_content = Vec::new();
-    if let Some(text) = text_delta_response
-        && !text.is_empty()
-    {
-        assistant_content.push(AssistantContent::text(text.to_string()));
-    }
-    assistant_content.extend(
-        accumulated_reasoning
-            .iter()
-            .cloned()
-            .map(AssistantContent::Reasoning),
-    );
-    assistant_content.extend(
-        pending_tool_calls
-            .iter()
-            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
-    );
-    assistant_content.push(AssistantContent::ToolCall(invalid_tool_call.clone()));
-
-    let assistant_content = OneOrMany::from_iter_optional(assistant_content)?;
-    let assistant_message = Message::Assistant {
-        id: assistant_message_id.clone(),
-        content: assistant_content,
-    };
-
-    let mut retry_results = pending_tool_calls
-        .iter()
-        .map(|(tool_call, _)| {
-            tool_result_user_content(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-            )
-        })
-        .collect::<Vec<_>>();
-    retry_results.push(tool_result_user_content(
-        invalid_tool_call.id,
-        invalid_tool_call.call_id,
-        feedback,
-    ));
-
-    let user_message = Message::User {
-        content: OneOrMany::from_iter_optional(retry_results)?,
-    };
-
-    Some((assistant_message, user_message))
-}
-
-fn invalid_streaming_name_delta_retry_messages(
-    assistant_message_id: &Option<String>,
-    text_delta_response: Option<&str>,
-    accumulated_reasoning: &[crate::message::Reasoning],
-    pending_tool_calls: &[(ToolCall, String)],
-    invalid_tool_call: ToolCall,
-    feedback: String,
-) -> Option<(Message, Message)> {
-    let mut assistant_content = Vec::new();
-    if let Some(text) = text_delta_response
-        && !text.is_empty()
-    {
-        assistant_content.push(AssistantContent::text(text.to_string()));
-    }
-    assistant_content.extend(
-        accumulated_reasoning
-            .iter()
-            .cloned()
-            .map(AssistantContent::Reasoning),
-    );
-    assistant_content.extend(
-        pending_tool_calls
-            .iter()
-            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
-    );
-    assistant_content.push(AssistantContent::ToolCall(invalid_tool_call.clone()));
-
-    let assistant_message = Message::Assistant {
-        id: assistant_message_id.clone(),
-        content: OneOrMany::from_iter_optional(assistant_content)?,
-    };
-    let mut retry_results = pending_tool_calls
-        .iter()
-        .map(|(tool_call, _)| {
-            tool_result_user_content(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-            )
-        })
-        .collect::<Vec<_>>();
-    retry_results.push(tool_result_user_content(
-        invalid_tool_call.id,
-        invalid_tool_call.call_id,
-        feedback,
-    ));
-    let user_message = Message::User {
-        content: OneOrMany::from_iter_optional(retry_results)?,
-    };
-
-    Some((assistant_message, user_message))
-}
-
-fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
-fn assistant_text_items_from_choice(choice: &OneOrMany<AssistantContent>) -> Vec<AssistantContent> {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => (!text.text.is_empty()
-                || text.additional_params.is_some())
-            .then(|| AssistantContent::Text(text.clone())),
-            _ => None,
-        })
-        .collect()
-}
-
-fn is_empty_assistant_choice(choice: &OneOrMany<AssistantContent>) -> bool {
-    choice.len() == 1
-        && matches!(
-            choice.first(),
-            AssistantContent::Text(text)
-                if text.text.is_empty() && text.additional_params.is_none()
-        )
-}
-
-#[derive(Default)]
-struct ToolCallDeltaState {
-    name_validated: bool,
-    buffered_arguments: Vec<String>,
-}
-
-fn pending_tool_call_delta_error(
-    states: &HashMap<(String, String), ToolCallDeltaState>,
-) -> Option<CompletionError> {
-    states
-        .iter()
-        .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
-        .map(|((id, internal_call_id), state)| {
-            CompletionError::ResponseError(format!(
-                "streamed tool call arguments received before a validated tool name for id `{id}` and internal_call_id `{internal_call_id}` ({} buffered argument delta(s))",
-                state.buffered_arguments.len()
-            ))
-        })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -566,8 +278,6 @@ impl From<crate::memory::MemoryError> for StreamingError {
     }
 }
 
-const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
-
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
@@ -576,1154 +286,1118 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct StreamingPromptRequest<M, P>
+pub struct StreamingPromptRequest<M>
 where
     M: CompletionModel,
-    P: PromptHook<M> + 'static,
 {
-    /// The prompt message to send to the model
-    prompt: Message,
-    /// Optional chat history provided by the caller.
-    chat_history: Option<Vec<Message>>,
-    /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
-    max_turns: usize,
-
-    // Agent data (cloned from agent to allow hook type transitions):
-    /// The completion model
-    model: Arc<M>,
-    /// Agent name for logging
-    agent_name: Option<String>,
-    /// System prompt
-    preamble: Option<String>,
-    /// Static context documents
-    static_context: Vec<Document>,
-    /// Temperature setting
-    temperature: Option<f64>,
-    /// Max tokens setting
-    max_tokens: Option<u64>,
-    /// Additional model parameters
-    additional_params: Option<serde_json::Value>,
-    /// Tool server handle for tool execution
-    tool_server_handle: ToolServerHandle,
-    /// Dynamic context store
-    dynamic_context: DynamicContextStore,
-    /// Tool choice setting
-    tool_choice: Option<ToolChoice>,
-    /// Optional JSON Schema for structured output
-    output_schema: Option<schemars::Schema>,
-    /// Optional per-request hook for events
-    hook: Option<P>,
-    /// Maximum number of invalid tool-call retries for this request.
-    max_invalid_tool_call_retries: usize,
-    /// Optional conversation memory backend cloned from the agent.
-    memory: Option<Arc<dyn ConversationMemory>>,
-    /// Optional conversation id used for loading and saving memory.
-    conversation_id: Option<String>,
+    /// The hook-aware driver this streaming request configures and runs.
+    runner: AgentRunner<M>,
 }
 
-impl<M, P> StreamingPromptRequest<M, P>
+impl<M> StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
-    P: PromptHook<M>,
 {
-    /// Create a new StreamingPromptRequest with the given prompt and model.
-    /// Note: This creates a request without an agent hook. Use `from_agent` to include the agent's hook.
-    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M, ()> {
+    /// Create a new StreamingPromptRequest from an agent WITHOUT the agent's
+    /// default hooks. Use [`from_agent`](Self::from_agent) to include them.
+    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
+        let mut runner = AgentRunner::from_agent(agent.as_ref(), prompt);
+        runner.hooks = HookStack::new();
+        StreamingPromptRequest { runner }
+    }
+
+    /// Create a new StreamingPromptRequest from an agent, cloning the agent's
+    /// data and default hook stack.
+    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
         StreamingPromptRequest {
-            prompt: prompt.into(),
-            chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or_default(),
-            model: agent.model.clone(),
-            agent_name: agent.name.clone(),
-            preamble: agent.preamble.clone(),
-            static_context: agent.static_context.clone(),
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            additional_params: agent.additional_params.clone(),
-            tool_server_handle: agent.tool_server_handle.clone(),
-            dynamic_context: agent.dynamic_context.clone(),
-            tool_choice: agent.tool_choice.clone(),
-            output_schema: agent.output_schema.clone(),
-            hook: None,
-            max_invalid_tool_call_retries: 0,
-            memory: agent.memory.clone(),
-            conversation_id: agent.default_conversation_id.clone(),
+            runner: AgentRunner::from_agent(agent, prompt),
         }
     }
 
-    /// Create a new StreamingPromptRequest from an agent, cloning the agent's data and default hook.
-    pub fn from_agent<P2>(
-        agent: &Agent<M, P2>,
-        prompt: impl Into<Message>,
-    ) -> StreamingPromptRequest<M, P2>
-    where
-        P2: PromptHook<M>,
-    {
-        StreamingPromptRequest {
-            prompt: prompt.into(),
-            chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or_default(),
-            model: agent.model.clone(),
-            agent_name: agent.name.clone(),
-            preamble: agent.preamble.clone(),
-            static_context: agent.static_context.clone(),
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            additional_params: agent.additional_params.clone(),
-            tool_server_handle: agent.tool_server_handle.clone(),
-            dynamic_context: agent.dynamic_context.clone(),
-            tool_choice: agent.tool_choice.clone(),
-            output_schema: agent.output_schema.clone(),
-            hook: agent.hook.clone(),
-            max_invalid_tool_call_retries: 0,
-            memory: agent.memory.clone(),
-            conversation_id: agent.default_conversation_id.clone(),
-        }
-    }
-
-    fn agent_name(&self) -> &str {
-        self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
-    }
-
-    /// Set the maximum Turns for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
-    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
+    /// Set the maximum Turns for multi-turn conversations (the maximum number of
+    /// turns an LLM can take calling tools before writing a text response).
     pub fn multi_turn(mut self, turns: usize) -> Self {
-        self.max_turns = turns;
+        self.runner = self.runner.max_turns(turns);
+        self
+    }
+
+    /// Set the maximum number of turns for multi-turn tool-calling.
+    ///
+    /// Alias for [`Self::multi_turn`], named to match the blocking
+    /// [`PromptRequest::max_turns`](super::PromptRequest::max_turns) and
+    /// [`TypedPromptRequest::max_turns`](super::TypedPromptRequest::max_turns)
+    /// builders so the same call reads identically on either surface.
+    pub fn max_turns(mut self, turns: usize) -> Self {
+        self.runner = self.runner.max_turns(turns);
+        self
+    }
+
+    /// Execute up to `concurrency` of a turn's tool calls at once (1 by default,
+    /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: the streamed
+    /// message history is unchanged at any `concurrency`, but at `concurrency >
+    /// 1` the stream emits all of a turn's `ToolCall` items (call order) and
+    /// then emits `ToolResult` items as each tool completes, which may be
+    /// completion order rather than call order.
+    pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
+        self.runner = self.runner.tool_concurrency(concurrency);
+        self
+    }
+
+    /// Attach a per-call [`ToolCallExtensions`] for this streaming request.
+    ///
+    /// Every tool the agent executes during this request can read the
+    /// caller-provided values (auth tokens, session IDs, conversation state, …)
+    /// via [`Tool::call_with_extensions`](crate::tool::Tool::call_with_extensions),
+    /// without the model ever seeing them.
+    pub fn tool_extensions(mut self, extensions: ToolCallExtensions) -> Self {
+        self.runner = self.runner.tool_extensions(extensions);
         self
     }
 
     /// Add chat history to the prompt request.
-    ///
-    /// When history is provided, the final [`FinalResponse`] will include the
-    /// updated chat history (original messages + new user prompt + assistant response).
-    /// ```ignore
-    /// let mut stream = agent
-    ///     .stream_prompt("Hello")
-    ///     .with_history(vec![])
-    ///     .await;
-    /// // ... consume stream ...
-    /// // Access updated history from FinalResponse::history()
-    /// ```
-    pub fn with_history<H, T>(mut self, history: H) -> Self
+    pub fn history<H, T>(mut self, history: H) -> Self
     where
         H: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        self.runner = self.runner.history(history);
         self
     }
 
-    /// Attach a per-request hook for tool call events.
-    /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
+    /// Append a hook to this request's hook stack (on top of any the agent
+    /// already carries). Hooks run in registration order; the first to return a
+    /// non-`Continue` result short-circuits the rest.
+    pub fn add_hook<H>(mut self, hook: H) -> Self
     where
-        P2: PromptHook<M>,
+        H: AgentHook<M> + 'static,
     {
-        StreamingPromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_turns: self.max_turns,
-            model: self.model,
-            agent_name: self.agent_name,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            tool_server_handle: self.tool_server_handle,
-            dynamic_context: self.dynamic_context,
-            tool_choice: self.tool_choice,
-            output_schema: self.output_schema,
-            hook: Some(hook),
-            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            memory: self.memory,
-            conversation_id: self.conversation_id,
-        }
+        self.runner = self.runner.add_hook(hook);
+        self
     }
 
-    /// Set the retry budget for [`crate::agent::prompt_request::hooks::InvalidToolCallHookAction::Retry`].
+    /// Set the retry budget for invalid tool-call recovery.
     ///
     /// Invalid tool-call retries also consume normal multi-turn depth.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_invalid_tool_call_retries = retries;
+        self.runner = self.runner.max_invalid_tool_call_retries(retries);
         self
     }
 
     /// Set the conversation id used to load and persist memory for this request.
-    ///
-    /// Overrides any default conversation id set on the agent. If memory is not
-    /// configured on the agent, this has no effect.
     pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.conversation_id = Some(id.into());
+        self.runner = self.runner.conversation(id);
         self
     }
 
     /// Disable conversation memory for this request.
-    ///
-    /// History will neither be loaded from nor saved to the agent's memory backend.
     pub fn without_memory(mut self) -> Self {
-        self.memory = None;
-        self.conversation_id = None;
+        self.runner = self.runner.without_memory();
         self
     }
 
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
-        let (agent_span, created_agent_span) = if tracing::Span::current().is_disabled() {
-            (
-                info_span!(
-                    "invoke_agent",
-                    gen_ai.operation.name = "invoke_agent",
-                    gen_ai.agent.name = self.agent_name(),
-                    gen_ai.system_instructions = self.preamble,
-                    gen_ai.prompt = tracing::field::Empty,
-                    gen_ai.completion = tracing::field::Empty,
-                    gen_ai.usage.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.output_tokens = tracing::field::Empty,
-                    gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                    gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                ),
-                true,
-            )
-        } else {
-            (tracing::Span::current(), false)
-        };
+        self.runner.stream().await
+    }
+}
 
-        let prompt = self.prompt;
-        if let Some(text) = prompt.rag_text() {
+/// A boxed, medium-specific item stream for one engine step (model turn or tool
+/// batch). Boxed so a generic [`drive_agent`] can forward it without the
+/// per-step future leaking into the engine's own (`Send`) inference.
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+pub(crate) type DriveStream<'a, R> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send + 'a>>;
+
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub(crate) type DriveStream<'a, R> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + 'a>>;
+
+/// One item emitted by the shared engine [`drive_agent`].
+///
+/// `Item`s are forwarded to a streaming consumer (and ignored by the blocking
+/// fold); `Done` carries both the canonical [`PromptResponse`] the blocking
+/// surface returns and the medium-specific final stream item the streaming
+/// surface yields.
+// The large `Item` variant is the per-delta hot path (one per streamed token);
+// boxing it to shrink the variant spread would add an allocation per delta,
+// which the streaming path is specifically tuned to avoid. `Done` is yielded
+// once per run, so the wasted space on that rare variant is irrelevant.
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum DriveItem<R> {
+    /// An intermediate stream item (assistant delta, tool call/result, a
+    /// per-call `CompletionCall`, or — last, for the streaming surface — the
+    /// final response item).
+    Item(MultiTurnStreamItem<R>),
+    /// The run finished; carries the canonical response the blocking fold
+    /// returns. The streaming surface has already received the final item as the
+    /// preceding `Item` and ignores this.
+    Done(Box<PromptResponse>),
+}
+
+/// The per-medium half of the agent loop: how a turn is fetched from the model,
+/// how its tools are executed, and how the run's spans/usage/final item are
+/// shaped. The medium-independent outer loop (turn counting, the `CompletionCall`
+/// hook, request preparation, memory) lives once in [`drive_agent`]; only the
+/// genuinely divergent pieces are behind this trait. Invalid-tool-call recovery
+/// is one of them — it lives inside each source's `run_model_turn` (end-of-turn
+/// for blocking, mid-stream for streaming), not in `drive_agent`.
+pub(crate) trait TurnSource<M>: WasmCompatSend
+where
+    M: CompletionModel,
+{
+    /// The raw provider response carried on per-delta stream items.
+    type Raw: WasmCompatSend;
+
+    /// Build this medium's per-turn `chat` span (name + parenting + any
+    /// `follows_from` chaining differ between blocking and streaming).
+    fn open_chat_span(
+        &self,
+        runner: &AgentRunner<M>,
+        effective_preamble: Option<&str>,
+    ) -> tracing::Span;
+
+    /// Run one model turn: issue the provider call, feed the result into the
+    /// sans-IO machine, and yield any intermediate items. Returning normally
+    /// advances the loop; yielding an `Err` terminates the run.
+    fn run_model_turn<'a>(
+        &'a mut self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        prepared: PreparedCompletionRequest<M>,
+        chat_span: tracing::Span,
+        agent_span: &'a tracing::Span,
+        prompt: Message,
+    ) -> DriveStream<'a, Self::Raw>;
+
+    /// Execute a turn's tool calls, feeding the results into the machine and
+    /// yielding any intermediate items.
+    fn run_tool_calls<'a>(
+        &'a self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        calls: Vec<PendingToolCall>,
+    ) -> DriveStream<'a, Self::Raw>;
+
+    /// Record run-level telemetry onto the agent span at `Done`. Gated on
+    /// `created_agent_span` so a caller-supplied outer span is never polluted.
+    fn record_run_level_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        response: &PromptResponse,
+        created_agent_span: bool,
+    );
+
+    /// Build the final stream item surfaced at `Done`, or `None` when the
+    /// surface discards it (the blocking fold) so the engine skips the work.
+    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem<Self::Raw>>;
+}
+
+/// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
+/// surface ([`AgentRunner::run`]), which folds the shared engine. Lossless:
+/// every streaming error originates as one of these.
+pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
+    match err {
+        StreamingError::Completion(err) => PromptError::CompletionError(err),
+        StreamingError::Prompt(err) => *err,
+        StreamingError::Tool(err) => PromptError::ToolError(err),
+    }
+}
+
+/// The single agent drive loop, shared by the blocking and streaming surfaces.
+///
+/// Owns the medium-independent loop — `next_step` dispatch, the `CompletionCall`
+/// hook + request preparation, the `Done` memory append — and delegates the
+/// medium-specific model call, tool execution, span shaping and finalization to
+/// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
+/// the blocking surface folds them to `Done`.
+pub(crate) fn drive_agent<M, S>(
+    runner: AgentRunner<M>,
+    mut source: S,
+    mut run: AgentRun,
+    agent_span: tracing::Span,
+    created_agent_span: bool,
+    memory_handle: Option<(Arc<dyn crate::memory::ConversationMemory>, String)>,
+) -> impl Stream<Item = Result<DriveItem<S::Raw>, StreamingError>>
+where
+    M: CompletionModel,
+    S: TurnSource<M>,
+{
+    async_stream::stream! {
+        'outer: loop {
+            let step = match run.next_step() {
+                Ok(step) => step,
+                Err(err) => {
+                    yield Err(Box::new(err).into());
+                    break 'outer;
+                }
+            };
+
+            match step {
+                AgentRunStep::CallModel { prompt, history, turn } => {
+                    if runner.max_turns > 1 {
+                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
+                    }
+
+                    let request_override =
+                        match resolve_completion_call(&runner.hooks, &prompt, &history, turn).await {
+                            CompletionCallOutcome::Terminate(reason) => {
+                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                                break 'outer;
+                            }
+                            CompletionCallOutcome::Proceed(request_override) => request_override,
+                        };
+
+                    // Record this turn's base system prompt — the override-or-baseline
+                    // preamble, before any output-mode augmentation the request builder
+                    // appends. Borrow rather than clone since it only needs to outlive
+                    // span creation.
+                    let effective_preamble = request_override
+                        .as_ref()
+                        .and_then(|o| o.preamble.as_deref())
+                        .or(runner.preamble.as_deref());
+
+                    let chat_span = source.open_chat_span(&runner, effective_preamble);
+
+                    let mut input_messages = history.clone();
+                    input_messages.push(prompt.clone());
+                    super::redact_reasoning_signatures(&mut input_messages);
+                    chat_span.record_model_input(&input_messages);
+
+                    // Pin Tool output mode once committed so later turns stay
+                    // consistent even if the per-turn tool set changes (#1928).
+                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
+                    let prepared = match build_prepared_completion_request(
+                        &runner.model,
+                        prompt.clone(),
+                        &history,
+                        runner.preamble.as_deref(),
+                        &runner.static_context,
+                        runner.temperature,
+                        runner.max_tokens,
+                        runner.additional_params.as_ref(),
+                        runner.tool_choice.as_ref(),
+                        &runner.tool_server_handle,
+                        &runner.dynamic_context,
+                        runner.output_schema.as_ref(),
+                        &runner.output_mode,
+                        committed_output_tool.as_deref(),
+                        request_override.as_ref(),
+                    )
+                    .await
+                    {
+                        Ok(prepared) => prepared,
+                        Err(err) => {
+                            yield Err(err.into());
+                            break 'outer;
+                        }
+                    };
+                    run.set_output_tool_name(prepared.output_tool_name.clone());
+
+                    let mut turn_stream = source.run_model_turn(
+                        &runner,
+                        &mut run,
+                        prepared,
+                        chat_span,
+                        &agent_span,
+                        prompt,
+                    );
+                    let mut errored = false;
+                    while let Some(item) = turn_stream.next().await {
+                        match item {
+                            Ok(item) => yield Ok(DriveItem::Item(item)),
+                            Err(err) => {
+                                errored = true;
+                                yield Err(err);
+                                break;
+                            }
+                        }
+                    }
+                    drop(turn_stream);
+                    if errored {
+                        break 'outer;
+                    }
+                }
+                AgentRunStep::CallTools { calls } => {
+                    let mut tool_stream = source.run_tool_calls(&runner, &mut run, calls);
+                    let mut errored = false;
+                    while let Some(item) = tool_stream.next().await {
+                        match item {
+                            Ok(item) => yield Ok(DriveItem::Item(item)),
+                            Err(err) => {
+                                errored = true;
+                                yield Err(err);
+                                break;
+                            }
+                        }
+                    }
+                    drop(tool_stream);
+                    if errored {
+                        break 'outer;
+                    }
+                }
+                AgentRunStep::Done(response) => {
+                    // Run-completion marker, unifying the blocking driver's
+                    // "Depth reached" and the streaming driver's "multi-turn
+                    // stream finished" logs into one shared event.
+                    tracing::info!(
+                        turn = run.turn(),
+                        max_turns = runner.max_turns,
+                        "Agent run finished"
+                    );
+                    source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
+                    append_run_messages(
+                        memory_handle.as_ref(),
+                        response.messages.as_deref().unwrap_or_default(),
+                    )
+                    .await;
+                    // Build the final item only when the surface forwards it
+                    // (streaming). The blocking fold discards it, so its source
+                    // returns `None` and the extra full-response clone is skipped.
+                    if let Some(final_item) = source.final_item(&response) {
+                        yield Ok(DriveItem::Item(final_item));
+                    }
+                    yield Ok(DriveItem::Done(Box::new(response)));
+                    break 'outer;
+                }
+            }
+        }
+    }
+}
+
+/// Execute a turn's tool calls, shared by both surfaces.
+///
+/// Feeds the (call-ordered) results back into the machine. When `forward_items`
+/// is set (streaming), a `ToolCall` item is emitted before each tool runs and a
+/// `ToolResult` item as each finishes; the blocking fold passes `false` to skip
+/// building those items — and the per-tool `tool_call`/result clones they need —
+/// since it discards them (the same "blocking opts out" gating as
+/// `TurnSource::final_item`). Tool execution and hook firing are identical either
+/// way. The tool items carry no raw provider response, so this is generic over
+/// the surface's `R`. `chain_tool_span` lets the blocking surface chain spans into
+/// its linear `follows_from` sequence (the streaming surface returns the span
+/// unchanged).
+pub(crate) fn drive_tool_calls<'a, M, R, F>(
+    runner: &'a AgentRunner<M>,
+    run: &'a mut AgentRun,
+    calls: Vec<PendingToolCall>,
+    chain_tool_span: F,
+    forward_items: bool,
+) -> DriveStream<'a, R>
+where
+    M: CompletionModel,
+    R: WasmCompatSend + 'a,
+    F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
+{
+    Box::pin(async_stream::stream! {
+        let full_history_for_errors = run.full_history();
+
+        if runner.concurrency <= 1 {
+            // Sequential default: one ToolCall/ToolResult pair per tool, strictly
+            // interleaved. Run-all-then-decide (matching the concurrent branch and
+            // the pre-refactor blocking driver's collect-all): every tool in the
+            // turn executes and fires its hooks, then the lowest-call-index
+            // terminate error is surfaced. Once the run is known to terminate we
+            // stop *surfacing* further stream items, but keep running the
+            // remaining tools so both surfaces are lock-step at any concurrency.
+            let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
+            let mut first_error: Option<(usize, PromptError)> = None;
+
+            for (index, pending) in calls.into_iter().enumerate() {
+                let tool_call = pending.tool_call;
+                if let Some(result) = pending.preresolved_result {
+                    results.push(result);
+                    continue;
+                }
+                let internal_call_id =
+                    pending.internal_call_id.unwrap_or_else(crate::id::generate);
+
+                let tool_span = chain_tool_span(new_execute_tool_span());
+
+                if forward_items && first_error.is_none() {
+                    yield Ok(MultiTurnStreamItem::stream_item(
+                        StreamedAssistantContent::ToolCall {
+                            tool_call: tool_call.clone(),
+                            internal_call_id: internal_call_id.clone(),
+                        },
+                    ));
+                }
+
+                let result = run_single_tool(
+                    &runner.hooks,
+                    &runner.tool_server_handle,
+                    &runner.tool_extensions,
+                    &tool_call,
+                    &internal_call_id,
+                    &full_history_for_errors,
+                )
+                .instrument(tool_span)
+                .await;
+
+                match result {
+                    Ok(content) => {
+                        if forward_items
+                            && first_error.is_none()
+                            && let UserContent::ToolResult(tool_result) = &content
+                        {
+                            yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                StreamedUserContent::ToolResult {
+                                    tool_result: tool_result.clone(),
+                                    internal_call_id,
+                                },
+                            ));
+                        }
+                        results.push(content);
+                    }
+                    Err(err) => {
+                        if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
+                            first_error = Some((index, err));
+                        }
+                    }
+                }
+            }
+
+            if let Some((_, err)) = first_error {
+                yield Err(StreamingError::Prompt(Box::new(err)));
+                return;
+            }
+
+            if let Err(err) = run.tool_results(results) {
+                yield Err(Box::new(err).into());
+                return;
+            }
+        } else {
+            // Concurrent path: emit every ToolCall stream item eagerly in call
+            // order, then run tools concurrently and surface each ToolResult as
+            // soon as its tool finishes. Results are still stored by original
+            // call index, so persisted history remains deterministic.
+            let call_count = calls.len();
+            let mut indexed_calls: Vec<(usize, PendingToolCall, tracing::Span, Option<String>)> =
+                Vec::with_capacity(call_count);
+
+            for (index, mut pending) in calls.into_iter().enumerate() {
+                // Preresolved (invalid-tool-recovery) calls don't execute, so they
+                // emit and chain no tool span — matching the sequential branch,
+                // which `continue`s before span creation.
+                if pending.preresolved_result.is_some() {
+                    indexed_calls.push((index, pending, tracing::Span::none(), None));
+                    continue;
+                }
+
+                let tool_span = chain_tool_span(new_execute_tool_span());
+
+                let internal_call_id = pending
+                    .internal_call_id
+                    .clone()
+                    .unwrap_or_else(crate::id::generate);
+                pending.internal_call_id = Some(internal_call_id.clone());
+
+                let yield_id = if forward_items {
+                    yield Ok(MultiTurnStreamItem::stream_item(
+                        StreamedAssistantContent::ToolCall {
+                            tool_call: pending.tool_call.clone(),
+                            internal_call_id: internal_call_id.clone(),
+                        },
+                    ));
+                    Some(internal_call_id)
+                } else {
+                    None
+                };
+
+                indexed_calls.push((index, pending, tool_span, yield_id));
+            }
+
+            let unordered = stream::iter(indexed_calls)
+                .map(|(index, pending, tool_span, yield_id)| {
+                    let hooks = &runner.hooks;
+                    let tool_server_handle = &runner.tool_server_handle;
+                    let tool_extensions = &runner.tool_extensions;
+                    let full_history_for_errors = &full_history_for_errors;
+                    async move {
+                        if let Some(result) = pending.preresolved_result {
+                            return (index, yield_id, Ok(result));
+                        }
+
+                        let internal_call_id =
+                            pending.internal_call_id.unwrap_or_else(crate::id::generate);
+                        let result = run_single_tool(
+                            hooks,
+                            tool_server_handle,
+                            tool_extensions,
+                            &pending.tool_call,
+                            &internal_call_id,
+                            full_history_for_errors,
+                        )
+                        .await;
+                        (index, yield_id, result)
+                    }
+                    .instrument(tool_span)
+                })
+                .buffer_unordered(runner.concurrency);
+            futures::pin_mut!(unordered);
+
+            let mut results: Vec<Option<UserContent>> = Vec::with_capacity(call_count);
+            results.resize_with(call_count, || None);
+            // Hold the *lowest-index* error (call order), not the first to
+            // complete, so the surfaced terminate reason is deterministic and
+            // matches the sequential branch's call-order behavior; keep draining
+            // so in-flight siblings finish and fire their hooks.
+            let mut first_error: Option<(usize, PromptError)> = None;
+            while let Some((index, yield_id, result)) = unordered.next().await {
+                match result {
+                    Ok(content) => match results.get_mut(index) {
+                        Some(slot) => {
+                            // Once any tool has errored the run will terminate, so
+                            // stop surfacing successful results (but keep draining).
+                            // `yield_id` is `None` when items aren't forwarded (the
+                            // blocking fold), so no clone happens there.
+                            if first_error.is_none()
+                                && let Some(internal_call_id) = yield_id
+                                && let UserContent::ToolResult(tool_result) = &content
+                            {
+                                yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                    StreamedUserContent::ToolResult {
+                                        tool_result: tool_result.clone(),
+                                        internal_call_id,
+                                    },
+                                ));
+                            }
+                            *slot = Some(content);
+                        }
+                        None => {
+                            if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
+                                first_error = Some((
+                                    index,
+                                    PromptError::CompletionError(CompletionError::ResponseError(
+                                        "tool execution returned an invalid result index"
+                                            .to_string(),
+                                    )),
+                                ));
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
+                            first_error = Some((index, err));
+                        }
+                    }
+                }
+            }
+
+            if let Some((_, err)) = first_error {
+                yield Err(StreamingError::Prompt(Box::new(err)));
+                return;
+            }
+
+            let results: Vec<UserContent> = match results.into_iter().collect::<Option<Vec<_>>>() {
+                Some(results) => results,
+                None => {
+                    yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
+                        CompletionError::ResponseError(
+                            "tool execution finished without producing every result".to_string(),
+                        ),
+                    ))));
+                    return;
+                }
+            };
+
+            if let Err(err) = run.tool_results(results) {
+                yield Err(Box::new(err).into());
+                return;
+            }
+        }
+    })
+}
+
+/// [`TurnSource`] for the streaming surface: each turn opens a provider stream,
+/// drives a [`StreamedTurnAssembler`], and yields assistant/tool deltas.
+pub(crate) struct StreamingTurnSource {
+    /// The raw provider choice of the most recent turn; the final response
+    /// surfaces it as-is, even when canonical reordering was recorded in history.
+    last_final_choice: OneOrMany<AssistantContent>,
+    last_message_id: Option<String>,
+    /// Resolved agent name, kept only for the empty-turn diagnostic warning.
+    agent_name: String,
+    /// Whether we created the agent span (vs. adopting a caller's ambient span);
+    /// gates recording `gen_ai.completion` onto it, matching the blocking source
+    /// so neither surface pollutes a caller-supplied span.
+    created_agent_span: bool,
+    /// Hot-path interest gates, computed once: skip building/dispatching the
+    /// high-frequency delta events when no hook observes them.
+    observes_text_delta: bool,
+    observes_tool_call_delta: bool,
+    /// Whether any hook is present — gates building the (history-cloning)
+    /// invalid-tool diagnostic context.
+    has_hooks: bool,
+}
+
+impl StreamingTurnSource {
+    pub(crate) fn new<M: CompletionModel>(
+        hooks: &HookStack<M>,
+        agent_name: String,
+        created_agent_span: bool,
+    ) -> Self {
+        Self {
+            last_final_choice: OneOrMany::one(AssistantContent::text("")),
+            last_message_id: None,
+            agent_name,
+            created_agent_span,
+            observes_text_delta: hooks.observes(StepEventKind::TextDelta),
+            observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
+            has_hooks: !hooks.is_empty(),
+        }
+    }
+}
+
+impl<M> TurnSource<M> for StreamingTurnSource
+where
+    M: CompletionModel,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+{
+    type Raw = M::StreamingResponse;
+
+    fn open_chat_span(
+        &self,
+        runner: &AgentRunner<M>,
+        effective_preamble: Option<&str>,
+    ) -> tracing::Span {
+        build_chat_span!(runner, effective_preamble, "chat_streaming")
+    }
+
+    fn run_model_turn<'a>(
+        &'a mut self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        prepared: PreparedCompletionRequest<M>,
+        chat_span: tracing::Span,
+        agent_span: &'a tracing::Span,
+        current_prompt: Message,
+    ) -> DriveStream<'a, M::StreamingResponse> {
+        Box::pin(async_stream::stream! {
+            let mut stream = match prepared
+                .builder
+                .stream()
+                .instrument(chat_span.clone())
+                .await
+            {
+                Ok(stream) => stream,
+                Err(err) => {
+                    yield Err(err.into());
+                    return;
+                }
+            };
+
+            let mut assembler = StreamedTurnAssembler::new(
+                prepared.executable_tool_names.clone(),
+                prepared.allowed_tool_names.clone(),
+            );
+            let mut completion_call_emitted = false;
+            let mut turn_abandoned = false;
+            // Mirrors the blocking driver's `response_hook_suppressed`: a turn
+            // whose invalid tool call was repaired is a recovered turn, so its
+            // response-finish hook is suppressed.
+            let mut turn_recovered = false;
+
+            // Emit the turn's single `CompletionCall` exactly once, recording its
+            // usage onto the chat span and into the run. Defined here (not a free
+            // fn) so it captures `completion_call_emitted`/`chat_span`/`run`; the
+            // `yield` stays at each call site because `async_stream::stream!`
+            // cannot see a `yield` produced inside a nested macro expansion.
+            // Returns the item to yield (`Some` the first time, `None` after), or
+            // the terminal error to surface.
+            macro_rules! emit_completion_call {
+                ($usage:expr) => {{
+                    let usage = $usage;
+                    if !completion_call_emitted {
+                        if usage.has_values() {
+                            record_usage_on_span(&chat_span, usage);
+                        }
+                        match run.record_streamed_completion_call(usage) {
+                            Ok(call) => {
+                                completion_call_emitted = true;
+                                Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
+                            }
+                            Err(err) => Err(Box::new(err).into()),
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                }};
+            }
+
+            'turn: while let Some(item) = stream.next().await {
+                let item = match item {
+                    Ok(item) => item,
+                    Err(err) => {
+                        yield Err(err.into());
+                        return;
+                    }
+                };
+                let mut events: VecDeque<StreamedTurnEvent> = match assembler.ingest(&item) {
+                    Ok(events) => events.into(),
+                    Err(err) => {
+                        yield Err(err.into());
+                        return;
+                    }
+                };
+                // At most one event per ingested item forwards the item itself;
+                // moving it out of the slot avoids a clone per streamed delta.
+                let mut item_slot = Some(item);
+                while let Some(event) = events.pop_front() {
+                    match event {
+                        StreamedTurnEvent::EmitIngested => {
+                            if self.observes_text_delta
+                                && let Some(StreamedAssistantContent::Text(text)) =
+                                    item_slot.as_ref()
+                                && let Some(reason) = observe_flow(
+                                    runner
+                                        .hooks
+                                        .on_event(StepEvent::TextDelta {
+                                            delta: &text.text,
+                                            aggregated: assembler.aggregated_text(),
+                                        })
+                                        .await,
+                                )
+                            {
+                                yield Err(StreamingError::Prompt(Box::new(
+                                    run.cancel_error(reason),
+                                )));
+                                return;
+                            }
+                            if let Some(item) = item_slot.take() {
+                                yield Ok(MultiTurnStreamItem::stream_item(item));
+                            }
+                        }
+                        StreamedTurnEvent::EmitToolCallDelta {
+                            id,
+                            internal_call_id,
+                            content,
+                        } => {
+                            if self.observes_tool_call_delta {
+                                let (delta_name, delta_text) = match &content {
+                                    ToolCallDeltaContent::Name(name) => (Some(name.as_str()), ""),
+                                    ToolCallDeltaContent::Delta(delta) => (None, delta.as_str()),
+                                };
+                                if let Some(reason) = observe_flow(
+                                    runner
+                                        .hooks
+                                        .on_event(StepEvent::ToolCallDelta {
+                                            tool_call_id: &id,
+                                            internal_call_id: &internal_call_id,
+                                            tool_name: delta_name,
+                                            delta: delta_text,
+                                        })
+                                        .await,
+                                ) {
+                                    yield Err(StreamingError::Prompt(Box::new(
+                                        run.cancel_error(reason),
+                                    )));
+                                    return;
+                                }
+                            }
+
+                            yield Ok(MultiTurnStreamItem::StreamAssistantItem(
+                                StreamedAssistantContent::ToolCallDelta {
+                                    id,
+                                    internal_call_id,
+                                    content,
+                                },
+                            ));
+                        }
+                        StreamedTurnEvent::Completed { usage, emit_final } => {
+                            match emit_completion_call!(usage) {
+                                Ok(Some(item)) => yield Ok(item),
+                                Ok(None) => {}
+                                Err(err) => {
+                                    yield Err(err);
+                                    return;
+                                }
+                            }
+
+                            if emit_final
+                                && let Some(StreamedAssistantContent::Final(final_resp)) =
+                                    item_slot.as_ref()
+                            {
+                                if !turn_recovered
+                                    && let Some(reason) = observe_flow(
+                                        runner
+                                            .hooks
+                                            .on_event(StepEvent::StreamResponseFinish {
+                                                prompt: &current_prompt,
+                                                response: final_resp,
+                                            })
+                                            .await,
+                                    )
+                                {
+                                    yield Err(StreamingError::Prompt(Box::new(
+                                        run.cancel_error(reason),
+                                    )));
+                                    return;
+                                }
+                                if let Some(item) = item_slot.take() {
+                                    yield Ok(MultiTurnStreamItem::stream_item(item));
+                                }
+                            }
+                        }
+                        StreamedTurnEvent::InvalidToolCall(invalid) => {
+                            let partial = assembler.partial_turn(stream.message_id.clone());
+                            // Gated on `has_hooks`: building the diagnostic context
+                            // clones the chat history, so an empty stack skips it and
+                            // fails fast — identical to the blocking path.
+                            let action = if self.has_hooks {
+                                let context =
+                                    run.streamed_invalid_tool_call_context(&partial, &invalid);
+                                match flow_into_invalid(
+                                    runner
+                                        .hooks
+                                        .on_event(StepEvent::InvalidToolCall(&context))
+                                        .await,
+                                ) {
+                                    InvalidDecision::Action(action) => action,
+                                    InvalidDecision::Terminate(reason) => {
+                                        yield Err(StreamingError::Prompt(Box::new(
+                                            run.cancel_error(reason),
+                                        )));
+                                        return;
+                                    }
+                                }
+                            } else {
+                                InvalidToolCallHookAction::fail()
+                            };
+
+                            let resolution =
+                                match run.resolve_streamed_invalid_tool_call(&partial, &invalid, action) {
+                                    Ok(resolution) => resolution,
+                                    Err(err) => {
+                                        yield Err(Box::new(err).into());
+                                        return;
+                                    }
+                                };
+
+                            match resolution {
+                                StreamedResolution::Repaired { .. } => {
+                                    // Replayed deltas flow through the same event
+                                    // handling above; the turn is now recovered, so
+                                    // its response-finish hook is suppressed.
+                                    turn_recovered = true;
+                                    events.extend(assembler.resolve_pending_invalid(&resolution));
+                                }
+                                StreamedResolution::TurnAbandoned {
+                                    ref skipped_tool_result,
+                                } => {
+                                    let skipped_tool_result = skipped_tool_result.clone();
+                                    assembler.resolve_pending_invalid(&resolution);
+
+                                    if let Some(err) = assembler.pending_delta_error() {
+                                        yield Err(err.into());
+                                        return;
+                                    }
+                                    let drained_usage = match drain_stream_usage(&mut stream).await {
+                                        Ok(usage) => usage,
+                                        Err(err) => {
+                                            yield Err(err);
+                                            return;
+                                        }
+                                    };
+                                    match emit_completion_call!(drained_usage) {
+                                        Ok(Some(item)) => yield Ok(item),
+                                        Ok(None) => {}
+                                        Err(err) => {
+                                            yield Err(err);
+                                            return;
+                                        }
+                                    }
+                                    if let Some(tool_result) = skipped_tool_result {
+                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                            StreamedUserContent::ToolResult {
+                                                tool_result,
+                                                internal_call_id: invalid.internal_call_id.clone(),
+                                            },
+                                        ));
+                                    }
+                                    turn_abandoned = true;
+                                    break 'turn;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if turn_abandoned {
+                return;
+            }
+
+            if let Some(err) = assembler.pending_delta_error() {
+                yield Err(err.into());
+                return;
+            }
+
+            // Final fallback: no usage was ever learned, so there is nothing to
+            // record onto the span and this is the last read of the flag — kept
+            // inline (not `emit_completion_call!`) so it doesn't emit a dead
+            // `completion_call_emitted = true` write.
+            if !completion_call_emitted {
+                match run.record_streamed_completion_call(crate::completion::Usage::new()) {
+                    Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
+                    Err(err) => {
+                        yield Err(Box::new(err).into());
+                        return;
+                    }
+                }
+            }
+
+            let final_turn_content = stream.choice.clone();
+            let mut telemetry_choice = final_turn_content.clone();
+            super::redact_choice_signatures(&mut telemetry_choice);
+            chat_span.record_model_output(&telemetry_choice);
+            // Only record onto the agent span when we own it — never pollute a
+            // caller-supplied span (parity with the blocking source).
+            if self.created_agent_span {
+                agent_span.record(
+                    "gen_ai.completion",
+                    assistant_text_from_choice(&final_turn_content),
+                );
+            }
+
+            self.last_message_id = stream.message_id.clone();
+            let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            if let Err(err) = run.streamed_turn(streamed_turn) {
+                yield Err(Box::new(err).into());
+                return;
+            }
+            self.last_final_choice = final_turn_content;
+        })
+    }
+
+    fn run_tool_calls<'a>(
+        &'a self,
+        runner: &'a AgentRunner<M>,
+        run: &'a mut AgentRun,
+        calls: Vec<PendingToolCall>,
+    ) -> DriveStream<'a, M::StreamingResponse> {
+        // The streaming surface chains nothing onto its tool spans, and forwards
+        // the ToolCall/ToolResult items to the consumer.
+        drive_tool_calls(runner, run, calls, |span| span, true)
+    }
+
+    fn record_run_level_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        response: &PromptResponse,
+        created_agent_span: bool,
+    ) {
+        if created_agent_span {
+            record_usage_on_span(agent_span, response.usage);
+        }
+    }
+
+    fn final_item(
+        &self,
+        response: &PromptResponse,
+    ) -> Option<MultiTurnStreamItem<M::StreamingResponse>> {
+        // Tool output mode (#1928): when the finishing turn made the output-tool
+        // call, surface the run's structured output as the final content.
+        let final_choice = finalize_streamed_choice(&self.last_final_choice, &response.output)
+            .unwrap_or_else(|| {
+                if is_empty_assistant_turn(&self.last_final_choice) {
+                    tracing::warn!(
+                        agent_name = self.agent_name.as_str(),
+                        message_id = ?self.last_message_id,
+                        "Streaming turn completed without assistant text; final response will be empty"
+                    );
+                }
+                self.last_final_choice.clone()
+            });
+        // Always surface the accumulated messages (parity with the blocking
+        // `run()`), regardless of whether the caller supplied input history.
+        let final_messages: Option<Vec<Message>> =
+            Some(response.messages.clone().unwrap_or_default());
+        Some(MultiTurnStreamItem::final_response_with_completion_calls(
+            final_choice,
+            response.usage,
+            response.completion_calls.clone(),
+            final_messages,
+        ))
+    }
+}
+
+impl<M> AgentRunner<M>
+where
+    M: CompletionModel + 'static,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+{
+    /// Drive the agent loop, streaming assistant content, tool activity, and a
+    /// final response. Hooks fire at every observable point, including streamed
+    /// text and tool-call deltas. Returns the stream after loading any
+    /// configured conversation memory.
+    ///
+    /// Shares the drive loop, run construction, tool execution and fail-closed
+    /// hook handling with the blocking [`run`](AgentRunner::run) via
+    /// [`drive_agent`], so the two behave identically apart from the streamed
+    /// delta events.
+    pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
+        let (agent_span, created_agent_span) =
+            acquire_agent_span(self.agent_name_or_default(), self.preamble.as_deref());
+
+        if let Some(text) = self.prompt.rag_text() {
             agent_span.record("gen_ai.prompt", text);
         }
 
-        // Clone fields needed inside the stream
-        let model = self.model.clone();
-        let preamble = self.preamble.clone();
-        let static_context = self.static_context.clone();
-        let temperature = self.temperature;
-        let max_tokens = self.max_tokens;
-        let additional_params = self.additional_params.clone();
-        let tool_server_handle = self.tool_server_handle.clone();
-        let dynamic_context = self.dynamic_context.clone();
-        let tool_choice = self.tool_choice.clone();
-        let agent_name = self.agent_name.clone();
         // When the caller passes explicit history, memory is fully bypassed for
         // this request (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history; if either is
-        // missing, behave as if no memory is configured.
-        let (chat_history, memory_handle) = match self.chat_history {
-            Some(history) => (Some(history), None),
-            None => match (self.memory, self.conversation_id) {
-                (Some(memory), Some(id)) => match memory.load(&id).await {
-                    Ok(loaded) => (Some(loaded), Some((memory, id))),
+        // conversation id are both configured, load prior history.
+        let (history_override, memory_handle) = match &self.chat_history {
+            Some(_) => (None, None),
+            None => match (&self.memory, &self.conversation_id) {
+                (Some(memory), Some(id)) => match memory.load(id).await {
+                    Ok(loaded) => (Some(loaded), Some((memory.clone(), id.clone()))),
                     Err(err) => {
                         let stream = async_stream::stream! {
                             yield Err(StreamingError::from(err));
                         };
-                        return Box::pin(stream);
+                        // Instrument under the agent span like the success path so
+                        // a load failure stays tied to invoke_agent.
+                        return Box::pin(stream.instrument(agent_span));
                     }
                 },
                 _ => (None, None),
             },
         };
-        let has_history = chat_history.is_some();
-        let mut new_messages: Vec<Message> = vec![prompt.clone()];
 
-        let mut current_max_turns = 0;
-        let mut last_prompt_error = String::new();
+        let run = self.build_run(history_override);
+        let source = StreamingTurnSource::new(
+            &self.hooks,
+            self.agent_name_or_default().to_string(),
+            created_agent_span,
+        );
 
-        let mut text_delta_response = String::new();
-        let mut saw_text_this_turn = false;
-        let mut max_turns_reached = false;
-        let output_schema = self.output_schema;
+        // The blocking surface folds this same engine; the streaming surface
+        // forwards intermediate items (the final response item is the last one)
+        // and ends on `Done`.
+        let driver = drive_agent(
+            self,
+            source,
+            run,
+            agent_span.clone(),
+            created_agent_span,
+            memory_handle,
+        )
+        .filter_map(|item| {
+            std::future::ready(match item {
+                Ok(DriveItem::Item(item)) => Some(Ok(item)),
+                Ok(DriveItem::Done(_)) => None,
+                Err(err) => Some(Err(err)),
+            })
+        });
 
-        let mut aggregated_usage = crate::completion::Usage::new();
-        let mut completion_calls = Vec::new();
-        let mut completion_call_index = 0;
-        let mut invalid_tool_call_retries = 0;
-
-        // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
-        // span context leaking to other concurrent tasks. Using span.enter() inside
-        // async_stream::stream! holds the guard across yield points, which causes
-        // thread-local span context to leak when other tasks run on the same thread.
-        // See: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#in-asynchronous-code
-        // See also: https://github.com/rust-lang/rust-clippy/issues/8722
-        let stream = async_stream::stream! {
-            'outer: loop {
-                let Some((current_prompt_ref, previous_messages)) = new_messages.split_last() else {
-                    yield Err(cancelled_prompt_error(
-                        chat_history.as_deref(),
-                        new_messages.clone(),
-                        "streaming loop lost its pending prompt".to_string(),
-                    ).await);
-                    break 'outer;
-                };
-                let current_prompt = current_prompt_ref.clone();
-
-                if current_max_turns > self.max_turns + 1 {
-                    last_prompt_error = current_prompt.rag_text().unwrap_or_default();
-                    max_turns_reached = true;
-                    break;
-                }
-
-                current_max_turns += 1;
-
-                if self.max_turns > 1 {
-                    tracing::info!(
-                        "Current conversation Turns: {}/{}",
-                        current_max_turns,
-                        self.max_turns
-                    );
-                }
-
-                let history_snapshot: Vec<Message> = build_history_for_request(
-                    chat_history.as_deref(),
-                    previous_messages,
-                );
-
-                if let Some(ref hook) = self.hook
-                    && let HookAction::Terminate { reason } =
-                        hook.on_completion_call(&current_prompt, &history_snapshot).await
-                {
-                    yield Err(
-                        cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason)
-                            .await,
-                    );
-                    break 'outer;
-                }
-
-                let chat_stream_span = info_span!(
-                    target: "rig::agent_chat",
-                    parent: tracing::Span::current(),
-                    "chat_streaming",
-                    gen_ai.operation.name = "chat",
-                    gen_ai.agent.name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                    gen_ai.system_instructions = preamble,
-                    gen_ai.provider.name = tracing::field::Empty,
-                    gen_ai.request.model = tracing::field::Empty,
-                    gen_ai.response.id = tracing::field::Empty,
-                    gen_ai.response.model = tracing::field::Empty,
-                    gen_ai.usage.output_tokens = tracing::field::Empty,
-                    gen_ai.usage.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                    gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                    gen_ai.input.messages = tracing::field::Empty,
-                    gen_ai.output.messages = tracing::field::Empty,
-                    gen_ai.completion = tracing::field::Empty,
-                );
-
-                // Record the messages sent to the model for this turn: chat history
-                // (prior turns / loaded memory) + current prompt (the last user message).
-                // This mirrors what build_prepared_completion_request passes to the
-                // provider and matches the format PostHog expects from the SpanCombinator.
-                {
-                    let mut input_messages = history_snapshot.clone();
-                    input_messages.push(current_prompt.clone());
-                    super::redact_reasoning_signatures(&mut input_messages);
-                    chat_stream_span.record_model_input(&input_messages);
-                }
-
-                let prepared_request = build_prepared_completion_request(
-                    &model,
-                    current_prompt.clone(),
-                    &history_snapshot,
-                    preamble.as_deref(),
-                    &static_context,
-                    temperature,
-                    max_tokens,
-                    additional_params.as_ref(),
-                    tool_choice.as_ref(),
-                    &tool_server_handle,
-                    &dynamic_context,
-                    output_schema.as_ref(),
-                )
-                .await?;
-                let executable_tool_names = prepared_request.executable_tool_names.clone();
-                let allowed_tool_names = prepared_request.allowed_tool_names.clone();
-
-                let mut stream = prepared_request
-                    .builder
-                    .stream()
-                    .instrument(chat_stream_span.clone())
-                    .await?;
-
-                let call_index = completion_call_index;
-                completion_call_index += 1;
-                let mut current_call_usage = None;
-                let mut completion_call_emitted = false;
-                let mut pending_tool_calls: Vec<(ToolCall, String)> = vec![];
-                let mut tool_calls = vec![];
-                let mut tool_results = vec![];
-                let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
-                // Kept separate from accumulated_reasoning so providers requiring
-                // signatures (e.g. Anthropic) never see unsigned blocks.
-                let mut pending_reasoning_delta_text = String::new();
-                let mut pending_reasoning_delta_id: Option<String> = None;
-                let mut tool_call_delta_states: HashMap<(String, String), ToolCallDeltaState> =
-                    HashMap::new();
-                let mut saw_tool_call_this_turn = false;
-
-                while let Some(content) = stream.next().await {
-                    match content {
-                        Ok(StreamedAssistantContent::Text(text)) => {
-                            if !saw_text_this_turn {
-                                text_delta_response.clear();
-                                saw_text_this_turn = true;
-                            }
-                            text_delta_response.push_str(&text.text);
-                            if let Some(ref hook) = self.hook &&
-                                let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &text_delta_response).await {
-                                    yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                    break 'outer;
-                            }
-
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
-                        },
-                        Ok(StreamedAssistantContent::ToolCall { mut tool_call, internal_call_id }) => {
-                            let diagnostic_history =
-                                build_tool_call_validation_history(ToolCallValidationHistory {
-                                    chat_history: chat_history.as_deref(),
-                                    new_messages: &new_messages,
-                                    assistant_message_id: &stream.message_id,
-                                    final_turn_content: None,
-                                    text_delta_response: saw_text_this_turn
-                                        .then_some(text_delta_response.as_str()),
-                                    accumulated_reasoning: &accumulated_reasoning,
-                                    pending_reasoning_delta_text: &pending_reasoning_delta_text,
-                                    pending_reasoning_delta_id: &pending_reasoning_delta_id,
-                                    pending_tool_calls: &pending_tool_calls,
-                                    current_tool_call: Some(tool_call.clone()),
-                                });
-
-                            if !allowed_tool_names.contains(&tool_call.function.name) {
-                                let args = json_utils::value_to_json_string(&tool_call.function.arguments);
-                                let emitted_tool_name = tool_call.function.name.clone();
-                                match resolve_invalid_tool_call::<M, P>(
-                                    self.hook.as_ref(),
-                                    &emitted_tool_name,
-                                    Some(tool_call.id.clone()),
-                                    Some(internal_call_id.clone()),
-                                    Some(args),
-                                    &executable_tool_names,
-                                    &allowed_tool_names,
-                                    self.tool_choice.as_ref(),
-                                    diagnostic_history.clone(),
-                                    true,
-                                ).await {
-                                    InvalidToolCallResolution::Fail(err) => {
-                                        yield Err(Box::new(err).into());
-                                        break 'outer;
-                                    }
-                                    InvalidToolCallResolution::Retry(feedback) => {
-                                        if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                                            yield Err(Box::new(PromptError::UnknownToolCall {
-                                                tool_name: emitted_tool_name,
-                                                available_tools: executable_tool_names.iter().cloned().collect(),
-                                                allowed_tools: allowed_tool_names.iter().cloned().collect(),
-                                                chat_history: Box::new(diagnostic_history),
-                                            }).into());
-                                            break 'outer;
-                                        }
-
-                                        invalid_tool_call_retries += 1;
-                                        flush_pending_reasoning_delta(
-                                            &mut accumulated_reasoning,
-                                            &mut pending_reasoning_delta_text,
-                                            &mut pending_reasoning_delta_id,
-                                        );
-                                        let Some((assistant_message, user_message)) =
-                                            invalid_streaming_tool_retry_messages(
-                                                &stream.message_id,
-                                                saw_text_this_turn.then_some(text_delta_response.as_str()),
-                                                &accumulated_reasoning,
-                                                &pending_tool_calls,
-                                                tool_call,
-                                                feedback,
-                                            )
-                                        else {
-                                            yield Err(cancelled_prompt_error(
-                                                chat_history.as_deref(),
-                                                new_messages.clone(),
-                                                "invalid tool call retry produced no retry messages".to_string(),
-                                            ).await);
-                                            break 'outer;
-                                        };
-                                        new_messages.push(assistant_message);
-                                        new_messages.push(user_message);
-                                        if let Err(err) = drain_recovered_stream_usage(
-                                            &mut stream,
-                                            &tool_call_delta_states,
-                                            &mut current_call_usage,
-                                            &mut aggregated_usage,
-                                        )
-                                        .await
-                                        {
-                                            yield Err(err);
-                                            break 'outer;
-                                        }
-                                        if let Some(completion_call) = record_completion_call_if_needed(
-                                            &mut completion_calls,
-                                            &mut completion_call_emitted,
-                                            call_index,
-                                            current_call_usage,
-                                            &chat_stream_span,
-                                        ) {
-                                            yield Ok(MultiTurnStreamItem::CompletionCall(
-                                                completion_call,
-                                            ));
-                                        }
-                                        text_delta_response.clear();
-                                        saw_text_this_turn = false;
-                                        continue 'outer;
-                                    }
-                                    InvalidToolCallResolution::Repair(repaired_name) => {
-                                        tool_call.function.name = repaired_name;
-                                    }
-                                    InvalidToolCallResolution::Skip(reason) => {
-                                        let skipped_tool_result = ToolResult {
-                                            id: tool_call.id.clone(),
-                                            call_id: tool_call.call_id.clone(),
-                                            content: ToolResultContent::from_tool_output(
-                                                reason.clone(),
-                                            ),
-                                        };
-                                        flush_pending_reasoning_delta(
-                                            &mut accumulated_reasoning,
-                                            &mut pending_reasoning_delta_text,
-                                            &mut pending_reasoning_delta_id,
-                                        );
-                                        let Some((assistant_message, user_message)) =
-                                            invalid_streaming_tool_retry_messages(
-                                                &stream.message_id,
-                                                saw_text_this_turn
-                                                    .then_some(text_delta_response.as_str()),
-                                                &accumulated_reasoning,
-                                                &pending_tool_calls,
-                                                tool_call,
-                                                reason,
-                                            )
-                                        else {
-                                            yield Err(cancelled_prompt_error(
-                                                chat_history.as_deref(),
-                                                new_messages.clone(),
-                                                "invalid tool call skip produced no recovery messages".to_string(),
-                                            ).await);
-                                            break 'outer;
-                                        };
-                                        new_messages.push(assistant_message);
-                                        new_messages.push(user_message);
-                                        let tool_result = ToolResult {
-                                            id: skipped_tool_result.id,
-                                            call_id: skipped_tool_result.call_id,
-                                            content: skipped_tool_result.content,
-                                        };
-                                        if let Err(err) = drain_recovered_stream_usage(
-                                            &mut stream,
-                                            &tool_call_delta_states,
-                                            &mut current_call_usage,
-                                            &mut aggregated_usage,
-                                        )
-                                        .await
-                                        {
-                                            yield Err(err);
-                                            break 'outer;
-                                        }
-                                        if let Some(completion_call) = record_completion_call_if_needed(
-                                            &mut completion_calls,
-                                            &mut completion_call_emitted,
-                                            call_index,
-                                            current_call_usage,
-                                            &chat_stream_span,
-                                        ) {
-                                            yield Ok(MultiTurnStreamItem::CompletionCall(
-                                                completion_call,
-                                            ));
-                                        }
-                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                            StreamedUserContent::ToolResult {
-                                                tool_result,
-                                                internal_call_id,
-                                            },
-                                        ));
-                                        text_delta_response.clear();
-                                        saw_text_this_turn = false;
-                                        continue 'outer;
-                                    }
-                                }
-                            }
-
-                            pending_tool_calls.push((tool_call, internal_call_id));
-                        },
-                        Ok(StreamedAssistantContent::ToolCallDelta {
-                            id,
-                            internal_call_id,
-                            content,
-                        }) => {
-                            let key = (id.clone(), internal_call_id.clone());
-                            let mut deltas_to_emit = Vec::new();
-
-                            match content {
-                                ToolCallDeltaContent::Name(mut name) => {
-                                    let buffered_args = tool_call_delta_states
-                                        .get(&key)
-                                        .map(|state| state.buffered_arguments.join(""))
-                                        .unwrap_or_default();
-                                    let diagnostic_args = if buffered_args.trim().is_empty() {
-                                        serde_json::Value::Null
-                                    } else {
-                                        serde_json::from_str(&buffered_args)
-                                            .unwrap_or(serde_json::Value::Null)
-                                    };
-                                    let diagnostic_tool_call = ToolCall::new(
-                                        id.clone(),
-                                        ToolFunction::new(name.clone(), diagnostic_args),
-                                    );
-                                    let diagnostic_history =
-                                        build_tool_call_validation_history(ToolCallValidationHistory {
-                                            chat_history: chat_history.as_deref(),
-                                            new_messages: &new_messages,
-                                            assistant_message_id: &stream.message_id,
-                                            final_turn_content: None,
-                                            text_delta_response: saw_text_this_turn
-                                                .then_some(text_delta_response.as_str()),
-                                            accumulated_reasoning: &accumulated_reasoning,
-                                            pending_reasoning_delta_text: &pending_reasoning_delta_text,
-                                            pending_reasoning_delta_id: &pending_reasoning_delta_id,
-                                            pending_tool_calls: &pending_tool_calls,
-                                            current_tool_call: Some(diagnostic_tool_call.clone()),
-                                        });
-
-                                    if !allowed_tool_names.contains(&name) {
-                                        let emitted_tool_name = name.clone();
-                                        match resolve_invalid_tool_call::<M, P>(
-                                            self.hook.as_ref(),
-                                            &emitted_tool_name,
-                                            Some(id.clone()),
-                                            Some(internal_call_id.clone()),
-                                            Some(buffered_args.clone()),
-                                            &executable_tool_names,
-                                            &allowed_tool_names,
-                                            self.tool_choice.as_ref(),
-                                            diagnostic_history.clone(),
-                                            true,
-                                        ).await {
-                                            InvalidToolCallResolution::Fail(err) => {
-                                                yield Err(Box::new(err).into());
-                                                break 'outer;
-                                            }
-                                            InvalidToolCallResolution::Skip(reason) => {
-                                                tool_call_delta_states.remove(&key);
-                                                flush_pending_reasoning_delta(
-                                                    &mut accumulated_reasoning,
-                                                    &mut pending_reasoning_delta_text,
-                                                    &mut pending_reasoning_delta_id,
-                                                );
-                                                let Some((assistant_message, user_message)) =
-                                                    invalid_streaming_name_delta_retry_messages(
-                                                        &stream.message_id,
-                                                        saw_text_this_turn
-                                                            .then_some(text_delta_response.as_str()),
-                                                        &accumulated_reasoning,
-                                                        &pending_tool_calls,
-                                                        diagnostic_tool_call.clone(),
-                                                        reason.clone(),
-                                                    )
-                                                else {
-                                                    yield Err(cancelled_prompt_error(
-                                                        chat_history.as_deref(),
-                                                        new_messages.clone(),
-                                                        "invalid tool call skip produced no recovery messages".to_string(),
-                                                    ).await);
-                                                    break 'outer;
-                                                };
-                                                new_messages.push(assistant_message);
-                                                new_messages.push(user_message);
-                                                let tool_result = ToolResult {
-                                                    id,
-                                                    call_id: None,
-                                                    content: ToolResultContent::from_tool_output(
-                                                        reason,
-                                                    ),
-                                                };
-                                                if let Err(err) = drain_recovered_stream_usage(
-                                                    &mut stream,
-                                                    &tool_call_delta_states,
-                                                    &mut current_call_usage,
-                                                    &mut aggregated_usage,
-                                                )
-                                                .await
-                                                {
-                                                    yield Err(err);
-                                                    break 'outer;
-                                                }
-                                                if let Some(completion_call) = record_completion_call_if_needed(
-                                                    &mut completion_calls,
-                                                    &mut completion_call_emitted,
-                                                    call_index,
-                                                    current_call_usage,
-                                                    &chat_stream_span,
-                                                ) {
-                                                    yield Ok(MultiTurnStreamItem::CompletionCall(
-                                                        completion_call,
-                                                    ));
-                                                }
-                                                yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                                    StreamedUserContent::ToolResult {
-                                                        tool_result,
-                                                        internal_call_id,
-                                                    },
-                                                ));
-                                                text_delta_response.clear();
-                                                saw_text_this_turn = false;
-                                                continue 'outer;
-                                            }
-                                            InvalidToolCallResolution::Retry(feedback) => {
-                                                tool_call_delta_states.remove(&key);
-                                                if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                                                    yield Err(Box::new(PromptError::UnknownToolCall {
-                                                        tool_name: emitted_tool_name,
-                                                        available_tools: executable_tool_names.iter().cloned().collect(),
-                                                        allowed_tools: allowed_tool_names.iter().cloned().collect(),
-                                                        chat_history: Box::new(diagnostic_history),
-                                                    }).into());
-                                                    break 'outer;
-                                                }
-
-                                                invalid_tool_call_retries += 1;
-                                                flush_pending_reasoning_delta(
-                                                    &mut accumulated_reasoning,
-                                                    &mut pending_reasoning_delta_text,
-                                                    &mut pending_reasoning_delta_id,
-                                                );
-                                                let Some((assistant_message, user_message)) =
-                                                    invalid_streaming_name_delta_retry_messages(
-                                                        &stream.message_id,
-                                                        saw_text_this_turn
-                                                            .then_some(text_delta_response.as_str()),
-                                                        &accumulated_reasoning,
-                                                        &pending_tool_calls,
-                                                        diagnostic_tool_call.clone(),
-                                                        feedback,
-                                                    )
-                                                else {
-                                                    yield Err(cancelled_prompt_error(
-                                                        chat_history.as_deref(),
-                                                        new_messages.clone(),
-                                                        "invalid tool call retry produced no retry messages".to_string(),
-                                                    ).await);
-                                                    break 'outer;
-                                                };
-                                                new_messages.push(assistant_message);
-                                                new_messages.push(user_message);
-                                                if let Err(err) = drain_recovered_stream_usage(
-                                                    &mut stream,
-                                                    &tool_call_delta_states,
-                                                    &mut current_call_usage,
-                                                    &mut aggregated_usage,
-                                                )
-                                                .await
-                                                {
-                                                    yield Err(err);
-                                                    break 'outer;
-                                                }
-                                                if let Some(completion_call) = record_completion_call_if_needed(
-                                                    &mut completion_calls,
-                                                    &mut completion_call_emitted,
-                                                    call_index,
-                                                    current_call_usage,
-                                                    &chat_stream_span,
-                                                ) {
-                                                    yield Ok(MultiTurnStreamItem::CompletionCall(
-                                                        completion_call,
-                                                    ));
-                                                }
-                                                text_delta_response.clear();
-                                                saw_text_this_turn = false;
-                                                continue 'outer;
-                                            }
-                                            InvalidToolCallResolution::Repair(repaired_name) => {
-                                                name = repaired_name;
-                                            }
-                                        }
-                                    }
-
-                                    let state =
-                                        tool_call_delta_states.entry(key.clone()).or_default();
-                                    state.name_validated = true;
-                                    let buffered_arguments =
-                                        std::mem::take(&mut state.buffered_arguments);
-
-                                    deltas_to_emit.push(ToolCallDeltaContent::Name(name));
-                                    deltas_to_emit.extend(
-                                        buffered_arguments
-                                            .into_iter()
-                                            .map(ToolCallDeltaContent::Delta),
-                                    );
-                                }
-                                ToolCallDeltaContent::Delta(arguments) => {
-                                    let state =
-                                        tool_call_delta_states.entry(key.clone()).or_default();
-                                    if state.name_validated {
-                                        deltas_to_emit.push(ToolCallDeltaContent::Delta(arguments));
-                                    } else {
-                                        state.buffered_arguments.push(arguments);
-                                    }
-                                }
-                            }
-
-                            for content in deltas_to_emit {
-                                if let Some(ref hook) = self.hook {
-                                    let (name, delta) = match &content {
-                                        ToolCallDeltaContent::Name(n) => (Some(n.as_str()), ""),
-                                        ToolCallDeltaContent::Delta(d) => (None, d.as_str()),
-                                    };
-
-                                    if let HookAction::Terminate { reason } = hook
-                                        .on_tool_call_delta(
-                                            &id,
-                                            &internal_call_id,
-                                            name,
-                                            delta,
-                                        )
-                                        .await
-                                    {
-                                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                        break 'outer;
-                                    }
-                                }
-
-                                yield Ok(MultiTurnStreamItem::StreamAssistantItem(
-                                    StreamedAssistantContent::ToolCallDelta {
-                                        id: id.clone(),
-                                        internal_call_id: internal_call_id.clone(),
-                                        content,
-                                    },
-                                ));
-                            }
-                        }
-                        Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
-                            // Accumulate reasoning for inclusion in chat history with tool calls.
-                            // OpenAI Responses API requires reasoning items to be sent back
-                            // alongside function_call items in multi-turn conversations.
-                            merge_reasoning_blocks(&mut accumulated_reasoning, &reasoning);
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(reasoning)));
-                        },
-                        Ok(StreamedAssistantContent::ReasoningDelta { reasoning, id }) => {
-                            // Deltas lack signatures/encrypted content that full
-                            // blocks carry; mixing them into accumulated_reasoning
-                            // causes Anthropic to reject with "signature required".
-                            pending_reasoning_delta_text.push_str(&reasoning);
-                            if pending_reasoning_delta_id.is_none() {
-                                pending_reasoning_delta_id = id.clone();
-                            }
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
-                        },
-                        Ok(StreamedAssistantContent::Final(final_resp)) => {
-                            if let Some(err) =
-                                pending_tool_call_delta_error(&tool_call_delta_states)
-                            {
-                                yield Err(err.into());
-                                break 'outer;
-                            }
-
-                            if let Some(usage) = final_resp.token_usage() {
-                                current_call_usage = reported_usage(usage);
-                            }
-                            if let Some(usage) = current_call_usage {
-                                aggregated_usage += usage;
-                            }
-                            if let Some(completion_call) = record_completion_call_if_needed(
-                                &mut completion_calls,
-                                &mut completion_call_emitted,
-                                call_index,
-                                current_call_usage,
-                                &chat_stream_span,
-                            ) {
-                                yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
-                            }
-
-                            if saw_text_this_turn {
-                                if let Some(ref hook) = self.hook &&
-                                     let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&current_prompt, &final_resp).await {
-                                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                        break 'outer;
-                                    }
-
-                                yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
-                                saw_text_this_turn = false;
-                            }
-                        }
-                        Err(e) => {
-                            yield Err(e.into());
-                            break 'outer;
-                        }
-                    }
-                }
-
-                if let Some(err) = pending_tool_call_delta_error(&tool_call_delta_states) {
-                    yield Err(err.into());
-                    break 'outer;
-                }
-
-                if let Some(completion_call) = record_completion_call_if_needed(
-                    &mut completion_calls,
-                    &mut completion_call_emitted,
-                    call_index,
-                    current_call_usage,
-                    &chat_stream_span,
-                ) {
-                    yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
-                }
-
-                // Providers like Gemini emit thinking as incremental deltas
-                // without signatures; assemble into a single block so
-                // reasoning survives into the next turn's chat history.
-                flush_pending_reasoning_delta(
-                    &mut accumulated_reasoning,
-                    &mut pending_reasoning_delta_text,
-                    &mut pending_reasoning_delta_id,
-                );
-
-                let final_turn_content = stream.choice.clone();
-                let turn_text_response = assistant_text_from_choice(&final_turn_content);
-                // Record per-call output on the per-call chat_stream_span (which declares these
-                // fields). The previous code targeted tracing::Span::current() (the ambient
-                // invoke_agent/caller span), which silently dropped it because the field is not
-                // declared there.
-                {
-                    let mut telemetry_choice = final_turn_content.clone();
-                    super::redact_choice_signatures(&mut telemetry_choice);
-                    chat_stream_span.record_model_output(&telemetry_choice);
-                }
-                chat_stream_span.record("gen_ai.completion", &turn_text_response);
-                // Write aggregate completion text to the agent span only when rig created it,
-                // so that caller-owned spans are never polluted with per-call data.
-                if created_agent_span {
-                    tracing::Span::current().record("gen_ai.completion", &turn_text_response);
-                }
-
-                if !pending_tool_calls.is_empty() {
-                    let diagnostic_history =
-                        build_tool_call_validation_history(ToolCallValidationHistory {
-                            chat_history: chat_history.as_deref(),
-                            new_messages: &new_messages,
-                            assistant_message_id: &stream.message_id,
-                            final_turn_content: Some(&final_turn_content),
-                            text_delta_response: None,
-                            accumulated_reasoning: &accumulated_reasoning,
-                            pending_reasoning_delta_text: "",
-                            pending_reasoning_delta_id: &None,
-                            pending_tool_calls: &pending_tool_calls,
-                            current_tool_call: None,
-                        });
-
-                    for (tool_call, _) in &pending_tool_calls {
-                        if let Err(err) = validate_tool_call_name(
-                            &tool_call.function.name,
-                            &executable_tool_names,
-                            &allowed_tool_names,
-                            diagnostic_history.clone(),
-                        ) {
-                            yield Err(Box::new(err).into());
-                            break 'outer;
-                        }
-                    }
-
-                    for (tool_call, internal_call_id) in pending_tool_calls {
-                        let tool_span = info_span!(
-                            parent: tracing::Span::current(),
-                            "execute_tool",
-                            gen_ai.operation.name = "execute_tool",
-                            gen_ai.tool.type = "function",
-                            gen_ai.tool.name = tracing::field::Empty,
-                            gen_ai.tool.call.id = tracing::field::Empty,
-                            gen_ai.tool.call.arguments = tracing::field::Empty,
-                            gen_ai.tool.call.result = tracing::field::Empty
-                        );
-
-                        yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall { tool_call: tool_call.clone(), internal_call_id: internal_call_id.clone() }));
-
-                        let tc_result = async {
-                            let tool_span = tracing::Span::current();
-                            let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
-                            if let Some(ref hook) = self.hook {
-                                let action = hook
-                                    .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
-                                    .await;
-
-                                if let ToolCallHookAction::Terminate { reason } = action {
-                                    return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                }
-
-                                if let ToolCallHookAction::Skip { reason } = action {
-                                    // Tool execution rejected, return rejection message as tool result
-                                    tracing::info!(
-                                        tool_name = tool_call.function.name.as_str(),
-                                        reason = reason,
-                                        "Tool call rejected"
-                                    );
-                                    let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-                                    tool_calls.push(tool_call_msg);
-                                    tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
-                                    saw_tool_call_this_turn = true;
-                                    return Ok(reason);
-                                }
-                            }
-
-                            tool_span.record("gen_ai.tool.name", &tool_call.function.name);
-                            tool_span.record("gen_ai.tool.call.arguments", &tool_args);
-
-                            let tool_result = match
-                            tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
-                                Ok(thing) => thing,
-                                Err(e) => {
-                                    tracing::warn!("Error while calling tool: {e}");
-                                    e.to_string()
-                                }
-                            };
-
-                            tool_span.record("gen_ai.tool.call.result", &tool_result);
-
-                            if let Some(ref hook) = self.hook &&
-                                let HookAction::Terminate { reason } =
-                                hook.on_tool_result(
-                                    &tool_call.function.name,
-                                    tool_call.call_id.clone(),
-                                    &internal_call_id,
-                                    &tool_args,
-                                    &tool_result.to_string()
-                                )
-                                .await {
-                                    return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                }
-
-                            let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-
-                            tool_calls.push(tool_call_msg);
-                            tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
-
-                            saw_tool_call_this_turn = true;
-                            Ok(tool_result)
-                        }.instrument(tool_span).await;
-
-                        match tc_result {
-                            Ok(text) => {
-                                let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
-                                yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult{ tool_result: tr, internal_call_id }));
-                            }
-                            Err(e) => {
-                                yield Err(e);
-                                break 'outer;
-                            }
-                        }
-                    }
-                }
-
-                // Add text, reasoning, and tool calls to chat history.
-                // OpenAI Responses API requires reasoning items to precede function_call items.
-                let mut assistant_turn_added_to_history = false;
-                if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
-                    // Text before tool calls so the model sees its own prior output.
-                    let mut content_items = assistant_text_items_from_choice(&final_turn_content);
-
-                    // Reasoning must come before tool calls (OpenAI requirement)
-                    for reasoning in accumulated_reasoning.drain(..) {
-                        content_items.push(rig::message::AssistantContent::Reasoning(reasoning));
-                    }
-
-                    content_items.extend(tool_calls.clone());
-
-                    if let Some(content) = OneOrMany::from_iter_optional(content_items) {
-                        new_messages.push(Message::Assistant {
-                            id: stream.message_id.clone(),
-                            content,
-                        });
-                        assistant_turn_added_to_history = true;
-                    }
-                }
-
-                // Combine all tool results into a single User message (required by Anthropic)
-                let tool_result_contents: Vec<UserContent> = tool_results
-                    .into_iter()
-                    .map(|(id, call_id, tool_result)| {
-                        let content = ToolResultContent::from_tool_output(tool_result);
-                        match call_id {
-                            Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
-                            None => UserContent::tool_result(id, content),
-                        }
-                    })
-                    .collect();
-
-                if let Some(content) = OneOrMany::from_iter_optional(tool_result_contents) {
-                    new_messages.push(Message::User { content });
-                }
-
-                if !saw_tool_call_this_turn {
-                    // Add user message and assistant response to history before finishing
-                    let should_add_final_assistant = !assistant_turn_added_to_history
-                        && !is_empty_assistant_choice(&final_turn_content);
-                    if should_add_final_assistant {
-                        new_messages.push(Message::Assistant {
-                            id: stream.message_id.clone(),
-                            content: final_turn_content.clone(),
-                        });
-                    } else if !assistant_turn_added_to_history {
-                        tracing::warn!(
-                            agent_name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                            message_id = ?stream.message_id,
-                            "Streaming turn completed without assistant text; final response will be empty"
-                        );
-                    }
-
-                    if created_agent_span {
-                        let current_span = tracing::Span::current();
-                        record_usage_on_span(&current_span, aggregated_usage);
-                    }
-                    tracing::info!("Agent multi-turn stream finished");
-                    if let Some((memory, id)) = memory_handle.as_ref()
-                        && let Err(err) = memory.append(id, new_messages.clone()).await
-                    {
-                        tracing::warn!(
-                            error = %err,
-                            conversation_id = %id,
-                            "conversation memory append failed; yielding final response anyway"
-                        );
-                    }
-                    let final_messages: Option<Vec<Message>> = if has_history {
-                        Some(new_messages.clone())
-                    } else {
-                        None
-                    };
-                    yield Ok(MultiTurnStreamItem::final_response_with_completion_calls(
-                        final_turn_content,
-                        aggregated_usage,
-                        completion_calls,
-                        final_messages,
-                    ));
-                    break;
-                }
-            }
-
-            if max_turns_reached {
-                yield Err(Box::new(PromptError::MaxTurnsError {
-                    max_turns: self.max_turns,
-                    chat_history: build_full_history(chat_history.as_deref(), new_messages.clone()).into(),
-                    prompt: Box::new(last_prompt_error.clone().into()),
-                }).into());
-            }
-        };
-
-        Box::pin(stream.instrument(agent_span))
+        Box::pin(driver.instrument(agent_span))
     }
 }
 
-impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
+impl<M> IntoFuture for StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    P: PromptHook<M> + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1777,9 +1451,9 @@ pub async fn stream_to_stdout<R>(
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::agent::prompt_request::hooks::{
-        InvalidToolCallContext, InvalidToolCallHookAction, PromptHook, ToolCallHookAction,
-    };
+    use crate::agent::hook::{AgentHook, Flow, InvalidToolCallContext, StepEvent};
+    use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
+    use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
     use crate::completion::{CompletionRequest, PromptError, ToolDefinition, Usage};
@@ -1790,10 +1464,11 @@ mod tests {
     use crate::providers::anthropic;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
-        AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel, MockResponse,
-        MockStreamEvent, MockSubtractTool, MockToolError,
+        AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
+        MockExtensionsProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, MockToolError,
+        SessionId,
     };
-    use crate::tool::Tool;
+    use crate::tool::{Tool, ToolCallExtensions};
     use futures::{StreamExt, TryStreamExt};
     use serde::Deserialize;
     use std::collections::HashMap;
@@ -1804,6 +1479,52 @@ mod tests {
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+    #[test]
+    fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
+        use crate::message::{ToolCall, ToolFunction};
+
+        let output_call = AssistantContent::ToolCall(ToolCall::new(
+            "c1".to_string(),
+            ToolFunction::new(
+                "final_result".to_string(),
+                serde_json::json!({"city": "Tokyo"}),
+            ),
+        ));
+
+        // Prose + output-tool call (#1928): the streamed response text must be
+        // the structured output, not the prose, with no orphan tool_use.
+        let with_prose = OneOrMany::many(vec![
+            AssistantContent::text("Sure, here is the weather:"),
+            output_call.clone(),
+        ])
+        .expect("two items");
+        let final_choice = finalize_streamed_choice(&with_prose, r#"{"city":"Tokyo"}"#)
+            .expect("a turn with the output-tool call is finalized via it");
+        assert_eq!(
+            assistant_text_from_choice(&final_choice),
+            r#"{"city":"Tokyo"}"#
+        );
+        assert!(
+            !final_choice
+                .iter()
+                .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+            "no unanswered tool_use should remain in the final content"
+        );
+
+        // Output-tool call only.
+        let only_call = OneOrMany::one(output_call);
+        let final_choice = finalize_streamed_choice(&only_call, r#"{"city":"Tokyo"}"#)
+            .expect("finalized via output tool");
+        assert_eq!(
+            assistant_text_from_choice(&final_choice),
+            r#"{"city":"Tokyo"}"#
+        );
+
+        // A plain-text finalize (no tool call) is left to the caller.
+        let text_only = OneOrMany::one(AssistantContent::text(r#"{"city":"Tokyo"}"#));
+        assert!(finalize_streamed_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
+    }
 
     #[test]
     fn merge_reasoning_blocks_preserves_order_and_signatures() {
@@ -1916,8 +1637,8 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_user_content_preserves_multimodal_tool_output() {
-        let user_content = tool_result_user_content(
+    fn tool_result_output_preserves_multimodal_tool_output() {
+        let user_content = tool_result_output(
             "tool_call_1".to_string(),
             Some("call_1".to_string()),
             serde_json::json!({
@@ -2078,36 +1799,67 @@ mod tests {
         })
     }
 
+    fn assistant_reasoning_precedes_text_and_tool_call(
+        history: &[Message],
+        expected_reasoning: &str,
+        expected_text: &str,
+        tool_name: &str,
+    ) -> bool {
+        history.iter().any(|message| {
+            let Message::Assistant { content, .. } = message else {
+                return false;
+            };
+
+            let reasoning_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Reasoning(reasoning)
+                        if reasoning.content.iter().any(|content| matches!(
+                            content,
+                            ReasoningContent::Text { text, .. }
+                                if text == expected_reasoning
+                        ))
+                )
+            });
+            let text_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == expected_text
+                )
+            });
+            let tool_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.function.name == tool_name
+                )
+            });
+
+            matches!(
+                (reasoning_index, text_index, tool_index),
+                (Some(reasoning), Some(text), Some(tool))
+                    if reasoning < text && text < tool
+            )
+        })
+    }
+
     #[derive(Clone)]
     struct PanicOnUnknownToolHook;
 
-    impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        async fn on_tool_call_delta(
-            &self,
-            _tool_call_id: &str,
-            _internal_call_id: &str,
-            _tool_name: Option<&str>,
-            _tool_call_delta: &str,
-        ) -> HookAction {
-            panic!("unknown tool call delta should fail before delta hooks run")
-        }
-
-        async fn on_tool_call(
-            &self,
-            _tool_name: &str,
-            _tool_call_id: Option<String>,
-            _internal_call_id: &str,
-            _args: &str,
-        ) -> ToolCallHookAction {
-            panic!("unknown tool call should fail before tool hooks run")
-        }
-
-        async fn on_stream_completion_response_finish(
-            &self,
-            _prompt: &Message,
-            _response: &MockResponse,
-        ) -> HookAction {
-            panic!("unknown tool call should fail before stream finish hooks run")
+    impl AgentHook<MockCompletionModel> for PanicOnUnknownToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::ToolCallDelta { .. } => {
+                    panic!("unknown tool call delta should fail before delta hooks run")
+                }
+                StepEvent::ToolCall { .. } => {
+                    panic!("unknown tool call should fail before tool hooks run")
+                }
+                StepEvent::StreamResponseFinish { .. } => {
+                    panic!("unknown tool call should fail before stream finish hooks run")
+                }
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2216,14 +1968,18 @@ mod tests {
         name: String,
         parent_id: Option<u64>,
         fields: HashMap<String, u64>,
-        /// String-valued span fields (e.g. gen_ai.input.messages, gen_ai.output.messages).
-        string_fields: HashMap<String, String>,
     }
 
     #[derive(Clone, Default)]
     struct CapturedSpans(Arc<Mutex<Vec<CapturedSpan>>>);
 
     impl CapturedSpans {
+        fn clear(&self) {
+            if let Ok(mut spans) = self.0.lock() {
+                spans.clear();
+            }
+        }
+
         fn insert(&self, id: &Id, name: &str, parent_id: Option<u64>) {
             let id = id.into_u64();
             if let Ok(mut spans) = self.0.lock() {
@@ -2232,7 +1988,6 @@ mod tests {
                     name: name.to_string(),
                     parent_id,
                     fields: HashMap::new(),
-                    string_fields: HashMap::new(),
                 });
             }
         }
@@ -2242,14 +1997,6 @@ mod tests {
                 && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
             {
                 span.fields.extend(fields);
-            }
-        }
-
-        fn record_str(&self, id: &Id, fields: Vec<(String, String)>) {
-            if let Ok(mut spans) = self.0.lock()
-                && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
-            {
-                span.string_fields.extend(fields);
             }
         }
 
@@ -2276,33 +2023,32 @@ mod tests {
         }
 
         fn on_record(&self, span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
-            let mut int_fields = Vec::new();
-            let mut str_fields = Vec::new();
+            let mut fields = Vec::new();
             values.record(&mut SpanFieldCaptureVisitor {
-                int_fields: &mut int_fields,
-                str_fields: &mut str_fields,
+                fields: &mut fields,
             });
-            self.spans.record(span, int_fields);
-            self.spans.record_str(span, str_fields);
+            self.spans.record(span, fields);
         }
     }
 
     struct SpanFieldCaptureVisitor<'a> {
-        int_fields: &'a mut Vec<(String, u64)>,
-        str_fields: &'a mut Vec<(String, String)>,
+        fields: &'a mut Vec<(String, u64)>,
     }
 
     impl Visit for SpanFieldCaptureVisitor<'_> {
         fn record_u64(&mut self, field: &Field, value: u64) {
-            self.int_fields.push((field.name().to_string(), value));
+            self.fields.push((field.name().to_string(), value));
         }
 
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.str_fields
-                .push((field.name().to_string(), value.to_string()));
+        // Capture the *presence* of non-numeric fields (e.g. `gen_ai.completion`)
+        // with a placeholder value so tests can assert whether they were recorded.
+        fn record_str(&mut self, field: &Field, _value: &str) {
+            self.fields.push((field.name().to_string(), 0));
         }
 
-        fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
+        fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
+            self.fields.push((field.name().to_string(), 0));
+        }
     }
 
     async fn assert_stream_usage_recorded_on_chat_spans(
@@ -2311,18 +2057,52 @@ mod tests {
         max_turns: usize,
         expected_usages: &[Usage],
     ) {
+        // Scoped-subscriber tests must not run concurrently; the warm-up
+        // below explains the callsite-interest hazard this guards against.
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
         let spans = CapturedSpans::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
             spans: spans.clone(),
         });
         let _default = tracing::subscriber::set_default(subscriber);
+
+        // Span callsites in the driver are shared with every other test in
+        // this binary. The FIRST thread to hit a callsite caches its interest
+        // from that thread's dispatcher (`Dispatchers::Rebuilder::JustOne`
+        // consults `dispatcher::get_default`), so a parallel test without a
+        // subscriber can permanently cache `Interest::never` for the very
+        // spans this harness asserts on. Defend in two steps, both under the
+        // isolation guard: (1) warm the whole driver path from THIS thread so
+        // unregistered callsites first-register against this subscriber, then
+        // (2) rebuild the interest cache to heal callsites a foreign thread
+        // already poisoned.
+        let warmup_model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("warmup"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
+        let mut warmup_stream = warmup_agent.stream_prompt("warmup").multi_turn(1).await;
+        while let Some(item) = warmup_stream
+            .try_next()
+            .await
+            .expect("warmup stream should not error")
+        {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
         let empty_history: &[Message] = &[];
-        let outer_span = tracing::info_span!("outer");
+        // Declare the fields the guard protects so a regression (recording onto
+        // a caller span) is actually observable, not silently a no-op.
+        let outer_span = tracing::info_span!("outer", gen_ai.completion = tracing::field::Empty);
 
         async {
             let mut stream = agent
                 .stream_prompt(prompt)
-                .with_history(empty_history)
+                .history(empty_history)
                 .multi_turn(max_turns)
                 .await;
 
@@ -2354,6 +2134,8 @@ mod tests {
 
         for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
             assert_eq!(chat_span.parent_id, Some(outer_span_id));
+            assert!(chat_span.fields.contains_key("gen_ai.input.messages"));
+            assert!(chat_span.fields.contains_key("gen_ai.output.messages"));
             assert_eq!(
                 chat_span.fields.get("gen_ai.usage.input_tokens"),
                 Some(&expected_usage.input_tokens)
@@ -2393,12 +2175,17 @@ mod tests {
                 .all(|field| !field.starts_with("gen_ai.usage.")),
             "usage should not be recorded onto the caller's outer span"
         );
+        assert!(
+            !outer_span.fields.contains_key("gen_ai.completion"),
+            "gen_ai.completion should not be recorded onto the caller's outer span \
+             (parity with the blocking driver)"
+        );
     }
 
     #[test]
     fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
         let item: MultiTurnStreamItem<MockResponse> =
-            MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, Some(usage(3, 4))));
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, usage(3, 4)));
 
         let value = serde_json::to_value(&item).expect("serialize completion call event");
 
@@ -2423,23 +2210,48 @@ mod tests {
             serde_json::from_value(value).expect("deserialize completion call event");
         match item {
             MultiTurnStreamItem::CompletionCall(call_usage) => {
-                assert_eq!(call_usage, CompletionCall::new(2, Some(usage(3, 4))));
+                assert_eq!(call_usage, CompletionCall::new(2, usage(3, 4)));
             }
             other => panic!("expected completion call event, got {other:?}"),
         }
 
         let item: MultiTurnStreamItem<MockResponse> =
-            MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, None));
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, Usage::new()));
         let value = serde_json::to_value(&item).expect("serialize missing usage event");
 
+        // Unreported usage serializes as a plain zero-valued object (Usage's
+        // documented sentinel for missing provider metrics).
         assert_eq!(
             value,
             serde_json::json!({
                 "type": "completionCall",
                 "call_index": 3,
-                "usage": null
+                "usage": {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "tool_use_prompt_tokens": 0,
+                    "reasoning_tokens": 0,
+                }
             })
         );
+
+        // Stream items serialized before the Option encoding was dropped used
+        // `"usage": null`; they must still deserialize.
+        let legacy: MultiTurnStreamItem<MockResponse> = serde_json::from_value(serde_json::json!({
+            "type": "completionCall",
+            "call_index": 3,
+            "usage": null
+        }))
+        .expect("legacy null-usage event should deserialize");
+        match legacy {
+            MultiTurnStreamItem::CompletionCall(call) => {
+                assert_eq!(call, CompletionCall::new(3, Usage::new()));
+            }
+            other => panic!("expected completion call event, got {other:?}"),
+        }
     }
 
     #[test]
@@ -2449,11 +2261,15 @@ mod tests {
                 OneOrMany::one(AssistantContent::text("done")),
                 usage(3, 4),
                 vec![
-                    CompletionCall::new(0, None),
-                    CompletionCall::new(1, Some(usage(3, 4))),
+                    CompletionCall::new(0, Usage::new()),
+                    CompletionCall::new(1, usage(3, 4)),
                 ],
                 None,
             );
+
+        if let MultiTurnStreamItem::FinalResponse(response) = &item {
+            assert_eq!(response.requests(), 2);
+        }
 
         let value = serde_json::to_value(&item).expect("serialize final response");
 
@@ -2462,7 +2278,15 @@ mod tests {
             Some(&serde_json::json!([
                 {
                     "call_index": 0,
-                    "usage": null,
+                    "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
                 },
                 {
                     "call_index": 1,
@@ -2539,13 +2363,14 @@ mod tests {
     #[derive(Clone)]
     struct TerminateOnStreamFinish;
 
-    impl PromptHook<MockCompletionModel> for TerminateOnStreamFinish {
-        async fn on_stream_completion_response_finish(
-            &self,
-            _prompt: &Message,
-            _response: &<MockCompletionModel as CompletionModel>::StreamingResponse,
-        ) -> HookAction {
-            HookAction::terminate("stop after completion call")
+    impl AgentHook<MockCompletionModel> for TerminateOnStreamFinish {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::StreamResponseFinish { .. } => {
+                    Flow::terminate("stop after completion call")
+                }
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2554,15 +2379,14 @@ mod tests {
     #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for RepairDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let tool_name = context.tool_name.clone();
-            async move {
-                assert_eq!(tool_name, "default_api");
-                InvalidToolCallHookAction::repair("add")
+    impl AgentHook<MockCompletionModel> for RepairDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    Flow::repair("add")
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2570,19 +2394,17 @@ mod tests {
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for RetryDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let tool_name = context.tool_name.clone();
-            let args = context.args.clone();
-            async move {
-                assert_eq!(tool_name, "default_api");
-                if let Some(args) = args {
-                    assert!(!args.is_empty());
+    impl AgentHook<MockCompletionModel> for RetryDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    if let Some(args) = context.args.as_deref() {
+                        assert!(!args.is_empty());
+                    }
+                    Flow::retry("Use the add tool instead")
                 }
-                InvalidToolCallHookAction::retry("Use the add tool instead")
+                _ => Flow::cont(),
             }
         }
     }
@@ -2590,15 +2412,14 @@ mod tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl PromptHook<MockCompletionModel> for SkipDefaultApiHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let tool_name = context.tool_name.clone();
-            async move {
-                assert_eq!(tool_name, "default_api");
-                InvalidToolCallHookAction::skip("default_api was skipped")
+    impl AgentHook<MockCompletionModel> for SkipDefaultApiHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    Flow::skip("default_api was skipped")
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2617,20 +2438,17 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingInvalidToolCallHook {
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            let contexts = self.contexts.clone();
-            let context = context.clone();
-
-            async move {
-                contexts
-                    .lock()
-                    .expect("invalid tool context records mutex was poisoned")
-                    .push(context);
-                InvalidToolCallHookAction::fail()
+    impl AgentHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::InvalidToolCall(context) => {
+                    self.contexts
+                        .lock()
+                        .expect("invalid tool context records mutex was poisoned")
+                        .push(context.clone());
+                    Flow::fail()
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2649,28 +2467,28 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingToolCallDeltaHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            let deltas = self.deltas.clone();
-            let event = (
-                tool_call_id.to_string(),
-                internal_call_id.to_string(),
-                tool_name.map(str::to_string),
-                tool_call_delta.to_string(),
-            );
-
-            async move {
-                deltas
-                    .lock()
-                    .expect("tool call delta hook records mutex was poisoned")
-                    .push(event);
-                HookAction::cont()
+    impl AgentHook<MockCompletionModel> for RecordingToolCallDeltaHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::ToolCallDelta {
+                    tool_call_id,
+                    internal_call_id,
+                    tool_name,
+                    delta,
+                } => {
+                    let record = (
+                        tool_call_id.to_string(),
+                        internal_call_id.to_string(),
+                        tool_name.map(str::to_string),
+                        delta.to_string(),
+                    );
+                    self.deltas
+                        .lock()
+                        .expect("tool call delta hook records mutex was poisoned")
+                        .push(record);
+                    Flow::cont()
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2689,21 +2507,18 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingTextDeltaHook {
-        fn on_text_delta(
-            &self,
-            text_delta: &str,
-            full_text: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            let deltas = self.deltas.clone();
-            let event = (text_delta.to_string(), full_text.to_string());
-
-            async move {
-                deltas
-                    .lock()
-                    .expect("text delta hook records mutex was poisoned")
-                    .push(event);
-                HookAction::cont()
+    impl AgentHook<MockCompletionModel> for RecordingTextDeltaHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::TextDelta { delta, aggregated } => {
+                    let record = (delta.to_string(), aggregated.to_string());
+                    self.deltas
+                        .lock()
+                        .expect("text delta hook records mutex was poisoned")
+                        .push(record);
+                    Flow::cont()
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2713,20 +2528,13 @@ mod tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
-        fn on_text_delta(
-            &self,
-            text_delta: &str,
-            full_text: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.text.on_text_delta(text_delta, full_text)
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            SkipDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2735,20 +2543,13 @@ mod tests {
         text: RecordingTextDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
-        fn on_text_delta(
-            &self,
-            text_delta: &str,
-            full_text: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.text.on_text_delta(text_delta, full_text)
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            RetryDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::TextDelta { .. } => self.text.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2757,27 +2558,13 @@ mod tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.delta.on_tool_call_delta(
-                tool_call_id,
-                internal_call_id,
-                tool_name,
-                tool_call_delta,
-            )
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            RetryDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => RetryDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2786,27 +2573,13 @@ mod tests {
         delta: RecordingToolCallDeltaHook,
     }
 
-    impl PromptHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            self.delta.on_tool_call_delta(
-                tool_call_id,
-                internal_call_id,
-                tool_name,
-                tool_call_delta,
-            )
-        }
-
-        fn on_invalid_tool_call(
-            &self,
-            context: &InvalidToolCallContext,
-        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
-            SkipDefaultApiHook.on_invalid_tool_call(context)
+    impl AgentHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                event @ StepEvent::ToolCallDelta { .. } => self.delta.on_event(event).await,
+                event @ StepEvent::InvalidToolCall(_) => SkipDefaultApiHook.on_event(event).await,
+                _ => Flow::cont(),
+            }
         }
     }
 
@@ -2824,28 +2597,28 @@ mod tests {
         }
     }
 
-    impl PromptHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
-        fn on_tool_call_delta(
-            &self,
-            tool_call_id: &str,
-            internal_call_id: &str,
-            tool_name: Option<&str>,
-            tool_call_delta: &str,
-        ) -> impl Future<Output = HookAction> + Send {
-            let deltas = self.deltas.clone();
-            let event = (
-                tool_call_id.to_string(),
-                internal_call_id.to_string(),
-                tool_name.map(str::to_string),
-                tool_call_delta.to_string(),
-            );
-
-            async move {
-                deltas
-                    .lock()
-                    .expect("tool call delta hook records mutex was poisoned")
-                    .push(event);
-                HookAction::terminate("stop on tool call delta")
+    impl AgentHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
+        async fn on_event(&self, event: StepEvent<'_, MockCompletionModel>) -> Flow {
+            match event {
+                StepEvent::ToolCallDelta {
+                    tool_call_id,
+                    internal_call_id,
+                    tool_name,
+                    delta,
+                } => {
+                    let record = (
+                        tool_call_id.to_string(),
+                        internal_call_id.to_string(),
+                        tool_name.map(str::to_string),
+                        delta.to_string(),
+                    );
+                    self.deltas
+                        .lock()
+                        .expect("tool call delta hook records mutex was poisoned")
+                        .push(record);
+                    Flow::terminate("stop on tool call delta")
+                }
+                _ => Flow::cont(),
             }
         }
     }
@@ -2866,7 +2639,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -2923,6 +2696,122 @@ mod tests {
         assert!(validate_follow_up_tool_history(&requests[1]).is_ok());
     }
 
+    /// `StreamingPromptRequest::tool_concurrency` reaches the runner: two
+    /// barrier-synchronized tools in a streamed turn only finish if they run
+    /// concurrently. At `tool_concurrency(2)` the stream completes; sequential
+    /// execution would block on the first tool forever, so the timeout asserts
+    /// the public builder actually enables concurrency on the streaming path.
+    #[tokio::test]
+    async fn streaming_prompt_request_tool_concurrency_runs_tools_concurrently() {
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("b1", "barrier_tool", serde_json::json!({})),
+                MockStreamEvent::tool_call("b2", "barrier_tool", serde_json::json!({})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model)
+            .tool(MockBarrierTool::new(barrier))
+            .build();
+
+        let drive = async {
+            let mut stream = agent
+                .stream_prompt("hit the barrier twice")
+                .multi_turn(3)
+                .tool_concurrency(2)
+                .await;
+            while let Some(item) = stream.next().await {
+                item.unwrap_or_else(|err| panic!("unexpected streaming error: {err:?}"));
+            }
+        };
+
+        tokio::time::timeout(Duration::from_secs(5), drive)
+            .await
+            .expect("streamed tools must run concurrently, not deadlock at the barrier");
+    }
+
+    /// The streaming driver threads the per-call `ToolCallExtensions` to executed
+    /// tools, exactly like the blocking path.
+    #[tokio::test]
+    async fn tool_extensions_reach_tool_through_streaming_loop() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tool_call_1", "context_probe", serde_json::json!({}))
+                    .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+        let empty_history: &[Message] = &[];
+
+        let mut extensions = ToolCallExtensions::new();
+        extensions.insert(SessionId("xyz-789".to_string()));
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .tool_extensions(extensions)
+            .history(empty_history)
+            .multi_turn(3)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+                Ok(_) => {}
+            }
+        }
+
+        assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
+    }
+
+    /// Streaming counterpart of the blocking empty-extensions default: with no
+    /// `.tool_extensions(..)`, the tool still runs with empty extensions
+    /// (observing `no-session`), not a stale value.
+    #[tokio::test]
+    async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tool_call_1", "context_probe", serde_json::json!({}))
+                    .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let probe = MockExtensionsProbeTool::default();
+        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .history(empty_history)
+            .multi_turn(3)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+                Ok(_) => {}
+            }
+        }
+
+        assert_eq!(probe.observed().as_deref(), Some("no-session"));
+    }
+
     #[tokio::test]
     async fn unknown_tool_call_fails_before_streaming_second_request() {
         let model = MockCompletionModel::from_stream_turns([
@@ -2944,7 +2833,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -3008,9 +2897,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RepairDefaultApiHook)
+            .add_hook(RepairDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut saw_repaired_tool_call = false;
         let mut saw_tool_result = false;
@@ -3074,7 +2963,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(invalid_hook.clone())
+            .add_hook(invalid_hook.clone())
             .multi_turn(3)
             .await;
         let mut error = None;
@@ -3124,9 +3013,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
         let mut final_response_text = None;
@@ -3213,9 +3102,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
         let mut completion_call_events = Vec::new();
@@ -3246,8 +3135,8 @@ mod tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, Some(first_usage)),
-            CompletionCall::new(1, Some(second_usage)),
+            CompletionCall::new(0, first_usage),
+            CompletionCall::new(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -3338,9 +3227,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
         let mut final_response_text = None;
@@ -3445,9 +3334,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(SkipDefaultApiHook)
+            .add_hook(SkipDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
 
         while let Some(item) = stream.next().await {
@@ -3467,6 +3356,15 @@ mod tests {
             "reasoned step",
             "default_api"
         ));
+        assert!(
+            assistant_reasoning_precedes_text_and_tool_call(
+                &follow_up_history,
+                "reasoned step",
+                "checking ",
+                "default_api"
+            ),
+            "{follow_up_history:?}"
+        );
     }
 
     #[tokio::test]
@@ -3492,9 +3390,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
 
@@ -3538,11 +3436,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingTextAndSkipInvalidToolHook {
+            .add_hook(RecordingTextAndSkipInvalidToolHook {
                 text: text_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
 
         while let Some(item) = stream.next().await {
@@ -3598,11 +3496,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingDeltaAndRetryInvalidToolHook {
+            .add_hook(RecordingDeltaAndRetryInvalidToolHook {
                 delta: delta_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
         let mut completion_call_events = Vec::new();
@@ -3637,8 +3535,8 @@ mod tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, Some(first_usage)),
-            CompletionCall::new(1, Some(second_usage)),
+            CompletionCall::new(0, first_usage),
+            CompletionCall::new(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -3727,7 +3625,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(invalid_hook.clone())
+            .add_hook(invalid_hook.clone())
             .multi_turn(3)
             .await;
         let mut error = None;
@@ -3788,11 +3686,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingTextAndRetryInvalidToolHook {
+            .add_hook(RecordingTextAndRetryInvalidToolHook {
                 text: text_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
 
@@ -3848,11 +3746,11 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RecordingDeltaAndSkipInvalidToolHook {
+            .add_hook(RecordingDeltaAndSkipInvalidToolHook {
                 delta: delta_hook.clone(),
             })
             .multi_turn(3)
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
         let mut skipped_tool_result = None;
         let mut final_response_text = None;
@@ -3963,7 +3861,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .max_invalid_tool_call_retries(0)
             .await;
@@ -4023,7 +3921,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(RetryDefaultApiHook)
+            .add_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .max_invalid_tool_call_retries(0)
             .await;
@@ -4083,7 +3981,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_text = false;
@@ -4184,7 +4082,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_completion_call = false;
@@ -4343,7 +4241,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the allowed tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -4424,7 +4322,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the allowed tool")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -4502,7 +4400,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do not use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_tool_call = false;
@@ -4566,7 +4464,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do not use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4627,7 +4525,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a bad tool call")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4688,7 +4586,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a bad tool call")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4744,7 +4642,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
-            .with_hook(hook.clone())
+            .add_hook(hook.clone())
             .await;
         let mut stream_deltas = Vec::new();
 
@@ -4827,7 +4725,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream an incomplete tool call")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -4895,7 +4793,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do not use tools")
-            .with_hook(PanicOnUnknownToolHook)
+            .add_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
         let mut saw_delta = false;
@@ -5003,7 +4901,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
-            .with_hook(hook.clone())
+            .add_hook(hook.clone())
             .await;
         let mut stream_deltas = Vec::new();
 
@@ -5081,7 +4979,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
-            .with_hook(hook.clone())
+            .add_hook(hook.clone())
             .await;
         let mut saw_delta = false;
         let mut saw_final_response = false;
@@ -5148,7 +5046,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
         let mut completion_calls_events = Vec::new();
@@ -5171,8 +5069,8 @@ mod tests {
         assert_eq!(
             completion_calls_events,
             vec![
-                CompletionCall::new(0, Some(first_call_usage)),
-                CompletionCall::new(1, Some(second_call_usage))
+                CompletionCall::new(0, first_call_usage),
+                CompletionCall::new(1, second_call_usage)
             ]
         );
 
@@ -5192,8 +5090,8 @@ mod tests {
         assert_eq!(
             final_response.completion_calls(),
             &[
-                CompletionCall::new(0, Some(first_call_usage)),
-                CompletionCall::new(1, Some(second_call_usage))
+                CompletionCall::new(0, first_call_usage),
+                CompletionCall::new(1, second_call_usage)
             ]
         );
     }
@@ -5240,202 +5138,6 @@ mod tests {
         .await;
     }
 
-    /// Drive the agent stream under an outer span and return the captured spans.
-    async fn run_agent_stream_under_outer_span(
-        agent: crate::agent::Agent<MockCompletionModel>,
-        prompt: &str,
-        max_turns: usize,
-    ) -> (Vec<CapturedSpan>, u64) {
-        let spans = CapturedSpans::default();
-        let subscriber = Registry::default().with(SpanCaptureLayer {
-            spans: spans.clone(),
-        });
-        let _default = tracing::subscriber::set_default(subscriber);
-        let empty_history: &[Message] = &[];
-        let outer_span = tracing::info_span!("outer");
-
-        async {
-            let mut stream = agent
-                .stream_prompt(prompt)
-                .with_history(empty_history)
-                .multi_turn(max_turns)
-                .await;
-
-            while let Some(item) = stream.try_next().await.expect("stream should not error") {
-                if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
-                    break;
-                }
-            }
-        }
-        .instrument(outer_span)
-        .await;
-
-        let snapshot = spans.snapshot();
-        let outer_span_id = snapshot
-            .iter()
-            .find(|span| span.name == "outer")
-            .map(|span| span.id)
-            .expect("outer span should be captured");
-        (snapshot, outer_span_id)
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stream_prompt_records_input_and_output_messages_on_single_turn_chat_span() {
-        let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::text("hello from model"),
-            MockStreamEvent::final_response(usage(5, 3)),
-        ]]);
-        let agent = AgentBuilder::new(model).build();
-
-        let (snapshot, outer_span_id) = run_agent_stream_under_outer_span(agent, "hello", 1).await;
-
-        let chat_spans: Vec<_> = snapshot
-            .iter()
-            .filter(|s| s.name == "chat_streaming")
-            .collect();
-        assert_eq!(
-            chat_spans.len(),
-            1,
-            "expected exactly one chat_streaming span"
-        );
-
-        let chat_span = chat_spans[0];
-        assert_eq!(chat_span.parent_id, Some(outer_span_id));
-
-        let input = chat_span
-            .string_fields
-            .get("gen_ai.input.messages")
-            .expect("gen_ai.input.messages should be recorded on the chat span");
-        assert!(
-            !input.is_empty(),
-            "gen_ai.input.messages should be non-empty"
-        );
-        // The user prompt should appear in the input.
-        assert!(
-            input.contains("hello"),
-            "gen_ai.input.messages should contain the user prompt, got: {input}"
-        );
-
-        let output = chat_span
-            .string_fields
-            .get("gen_ai.output.messages")
-            .expect("gen_ai.output.messages should be recorded on the chat span");
-        assert!(
-            !output.is_empty(),
-            "gen_ai.output.messages should be non-empty"
-        );
-        assert!(
-            output.contains("hello from model"),
-            "gen_ai.output.messages should contain the assistant reply, got: {output}"
-        );
-
-        // The outer span must not carry per-call content.
-        let outer = snapshot
-            .iter()
-            .find(|s| s.id == outer_span_id)
-            .expect("outer span");
-        assert!(
-            !outer.string_fields.contains_key("gen_ai.input.messages"),
-            "outer span should not carry gen_ai.input.messages"
-        );
-        assert!(
-            !outer.string_fields.contains_key("gen_ai.output.messages"),
-            "outer span should not carry gen_ai.output.messages"
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stream_prompt_records_input_and_output_messages_on_each_turn_in_multi_turn() {
-        let model = MockCompletionModel::from_stream_turns([
-            vec![
-                MockStreamEvent::tool_call(
-                    "tool_call_1",
-                    "add",
-                    serde_json::json!({"x": 1, "y": 2}),
-                )
-                .with_call_id("call_1"),
-                MockStreamEvent::final_response(usage(10, 2)),
-            ],
-            vec![
-                MockStreamEvent::text("result is 3"),
-                MockStreamEvent::final_response(usage(25, 5)),
-            ],
-        ]);
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
-
-        let (snapshot, outer_span_id) =
-            run_agent_stream_under_outer_span(agent, "add 1 and 2", 3).await;
-
-        let chat_spans: Vec<_> = snapshot
-            .iter()
-            .filter(|s| s.name == "chat_streaming")
-            .collect();
-        assert_eq!(
-            chat_spans.len(),
-            2,
-            "expected two chat_streaming spans for two-turn agent run"
-        );
-
-        for (i, chat_span) in chat_spans.iter().enumerate() {
-            let input = chat_span
-                .string_fields
-                .get("gen_ai.input.messages")
-                .unwrap_or_else(|| {
-                    panic!("chat span #{i} should have gen_ai.input.messages recorded")
-                });
-            assert!(
-                !input.is_empty(),
-                "chat span #{i}: gen_ai.input.messages should be non-empty"
-            );
-
-            let output = chat_span
-                .string_fields
-                .get("gen_ai.output.messages")
-                .unwrap_or_else(|| {
-                    panic!("chat span #{i} should have gen_ai.output.messages recorded")
-                });
-            assert!(
-                !output.is_empty(),
-                "chat span #{i}: gen_ai.output.messages should be non-empty"
-            );
-        }
-
-        // Turn 1 input contains the original user prompt.
-        let first_input = chat_spans[0]
-            .string_fields
-            .get("gen_ai.input.messages")
-            .unwrap();
-        assert!(
-            first_input.contains("add 1 and 2"),
-            "first turn input should contain the user prompt, got: {first_input}"
-        );
-
-        // Turn 2 input should contain the tool result (richer history).
-        let second_input = chat_spans[1]
-            .string_fields
-            .get("gen_ai.input.messages")
-            .unwrap();
-        // The second turn input must be longer (it contains the tool result message).
-        assert!(
-            second_input.len() > first_input.len(),
-            "second turn input should be longer than first (includes tool result)"
-        );
-
-        // The outer span must not carry any per-call content.
-        let outer = snapshot
-            .iter()
-            .find(|s| s.id == outer_span_id)
-            .expect("outer span");
-        assert!(
-            !outer.string_fields.contains_key("gen_ai.input.messages"),
-            "outer span should not carry gen_ai.input.messages"
-        );
-        assert!(
-            !outer.string_fields.contains_key("gen_ai.output.messages"),
-            "outer span should not carry gen_ai.output.messages"
-        );
-    }
-
     #[tokio::test]
     async fn stream_prompt_emits_completion_call_before_finish_hook_termination() {
         let call_usage = usage(10, 2);
@@ -5447,7 +5149,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("say done")
-            .with_hook(TerminateOnStreamFinish)
+            .add_hook(TerminateOnStreamFinish)
             .await;
         let mut completion_calls = Vec::new();
         let mut saw_error = false;
@@ -5468,10 +5170,7 @@ mod tests {
             }
         }
 
-        assert_eq!(
-            completion_calls,
-            vec![CompletionCall::new(0, Some(call_usage))]
-        );
+        assert_eq!(completion_calls, vec![CompletionCall::new(0, call_usage)]);
         assert!(saw_error);
     }
 
@@ -5497,7 +5196,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("do tool work")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
         let mut completion_calls_events = Vec::new();
@@ -5518,8 +5217,8 @@ mod tests {
         }
 
         let expected_usage = vec![
-            CompletionCall::new(0, None),
-            CompletionCall::new(1, Some(second_call_usage)),
+            CompletionCall::new(0, Usage::new()),
+            CompletionCall::new(1, second_call_usage),
         ];
         assert_eq!(completion_calls_events, expected_usage);
 
@@ -5588,7 +5287,7 @@ mod tests {
         let empty_history: &[Message] = &[];
         let mut stream = agent
             .stream_prompt("answer with citations")
-            .with_history(empty_history)
+            .history(empty_history)
             .await;
         let mut final_response = None;
 
@@ -5631,7 +5330,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use a tool with citations")
-            .with_history(empty_history)
+            .history(empty_history)
             .multi_turn(3)
             .await;
 
@@ -5786,10 +5485,11 @@ mod tests {
         Ok(())
     }
 
-    /// Test that FinalResponse contains the updated chat history when with_history is used.
+    /// Test that FinalResponse contains the updated chat history when a starting
+    /// history is provided via `.history(..)`.
     ///
     /// This verifies that:
-    /// 1. FinalResponse.history() returns Some when with_history was called
+    /// 1. FinalResponse.history() returns Some when a starting history was provided
     /// 2. The history contains both the user prompt and assistant response
     #[tokio::test]
     #[ignore = "This requires an API key"]
@@ -5808,7 +5508,7 @@ mod tests {
         let empty_history: &[Message] = &[];
         let mut stream = agent
             .stream_prompt("Say 'hello' and nothing else.")
-            .with_history(empty_history)
+            .history(empty_history)
             .await;
 
         // Consume the stream and collect FinalResponse
@@ -5907,7 +5607,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("think before answering")
-            .with_history(Vec::<Message>::new())
+            .history(Vec::<Message>::new())
             .await;
 
         let mut history_in_final = None;
@@ -5967,6 +5667,18 @@ mod tests {
                         ReasoningContent::Text { text, .. } if text == "reasoned step"
                     ))
         )));
+        let reasoning_index = assistant_content
+            .iter()
+            .position(|item| matches!(item, AssistantContent::Reasoning(_)))
+            .expect("assistant history should contain reasoning");
+        let text_index = assistant_content
+            .iter()
+            .position(|item| matches!(item, AssistantContent::Text(_)))
+            .expect("assistant history should contain text");
+        assert!(
+            reasoning_index < text_index,
+            "assistant reasoning must be stored before assistant text: {assistant_content:?}"
+        );
     }
 
     #[tokio::test]
@@ -5986,7 +5698,7 @@ mod tests {
         let mut stream = agent
             .stream_prompt("hi")
             .conversation("t1")
-            .with_history(vec![Message::user("from-caller")])
+            .history(vec![Message::user("from-caller")])
             .await;
 
         while let Some(item) = stream.next().await {
@@ -6010,7 +5722,7 @@ mod tests {
         let memory = InMemoryConversationMemory::new();
         let agent = AgentBuilder::new(streaming_text_then_final_model())
             .memory(memory.clone())
-            .conversation_id("default")
+            .conversation("default")
             .build();
 
         let mut stream = agent.stream_prompt("hi").without_memory().await;

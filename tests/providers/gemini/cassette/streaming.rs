@@ -122,7 +122,7 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 "expected resolved Gemini model version to be surfaced"
             );
             assert!(
-                final_response.token_usage().is_some(),
+                final_response.token_usage().has_values(),
                 "expected final response to expose token usage"
             );
         },
@@ -172,9 +172,7 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected modelVersion from terminal chunks to be retained"
             );
-            let usage = final_response
-                .token_usage()
-                .expect("expected final response to expose token usage");
+            let usage = final_response.token_usage();
             assert!(
                 usage.input_tokens > 0,
                 "expected positive input token usage, got {usage:?}"

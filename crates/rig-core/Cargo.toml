@@ -27,13 +27,14 @@ bytes = { workspace = true }
 epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
+indexmap = { workspace = true }
 lopdf = { workspace = true, optional = true }
 mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
-rig-derive = { version = "0.38.2", path = "../rig-derive", optional = true }
+rig-derive = { version = "0.39.0", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -46,8 +47,6 @@ http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 serenity = { workspace = true, optional = true }
 fastrand = { workspace = true }
-nanoid = { workspace = true }
-getrandom = { workspace = true, optional = true }
 eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
@@ -64,6 +63,16 @@ reqwest-middleware = { workspace = true, optional = true, features = [
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio-tungstenite = { workspace = true, optional = true }
+
+# futures-timer's default backend uses a background timer thread, which cannot
+# drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
+# the target is browser wasm — regardless of feature flags — so
+# `wasm_compat::timeout` and the SSE retry backoff actually fire instead of
+# hanging. Scoped to `target_os = "unknown"` (browser) rather than the whole
+# `wasm` family because the gloo-timers/setTimeout backend needs a JS host and
+# would be wrong-by-construction on WASI.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+futures-timer = { workspace = true, features = ["wasm-bindgen"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -116,10 +125,7 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 wasm = [
-  "dep:getrandom",
   "dep:wasm-bindgen-futures",
-  "futures-timer/wasm-bindgen",
-  "getrandom/js",
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
