@@ -271,10 +271,11 @@ pub enum StreamedTurnEvent {
     /// then apply the outcome with
     /// [`StreamedTurnAssembler::resolve_pending_invalid`].
     InvalidToolCall(Box<StreamedInvalidToolCall>),
-    /// The provider reported the end of this completion call. Record it (see
+    /// The provider supplied its typed final payload. Record its usage (see
     /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call));
-    /// when `emit_final` is set, the turn streamed text and the driver should
-    /// run its stream-finish hook and forward the final item.
+    /// this does not establish that the provider stream reached EOF. When
+    /// `emit_final` is set, the turn streamed text and the driver should buffer
+    /// the final item until EOF finalizes the turn.
     Completed {
         /// Provider-reported usage for this call. Zero-valued usage means the
         /// provider reported no usage metrics.
@@ -348,7 +349,7 @@ impl StreamedTurnAssembler {
 
     /// Normalize a snapshot of the provider aggregate into the content that
     /// would be committed for this turn, without consuming the assembler.
-    pub(crate) fn canonical_choice(
+    fn canonical_choice(
         &self,
         provider_choice: &OneOrMany<AssistantContent>,
     ) -> OneOrMany<AssistantContent> {

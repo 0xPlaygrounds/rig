@@ -1580,7 +1580,7 @@ mod migrated_tests {
 
     use std::sync::{
         Arc, Mutex,
-        atomic::{AtomicU32, Ordering::SeqCst},
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     };
 
     use futures::StreamExt;
@@ -1749,6 +1749,7 @@ mod migrated_tests {
     struct CanonicalResponseHook {
         blocking: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
         streaming: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
+        committed: Arc<Mutex<Vec<OneOrMany<AssistantContent>>>>,
     }
 
     impl AgentHook for CanonicalResponseHook {
@@ -1783,6 +1784,65 @@ mod migrated_tests {
                     usage: event.usage,
                     message_id: event.message_id.map(str::to_owned),
                 });
+            ObservationAction::continue_run()
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ObservationAction {
+            self.committed
+                .lock()
+                .expect("committed snapshots")
+                .push(event.content.clone());
+            ObservationAction::continue_run()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct FinishLifecycleHook {
+        snapshots: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
+        model_turns: Arc<AtomicU32>,
+        stop: Arc<AtomicBool>,
+    }
+
+    impl FinishLifecycleHook {
+        fn stopping() -> Self {
+            let hook = Self::default();
+            hook.stop.store(true, SeqCst);
+            hook
+        }
+    }
+
+    impl AgentHook for FinishLifecycleHook {
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            self.snapshots
+                .lock()
+                .expect("finish snapshots")
+                .push(CanonicalResponseSnapshot {
+                    prompt: event.prompt.clone(),
+                    content: event.content.clone(),
+                    usage: event.usage,
+                    message_id: event.message_id.map(str::to_owned),
+                });
+            if self.stop.load(SeqCst) {
+                ObservationAction::stop("stop at stream EOF")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            _event: ModelTurnFinished<'_>,
+        ) -> ObservationAction {
+            self.model_turns.fetch_add(1, SeqCst);
             ObservationAction::continue_run()
         }
     }
@@ -1841,9 +1901,9 @@ mod migrated_tests {
 
         let streaming_hook = CanonicalResponseHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::message_id("msg-canonical"),
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::message_id("msg-canonical"),
         ]]))
         .add_hook(streaming_hook.clone())
         .build()
@@ -1867,6 +1927,237 @@ mod migrated_tests {
         assert_eq!(streaming, blocking);
         assert_eq!(streaming[0].usage, canonical_usage());
         assert_eq!(streaming[0].message_id.as_deref(), Some("msg-canonical"));
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_without_provider_message_id_reports_none() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let snapshots = hook.snapshots.lock().expect("finish snapshots");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].message_id, None);
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_runs_before_buffered_final_is_exposed() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::message_id("msg-after-final"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        let mut provider_finals = 0;
+        while let Some(item) = stream.next().await {
+            if matches!(
+                item.expect("stream item"),
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))
+            ) {
+                provider_finals += 1;
+                let snapshots = hook.snapshots.lock().expect("finish snapshots");
+                assert_eq!(snapshots.len(), 1, "hook must run before final exposure");
+                assert_eq!(snapshots[0].message_id.as_deref(), Some("msg-after-final"));
+                assert_eq!(
+                    hook.model_turns.load(SeqCst),
+                    0,
+                    "the turn must remain uncommitted while the final item is yielded"
+                );
+            }
+        }
+
+        assert_eq!(provider_finals, 1);
+        assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
+        assert_eq!(hook.model_turns.load(SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn streaming_response_finish_stop_suppresses_final_and_turn_commit() {
+        let hook = FinishLifecycleHook::stopping();
+        let prompt = Message::user("canonical prompt");
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::message_id("msg-after-final"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner(prompt.clone())
+        .stream()
+        .await;
+        let mut saw_provider_final = false;
+        let mut saw_run_final = false;
+        let mut error = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                ))) => saw_provider_final = true,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_run_final = true,
+                Ok(_) => {}
+                Err(err) => error = Some(err),
+            }
+        }
+
+        assert!(!saw_provider_final, "the buffered final must remain hidden");
+        assert!(
+            !saw_run_final,
+            "the cancelled run must not produce a response"
+        );
+        assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
+        assert_eq!(hook.model_turns.load(SeqCst), 0);
+        assert!(matches!(
+            error,
+            Some(StreamingError::Prompt(error))
+                if matches!(
+                    error.as_ref(),
+                    PromptError::PromptCancelled { chat_history, reason }
+                        if chat_history == &[prompt] && reason == "stop at stream EOF"
+                )
+        ));
+    }
+
+    #[tokio::test]
+    async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("canonical response"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::error("post-final failure"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        let mut saw_provider_final = false;
+        let mut error = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                ))) => saw_provider_final = true,
+                Ok(_) => {}
+                Err(err) => error = Some(err),
+            }
+        }
+
+        assert!(!saw_provider_final, "the buffered final must remain hidden");
+        assert!(hook.snapshots.lock().expect("finish snapshots").is_empty());
+        assert_eq!(hook.model_turns.load(SeqCst), 0);
+        assert!(matches!(
+            error,
+            Some(StreamingError::Completion(CompletionError::ProviderError(message)))
+                if message == "post-final failure"
+        ));
+    }
+
+    #[tokio::test]
+    async fn visible_assistant_items_after_final_are_rejected() {
+        let cases = [
+            ("text", MockStreamEvent::text("late text")),
+            ("reasoning", MockStreamEvent::reasoning("late reasoning")),
+            (
+                "reasoning delta",
+                MockStreamEvent::reasoning_delta(None::<String>, "late reasoning"),
+            ),
+            (
+                "tool call",
+                MockStreamEvent::tool_call("late", "add", json!({"x": 1, "y": 2})),
+            ),
+            (
+                "tool-call delta",
+                MockStreamEvent::tool_call_name_delta("late", "internal-late", "add"),
+            ),
+            ("unknown", MockStreamEvent::unknown(json!({"type": "late"}))),
+        ];
+
+        for (case, visible_item) in cases {
+            let hook = FinishLifecycleHook::default();
+            let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+                MockStreamEvent::text("canonical response"),
+                MockStreamEvent::final_response(canonical_usage()),
+                visible_item,
+            ]]))
+            .add_hook(hook.clone())
+            .build()
+            .runner("canonical prompt")
+            .stream()
+            .await;
+            let mut saw_provider_final = false;
+            let mut error = None;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(MultiTurnStreamItem::StreamAssistantItem(
+                        StreamedAssistantContent::Final(_),
+                    )) => saw_provider_final = true,
+                    Ok(_) => {}
+                    Err(err) => error = Some(err),
+                }
+            }
+
+            assert!(
+                !saw_provider_final,
+                "{case}: buffered final must remain hidden"
+            );
+            assert!(
+                hook.snapshots.lock().expect("finish snapshots").is_empty(),
+                "{case}: finish hook must not run"
+            );
+            assert_eq!(hook.model_turns.load(SeqCst), 0, "{case}");
+            assert!(
+                matches!(
+                    error,
+                    Some(StreamingError::Completion(CompletionError::ResponseError(ref message)))
+                        if message.contains("visible assistant content after its final response")
+                ),
+                "{case}: expected malformed-response error, got {error:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn visible_item_after_non_emittable_final_is_rejected() {
+        let hook = FinishLifecycleHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("think"),
+            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::text("late text"),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("canonical prompt")
+        .stream()
+        .await;
+        let mut error = None;
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                error = Some(err);
+            }
+        }
+
+        assert!(hook.snapshots.lock().expect("finish snapshots").is_empty());
+        assert_eq!(hook.model_turns.load(SeqCst), 0);
+        assert!(matches!(
+            error,
+            Some(StreamingError::Completion(CompletionError::ResponseError(message)))
+                if message.contains("visible assistant content after its final response")
+        ));
     }
 
     #[tokio::test]
@@ -1896,6 +2187,7 @@ mod migrated_tests {
         }
 
         let snapshots = hook.streaming.lock().expect("streaming snapshots");
+        let committed = hook.committed.lock().expect("committed snapshots");
         let kinds = snapshots[0]
             .content
             .iter()
@@ -1907,6 +2199,10 @@ mod migrated_tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(kinds, ["reasoning", "text", "tool_call"]);
+        assert_eq!(
+            snapshots[0].content, committed[0],
+            "finish hook and committed turn must share one canonical choice"
+        );
     }
 
     fn blocking_model() -> MockCompletionModel {
@@ -7051,6 +7347,34 @@ mod migrated_tests {
             streaming_hook.count(StepEventKind::StreamResponseFinish),
             1,
             "the tool-only turn fires no StreamResponseFinish"
+        );
+    }
+
+    #[tokio::test]
+    async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
+        let hook = RecordingHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("think"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .runner("reason")
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            item.expect("reasoning-only stream item");
+        }
+
+        assert_eq!(
+            hook.count(StepEventKind::StreamResponseFinish),
+            0,
+            "reasoning-only turns must not fire StreamResponseFinish"
+        );
+        assert_eq!(
+            hook.count(StepEventKind::ModelTurnFinished),
+            1,
+            "the accepted reasoning-only turn still fires ModelTurnFinished"
         );
     }
 

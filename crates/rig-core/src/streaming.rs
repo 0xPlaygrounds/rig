@@ -281,16 +281,6 @@ where
         }
     }
 
-    /// Snapshot the assistant content accumulated so far in provider arrival order.
-    ///
-    /// Managed agent hooks need this when the provider's final response item
-    /// arrives, before the outer stream has been polled once more to `None` and
-    /// committed `assistant_items` into the public `choice` field.
-    pub(crate) fn current_choice(&self) -> OneOrMany<AssistantContent> {
-        OneOrMany::from_iter_optional(self.assistant_items.clone())
-            .unwrap_or_else(|| self.choice.clone())
-    }
-
     /// Cancel the stream and immediately drop the provider's inner stream.
     /// Cancellation is surfaced as normal stream termination.
     pub fn cancel(&mut self) {

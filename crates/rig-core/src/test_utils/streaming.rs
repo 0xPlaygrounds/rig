@@ -77,6 +77,8 @@ pub enum MockStreamEvent {
     },
     /// Provider-assigned message ID.
     MessageId(String),
+    /// Provider-native output item that Rig does not model.
+    Unknown(serde_json::Value),
     /// Final raw response carrying optional usage.
     FinalResponse(MockResponse),
     /// Stream error.
@@ -181,6 +183,11 @@ impl MockStreamEvent {
         Self::MessageId(id.into())
     }
 
+    /// Create an unmodeled provider output item.
+    pub fn unknown(value: serde_json::Value) -> Self {
+        Self::Unknown(value)
+    }
+
     /// Create a final response event with usage.
     pub fn final_response(usage: Usage) -> Self {
         Self::FinalResponse(MockResponse::with_usage(usage))
@@ -238,6 +245,7 @@ impl MockStreamEvent {
                 Ok(RawStreamingChoice::ReasoningDelta { id, reasoning })
             }
             Self::MessageId(id) => Ok(RawStreamingChoice::MessageId(id)),
+            Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value)),
             Self::FinalResponse(response) => Ok(RawStreamingChoice::FinalResponse(response)),
             Self::Error(error) => Err(error.into_completion_error()),
         }
