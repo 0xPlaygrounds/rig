@@ -2,8 +2,8 @@ use crate::{
     OneOrMany,
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
-        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelTurnFinished, StepEventKind,
-        StreamResponseFinish, TextDelta, ToolCallDelta,
+        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelTurnPrepared, StepEventKind,
+        TextDelta, ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -15,7 +15,7 @@ use crate::{
         build_chat_span, new_execute_tool_span, observe_action, resolve_completion_call,
         run_single_tool,
     },
-    completion::GetTokenUsage,
+    completion::{CompletionTerminalMetadata, GetCompletionMetadata},
     message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
@@ -175,21 +175,21 @@ impl<R> MultiTurnStreamItem<R> {
 /// reported usage for the recovered completion call is not lost.
 async fn drain_stream_usage<R>(
     stream: &mut crate::streaming::StreamingCompletionResponse<R>,
-) -> Result<crate::completion::Usage, StreamingError>
+) -> Result<(crate::completion::Usage, Option<CompletionTerminalMetadata>), StreamingError>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     while let Some(content) = stream.next().await {
         match content {
             Ok(StreamedAssistantContent::Final(final_resp)) => {
-                return Ok(final_resp.token_usage());
+                return Ok((final_resp.token_usage(), final_resp.terminal_metadata()));
             }
             Ok(_) => {}
             Err(err) => return Err(err.into()),
         }
     }
 
-    Ok(crate::completion::Usage::new())
+    Ok((crate::completion::Usage::new(), None))
 }
 
 pub(crate) fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
@@ -282,7 +282,7 @@ where
 impl<M> StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetCompletionMetadata,
 {
     /// Create a new `StreamingPromptRequest` from an agent, including its
     /// default hooks.
@@ -1008,7 +1008,7 @@ impl StreamingTurnSource {
 impl<M> TurnSource<M> for StreamingTurnSource
 where
     M: CompletionModel,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetCompletionMetadata,
 {
     type Raw = M::StreamingResponse;
 
@@ -1043,9 +1043,10 @@ where
                     return;
                 }
             };
-            // Captured from each completion-call emission so the normalized
-            // `ModelTurnFinished` event carries the turn's usage.
+            // Captured from each completion-call emission for the normalized
+            // prepared-turn hook and persisted per-call accounting.
             let mut last_usage = crate::completion::Usage::new();
+            let mut last_terminal_metadata = None;
 
             let mut assembler = StreamedTurnAssembler::new(
                 prepared.executable_tool_names.clone(),
@@ -1057,7 +1058,7 @@ where
             let mut pending_final = None;
             // Mirrors the blocking driver's `response_hook_suppressed`: a turn
             // whose invalid tool call was repaired is a recovered turn, so its
-            // response-finish hook is suppressed.
+            // prepared-turn hook is suppressed.
             let mut turn_recovered = false;
 
             // Emit the turn's single `CompletionCall` exactly once, recording its
@@ -1068,14 +1069,19 @@ where
             // Returns the item to yield (`Some` the first time, `None` after), or
             // the terminal error to surface.
             macro_rules! emit_completion_call {
-                ($usage:expr) => {{
+                ($usage:expr, $terminal_metadata:expr) => {{
                     let usage = $usage;
+                    let terminal_metadata = $terminal_metadata;
                     last_usage = usage;
+                    last_terminal_metadata = terminal_metadata.clone();
                     if !completion_call_emitted {
                         if usage.has_values() {
                             record_usage_on_span(&chat_span, usage);
                         }
-                        match run.record_streamed_completion_call(usage) {
+                        match run.record_streamed_completion_call_with_terminal_metadata(
+                            usage,
+                            terminal_metadata,
+                        ) {
                             Ok(call) => {
                                 completion_call_emitted = true;
                                 Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
@@ -1181,8 +1187,12 @@ where
                                 },
                             ));
                         }
-                        StreamedTurnEvent::Completed { usage, emit_final } => {
-                            match emit_completion_call!(usage) {
+                        StreamedTurnEvent::Completed {
+                            usage,
+                            terminal_metadata,
+                            emit_final,
+                        } => {
+                            match emit_completion_call!(usage, terminal_metadata) {
                                 Ok(Some(item)) => yield Ok(item),
                                 Ok(None) => {}
                                 Err(err) => {
@@ -1231,7 +1241,7 @@ where
                                 StreamedResolution::Repaired { .. } => {
                                     // Replayed deltas flow through the same event
                                     // handling above; the turn is now recovered, so
-                                    // its response-finish hook is suppressed.
+                                    // its prepared-turn hook is suppressed.
                                     turn_recovered = true;
                                     events.extend(assembler.resolve_pending_invalid(&resolution));
                                 }
@@ -1245,14 +1255,18 @@ where
                                         yield Err(err.into());
                                         return;
                                     }
-                                    let drained_usage = match drain_stream_usage(&mut stream).await {
-                                        Ok(usage) => usage,
+                                    let (drained_usage, drained_terminal_metadata) =
+                                        match drain_stream_usage(&mut stream).await {
+                                        Ok(metadata) => metadata,
                                         Err(err) => {
                                             yield Err(err);
                                             return;
                                         }
                                     };
-                                    match emit_completion_call!(drained_usage) {
+                                    match emit_completion_call!(
+                                        drained_usage,
+                                        drained_terminal_metadata
+                                    ) {
                                         Ok(Some(item)) => yield Ok(item),
                                         Ok(None) => {}
                                         Err(err) => {
@@ -1291,7 +1305,10 @@ where
             // inline (not `emit_completion_call!`) so it doesn't emit a dead
             // `completion_call_emitted = true` write.
             if !completion_call_emitted {
-                match run.record_streamed_completion_call(crate::completion::Usage::new()) {
+                match run.record_streamed_completion_call_with_terminal_metadata(
+                    crate::completion::Usage::new(),
+                    None,
+                ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
                         yield Err(Box::new(err).into());
@@ -1301,19 +1318,24 @@ where
             }
 
             let final_turn_content = stream.choice.clone();
-            let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
-            if pending_final.is_some()
-                && !turn_recovered
+            let streamed_turn = assembler.finish_with_terminal_metadata(
+                stream.message_id.clone(),
+                last_terminal_metadata.clone(),
+                &final_turn_content,
+            );
+            if !turn_recovered
                 && let Some(reason) = observe_action(
                     runner
                         .hooks
-                        .on_stream_response_finish(
+                        .on_model_turn_prepared(
                             hook_ctx,
-                            StreamResponseFinish {
+                            ModelTurnPrepared {
+                                turn: hook_ctx.turn(),
                                 prompt: &current_prompt,
                                 content: &streamed_turn.choice,
                                 usage: last_usage,
                                 message_id: streamed_turn.message_id.as_deref(),
+                                terminal_metadata: streamed_turn.terminal_metadata.as_ref(),
                             },
                         )
                         .await,
@@ -1328,10 +1350,8 @@ where
             self.last_message_id = streamed_turn.message_id.clone();
             // The canonical (committed) assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
-            // `stream.choice` aggregate. `ModelTurnFinished` — the normalized
-            // per-turn event — carries this, matching what is recorded into run
-            // history; the raw `stream.choice` is kept in `last_final_choice` for
-            // the raw/final streaming behavior.
+            // `stream.choice` aggregate. The raw `stream.choice` is kept in
+            // `last_final_choice` for the raw/final streaming behavior.
             let canonical_choice = streamed_turn.choice.clone();
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(Box::new(err).into());
@@ -1350,29 +1370,6 @@ where
                 &canonical_choice,
                 runner.record_telemetry_content,
             );
-
-            // Normalized per-turn event, fired once the turn is committed on the
-            // streaming surface — including tool-only / reasoning-only turns that
-            // fire no `StreamResponseFinish`. Suppressed for recovered turns,
-            // mirroring the blocking surface's `Continue` arm.
-            if !turn_recovered
-                && let Some(reason) = observe_action(
-                    runner
-                        .hooks
-                        .on_model_turn_finished(
-                            hook_ctx,
-                            ModelTurnFinished {
-                                turn: hook_ctx.turn(),
-                                content: &canonical_choice,
-                                usage: last_usage,
-                            },
-                        )
-                        .await,
-                )
-            {
-                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                return;
-            }
 
             self.last_final_choice = final_turn_content;
         })
@@ -1443,7 +1440,7 @@ where
 impl<M> AgentRunner<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetCompletionMetadata,
 {
     /// Drive the agent loop, streaming assistant content, tool activity, and a
     /// final response. Hooks fire at every observable point, including streamed
@@ -1577,7 +1574,7 @@ pub async fn stream_to_stdout<R>(
 #[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod migrated_tests {
     use crate::agent::{
-        InvalidToolCallAction, InvalidToolCallContext, ObservationAction, StreamResponseFinish,
+        InvalidToolCallAction, InvalidToolCallContext, ModelTurnPrepared, ObservationAction,
         TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
     };
 
@@ -1588,7 +1585,10 @@ mod migrated_tests {
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
+    use crate::completion::{
+        CompletionFinishReason, CompletionRequest, CompletionTerminalMetadata, Prompt, PromptError,
+        ToolDefinition, Usage,
+    };
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolChoice, ToolResultContent, UserContent,
@@ -2025,12 +2025,12 @@ mod migrated_tests {
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             panic!("unknown tool call should fail before tool hooks run")
         }
-        async fn on_stream_response_finish(
+        async fn on_model_turn_prepared(
             &self,
             _: &HookContext,
-            _: StreamResponseFinish<'_>,
+            _: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            panic!("unknown tool call should fail before stream finish hooks run")
+            panic!("unknown tool call should fail before prepared-turn hooks run")
         }
     }
 
@@ -3004,6 +3004,10 @@ mod migrated_tests {
         match item {
             MultiTurnStreamItem::CompletionCall(call_usage) => {
                 assert_eq!(call_usage, CompletionCall::new(2, usage(3, 4)));
+                assert_eq!(
+                    call_usage.terminal_metadata, None,
+                    "an older completion-call payload without terminal metadata must default to None"
+                );
             }
             other => panic!("expected completion call event, got {other:?}"),
         }
@@ -3157,15 +3161,13 @@ mod migrated_tests {
     struct TerminateOnStreamFinish;
 
     impl AgentHook for TerminateOnStreamFinish {
-        async fn on_stream_response_finish(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            event: StreamResponseFinish<'_>,
+            event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
             match event {
-                StreamResponseFinish { .. } => {
-                    ObservationAction::stop("stop after completion call")
-                }
+                ModelTurnPrepared { .. } => ObservationAction::stop("stop after completion call"),
                 _ => ObservationAction::continue_run(),
             }
         }
@@ -4318,6 +4320,14 @@ mod migrated_tests {
     async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         let delta_hook = RecordingToolCallDeltaHook::default();
         let add_calls = Arc::new(AtomicU32::new(0));
+        let mut first_usage = Usage::new();
+        first_usage.total_tokens = 4;
+        let mut second_usage = Usage::new();
+        second_usage.total_tokens = 6;
+        let abandoned_metadata = CompletionTerminalMetadata::new(CompletionFinishReason::ToolCalls)
+            .with_raw_reason("tool_calls");
+        let accepted_metadata =
+            CompletionTerminalMetadata::new(CompletionFinishReason::Stop).with_raw_reason("stop");
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("checking "),
@@ -4334,11 +4344,17 @@ mod migrated_tests {
                     r#"{"x":2,"y":3}"#,
                 ),
                 MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
-                MockStreamEvent::final_response_with_total_tokens(4),
+                MockStreamEvent::FinalResponse(
+                    MockResponse::with_usage(first_usage)
+                        .with_terminal_metadata(abandoned_metadata.clone()),
+                ),
             ],
             vec![
                 MockStreamEvent::text("retried"),
-                MockStreamEvent::final_response_with_total_tokens(6),
+                MockStreamEvent::FinalResponse(
+                    MockResponse::with_usage(second_usage)
+                        .with_terminal_metadata(accepted_metadata.clone()),
+                ),
             ],
         ]);
         let recorded = model.clone();
@@ -4384,13 +4400,9 @@ mod migrated_tests {
         assert_eq!(final_response_text.as_deref(), Some("retried"));
         assert!(delta_hook.observed().is_empty());
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-        let mut first_usage = Usage::new();
-        first_usage.total_tokens = 4;
-        let mut second_usage = Usage::new();
-        second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, first_usage),
-            CompletionCall::new(1, second_usage),
+            CompletionCall::with_terminal_metadata(0, first_usage, Some(abandoned_metadata)),
+            CompletionCall::with_terminal_metadata(1, second_usage, Some(accepted_metadata)),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);

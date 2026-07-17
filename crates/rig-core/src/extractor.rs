@@ -346,7 +346,7 @@ mod tests {
 
     use super::*;
     use crate::agent::{
-        CompletionCallAction, CompletionResponseEvent, HookContext, ObservationAction, RequestPatch,
+        CompletionCallAction, HookContext, ModelTurnPrepared, ObservationAction, RequestPatch,
     };
     use crate::message::{AssistantContent, ToolCall, ToolFunction};
     use crate::test_utils::{MockCompletionModel, MockTurn};
@@ -384,8 +384,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct LifecycleCounts {
         completion_calls: Arc<AtomicUsize>,
-        completion_responses: Arc<AtomicUsize>,
-        model_turns: Arc<AtomicUsize>,
+        prepared_turns: Arc<AtomicUsize>,
         invalid_tool_calls: Arc<AtomicUsize>,
     }
 
@@ -399,21 +398,12 @@ mod tests {
             crate::agent::CompletionCallAction::Continue
         }
 
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
+            _event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            self.completion_responses.fetch_add(1, Ordering::SeqCst);
-            ObservationAction::Continue
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ObservationAction {
-            self.model_turns.fetch_add(1, Ordering::SeqCst);
+            self.prepared_turns.fetch_add(1, Ordering::SeqCst);
             ObservationAction::Continue
         }
 
@@ -435,10 +425,10 @@ mod tests {
     }
 
     impl AgentHook for ExtractorResponseCapture {
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            event: CompletionResponseEvent<'_>,
+            event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
             *self.snapshot.lock().expect("extractor response snapshot") = Some((
                 event.prompt.clone(),
@@ -478,42 +468,19 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Copy)]
-    enum StopFirstBilledResponseAt {
-        CompletionResponse,
-        ModelTurnFinished,
-    }
-
     #[derive(Clone)]
     struct StopFirstBilledResponse {
-        phase: StopFirstBilledResponseAt,
         calls: Arc<AtomicUsize>,
     }
 
     impl AgentHook for StopFirstBilledResponse {
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
+            _event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            if matches!(self.phase, StopFirstBilledResponseAt::CompletionResponse)
-                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            {
-                ObservationAction::stop("stop first billed response")
-            } else {
-                ObservationAction::continue_run()
-            }
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ObservationAction {
-            if matches!(self.phase, StopFirstBilledResponseAt::ModelTurnFinished)
-                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            {
-                ObservationAction::stop("stop first billed model turn")
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                ObservationAction::stop("stop first billed prepared turn")
             } else {
                 ObservationAction::continue_run()
             }
@@ -576,8 +543,7 @@ mod tests {
         assert_eq!(response.name, "John");
         assert_eq!(model.request_count(), 1);
         assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
-        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 1);
+        assert_eq!(counts.prepared_turns.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -674,7 +640,7 @@ mod tests {
         assert_eq!(response.usage.total_tokens, 15);
     }
 
-    async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) {
+    async fn assert_billed_hook_termination_usage() {
         let model = MockCompletionModel::new([
             submit_turn("ignored").with_usage(usage(10)),
             submit_turn("John").with_usage(usage(5)),
@@ -682,7 +648,6 @@ mod tests {
         let response = ExtractorBuilder::<_, Person>::new(model)
             .retries(1)
             .add_hook(StopFirstBilledResponse {
-                phase,
                 calls: Arc::new(AtomicUsize::new(0)),
             })
             .build()
@@ -695,13 +660,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completion_response_hook_termination_preserves_billed_usage() {
-        assert_billed_hook_termination_usage(StopFirstBilledResponseAt::CompletionResponse).await;
-    }
-
-    #[tokio::test]
-    async fn model_turn_finished_hook_termination_preserves_billed_usage() {
-        assert_billed_hook_termination_usage(StopFirstBilledResponseAt::ModelTurnFinished).await;
+    async fn prepared_hook_termination_preserves_billed_usage() {
+        assert_billed_hook_termination_usage().await;
     }
 
     #[tokio::test]
@@ -739,8 +699,7 @@ mod tests {
         assert_eq!(response.data.name, "John");
         assert_eq!(response.usage.total_tokens, 15);
         assert_eq!(counts.invalid_tool_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 2);
-        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 2);
+        assert_eq!(counts.prepared_turns.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -797,6 +756,37 @@ mod tests {
             .expect("skipping an invalid sibling should preserve submit");
 
         assert_eq!(response.name, "John");
+    }
+
+    #[tokio::test]
+    async fn extractor_prepared_hook_receives_filtered_accepted_content() {
+        let capture = ExtractorResponseCapture::default();
+        let turn = MockTurn::from_contents([
+            tool_call("unknown", "unexpected", json!({})),
+            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+        ])
+        .expect("two tool calls");
+
+        let response = ExtractorBuilder::<_, Person>::new(MockCompletionModel::new([turn]))
+            .add_hook(capture.clone())
+            .build()
+            .extract("John")
+            .await
+            .expect("extractor filtering should preserve the valid submit call");
+
+        assert_eq!(response.name, "John");
+        let (_, accepted_content, _, _) = capture
+            .snapshot
+            .lock()
+            .expect("extractor response snapshot")
+            .clone()
+            .expect("the accepted filtered turn should fire ModelTurnPrepared");
+        assert!(matches!(
+            accepted_content.as_slice(),
+            [AssistantContent::ToolCall(tool_call)]
+                if tool_call.function.name == SUBMIT_TOOL_NAME
+                    && tool_call.function.arguments == json!({"name": "John"})
+        ));
     }
 
     #[tokio::test]

@@ -5,7 +5,10 @@ use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     client::Provider,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{
+        self, CompletionError, CompletionFinishReason, CompletionTerminalMetadata,
+        GetCompletionMetadata,
+    },
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
@@ -64,6 +67,21 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
+}
+
+pub(crate) fn terminal_metadata_from_stop_reason(
+    stop_reason: Option<&str>,
+) -> Option<CompletionTerminalMetadata> {
+    stop_reason.map(|stop_reason| {
+        let reason = match stop_reason {
+            "end_turn" | "stop_sequence" => CompletionFinishReason::Stop,
+            "max_tokens" | "model_context_window_exceeded" => CompletionFinishReason::Length,
+            "tool_use" => CompletionFinishReason::ToolCalls,
+            "refusal" => CompletionFinishReason::ContentFilter,
+            _ => CompletionFinishReason::Unknown,
+        };
+        CompletionTerminalMetadata::new(reason).with_raw_reason(stop_reason)
+    })
 }
 
 impl ProviderResponseExt for CompletionResponse {
@@ -130,7 +148,7 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
@@ -256,6 +274,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata: terminal_metadata_from_stop_reason(response.stop_reason.as_deref()),
             raw_response: response,
             message_id: None,
         })
@@ -2592,6 +2611,17 @@ enum ApiResponse<T> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn normalizes_anthropic_stop_reasons() {
+        use crate::completion::CompletionFinishReason;
+
+        let tool =
+            super::terminal_metadata_from_stop_reason(Some("tool_use")).expect("tool reason");
+        assert_eq!(tool.reason(), CompletionFinishReason::ToolCalls);
+        assert_eq!(tool.raw_reason(), Some("tool_use"));
+        assert_eq!(super::terminal_metadata_from_stop_reason(None), None);
+    }
+
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;

@@ -40,7 +40,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     OneOrMany,
     agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
-    completion::{CompletionError, GetTokenUsage, Message, Usage},
+    completion::{
+        CompletionError, CompletionTerminalMetadata, GetCompletionMetadata, Message, Usage,
+    },
     json_utils,
     message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult},
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},
@@ -208,6 +210,9 @@ impl PartialStreamedTurn {
 pub struct StreamedTurn {
     /// Provider-assigned assistant message ID, when available.
     pub message_id: Option<String>,
+    /// Canonical provider terminal metadata, when available.
+    #[serde(default)]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
     /// The assistant content to record in history: canonical
     /// (reasoning → text → tool calls) when the turn produced reasoning or
     /// tool calls, otherwise the provider's aggregated choice as-is.
@@ -280,6 +285,8 @@ pub enum StreamedTurnEvent {
         /// Provider-reported usage for this call. Zero-valued usage means the
         /// provider reported no usage metrics.
         usage: Usage,
+        /// Canonical provider terminal metadata for this call, when available.
+        terminal_metadata: Option<CompletionTerminalMetadata>,
         /// Whether the ingested final item should be forwarded to the
         /// consumer (set when the turn streamed text).
         emit_final: bool,
@@ -387,7 +394,7 @@ impl StreamedTurnAssembler {
         item: &StreamedAssistantContent<R>,
     ) -> Result<Vec<StreamedTurnEvent>, CompletionError>
     where
-        R: Clone + Unpin + GetTokenUsage,
+        R: Clone + Unpin + GetCompletionMetadata,
     {
         if self.pending_invalid.is_some() {
             return Err(CompletionError::ResponseError(
@@ -499,9 +506,14 @@ impl StreamedTurnAssembler {
                 }
 
                 let usage = final_response.token_usage();
+                let terminal_metadata = final_response.terminal_metadata();
                 let emit_final = self.saw_text;
                 self.saw_text = false;
-                Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
+                Ok(vec![StreamedTurnEvent::Completed {
+                    usage,
+                    terminal_metadata,
+                    emit_final,
+                }])
             }
             StreamedAssistantContent::Unknown(_) => {
                 // Unmodeled provider item (e.g. a hosted-tool result): forward it
@@ -610,6 +622,16 @@ impl StreamedTurnAssembler {
         message_id: Option<String>,
         final_choice: &OneOrMany<AssistantContent>,
     ) -> StreamedTurn {
+        self.finish_with_terminal_metadata(message_id, None, final_choice)
+    }
+
+    /// Assemble the completed turn with canonical provider terminal metadata.
+    pub fn finish_with_terminal_metadata(
+        self,
+        message_id: Option<String>,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+        final_choice: &OneOrMany<AssistantContent>,
+    ) -> StreamedTurn {
         let choice = self.canonical_choice(final_choice);
         let internal_call_ids: Vec<(String, String)> = self
             .pending_tool_calls
@@ -619,6 +641,7 @@ impl StreamedTurnAssembler {
 
         StreamedTurn {
             message_id,
+            terminal_metadata,
             choice,
             executable_tool_names: self.executable_tool_names,
             allowed_tool_names: self.allowed_tool_names,
@@ -1122,6 +1145,7 @@ mod tests {
 
         let turn = StreamedTurn {
             message_id: None,
+            terminal_metadata: None,
             choice: OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "unknown"))),
             executable_tool_names: tool_names(&["add"]),
             allowed_tool_names: tool_names(&["add"]),

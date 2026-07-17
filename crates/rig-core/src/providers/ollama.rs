@@ -41,10 +41,11 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
-use crate::completion::{GetTokenUsage, Usage};
+use crate::completion::{GetCompletionMetadata, Usage};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::providers::internal::openai_chat_completions_compatible::terminal_metadata_from_finish_reason;
 use crate::streaming::RawStreamingChoice;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::{
@@ -370,6 +371,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let prompt_tokens = resp.prompt_eval_count.unwrap_or(0);
                 let completion_tokens = resp.eval_count.unwrap_or(0);
 
+                let terminal_metadata =
+                    terminal_metadata_from_finish_reason(resp.done_reason.as_deref());
                 let raw_response = CompletionResponse {
                     model: resp.model,
                     created_at: resp.created_at,
@@ -401,6 +404,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         tool_use_prompt_tokens: 0,
                         reasoning_tokens: 0,
                     },
+                    terminal_metadata,
                     raw_response,
                     message_id: None,
                 })
@@ -604,7 +608,7 @@ pub struct StreamingCompletionResponse {
     pub eval_duration: Option<u64>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl GetCompletionMetadata for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         let input_tokens = self.prompt_eval_count.unwrap_or_default();
@@ -614,6 +618,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.total_tokens = input_tokens + output_tokens;
 
         usage
+    }
+
+    fn terminal_metadata(&self) -> Option<crate::completion::CompletionTerminalMetadata> {
+        terminal_metadata_from_finish_reason(self.done_reason.as_deref())
     }
 }
 
@@ -1690,6 +1698,33 @@ mod tests {
             reasoning.display_text(),
             "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
         );
+        let metadata = completed
+            .terminal_metadata
+            .expect("Ollama done_reason should be retained");
+        assert_eq!(metadata.reason(), completion::CompletionFinishReason::Stop);
+        assert_eq!(metadata.raw_reason(), Some("stop"));
+    }
+
+    #[test]
+    fn streaming_response_exposes_done_reason_metadata() {
+        let response = StreamingCompletionResponse {
+            done_reason: Some("length".to_string()),
+            total_duration: None,
+            load_duration: None,
+            prompt_eval_count: Some(2),
+            prompt_eval_duration: None,
+            eval_count: Some(3),
+            eval_duration: None,
+        };
+
+        let metadata = response
+            .terminal_metadata()
+            .expect("streaming done_reason should be retained");
+        assert_eq!(
+            metadata.reason(),
+            completion::CompletionFinishReason::Length
+        );
+        assert_eq!(metadata.raw_reason(), Some("length"));
     }
 
     // Test empty thinking content is handled correctly

@@ -141,7 +141,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
                 )
                 .max_turns(6)
                 // Writer (tap) bumps the scratchpad tally on each ToolCall; the
-                // reader (a *different* hook) reads it on each ModelTurnFinished.
+                // reader (a *different* hook) reads it on each ModelTurnPrepared.
                 .add_hook(tap)
                 .add_hook(reader)
                 .await
@@ -152,7 +152,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
             let tallies = reader_probe.tallies();
             assert!(
                 tallies.len() >= 2,
-                "a multi-turn run should fire ModelTurnFinished at least twice, saw {tallies:?}"
+                "a multi-turn run should fire ModelTurnPrepared at least twice, saw {tallies:?}"
             );
             assert!(
                 tallies.windows(2).all(|w| w[0] <= w[1]),
@@ -264,7 +264,7 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
                 "CompletionCall",
                 "ToolCall",
                 "ToolResult",
-                "ModelTurnFinished",
+                "ModelTurnPrepared",
             ] {
                 assert_eq!(
                     first_probe.count(tag),

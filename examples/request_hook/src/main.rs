@@ -18,17 +18,19 @@
 //! turn — and `TurnCounterHook` still runs afterwards. A typed stop action
 //! short-circuits the stack.
 //!
-//! Requires `OPENAI_API_KEY`.
+//! Requires `OPENAI_API_KEY`. When `ANTHROPIC_API_KEY` is also set, the same
+//! concrete `LoggingHook` instance is attached to an Anthropic-backed agent to
+//! demonstrate that managed hooks are provider-independent.
 
 use anyhow::Result;
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, ModelTurnPrepared,
     ObservationAction, RequestPatch,
 };
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Document, Message, Prompt};
 use rig::message::UserContent;
-use rig::providers::openai;
+use rig::providers::{anthropic, openai};
 
 // ---------------------------------------------------------------------------
 // Hook 1: LoggingHook — observe-only. Reads run-scoped identity from the context.
@@ -64,16 +66,20 @@ impl AgentHook for LoggingHook {
         CompletionCallAction::continue_run()
     }
 
-    async fn on_completion_response(
+    async fn on_model_turn_prepared(
         &self,
         ctx: &HookContext,
-        event: CompletionResponseEvent<'_>,
+        event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
         println!(
-            "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
+            "[run {}] prepared turn (usage: {:?}, message_id: {:?}, finish: {:?}, raw_finish: {:?}): {:?}",
             ctx.run_id(),
             event.usage,
             event.message_id,
+            event.terminal_metadata.map(|metadata| metadata.reason()),
+            event
+                .terminal_metadata
+                .and_then(|metadata| metadata.raw_reason()),
             event.content
         );
         ObservationAction::continue_run()
@@ -151,6 +157,7 @@ impl AgentHook for TurnCounterHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let logging_hook = LoggingHook;
     let agent = openai::Client::from_env()?
         .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
@@ -162,13 +169,24 @@ async fn main() -> Result<()> {
     // short-circuits the other, and TurnCounterHook still runs after them.
     let response = agent
         .prompt("Entertain me!")
-        .add_hook(LoggingHook)
+        .add_hook(logging_hook.clone())
         .add_hook(ContextHook)
         .add_hook(SamplingHook)
         .add_hook(TurnCounterHook)
         .await?;
 
     println!("\nFinal response:\n{response}");
+
+    if std::env::var_os("ANTHROPIC_API_KEY").is_some() {
+        let anthropic_agent = anthropic::Client::from_env()?
+            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+            .preamble("Answer briefly and clearly.")
+            .build();
+        let _ = anthropic_agent
+            .prompt("Say hello from a second provider.")
+            .add_hook(logging_hook)
+            .await?;
+    }
 
     Ok(())
 }

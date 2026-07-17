@@ -12,7 +12,7 @@ use super::interactions_api_types::{
     InteractionSseEvent, InteractionUsage, Step, TextDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -40,7 +40,7 @@ pub type InteractionEventStream =
 pub type InteractionEventStream =
     Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl GetCompletionMetadata for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage
             .as_ref()

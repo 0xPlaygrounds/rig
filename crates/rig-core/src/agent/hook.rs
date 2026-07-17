@@ -4,9 +4,9 @@
 //! method and one action type per event. Unsupported combinations are therefore
 //! rejected by the compiler instead of being interpreted at runtime.
 //! Hooks are independent of the agent's [`CompletionModel`](crate::completion::CompletionModel):
-//! managed response events carry canonical Rig messages, content, usage, and
-//! message IDs. Use the direct completion or streaming APIs when a hook-like
-//! integration needs the provider's typed raw response.
+//! managed model-turn events carry canonical Rig messages, content, usage,
+//! message IDs, and terminal metadata. Use the direct completion or streaming
+//! APIs when an integration needs the provider's typed raw response.
 //!
 //! Hooks run in registration order through [`HookStack`]. Completion-call
 //! [`RequestPatch`] values accumulate and merge; tool-call argument rewrites and
@@ -31,20 +31,20 @@
 //!
 //! ```
 //! use rig_core::agent::{
-//!     AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
+//!     AgentHook, HookContext, ModelTurnPrepared, ObservationAction,
 //! };
 //!
 //! struct ResponseLogger;
 //!
 //! impl AgentHook for ResponseLogger {
-//!     async fn on_completion_response(
+//!     async fn on_model_turn_prepared(
 //!         &self,
 //!         _ctx: &HookContext,
-//!         event: CompletionResponseEvent<'_>,
+//!         event: ModelTurnPrepared<'_>,
 //!     ) -> ObservationAction {
 //!         println!(
-//!             "message {:?}: {:?} ({:?})",
-//!             event.message_id, event.content, event.usage
+//!             "message {:?}: {:?} ({:?}, finish: {:?})",
+//!             event.message_id, event.content, event.usage, event.terminal_metadata
 //!         );
 //!         ObservationAction::continue_run()
 //!     }
@@ -58,7 +58,7 @@ use std::{future::Future, sync::Arc};
 use crate::tool::extensions::TypeMap;
 use crate::{
     OneOrMany,
-    completion::{Document, Usage},
+    completion::{CompletionTerminalMetadata, Document, Usage},
     json_utils,
     message::{AssistantContent, Message, ToolChoice},
     tool::{ToolContext, ToolOutput, ToolResult},
@@ -329,28 +329,21 @@ pub struct CompletionCall<'a> {
     pub turn: usize,
 }
 
-/// Canonical non-streaming completion response event.
+/// Canonical accepted model turn, ready for the agent state machine to advance.
 #[derive(Clone, Copy)]
-pub struct CompletionResponse<'a> {
-    /// Prompt sent for this turn.
+pub struct ModelTurnPrepared<'a> {
+    /// One-based model-call index.
+    pub turn: usize,
+    /// Prompt sent for this model call.
     pub prompt: &'a Message,
-    /// Canonical assistant content returned for this turn.
+    /// Canonical accepted model-emitted content.
     pub content: &'a OneOrMany<AssistantContent>,
-    /// Usage reported for this turn.
+    /// Usage reported for this completion call.
     pub usage: Usage,
     /// Provider-assigned message ID, when available.
     pub message_id: Option<&'a str>,
-}
-
-/// Medium-neutral accepted model-turn event.
-#[derive(Clone, Copy)]
-pub struct ModelTurnFinished<'a> {
-    /// One-based model-call index.
-    pub turn: usize,
-    /// Canonical committed assistant content.
-    pub content: &'a OneOrMany<AssistantContent>,
-    /// Usage reported for the turn.
-    pub usage: Usage,
+    /// Canonical provider terminal metadata, when available.
+    pub terminal_metadata: Option<&'a CompletionTerminalMetadata>,
 }
 
 /// Pre-execution tool event.
@@ -410,32 +403,17 @@ pub struct ToolCallDelta<'a> {
     pub delta: &'a str,
 }
 
-/// Canonical streaming response-finish event.
-#[derive(Clone, Copy)]
-pub struct StreamResponseFinish<'a> {
-    /// Prompt sent for this turn.
-    pub prompt: &'a Message,
-    /// Canonical assistant content aggregated for this turn.
-    pub content: &'a OneOrMany<AssistantContent>,
-    /// Usage reported for this turn.
-    pub usage: Usage,
-    /// Provider-assigned message ID, when available.
-    pub message_id: Option<&'a str>,
-}
-
 /// Hook event kind used only as an observation performance hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum StepEventKind {
     CompletionCall,
-    CompletionResponse,
-    ModelTurnFinished,
+    ModelTurnPrepared,
     InvalidToolCall,
     ToolCall,
     ToolResult,
     TextDelta,
     ToolCallDelta,
-    StreamResponseFinish,
 }
 
 /// A non-sticky patch applied only to the current turn's completion request.
@@ -804,24 +782,13 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { CompletionCallAction::Continue }
     }
 
-    /// Observes a completed model response.
+    /// Observes an accepted model turn before the agent advances or executes tools.
     ///
     /// The default action continues the run.
-    fn on_completion_response(
+    fn on_model_turn_prepared(
         &self,
         _ctx: &HookContext,
-        _event: CompletionResponse<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
-        async { ObservationAction::Continue }
-    }
-
-    /// Observes the content and usage produced at the end of a model turn.
-    ///
-    /// The default action continues the run.
-    fn on_model_turn_finished(
-        &self,
-        _ctx: &HookContext,
-        _event: ModelTurnFinished<'_>,
+        _event: ModelTurnPrepared<'_>,
     ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
         async { ObservationAction::Continue }
     }
@@ -890,17 +857,6 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// Observes a completed streaming response in canonical Rig form.
-    ///
-    /// The default action continues the run.
-    fn on_stream_response_finish(
-        &self,
-        _ctx: &HookContext,
-        _event: StreamResponseFinish<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
-        async { ObservationAction::Continue }
-    }
-
     /// Observation interest hint, primarily for high-frequency deltas.
     fn observes(&self, _kind: StepEventKind) -> bool {
         true
@@ -919,15 +875,10 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         ctx: &'a HookContext,
         event: CompletionCall<'a>,
     ) -> WasmBoxedFuture<'a, CompletionCallAction>;
-    fn completion_response<'a>(
+    fn model_turn_prepared<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
+        event: ModelTurnPrepared<'a>,
     ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn invalid_tool_call<'a>(
         &'a self,
@@ -954,11 +905,6 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         ctx: &'a HookContext,
         event: ToolCallDelta<'a>,
     ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn observes(&self, kind: StepEventKind) -> bool;
 }
 
@@ -973,19 +919,12 @@ where
     ) -> WasmBoxedFuture<'a, CompletionCallAction> {
         Box::pin(self.on_completion_call(ctx, event))
     }
-    fn completion_response<'a>(
+    fn model_turn_prepared<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
+        event: ModelTurnPrepared<'a>,
     ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_completion_response(ctx, event))
-    }
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_model_turn_finished(ctx, event))
+        Box::pin(self.on_model_turn_prepared(ctx, event))
     }
     fn invalid_tool_call<'a>(
         &'a self,
@@ -1027,13 +966,6 @@ where
         event: ToolCallDelta<'a>,
     ) -> WasmBoxedFuture<'a, ObservationAction> {
         Box::pin(self.on_tool_call_delta(ctx, event))
-    }
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_stream_response_finish(ctx, event))
     }
     fn observes(&self, kind: StepEventKind) -> bool {
         AgentHook::observes(self, kind)
@@ -1113,18 +1045,6 @@ impl HookStack {
     }
 }
 
-async fn first_stop<I>(futures: I) -> ObservationAction
-where
-    I: IntoIterator<Item = ObservationAction>,
-{
-    for action in futures {
-        if !matches!(action, ObservationAction::Continue) {
-            return action;
-        }
-    }
-    ObservationAction::Continue
-}
-
 impl AgentHook for HookStack {
     async fn on_completion_call(
         &self,
@@ -1147,29 +1067,13 @@ impl AgentHook for HookStack {
         }
     }
 
-    async fn on_completion_response(
+    async fn on_model_turn_prepared(
         &self,
         ctx: &HookContext,
-        event: CompletionResponse<'_>,
-    ) -> ObservationAction {
-        let mut actions = Vec::new();
-        for hook in &self.hooks {
-            let action = hook.completion_response(ctx, event).await;
-            let stop = !matches!(action, ObservationAction::Continue);
-            actions.push(action);
-            if stop {
-                break;
-            }
-        }
-        first_stop(actions).await
-    }
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        event: ModelTurnFinished<'_>,
+        event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
         for hook in &self.hooks {
-            let action = hook.model_turn_finished(ctx, event).await;
+            let action = hook.model_turn_prepared(ctx, event).await;
             if !matches!(action, ObservationAction::Continue) {
                 return action;
             }
@@ -1233,19 +1137,6 @@ impl AgentHook for HookStack {
     ) -> ObservationAction {
         for hook in &self.hooks {
             let action = hook.tool_call_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
-    }
-    async fn on_stream_response_finish(
-        &self,
-        ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.stream_response_finish(ctx, event).await;
             if !matches!(action, ObservationAction::Continue) {
                 return action;
             }
@@ -1469,6 +1360,67 @@ mod tests {
 
         assert_eq!(action, ToolResultAction::stop("terminal"));
         assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+
+    struct PreparedRecorder {
+        label: usize,
+        log: Arc<std::sync::Mutex<Vec<usize>>>,
+        stop: bool,
+    }
+
+    impl AgentHook for PreparedRecorder {
+        async fn on_model_turn_prepared(
+            &self,
+            _ctx: &HookContext,
+            _event: ModelTurnPrepared<'_>,
+        ) -> ObservationAction {
+            self.log.lock().expect("prepared log").push(self.label);
+            if self.stop {
+                ObservationAction::stop("prepared stop")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn nested_prepared_hook_stack_short_circuits_in_registration_order() {
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut inner = HookStack::with(PreparedRecorder {
+            label: 1,
+            log: log.clone(),
+            stop: false,
+        });
+        inner.push(PreparedRecorder {
+            label: 2,
+            log: log.clone(),
+            stop: true,
+        });
+        let mut outer = HookStack::with(inner);
+        outer.push(PreparedRecorder {
+            label: 3,
+            log: log.clone(),
+            stop: false,
+        });
+
+        let prompt = Message::user("prepare this turn");
+        let content = OneOrMany::one(AssistantContent::text("done"));
+        let action = outer
+            .on_model_turn_prepared(
+                &HookContext::new(false, None),
+                ModelTurnPrepared {
+                    turn: 1,
+                    prompt: &prompt,
+                    content: &content,
+                    usage: Usage::new(),
+                    message_id: None,
+                    terminal_metadata: None,
+                },
+            )
+            .await;
+
+        assert_eq!(action, ObservationAction::stop("prepared stop"));
+        assert_eq!(*log.lock().expect("prepared log"), vec![1, 2]);
     }
 }
 
@@ -1821,14 +1773,12 @@ mod migrated_tests {
     fn unit_hook_observes_no_event_kind() {
         for kind in [
             StepEventKind::CompletionCall,
-            StepEventKind::CompletionResponse,
-            StepEventKind::ModelTurnFinished,
+            StepEventKind::ModelTurnPrepared,
             StepEventKind::InvalidToolCall,
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
             StepEventKind::TextDelta,
             StepEventKind::ToolCallDelta,
-            StepEventKind::StreamResponseFinish,
         ] {
             assert!(!<() as AgentHook>::observes(&(), kind));
         }

@@ -11,7 +11,7 @@ use anyhow::Result;
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::client::CompletionClient;
-use rig::completion::{Chat, CompletionModel, GetTokenUsage, Message};
+use rig::completion::{Chat, CompletionModel, GetCompletionMetadata, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingChat, StreamingPrompt};

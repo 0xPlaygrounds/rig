@@ -1,6 +1,6 @@
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, CompletionError, GetCompletionMetadata},
     http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
@@ -92,7 +92,21 @@ pub enum FinishReason {
     StopSequence,
     Complete,
     Error,
+    Timeout,
     ToolCall,
+}
+
+pub(crate) fn terminal_metadata_from_finish_reason(
+    finish_reason: &FinishReason,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let (reason, raw_reason) = match finish_reason {
+        FinishReason::MaxTokens => (completion::CompletionFinishReason::Length, "MAX_TOKENS"),
+        FinishReason::StopSequence => (completion::CompletionFinishReason::Stop, "STOP_SEQUENCE"),
+        FinishReason::Complete => (completion::CompletionFinishReason::Stop, "COMPLETE"),
+        FinishReason::ToolCall => (completion::CompletionFinishReason::ToolCalls, "TOOL_CALL"),
+        FinishReason::Error | FinishReason::Timeout => return None,
+    };
+    Some(completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -103,7 +117,7 @@ pub struct Usage {
     pub tokens: Option<Tokens>,
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
@@ -141,6 +155,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        if matches!(
+            &response.finish_reason,
+            FinishReason::Error | FinishReason::Timeout
+        ) {
+            return Err(crate::provider_response::completion_error_from_body(
+                serde_json::to_string(&response)?,
+            ));
+        }
         let (content, _, tool_calls) = response.message()?;
 
         let model_response = if !tool_calls.is_empty() {
@@ -198,6 +220,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         Ok(completion::CompletionResponse {
             choice: model_response,
             usage,
+            terminal_metadata: terminal_metadata_from_finish_reason(&response.finish_reason),
             raw_response: response,
             message_id: None,
         })
@@ -712,6 +735,45 @@ where
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn normalizes_cohere_finish_reasons() {
+        let metadata = super::terminal_metadata_from_finish_reason(&super::FinishReason::MaxTokens)
+            .expect("successful finish reason");
+        assert_eq!(
+            metadata.reason(),
+            crate::completion::CompletionFinishReason::Length
+        );
+        assert_eq!(metadata.raw_reason(), Some("MAX_TOKENS"));
+        assert_eq!(
+            super::terminal_metadata_from_finish_reason(&super::FinishReason::Error),
+            None
+        );
+    }
+
+    #[test]
+    fn error_finish_reason_rejects_partial_content_and_preserves_body() {
+        let raw: super::CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "cohere-error",
+            "finish_reason": "ERROR",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "partial"}],
+                "citations": [],
+                "tool_calls": []
+            },
+            "usage": null
+        }))
+        .expect("fixture should deserialize");
+
+        let error = crate::completion::CompletionResponse::try_from(raw)
+            .expect_err("ERROR finish reason must not become a successful turn");
+        let body = error
+            .provider_response_body()
+            .expect("provider body should be retained");
+        assert!(body.contains("partial"));
+        assert!(body.contains("ERROR"));
+    }
+
     use super::*;
     use serde_path_to_error::deserialize;
 

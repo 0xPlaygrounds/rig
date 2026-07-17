@@ -29,7 +29,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
-use crate::completion::GetTokenUsage;
+use crate::completion::GetCompletionMetadata;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm, bearer_auth_header};
 use crate::transcription::TranscriptionError;
@@ -374,7 +374,7 @@ pub struct Usage {
     pub total_tokens: usize,
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 

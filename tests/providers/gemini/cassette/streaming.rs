@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::completion::{CompletionModel, GetCompletionMetadata};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FinishReason, GenerationConfig, ThinkingConfig, ThinkingLevel,

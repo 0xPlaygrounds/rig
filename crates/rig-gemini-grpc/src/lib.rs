@@ -36,8 +36,8 @@ pub use proto::{
     GenerateContentResponse, Part, generative_service_client::GenerativeServiceClient,
 };
 
-// Implement GetTokenUsage for proto::GenerateContentResponse to support streaming
-impl rig_core::completion::GetTokenUsage for proto::GenerateContentResponse {
+// Implement GetCompletionMetadata for proto::GenerateContentResponse to support streaming
+impl rig_core::completion::GetCompletionMetadata for proto::GenerateContentResponse {
     fn token_usage(&self) -> rig_core::completion::Usage {
         self.usage_metadata
             .as_ref()
@@ -51,5 +51,63 @@ impl rig_core::completion::GetTokenUsage for proto::GenerateContentResponse {
                 reasoning_tokens: 0,
             })
             .unwrap_or_default()
+    }
+
+    fn terminal_metadata(&self) -> Option<rig_core::completion::CompletionTerminalMetadata> {
+        self.candidates
+            .first()
+            .and_then(|candidate| terminal_metadata_from_finish_reason(candidate.finish_reason))
+    }
+}
+
+pub(crate) fn terminal_metadata_from_finish_reason(
+    finish_reason: i32,
+) -> Option<rig_core::completion::CompletionTerminalMetadata> {
+    use rig_core::completion::{CompletionFinishReason, CompletionTerminalMetadata};
+
+    if finish_reason == proto::candidate::FinishReason::Unspecified as i32 {
+        return None;
+    }
+    let Ok(provider_reason) = proto::candidate::FinishReason::try_from(finish_reason) else {
+        return Some(
+            CompletionTerminalMetadata::new(CompletionFinishReason::Unknown)
+                .with_raw_reason(finish_reason.to_string()),
+        );
+    };
+    let reason = match provider_reason {
+        proto::candidate::FinishReason::Stop => CompletionFinishReason::Stop,
+        proto::candidate::FinishReason::MaxTokens => CompletionFinishReason::Length,
+        proto::candidate::FinishReason::Safety
+        | proto::candidate::FinishReason::Recitation
+        | proto::candidate::FinishReason::Language
+        | proto::candidate::FinishReason::Blocklist
+        | proto::candidate::FinishReason::ProhibitedContent
+        | proto::candidate::FinishReason::Spii
+        | proto::candidate::FinishReason::ImageSafety
+        | proto::candidate::FinishReason::ImageProhibitedContent
+        | proto::candidate::FinishReason::ImageRecitation => CompletionFinishReason::ContentFilter,
+        _ => CompletionFinishReason::Unknown,
+    };
+    Some(CompletionTerminalMetadata::new(reason).with_raw_reason(provider_reason.as_str_name()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rig_core::completion::CompletionFinishReason;
+
+    #[test]
+    fn normalizes_grpc_finish_reasons_and_default_absence() {
+        let length =
+            terminal_metadata_from_finish_reason(proto::candidate::FinishReason::MaxTokens as i32)
+                .expect("length metadata");
+        assert_eq!(length.reason(), CompletionFinishReason::Length);
+        assert_eq!(length.raw_reason(), Some("MAX_TOKENS"));
+        assert_eq!(
+            terminal_metadata_from_finish_reason(
+                proto::candidate::FinishReason::Unspecified as i32
+            ),
+            None
+        );
     }
 }

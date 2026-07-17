@@ -84,7 +84,7 @@ use futures::Stream;
 use rig_core::OneOrMany;
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-    GetTokenUsage, Usage,
+    GetCompletionMetadata, Usage,
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
@@ -466,7 +466,7 @@ pub struct CandleCompletionResponse {
     pub tokens_per_second: Option<f64>,
 }
 
-impl GetTokenUsage for CandleCompletionResponse {
+impl GetCompletionMetadata for CandleCompletionResponse {
     fn token_usage(&self) -> Usage {
         Usage {
             input_tokens: self.prompt_tokens,
@@ -474,6 +474,20 @@ impl GetTokenUsage for CandleCompletionResponse {
             total_tokens: self.prompt_tokens.saturating_add(self.generated_tokens),
             ..Usage::new()
         }
+    }
+
+    fn terminal_metadata(&self) -> Option<rig_core::completion::CompletionTerminalMetadata> {
+        let (reason, raw_reason) = match self.finish_reason {
+            FinishReason::Eos => (rig_core::completion::CompletionFinishReason::Stop, "eos"),
+            FinishReason::MaxTokens => (
+                rig_core::completion::CompletionFinishReason::Length,
+                "max_tokens",
+            ),
+        };
+        Some(
+            rig_core::completion::CompletionTerminalMetadata::new(reason)
+                .with_raw_reason(raw_reason),
+        )
     }
 }
 
@@ -2675,9 +2689,11 @@ fn infer(
         CandleError::Inference("output protocol produced no assistant content".to_string())
     })?;
     let usage = raw_response.token_usage();
+    let terminal_metadata = raw_response.terminal_metadata();
     Ok(CompletionResponse {
         choice,
         usage,
+        terminal_metadata,
         raw_response,
         message_id: None,
     })
@@ -2898,6 +2914,28 @@ mod tests {
     use tokenizers::{AddedToken, TokenizerBuilder};
 
     use super::*;
+
+    #[test]
+    fn candle_finish_reason_metadata_is_canonical() {
+        let response = CandleCompletionResponse {
+            text: String::new(),
+            finish_reason: FinishReason::MaxTokens,
+            prompt_tokens: 0,
+            generated_tokens: 0,
+            requested_max_tokens: 0,
+            effective_max_tokens: 0,
+            prefill_duration_ms: 0,
+            time_to_first_token_ms: None,
+            generation_duration_ms: 0,
+            tokens_per_second: None,
+        };
+        let metadata = response.terminal_metadata().expect("terminal metadata");
+        assert_eq!(
+            metadata.reason(),
+            rig_core::completion::CompletionFinishReason::Length
+        );
+        assert_eq!(metadata.raw_reason(), Some("max_tokens"));
+    }
 
     #[cfg(not(target_family = "wasm"))]
     type ControlledModel = (LlamaModel, Arc<TestControl>, Arc<tokio::sync::Semaphore>);

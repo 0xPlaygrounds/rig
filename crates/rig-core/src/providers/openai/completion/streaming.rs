@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{Level, enabled};
 
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionRequest, CompletionTerminalMetadata, GetCompletionMetadata,
+};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::{self, merge};
 use crate::providers::internal::openai_chat_completions_compatible::{
@@ -97,18 +99,37 @@ pub enum FinishReason {
     Other(String), // This will handle the deprecated function_call
 }
 
+impl FinishReason {
+    fn as_raw(&self) -> &str {
+        match self {
+            Self::ToolCalls => "tool_calls",
+            Self::Stop => "stop",
+            Self::ContentFilter => "content_filter",
+            Self::Length => "length",
+            Self::Other(reason) => reason,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
     finish_reason: Option<FinishReason>,
+    #[serde(default)]
+    native_finish_reason: Option<String>,
+    #[serde(default)]
+    error: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Debug)]
 struct StreamingCompletionChunk<U = Usage> {
     id: Option<String>,
     model: Option<String>,
+    #[serde(default)]
     choices: Vec<StreamingChoice>,
     usage: Option<U>,
+    #[serde(default)]
+    error: Option<serde_json::Value>,
 }
 
 /// Final streaming response. `U` is the provider's streaming usage payload
@@ -118,14 +139,19 @@ struct StreamingCompletionChunk<U = Usage> {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     pub usage: U,
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
-impl<U> GetTokenUsage for StreamingCompletionResponse<U>
+impl<U> GetCompletionMetadata for StreamingCompletionResponse<U>
 where
-    U: GetTokenUsage,
+    U: GetCompletionMetadata,
 {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -244,7 +270,7 @@ where
     Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::WasmCompatSend,
     U: Clone
         + Default
-        + GetTokenUsage
+        + GetCompletionMetadata
         + serde::de::DeserializeOwned
         + crate::wasm_compat::WasmCompatSend
         + Unpin
@@ -258,6 +284,7 @@ where
         &self,
         data: &str,
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+        let raw_data = data;
         let data = match serde_json::from_str::<StreamingCompletionChunk<U>>(data) {
             Ok(data) => data,
             Err(error) => {
@@ -265,6 +292,17 @@ where
                 return Ok(None);
             }
         };
+
+        if data.error.is_some()
+            || data.choices.first().is_some_and(|choice| {
+                choice.error.is_some()
+                    || choice.finish_reason.as_ref().map(FinishReason::as_raw) == Some("error")
+            })
+        {
+            return Err(crate::provider_response::completion_error_from_body(
+                raw_data,
+            ));
+        }
 
         Ok(Some(
             openai_chat_completions_compatible::normalize_first_choice_chunk(
@@ -282,6 +320,10 @@ where
                         }
                         _ => CompatibleFinishReason::Other,
                     },
+                    terminal_metadata: self.provider.streaming_terminal_metadata(
+                        choice.finish_reason.as_ref().map(FinishReason::as_raw),
+                        choice.native_finish_reason.as_deref(),
+                    ),
                     text: choice.delta.content.clone(),
                     reasoning: choice
                         .delta
@@ -297,8 +339,15 @@ where
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            terminal_metadata,
+        }
     }
 
     fn decorate_tool_call(
@@ -340,6 +389,40 @@ mod tests {
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
     };
+
+    #[test]
+    fn openrouter_streaming_preserves_native_reason_and_rejects_error_envelopes() {
+        let profile = OpenAICompatibleProfile::<
+            crate::providers::openrouter::OpenRouterExt,
+            crate::providers::openrouter::Usage,
+        >::default();
+
+        let normalized = profile
+            .normalize_chunk(
+                r#"{"choices":[{"delta":{"content":"done"},"finish_reason":"stop","native_finish_reason":"STOP"}]}"#,
+            )
+            .expect("terminal chunk should normalize")
+            .expect("terminal chunk should not be ignored");
+        let metadata = normalized
+            .choice
+            .and_then(|choice| choice.terminal_metadata)
+            .expect("terminal metadata");
+        assert_eq!(
+            metadata.reason(),
+            crate::completion::CompletionFinishReason::Stop
+        );
+        assert_eq!(metadata.raw_reason(), Some("STOP"));
+
+        for raw in [
+            r#"{"error":{"code":429,"message":"rate limited"}}"#,
+            r#"{"choices":[{"delta":{"content":"partial"},"finish_reason":"error","error":{"message":"upstream failed"}}]}"#,
+        ] {
+            let error = profile
+                .normalize_chunk(raw)
+                .expect_err("error chunk must terminate the stream");
+            assert_eq!(error.provider_response_body(), Some(raw));
+        }
+    }
 
     #[test]
     fn test_streaming_function_deserialization() {
@@ -716,7 +799,7 @@ mod tests {
             80
         );
 
-        // Verify core Usage also has cached_input_tokens via GetTokenUsage
+        // Verify core Usage also has cached_input_tokens via GetCompletionMetadata
         let core_usage = res.token_usage();
         assert_eq!(core_usage.cached_input_tokens, 80);
         assert_eq!(core_usage.input_tokens, 100);

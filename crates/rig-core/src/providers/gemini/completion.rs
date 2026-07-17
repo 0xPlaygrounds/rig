@@ -37,7 +37,7 @@ use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
+    completion::{self, CompletionError, CompletionRequest, GetCompletionMetadata},
 };
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -406,6 +406,61 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
+pub(crate) fn terminal_metadata_from_finish_reason(
+    reason: Option<&FinishReason>,
+) -> Option<completion::CompletionTerminalMetadata> {
+    reason.map(|reason| {
+        let (reason, raw_reason) = match reason {
+            FinishReason::Stop => (completion::CompletionFinishReason::Stop, "STOP"),
+            FinishReason::MaxTokens => (completion::CompletionFinishReason::Length, "MAX_TOKENS"),
+            FinishReason::Safety => (completion::CompletionFinishReason::ContentFilter, "SAFETY"),
+            FinishReason::Recitation => (
+                completion::CompletionFinishReason::ContentFilter,
+                "RECITATION",
+            ),
+            FinishReason::Language => (
+                completion::CompletionFinishReason::ContentFilter,
+                "LANGUAGE",
+            ),
+            FinishReason::Blocklist => (
+                completion::CompletionFinishReason::ContentFilter,
+                "BLOCKLIST",
+            ),
+            FinishReason::ProhibitedContent => (
+                completion::CompletionFinishReason::ContentFilter,
+                "PROHIBITED_CONTENT",
+            ),
+            FinishReason::Spii => (completion::CompletionFinishReason::ContentFilter, "SPII"),
+            FinishReason::FinishReasonUnspecified => (
+                completion::CompletionFinishReason::Unknown,
+                "FINISH_REASON_UNSPECIFIED",
+            ),
+            FinishReason::Other => (completion::CompletionFinishReason::Unknown, "OTHER"),
+            FinishReason::MalformedFunctionCall => (
+                completion::CompletionFinishReason::Unknown,
+                "MALFORMED_FUNCTION_CALL",
+            ),
+            FinishReason::UnexpectedToolCall => (
+                completion::CompletionFinishReason::Unknown,
+                "UNEXPECTED_TOOL_CALL",
+            ),
+            FinishReason::MissingThoughtSignature => (
+                completion::CompletionFinishReason::Unknown,
+                "MISSING_THOUGHT_SIGNATURE",
+            ),
+            FinishReason::TooManyToolCalls => (
+                completion::CompletionFinishReason::Unknown,
+                "TOO_MANY_TOOL_CALLS",
+            ),
+            FinishReason::MalformedResponse => (
+                completion::CompletionFinishReason::Unknown,
+                "MALFORMED_RESPONSE",
+            ),
+        };
+        completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason)
+    })
+}
+
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
     type Error = CompletionError;
 
@@ -513,12 +568,15 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
+        let terminal_metadata =
+            terminal_metadata_from_finish_reason(candidate.finish_reason.as_ref());
 
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id: None,
         })
@@ -535,7 +593,7 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::completion::GetTokenUsage;
+    use crate::completion::GetCompletionMetadata;
     use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
         completion::CompletionError,
@@ -1424,7 +1482,7 @@ pub mod gemini_api_types {
         }
     }
 
-    impl GetTokenUsage for UsageMetadata {
+    impl GetCompletionMetadata for UsageMetadata {
         fn token_usage(&self) -> crate::completion::Usage {
             let mut usage = crate::completion::Usage::new();
 
@@ -2193,6 +2251,20 @@ pub mod gemini_api_types {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn normalizes_gemini_finish_reasons() {
+        use super::gemini_api_types::FinishReason;
+
+        let metadata = super::terminal_metadata_from_finish_reason(Some(&FinishReason::Safety))
+            .expect("safety reason");
+        assert_eq!(
+            metadata.reason(),
+            crate::completion::CompletionFinishReason::ContentFilter
+        );
+        assert_eq!(metadata.raw_reason(), Some("SAFETY"));
+        assert_eq!(super::terminal_metadata_from_finish_reason(None), None);
+    }
+
     use crate::{
         message,
         providers::gemini::completion::gemini_api_types::{

@@ -6,7 +6,7 @@ use crate::types::{
 };
 use rig_core::completion::{
     CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest,
-    CompletionResponse, GetTokenUsage,
+    CompletionResponse, GetCompletionMetadata,
 };
 use rig_core::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ pub struct CompletionModel {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PlaceholderStreamingResponse;
 
-impl GetTokenUsage for PlaceholderStreamingResponse {
+impl GetCompletionMetadata for PlaceholderStreamingResponse {
     fn token_usage(&self) -> rig_core::completion::Usage {
         rig_core::completion::Usage::new()
     }

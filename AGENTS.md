@@ -170,6 +170,14 @@ Composition through `HookStack` remains event-dependent:
   `Repair`, `Skip`, or `Stop`).
 - **Observe-only events** return `ObservationAction` (`Continue` or `Stop`).
 
+`ModelTurnPrepared` is the single managed completion boundary. It fires after
+invalid-tool-call resolution for an accepted, non-suppressed turn and before
+the state machine advances, tools execute, a buffered streaming final item is
+exposed, or a final response is produced. It carries canonical accepted
+content, per-call usage, optional message ID, and optional normalized/raw
+terminal metadata. Blocking and streaming surfaces must preserve identical
+semantics, including tool-only and reasoning-only turns.
+
 Register observe-only hooks before steering hooks because stop actions
 short-circuit. Nested `HookStack`s must preserve merge and chaining semantics.
 `RequestPatch` remains per-turn and non-sticky; its documented merge rules are

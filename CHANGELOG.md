@@ -13,13 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(agent)* [**breaking**] Managed agent hooks are now provider-independent.
-  `AgentHook`, `HookStack`, and the internal erased-hook interface no longer
-  carry a completion-model type parameter. `CompletionResponseEvent` and
-  `StreamResponseFinish` now expose canonical Rig content, usage, prompt, and
-  message ID fields instead of typed provider responses. Direct
-  `CompletionModel` completion and streaming APIs continue to return their
-  typed raw provider responses.
+- *(agent, providers)* [**breaking**] Replace the managed
+  `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hooks
+  with one provider-independent `ModelTurnPrepared` event. It exposes the
+  canonical accepted content, usage, message ID, and optional normalized/raw
+  terminal reason at the same pre-advance boundary for blocking and streaming
+  agents. Completion responses and per-call agent accounting now retain
+  `CompletionTerminalMetadata`; direct `CompletionModel` APIs continue to
+  expose typed raw provider responses.
 
   ```rust
   // Before

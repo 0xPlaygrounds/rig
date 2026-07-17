@@ -1,11 +1,12 @@
 use crate::types::completion_request::AwsCompletionRequest;
+use crate::types::converse_output::terminal_metadata_from_raw_stop_reason;
 use crate::{
     completion::{CompletionModel, resolve_request_model},
     types::errors::{AwsSdkConverseStreamError, converse_stream_output_completion_error},
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::GetTokenUsage;
+use rig_core::completion::GetCompletionMetadata;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
@@ -19,6 +20,7 @@ use tracing_futures::Instrument;
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
     pub usage: Option<BedrockUsage>,
+    pub terminal_metadata: Option<rig_core::completion::CompletionTerminalMetadata>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,7 +34,7 @@ pub struct BedrockUsage {
     pub cache_write_input_tokens: Option<i32>,
 }
 
-impl GetTokenUsage for BedrockStreamingResponse {
+impl GetCompletionMetadata for BedrockStreamingResponse {
     fn token_usage(&self) -> rig_core::completion::Usage {
         self.usage
             .as_ref()
@@ -46,6 +48,10 @@ impl GetTokenUsage for BedrockStreamingResponse {
                 reasoning_tokens: 0,
             })
             .unwrap_or_default()
+    }
+
+    fn terminal_metadata(&self) -> Option<rig_core::completion::CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -136,7 +142,8 @@ impl CompletionModel {
         let stream = Box::pin(stream! {
             let span = tracing::Span::current();
             let mut current_tool_call: Option<ToolCallState> = None;
-            let mut current_reasoning: Option<ReasoningState> = None;
+        let mut current_reasoning: Option<ReasoningState> = None;
+        let mut terminal_metadata = None;
             let mut stream = response.stream;
             loop {
                 let output = match stream.recv().await {
@@ -228,6 +235,9 @@ impl CompletionModel {
                             }
                     },
                     aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
+                        terminal_metadata = Some(terminal_metadata_from_raw_stop_reason(
+                            message_stop_event.stop_reason.as_str(),
+                        ));
                         match message_stop_event.stop_reason {
                             aws_bedrock::StopReason::ToolUse => {
                                 if let Some(tool_call) = current_tool_call.take() {
@@ -262,6 +272,7 @@ impl CompletionModel {
                                     cache_read_input_tokens: usage.cache_read_input_tokens,
                                     cache_write_input_tokens: usage.cache_write_input_tokens,
                                 }),
+                                terminal_metadata: terminal_metadata.clone(),
                             };
                             span.record_token_usage(&final_response);
                             yield Ok(RawStreamingChoice::FinalResponse(final_response));
@@ -305,6 +316,7 @@ mod tests {
                 cache_read_input_tokens: Some(40),
                 cache_write_input_tokens: Some(10),
             }),
+            terminal_metadata: None,
         };
 
         assert_eq!(
@@ -323,7 +335,10 @@ mod tests {
 
     #[test]
     fn test_bedrock_streaming_response_without_usage() {
-        let response = BedrockStreamingResponse { usage: None };
+        let response = BedrockStreamingResponse {
+            usage: None,
+            terminal_metadata: None,
+        };
 
         // Zero-valued usage is rig's documented sentinel for "the provider
         // reported no usage metrics".
@@ -332,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_token_usage_trait() {
+    fn test_get_completion_metadata_trait() {
         let response = BedrockStreamingResponse {
             usage: Some(BedrockUsage {
                 input_tokens: 448,
@@ -341,9 +356,10 @@ mod tests {
                 cache_read_input_tokens: Some(80),
                 cache_write_input_tokens: Some(20),
             }),
+            terminal_metadata: None,
         };
 
-        // Test that GetTokenUsage trait is properly implemented
+        // Test that GetCompletionMetadata trait is properly implemented
         assert_eq!(
             response.token_usage(),
             rig_core::completion::Usage {
@@ -399,6 +415,7 @@ mod tests {
                 cache_read_input_tokens: Some(30),
                 cache_write_input_tokens: Some(15),
             }),
+            terminal_metadata: None,
         };
 
         // Test serialization

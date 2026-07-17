@@ -9,7 +9,7 @@ use crate::{
     OneOrMany,
     completion::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-        Usage,
+        CompletionTerminalMetadata, Usage,
     },
     message::{ToolCall, ToolFunction},
     streaming::{StreamingCompletionResponse, StreamingResult},
@@ -56,6 +56,7 @@ struct MockTurnResponse {
     choice: OneOrMany<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
+    terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl MockTurn {
@@ -97,6 +98,7 @@ impl MockTurn {
                 choice: OneOrMany::one(content),
                 usage: Usage::new(),
                 message_id: None,
+                terminal_metadata: None,
             }),
         }
     }
@@ -110,6 +112,7 @@ impl MockTurn {
                 choice: OneOrMany::many(content)?,
                 usage: Usage::new(),
                 message_id: None,
+                terminal_metadata: None,
             }),
         })
     }
@@ -144,12 +147,28 @@ impl MockTurn {
         self
     }
 
+    /// Attach canonical terminal metadata to this completion turn.
+    pub fn with_terminal_metadata(mut self, terminal_metadata: CompletionTerminalMetadata) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.terminal_metadata = Some(terminal_metadata);
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse<MockResponse>, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
+        let raw_response = response
+            .terminal_metadata
+            .clone()
+            .map(|metadata| {
+                MockResponse::with_usage(response.usage).with_terminal_metadata(metadata)
+            })
+            .unwrap_or_else(|| MockResponse::with_usage(response.usage));
         Ok(CompletionResponse {
             choice: response.choice,
             usage: response.usage,
-            raw_response: MockResponse::with_usage(response.usage),
+            terminal_metadata: response.terminal_metadata.clone(),
+            raw_response,
             message_id: response.message_id,
         })
     }
@@ -304,7 +323,7 @@ impl CompletionModel for MockCompletionModel {
 mod tests {
     use super::*;
     use crate::{
-        completion::GetTokenUsage,
+        completion::GetCompletionMetadata,
         message::Message,
         streaming::{StreamedAssistantContent, ToolCallDeltaContent},
     };
@@ -453,5 +472,47 @@ mod tests {
             err,
             CompletionError::ProviderError(message) if message == "boom"
         ));
+    }
+
+    #[tokio::test]
+    async fn direct_completion_apis_retain_typed_raw_responses_and_terminal_metadata() {
+        fn assert_mock_response_type(_: &MockResponse) {}
+
+        let metadata =
+            CompletionTerminalMetadata::new(crate::completion::CompletionFinishReason::Length)
+                .with_raw_reason("max_tokens");
+        let blocking_model = MockCompletionModel::new([
+            MockTurn::text("partial").with_terminal_metadata(metadata.clone())
+        ]);
+        let blocking = blocking_model
+            .completion(request("blocking"))
+            .await
+            .expect("direct blocking completion");
+        assert_mock_response_type(&blocking.raw_response);
+        assert_eq!(blocking.terminal_metadata, Some(metadata.clone()));
+        assert_eq!(
+            blocking.raw_response.terminal_metadata(),
+            Some(metadata.clone())
+        );
+
+        let streaming_model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("partial"),
+            MockStreamEvent::FinalResponse(
+                MockResponse::new().with_terminal_metadata(metadata.clone()),
+            ),
+        ]]);
+        let mut stream = streaming_model
+            .stream(request("streaming"))
+            .await
+            .expect("direct streaming completion");
+        while stream.next().await.is_some() {}
+        let collected: CompletionResponse<Option<MockResponse>> = stream.into();
+        let raw = collected
+            .raw_response
+            .as_ref()
+            .expect("provider final response should be retained");
+        assert_mock_response_type(raw);
+        assert_eq!(collected.terminal_metadata, Some(metadata.clone()));
+        assert_eq!(raw.terminal_metadata(), Some(metadata));
     }
 }

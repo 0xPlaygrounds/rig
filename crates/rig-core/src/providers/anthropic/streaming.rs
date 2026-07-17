@@ -7,9 +7,11 @@ use tracing_futures::Instrument;
 
 use super::completion::{
     AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
-    Content, GenericCompletionModel, Usage,
+    Content, GenericCompletionModel, Usage, terminal_metadata_from_stop_reason,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionRequest, CompletionTerminalMetadata, GetCompletionMetadata,
+};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
@@ -156,7 +158,7 @@ pub struct PartialUsage {
     pub cache_read_input_tokens: Option<u64>,
 }
 
-impl GetTokenUsage for PartialUsage {
+impl GetCompletionMetadata for PartialUsage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
@@ -196,9 +198,10 @@ struct ThinkingState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl GetCompletionMetadata for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
@@ -211,6 +214,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
             + usage.output_tokens;
 
         usage
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -283,6 +290,7 @@ where
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut terminal_metadata = None;
 
             let mut text_content = String::new();
 
@@ -303,6 +311,9 @@ where
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
                                         if delta.stop_reason.is_some() {
+                                            terminal_metadata = terminal_metadata_from_stop_reason(
+                                                delta.stop_reason.as_deref(),
+                                            );
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
@@ -354,7 +365,8 @@ where
             sse_stream.close();
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                terminal_metadata,
             }))
         }.instrument(span));
 
@@ -1619,6 +1631,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                terminal_metadata: None,
             }));
         };
 
@@ -1764,6 +1777,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                terminal_metadata: None,
             }));
         };
 

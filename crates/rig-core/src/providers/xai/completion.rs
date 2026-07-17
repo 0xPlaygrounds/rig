@@ -11,11 +11,13 @@ use tracing::{Instrument, Level, enabled};
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::ToolChoice;
 use crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
-use crate::providers::openai::responses_api::{Output, ResponsesUsage};
+use crate::providers::openai::responses_api::{
+    IncompleteDetailsReason, Output, ResponsesUsage, terminal_metadata_from_incomplete_details,
+};
 use crate::streaming::StreamingCompletionResponse as BaseStreamingCompletionResponse;
 
 /// xAI completion models as of 2025-06-04
@@ -128,6 +130,10 @@ pub struct CompletionResponse {
     pub object: String,
     #[serde(default)]
     pub status: Option<String>,
+    #[serde(default)]
+    pub error: Option<Value>,
+    #[serde(default)]
+    pub incomplete_details: Option<IncompleteDetailsReason>,
     pub usage: Option<ResponsesUsage>,
 }
 
@@ -135,6 +141,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let is_terminal_success = matches!(
+            response.status.as_deref(),
+            None | Some("completed" | "incomplete")
+        );
+        if response.error.is_some() || !is_terminal_success {
+            return Err(crate::provider_response::completion_error_from_body(
+                serde_json::to_string(&response)?,
+            ));
+        }
+
         let content: Vec<completion::AssistantContent> = response
             .output
             .iter()
@@ -149,16 +165,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(message) => Some(message.id.clone()),
             _ => None,
         });
+        let terminal_metadata =
+            terminal_metadata_from_incomplete_details(response.incomplete_details.as_ref());
 
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id,
         })
@@ -439,6 +458,63 @@ mod tests {
         assert_eq!(converted.usage.cached_input_tokens, 3);
         assert_eq!(converted.usage.output_tokens, 8);
         assert_eq!(converted.usage.reasoning_tokens, 5);
+    }
+
+    #[test]
+    fn xai_incomplete_response_preserves_terminal_metadata() {
+        let raw: super::CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "resp_incomplete",
+            "model": "grok-4.3",
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "output": [{
+                "type": "message",
+                "id": "msg_incomplete",
+                "role": "assistant",
+                "status": "incomplete",
+                "content": [{"type": "output_text", "text": "partial", "annotations": []}]
+            }],
+            "usage": null
+        }))
+        .expect("fixture should deserialize");
+
+        let converted = crate::completion::CompletionResponse::try_from(raw)
+            .expect("incomplete output is a terminal model result");
+        let metadata = converted
+            .terminal_metadata
+            .expect("incomplete details should be retained");
+        assert_eq!(
+            metadata.reason(),
+            crate::completion::CompletionFinishReason::Length
+        );
+        assert_eq!(metadata.raw_reason(), Some("max_output_tokens"));
+    }
+
+    #[test]
+    fn xai_failed_response_rejects_partial_output_and_preserves_body() {
+        let raw: super::CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "resp_failed",
+            "model": "grok-4.3",
+            "status": "failed",
+            "error": {"code": "server_error", "message": "upstream failed"},
+            "output": [{
+                "type": "message",
+                "id": "msg_failed",
+                "role": "assistant",
+                "status": "incomplete",
+                "content": [{"type": "output_text", "text": "partial", "annotations": []}]
+            }],
+            "usage": null
+        }))
+        .expect("fixture should deserialize");
+
+        let error = crate::completion::CompletionResponse::try_from(raw)
+            .expect_err("failed response must not become a successful partial turn");
+        let body = error
+            .provider_response_body()
+            .expect("provider body should be retained");
+        assert!(body.contains("partial"));
+        assert!(body.contains("upstream failed"));
     }
 
     #[tokio::test]

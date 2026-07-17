@@ -445,6 +445,66 @@ pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
         T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
 
+/// Canonical reason a provider reports for completing a response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CompletionFinishReason {
+    /// The model completed normally, reached an end-turn marker, or matched a stop sequence.
+    Stop,
+    /// The model stopped at a token, output, or context limit.
+    Length,
+    /// The model completed the turn by emitting one or more tool calls.
+    ToolCalls,
+    /// The provider stopped or blocked output for safety or content-filtering reasons.
+    ContentFilter,
+    /// The provider supplied a terminal reason that Rig does not recognize.
+    Unknown,
+}
+
+/// Provider-independent terminal metadata for one successful completion call.
+///
+/// Absence of this value means the provider supplied no terminal reason. An
+/// [`CompletionFinishReason::Unknown`] value means it supplied a reason that
+/// Rig could not normalize. [`Self::raw_reason`] preserves the provider's exact
+/// reason string when one is available.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CompletionTerminalMetadata {
+    /// Normalized provider terminal reason.
+    pub reason: CompletionFinishReason,
+    /// Exact provider terminal reason, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_reason: Option<String>,
+}
+
+impl CompletionTerminalMetadata {
+    /// Create terminal metadata with a normalized reason and no raw provider value.
+    pub fn new(reason: CompletionFinishReason) -> Self {
+        Self {
+            reason,
+            raw_reason: None,
+        }
+    }
+
+    /// Attach the exact reason supplied by the provider.
+    pub fn with_raw_reason(mut self, raw_reason: impl Into<String>) -> Self {
+        self.raw_reason = Some(raw_reason.into());
+        self
+    }
+
+    /// Return the normalized terminal reason.
+    pub fn reason(&self) -> CompletionFinishReason {
+        self.reason
+    }
+
+    /// Return the exact provider reason, when available.
+    pub fn raw_reason(&self) -> Option<&str> {
+        self.raw_reason.as_deref()
+    }
+}
+
 /// General completion response struct that contains the high-level completion choice
 /// and the raw response. The completion choice contains one or more assistant content.
 #[derive(Debug)]
@@ -459,27 +519,35 @@ pub struct CompletionResponse<T> {
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Used to pair reasoning input items with their output items in multi-turn.
     pub message_id: Option<String>,
+    /// Canonical provider terminal metadata, when the provider supplied a reason.
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
-/// A trait for grabbing the token usage of a completion response.
+/// Canonical metadata available from a provider's completed response payload.
 ///
-/// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
-pub trait GetTokenUsage {
+/// Primarily used by streaming completion responses, whose provider-native
+/// terminal payload is retained until the stream finishes.
+pub trait GetCompletionMetadata {
     /// Returns token usage for this response. Zero-valued usage is
     /// [`Usage`]'s documented sentinel for missing provider usage metrics;
     /// response types that carry no usage return [`Usage::new`].
     fn token_usage(&self) -> crate::completion::Usage;
+
+    /// Returns canonical provider terminal metadata, when available.
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        None
+    }
 }
 
-impl GetTokenUsage for () {
+impl GetCompletionMetadata for () {
     fn token_usage(&self) -> crate::completion::Usage {
         crate::completion::Usage::new()
     }
 }
 
-impl<T> GetTokenUsage for Option<T>
+impl<T> GetCompletionMetadata for Option<T>
 where
-    T: GetTokenUsage,
+    T: GetCompletionMetadata,
 {
     fn token_usage(&self) -> crate::completion::Usage {
         if let Some(usage) = self {
@@ -487,6 +555,11 @@ where
         } else {
             crate::completion::Usage::new()
         }
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.as_ref()
+            .and_then(GetCompletionMetadata::terminal_metadata)
     }
 }
 
@@ -583,7 +656,7 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
         + WasmCompatSync
         + Serialize
         + DeserializeOwned
-        + GetTokenUsage;
+        + GetCompletionMetadata;
 
     /// Provider client type used to construct this model.
     type Client;
@@ -1115,6 +1188,26 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn terminal_metadata_distinguishes_missing_from_unknown_and_preserves_raw_reason() {
+        use super::{CompletionFinishReason, CompletionTerminalMetadata};
+
+        let missing: Option<CompletionTerminalMetadata> =
+            serde_json::from_str("null").expect("deserialize missing metadata");
+        assert_eq!(missing, None);
+
+        let unknown = CompletionTerminalMetadata::new(CompletionFinishReason::Unknown)
+            .with_raw_reason("provider_future_reason");
+        let json = serde_json::to_value(&unknown).expect("serialize terminal metadata");
+        assert_eq!(json["reason"], "unknown");
+        assert_eq!(json["rawReason"], "provider_future_reason");
+        assert_eq!(
+            serde_json::from_value::<CompletionTerminalMetadata>(json)
+                .expect("deserialize terminal metadata"),
+            unknown
+        );
+    }
+
     #[test]
     fn usage_has_values_reflects_the_zero_sentinel() {
         use super::Usage;

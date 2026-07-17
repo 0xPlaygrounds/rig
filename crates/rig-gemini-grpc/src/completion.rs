@@ -11,7 +11,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
 use rig_core::OneOrMany;
-use rig_core::completion::{self, CompletionError, CompletionRequest};
+use rig_core::completion::{self, CompletionError, CompletionRequest, GetCompletionMetadata};
 use rig_core::message::{self, MimeType, Reasoning};
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, tool_parameters_to_schema,
@@ -498,6 +498,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata: response.terminal_metadata(),
             raw_response: response,
             message_id: None,
         })

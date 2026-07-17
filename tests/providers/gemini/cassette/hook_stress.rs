@@ -24,8 +24,8 @@ use std::sync::Mutex;
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    ModelTurnFinished, MultiTurnStreamItem, ObservationAction, RequestPatch, StreamingError,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, ModelTurnPrepared,
+    MultiTurnStreamItem, ObservationAction, RequestPatch, StreamingError,
     ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
 use rig::client::CompletionClient;
@@ -121,20 +121,12 @@ impl AgentHook for LifecycleRecorder {
         self.record(ctx, "CompletionCall");
         CompletionCallAction::continue_run()
     }
-    async fn on_completion_response(
+    async fn on_model_turn_prepared(
         &self,
         ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
+        _event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
-        self.record(ctx, "CompletionResponse");
-        ObservationAction::continue_run()
-    }
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        _event: ModelTurnFinished<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "ModelTurnFinished");
+        self.record(ctx, "ModelTurnPrepared");
         ObservationAction::continue_run()
     }
     async fn on_tool_call(&self, ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
@@ -153,7 +145,7 @@ impl AgentHook for LifecycleRecorder {
     }
 }
 
-/// Registered *after* [`LifecycleRecorder`]: on each `ModelTurnFinished` it reads
+/// Registered *after* [`LifecycleRecorder`]: on each `ModelTurnPrepared` it reads
 /// the shared `Scratchpad` tally the recorder wrote and appends it to an external
 /// log — proving the two hooks share run-scoped state that accumulates across
 /// turns.
@@ -169,10 +161,10 @@ impl ScratchpadReader {
 }
 
 impl AgentHook for ScratchpadReader {
-    async fn on_model_turn_finished(
+    async fn on_model_turn_prepared(
         &self,
         ctx: &HookContext,
-        _event: ModelTurnFinished<'_>,
+        _event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
         let tally = ctx
             .scratchpad()
@@ -345,7 +337,7 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
             let tallies = reader_probe.tallies();
             assert!(
                 !tallies.is_empty(),
-                "ModelTurnFinished should fire, so the reader should see tallies"
+                "ModelTurnPrepared should fire, so the reader should see tallies"
             );
             assert!(
                 tallies.windows(2).all(|w| w[0] <= w[1]),
@@ -610,8 +602,8 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
             );
             assert_eq!(recorder_probe.agent_name().as_deref(), Some("stress-agent"));
             assert!(
-                recorder_probe.count("ModelTurnFinished") >= 2,
-                "ModelTurnFinished must fire per accepted turn on the streaming surface"
+                recorder_probe.count("ModelTurnPrepared") >= 2,
+                "ModelTurnPrepared must fire per accepted turn on the streaming surface"
             );
             assert!(
                 add_calls.count() >= 1 && subtract_calls.count() >= 1,

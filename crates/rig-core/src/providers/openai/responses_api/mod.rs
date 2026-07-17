@@ -15,7 +15,7 @@
 //! ```
 use super::InputAudio;
 use super::responses_api::streaming::StreamingCompletionResponse;
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::{CompletionError, GetCompletionMetadata};
 use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
@@ -958,7 +958,7 @@ impl ResponsesUsage {
     }
 }
 
-impl GetTokenUsage for ResponsesUsage {
+impl GetCompletionMetadata for ResponsesUsage {
     fn token_usage(&self) -> crate::completion::Usage {
         crate::completion::Usage {
             input_tokens: self.input_tokens,
@@ -1060,6 +1060,19 @@ impl Add for OutputTokensDetails {
 pub struct IncompleteDetailsReason {
     /// The reason for an incomplete [`CompletionResponse`].
     pub reason: String,
+}
+
+pub(crate) fn terminal_metadata_from_incomplete_details(
+    details: Option<&IncompleteDetailsReason>,
+) -> Option<completion::CompletionTerminalMetadata> {
+    details.map(|details| {
+        let reason = match details.reason.as_str() {
+            "max_output_tokens" => completion::CompletionFinishReason::Length,
+            "content_filter" => completion::CompletionFinishReason::ContentFilter,
+            _ => completion::CompletionFinishReason::Unknown,
+        };
+        completion::CompletionTerminalMetadata::new(reason).with_raw_reason(details.reason.clone())
+    })
 }
 
 /// A response error from OpenAI's Response API.
@@ -2305,6 +2318,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        if !matches!(
+            &response.status,
+            ResponseStatus::Completed | ResponseStatus::Incomplete
+        ) {
+            return Err(crate::provider_response::completion_error_from_body(
+                serde_json::to_string(&response)?,
+            ));
+        }
         // Extract the msg_ ID from the first Output::Message item
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(msg) => Some(msg.id.clone()),
@@ -2344,12 +2365,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
+        let terminal_metadata =
+            terminal_metadata_from_incomplete_details(response.incomplete_details.as_ref());
 
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id,
         })
@@ -2756,6 +2780,26 @@ mod tests {
     use crate::test_utils::MockCompletionModel;
     use serde_json::json;
     use std::collections::HashMap;
+
+    #[test]
+    fn incomplete_details_normalize_limits_filters_unknown_and_missing() {
+        let length = terminal_metadata_from_incomplete_details(Some(&IncompleteDetailsReason {
+            reason: "max_output_tokens".to_string(),
+        }))
+        .expect("limit metadata");
+        assert_eq!(length.reason(), completion::CompletionFinishReason::Length);
+        assert_eq!(length.raw_reason(), Some("max_output_tokens"));
+
+        let unknown = terminal_metadata_from_incomplete_details(Some(&IncompleteDetailsReason {
+            reason: "future_reason".to_string(),
+        }))
+        .expect("unknown metadata");
+        assert_eq!(
+            unknown.reason(),
+            completion::CompletionFinishReason::Unknown
+        );
+        assert_eq!(terminal_metadata_from_incomplete_details(None), None);
+    }
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {
@@ -3668,6 +3712,33 @@ mod tests {
             completion::AssistantContent::Reasoning(_)
         ));
         assert!(matches!(items[1], completion::AssistantContent::Text(_)));
+    }
+
+    #[test]
+    fn failed_completion_response_with_partial_output_preserves_provider_error() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_failed",
+            "object": "response",
+            "created_at": 0,
+            "status": "failed",
+            "error": {"code": "server_error", "message": "generation failed"},
+            "model": "gpt-5.4",
+            "output": [{
+                "type": "message",
+                "id": "msg_partial",
+                "status": "incomplete",
+                "role": "assistant",
+                "content": [{"type": "output_text", "annotations": [], "text": "partial"}]
+            }],
+            "tools": []
+        }))
+        .expect("failed response should deserialize");
+
+        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+            .expect_err("failed response must not become a successful completion");
+        assert_eq!(err.provider_response_status(), None);
+        let body = err.provider_response_body().expect("provider body");
+        assert!(body.contains("server_error") && body.contains("partial"));
     }
 
     #[test]

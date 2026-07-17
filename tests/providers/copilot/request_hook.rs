@@ -5,8 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
-    ObservationAction,
+    AgentHook, CompletionCallAction, CompletionCallEvent, ModelTurnPrepared, ObservationAction,
 };
 use rig::client::CompletionClient;
 use rig::completion::{Message, Prompt};
@@ -51,10 +50,10 @@ impl AgentHook for SessionIdHook<'_> {
         }
     }
 
-    async fn on_completion_response(
+    async fn on_model_turn_prepared(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: CompletionResponseEvent<'_>,
+        event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
         self.response_calls.fetch_add(1, Ordering::SeqCst);
         match self.seen_response.lock() {

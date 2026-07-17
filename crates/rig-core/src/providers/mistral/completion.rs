@@ -1,7 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::client::{MistralExt, Usage};
-use crate::completion::GetTokenUsage;
+use crate::completion::GetCompletionMetadata;
+use crate::providers::internal::openai_chat_completions_compatible::terminal_metadata_from_finish_reason;
 use crate::providers::openai;
 use crate::{
     OneOrMany,
@@ -175,7 +176,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.prompt_tokens as u64;
@@ -186,12 +187,18 @@ impl GetTokenUsage for Usage {
     }
 }
 
-impl GetTokenUsage for CompletionResponse {
+impl GetCompletionMetadata for CompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default()
+    }
+
+    fn terminal_metadata(&self) -> Option<completion::CompletionTerminalMetadata> {
+        self.choices
+            .first()
+            .and_then(|choice| terminal_metadata_from_finish_reason(Some(&choice.finish_reason)))
     }
 }
 
@@ -233,6 +240,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )),
         }?;
 
+        let terminal_metadata = terminal_metadata_from_finish_reason(Some(&choice.finish_reason));
         let choice = OneOrMany::many(content).map_err(|_| {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
@@ -258,6 +266,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id: Some(message_id),
         })
@@ -322,6 +331,19 @@ mod tests {
             }
             _ => panic!("expected assistant message"),
         }
+
+        let streaming_metadata = response
+            .terminal_metadata()
+            .expect("Mistral response metadata should expose the first finish reason");
+        assert_eq!(
+            streaming_metadata.reason(),
+            completion::CompletionFinishReason::Stop
+        );
+        assert_eq!(streaming_metadata.raw_reason(), Some("stop"));
+
+        let converted = completion::CompletionResponse::try_from(response)
+            .expect("Mistral response should convert");
+        assert_eq!(converted.terminal_metadata, Some(streaming_metadata));
     }
 
     #[test]

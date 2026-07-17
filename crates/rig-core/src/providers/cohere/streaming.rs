@@ -1,8 +1,10 @@
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
-use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
+use crate::providers::cohere::completion::{
+    CohereCompletionRequest, FinishReason, Usage, terminal_metadata_from_finish_reason,
+};
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{json_utils, streaming};
@@ -57,14 +59,16 @@ struct Delta {
 #[derive(Debug, Deserialize)]
 struct MessageEndDelta {
     usage: Option<Usage>,
+    finish_reason: Option<FinishReason>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
+    pub finish_reason: Option<FinishReason>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl GetCompletionMetadata for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         let tokens = self
             .usage
@@ -85,6 +89,12 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.total_tokens = input + output;
 
         usage
+    }
+
+    fn terminal_metadata(&self) -> Option<crate::completion::CompletionTerminalMetadata> {
+        self.finish_reason
+            .as_ref()
+            .and_then(terminal_metadata_from_finish_reason)
     }
 }
 
@@ -136,6 +146,7 @@ where
         let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
             let mut final_usage = None;
+            let mut final_finish_reason = None;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -168,9 +179,19 @@ where
                             },
 
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
+                                if matches!(
+                                    &delta.finish_reason,
+                                    Some(FinishReason::Error | FinishReason::Timeout)
+                                ) {
+                                    yield Err(crate::provider_response::completion_error_from_body(
+                                        data_str,
+                                    ));
+                                    return;
+                                }
                                 let span = tracing::Span::current();
                                 span.record_token_usage(&delta.usage);
                                 final_usage = Some(delta.usage.clone());
+                                final_finish_reason = delta.finish_reason;
                                 break;
                             },
 
@@ -238,7 +259,8 @@ where
             event_source.close();
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                finish_reason: final_finish_reason,
             }))
         }.instrument(span);
 
@@ -357,6 +379,7 @@ mod tests {
         let json = json!({
             "type": "message-end",
             "delta": {
+                "finish_reason": "MAX_TOKENS",
                 "usage": {
                     "tokens": {
                         "input_tokens": 100,
@@ -370,7 +393,21 @@ mod tests {
         match event {
             StreamingEvent::MessageEnd { delta } => {
                 assert!(delta.is_some());
-                let usage = delta.unwrap().usage.unwrap();
+                let delta = delta.unwrap();
+                assert_eq!(delta.finish_reason, Some(FinishReason::MaxTokens));
+                let response = StreamingCompletionResponse {
+                    usage: delta.usage.clone(),
+                    finish_reason: delta.finish_reason.clone(),
+                };
+                let metadata = response
+                    .terminal_metadata()
+                    .expect("message-end should expose terminal metadata");
+                assert_eq!(
+                    metadata.reason(),
+                    crate::completion::CompletionFinishReason::Length
+                );
+                assert_eq!(metadata.raw_reason(), Some("MAX_TOKENS"));
+                let usage = delta.usage.unwrap();
                 let tokens = usage.tokens.unwrap();
                 assert_eq!(tokens.input_tokens, Some(100.0));
                 assert_eq!(tokens.output_tokens, Some(50.0));

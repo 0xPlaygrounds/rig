@@ -9,10 +9,12 @@ use serde::{Deserialize, Serialize};
 use crate::types::message::RigMessage;
 
 use super::{
-    converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
+    converse_output::{
+        ContentBlock, InternalConverseOutput, TokenUsage, terminal_metadata_from_stop_reason,
+    },
     json::AwsDocument,
 };
-use rig_core::completion::{self, GetTokenUsage};
+use rig_core::completion::{self, GetCompletionMetadata};
 use rig_core::telemetry::ProviderResponseExt;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -75,9 +77,13 @@ impl ProviderResponseExt for AwsConverseOutput {
     }
 }
 
-impl GetTokenUsage for AwsConverseOutput {
+impl GetCompletionMetadata for AwsConverseOutput {
     fn token_usage(&self) -> completion::Usage {
         self.get_usage().unwrap_or_default()
+    }
+
+    fn terminal_metadata(&self) -> Option<completion::CompletionTerminalMetadata> {
+        Some(terminal_metadata_from_stop_reason(&self.0.stop_reason))
     }
 }
 
@@ -109,10 +115,12 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
         }?;
 
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
+        let terminal_metadata = value.terminal_metadata();
 
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: value,
             message_id: None,
         })
@@ -250,7 +258,7 @@ mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::{
         OneOrMany, completion,
-        completion::GetTokenUsage,
+        completion::GetCompletionMetadata,
         message::{AssistantContent, ReasoningContent},
         telemetry::ProviderResponseExt,
     };

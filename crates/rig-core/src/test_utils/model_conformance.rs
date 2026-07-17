@@ -19,10 +19,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{
-        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent,
-        CompletionResponseEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem,
-        NoToolConfig, ObservationAction, OutputMode, RequestPatch, StreamingError,
-        ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, HookContext,
+        InvalidToolCallAction, ModelTurnPrepared, MultiTurnStreamItem, NoToolConfig,
+        ObservationAction, OutputMode, RequestPatch, StreamingError, ToolCall as ToolCallEvent,
+        ToolCallAction, ToolResultAction, ToolResultEvent,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
@@ -1256,7 +1256,9 @@ where
                 streamed_text.push_str(&text.text);
             }
             crate::streaming::StreamedAssistantContent::Final(response) => {
-                streamed_usage = Some(crate::completion::GetTokenUsage::token_usage(&response));
+                streamed_usage = Some(crate::completion::GetCompletionMetadata::token_usage(
+                    &response,
+                ));
             }
             crate::streaming::StreamedAssistantContent::ToolCall { .. }
             | crate::streaming::StreamedAssistantContent::ToolCallDelta { .. }
@@ -1394,15 +1396,16 @@ where
     struct CaptureTurn(Arc<Mutex<Option<ModelTurn>>>);
 
     impl AgentHook for CaptureTurn {
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            event: CompletionResponseEvent<'_>,
+            event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            *lock_recover(&self.0) = Some(ModelTurn::new(
+            *lock_recover(&self.0) = Some(ModelTurn::with_terminal_metadata(
                 event.message_id.map(str::to_owned),
                 event.content.clone(),
                 event.usage,
+                event.terminal_metadata.cloned(),
                 BTreeSet::new(),
                 BTreeSet::new(),
             ));
@@ -1443,10 +1446,11 @@ where
     }
     let executable = BTreeSet::from([CountingAdd::NAME.to_string(), CountingSum::NAME.to_string()]);
     let allowed = BTreeSet::from([CountingSum::NAME.to_string()]);
-    let turn = ModelTurn::new(
+    let turn = ModelTurn::with_terminal_metadata(
         response.message_id,
         response.choice,
         response.usage,
+        response.terminal_metadata,
         executable,
         allowed,
     );

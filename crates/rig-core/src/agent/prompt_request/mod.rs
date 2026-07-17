@@ -3,7 +3,7 @@ pub mod streaming;
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use crate::{
     OneOrMany,
-    completion::{CompletionModel, Message, PromptError, Usage},
+    completion::{CompletionModel, CompletionTerminalMetadata, Message, PromptError, Usage},
     message::{AssistantContent, ToolResultContent, UserContent},
     tool::{ToolContext, ToolOutput},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
@@ -310,7 +310,7 @@ where
 }
 
 /// Details for one successfully completed completion request made by an agent run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
@@ -322,12 +322,28 @@ pub struct CompletionCall {
     /// from "unreported".
     #[serde(default, deserialize_with = "usage_null_as_default")]
     pub usage: Usage,
+    /// Canonical terminal metadata reported for this completion request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl CompletionCall {
     /// Create details for one completion request in an agent run.
     pub fn new(call_index: usize, usage: Usage) -> Self {
-        Self { call_index, usage }
+        Self::with_terminal_metadata(call_index, usage, None)
+    }
+
+    /// Create completion-request details with canonical terminal metadata.
+    pub fn with_terminal_metadata(
+        call_index: usize,
+        usage: Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self {
+        Self {
+            call_index,
+            usage,
+            terminal_metadata,
+        }
     }
 }
 
@@ -873,9 +889,8 @@ mod tests {
         agent::{
             AgentBuilder,
             hook::{
-                AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
-                InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
-                ToolCall as ToolCallEvent, ToolCallAction,
+                AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext,
+                ModelTurnPrepared, ObservationAction, ToolCall as ToolCallEvent, ToolCallAction,
             },
         },
         completion::{
@@ -942,10 +957,10 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl AgentHook for PanicOnUnknownToolHook {
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
+            _event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
             panic!("unknown tool response should fail before response hooks run")
         }

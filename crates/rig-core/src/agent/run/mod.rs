@@ -77,7 +77,7 @@ use crate::{
         assistant_text_from_choice, build_full_history, build_history_for_request,
         invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
     },
-    completion::{Message, PromptError, Usage},
+    completion::{CompletionTerminalMetadata, Message, PromptError, Usage},
     json_utils,
     message::{AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent},
 };
@@ -166,6 +166,9 @@ pub struct ModelTurn {
     pub choice: OneOrMany<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
     pub usage: Usage,
+    /// Canonical provider terminal metadata, when available.
+    #[serde(default)]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
     /// Executable Rig tools advertised to the provider for this turn.
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
@@ -182,10 +185,30 @@ impl ModelTurn {
         executable_tool_names: BTreeSet<String>,
         allowed_tool_names: BTreeSet<String>,
     ) -> Self {
+        Self::with_terminal_metadata(
+            message_id,
+            choice,
+            usage,
+            None,
+            executable_tool_names,
+            allowed_tool_names,
+        )
+    }
+
+    /// Create a model turn with canonical provider terminal metadata.
+    pub fn with_terminal_metadata(
+        message_id: Option<String>,
+        choice: OneOrMany<AssistantContent>,
+        usage: Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+        executable_tool_names: BTreeSet<String>,
+        allowed_tool_names: BTreeSet<String>,
+    ) -> Self {
         Self {
             message_id,
             choice,
             usage,
+            terminal_metadata,
             executable_tool_names,
             allowed_tool_names,
         }
@@ -205,7 +228,7 @@ pub enum ModelTurnOutcome {
     ///
     /// `response_hook_suppressed` is set when invalid tool-call recovery
     /// (repair or skip) modified the turn, matching the agent loop's behavior
-    /// of not invoking `on_completion_response` for recovered turns.
+    /// of not invoking `on_model_turn_prepared` for recovered turns.
     Continue {
         /// Whether the driver should suppress its completion-response hook.
         response_hook_suppressed: bool,
@@ -801,7 +824,7 @@ impl AgentRun {
             ));
         }
 
-        self.record_completion_call(turn.usage);
+        self.record_completion_call(turn.usage, turn.terminal_metadata.clone());
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -830,10 +853,18 @@ impl AgentRun {
     /// ingestion paths. Callers own the once-per-turn `streamed_completion_call_recorded`
     /// guard/flag; this helper never touches it, so it cannot be mistaken for
     /// "a completion call happened" and re-introduce a double count.
-    fn record_completion_call(&mut self, usage: Usage) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage);
+    fn record_completion_call(
+        &mut self,
+        usage: Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> CompletionCall {
+        let call = CompletionCall::with_terminal_metadata(
+            self.completion_call_index,
+            usage,
+            terminal_metadata,
+        );
         self.completion_call_index += 1;
-        self.completion_calls.push(call);
+        self.completion_calls.push(call.clone());
         self.usage += usage;
         call
     }
@@ -1184,6 +1215,15 @@ impl AgentRun {
         &mut self,
         usage: Usage,
     ) -> Result<CompletionCall, PromptError> {
+        self.record_streamed_completion_call_with_terminal_metadata(usage, None)
+    }
+
+    /// Record one completed streamed model call with terminal metadata.
+    pub fn record_streamed_completion_call_with_terminal_metadata(
+        &mut self,
+        usage: Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
         if !recordable {
@@ -1198,7 +1238,7 @@ impl AgentRun {
         }
         self.streamed_completion_call_recorded = true;
 
-        Ok(self.record_completion_call(usage))
+        Ok(self.record_completion_call(usage, terminal_metadata))
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
@@ -1361,7 +1401,7 @@ impl AgentRun {
             // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
             // so routing the no-usage fallback through `record_completion_call`
             // leaves the run total unchanged while unifying the accounting.
-            self.record_completion_call(Usage::new());
+            self.record_completion_call(Usage::new(), None);
             self.streamed_completion_call_recorded = true;
         }
 

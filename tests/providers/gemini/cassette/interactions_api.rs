@@ -3,7 +3,7 @@
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::completion::{CompletionModel, GetCompletionMetadata};
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };

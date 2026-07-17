@@ -18,9 +18,10 @@ use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
     ProviderBuilder, ProviderClient,
 };
-use crate::completion::GetTokenUsage;
+use crate::completion::GetCompletionMetadata;
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::providers::internal::openai_chat_completions_compatible::terminal_metadata_from_finish_reason;
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -245,7 +246,7 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         crate::completion::Usage {
             input_tokens: self.prompt_tokens as u64,
@@ -391,6 +392,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )),
         }?;
 
+        let terminal_metadata = terminal_metadata_from_finish_reason(Some(&choice.finish_reason));
         let choice = OneOrMany::many(content).map_err(|_| {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
@@ -402,6 +404,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id: None,
         })
@@ -739,6 +742,14 @@ mod tests {
         assert_eq!(converted.usage.cached_input_tokens, 3);
         assert_eq!(converted.usage.output_tokens, 8);
         assert_eq!(converted.usage.reasoning_tokens, 5);
+        let metadata = converted
+            .terminal_metadata
+            .expect("DeepSeek finish_reason should be retained");
+        assert_eq!(
+            metadata.reason(),
+            crate::completion::CompletionFinishReason::Stop
+        );
+        assert_eq!(metadata.raw_reason(), Some("stop"));
     }
 
     #[test]

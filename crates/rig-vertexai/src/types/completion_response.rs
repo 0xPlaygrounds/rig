@@ -12,6 +12,37 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct VertexGenerateContentOutput(pub vertexai::model::GenerateContentResponse);
 
+fn terminal_metadata_from_finish_reason(
+    finish_reason: &vertexai::model::candidate::FinishReason,
+) -> Option<rig_core::completion::CompletionTerminalMetadata> {
+    use rig_core::completion::{CompletionFinishReason, CompletionTerminalMetadata};
+
+    if matches!(
+        finish_reason,
+        vertexai::model::candidate::FinishReason::Unspecified
+    ) {
+        return None;
+    }
+    let reason = match finish_reason {
+        vertexai::model::candidate::FinishReason::Stop => CompletionFinishReason::Stop,
+        vertexai::model::candidate::FinishReason::MaxTokens => CompletionFinishReason::Length,
+        vertexai::model::candidate::FinishReason::Safety
+        | vertexai::model::candidate::FinishReason::Recitation
+        | vertexai::model::candidate::FinishReason::Blocklist
+        | vertexai::model::candidate::FinishReason::ProhibitedContent
+        | vertexai::model::candidate::FinishReason::Spii
+        | vertexai::model::candidate::FinishReason::ModelArmor => {
+            CompletionFinishReason::ContentFilter
+        }
+        _ => CompletionFinishReason::Unknown,
+    };
+    let raw_reason = finish_reason
+        .name()
+        .map(str::to_owned)
+        .unwrap_or_else(|| finish_reason.to_string());
+    Some(CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
+}
+
 impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateContentOutput> {
     type Error = CompletionError;
 
@@ -140,6 +171,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
         Ok(CompletionResponse {
             choice,
             usage,
+            terminal_metadata: terminal_metadata_from_finish_reason(&candidate.finish_reason),
             raw_response: value,
             message_id: None,
         })
@@ -154,6 +186,24 @@ mod tests {
     use rig_core::message::{
         AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
     };
+
+    #[test]
+    fn normalizes_vertex_finish_reasons_and_default_absence() {
+        let filtered =
+            terminal_metadata_from_finish_reason(&vertexai::model::candidate::FinishReason::Safety)
+                .expect("filter metadata");
+        assert_eq!(
+            filtered.reason(),
+            rig_core::completion::CompletionFinishReason::ContentFilter
+        );
+        assert_eq!(filtered.raw_reason(), Some("SAFETY"));
+        assert_eq!(
+            terminal_metadata_from_finish_reason(
+                &vertexai::model::candidate::FinishReason::Unspecified
+            ),
+            None
+        );
+    }
 
     fn create_text_response(text: &str) -> VertexGenerateContentOutput {
         let part = vertexai::model::Part::new().set_text(text.to_string());

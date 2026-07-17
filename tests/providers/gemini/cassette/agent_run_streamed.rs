@@ -15,7 +15,7 @@ use rig::agent::{
     ToolCall as ToolCallEvent, ToolCallAction,
 };
 use rig::client::CompletionClient;
-use rig::completion::{GetTokenUsage, PromptError, Usage};
+use rig::completion::{GetCompletionMetadata, PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
@@ -138,7 +138,7 @@ async fn run_streamed_turn(
 
 async fn drain_stream_usage<R>(stream: &mut rig::streaming::StreamingCompletionResponse<R>) -> Usage
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     while let Some(item) = stream.next().await {
         if let Ok(StreamedAssistantContent::Final(final_response)) = item {

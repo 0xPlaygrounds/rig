@@ -1,5 +1,6 @@
 use super::client::{OpenRouterExt, Usage};
 use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
+use crate::providers::internal::openai_chat_completions_compatible::terminal_metadata_from_finish_reason;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
     OneOrMany,
@@ -9,6 +10,30 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+fn terminal_metadata_from_finish_reasons(
+    finish_reason: Option<&str>,
+    native_finish_reason: Option<&str>,
+) -> Option<completion::CompletionTerminalMetadata> {
+    match (finish_reason, native_finish_reason) {
+        (Some(finish_reason), native_finish_reason) => {
+            terminal_metadata_from_finish_reason(Some(finish_reason)).map(|metadata| {
+                if let Some(native_reason) = native_finish_reason {
+                    metadata.with_raw_reason(native_reason)
+                } else {
+                    metadata
+                }
+            })
+        }
+        (None, Some(native_reason)) => Some(
+            completion::CompletionTerminalMetadata::new(
+                completion::CompletionFinishReason::Unknown,
+            )
+            .with_raw_reason(native_reason),
+        ),
+        (None, None) => None,
+    }
+}
 
 // ================================================================
 // OpenRouter Completion API
@@ -566,22 +591,39 @@ impl ProviderPreferences {
 /// For more information, see this link: <https://docs.openrouter.xyz/reference/create_chat_completion_v1_chat_completions_post>
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub object: String,
+    #[serde(default)]
     pub created: u64,
+    #[serde(default)]
     pub model: String,
+    #[serde(default)]
     pub choices: Vec<Choice>,
     pub system_fingerprint: Option<String>,
     pub usage: Option<Usage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<serde_json::Value>,
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        if response.error.is_some() {
+            return Err(crate::provider_response::completion_error_from_body(
+                serde_json::to_string(&response)?,
+            ));
+        }
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        if choice.error.is_some() || choice.finish_reason.as_deref() == Some("error") {
+            return Err(crate::provider_response::completion_error_from_body(
+                serde_json::to_string(&response)?,
+            ));
+        }
 
         let content = match &choice.message {
             Message::Assistant {
@@ -694,6 +736,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )),
         }?;
 
+        let terminal_metadata = terminal_metadata_from_finish_reasons(
+            choice.finish_reason.as_deref(),
+            choice.native_finish_reason.as_deref(),
+        );
         let choice = OneOrMany::many(content).map_err(|_| {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
@@ -731,6 +777,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id: None,
         })
@@ -1078,6 +1125,8 @@ pub struct Choice {
     pub native_finish_reason: Option<String>,
     pub message: Message,
     pub finish_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -1449,6 +1498,14 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 
     const STREAM_INCLUDE_USAGE: bool = false;
 
+    fn streaming_terminal_metadata(
+        &self,
+        finish_reason: Option<&str>,
+        native_finish_reason: Option<&str>,
+    ) -> Option<completion::CompletionTerminalMetadata> {
+        terminal_metadata_from_finish_reasons(finish_reason, native_finish_reason)
+    }
+
     fn build_completion_request(
         &self,
         model: String,
@@ -1522,6 +1579,74 @@ mod tests {
     use super::*;
     use crate::message::{AudioMediaType, ImageDetail, VideoMediaType};
     use serde_json::json;
+
+    #[test]
+    fn terminal_metadata_uses_standard_reason_and_preserves_native_raw_reason() {
+        let metadata =
+            terminal_metadata_from_finish_reasons(Some("length"), Some("max_model_length"))
+                .expect("terminal metadata");
+        assert_eq!(
+            metadata.reason(),
+            completion::CompletionFinishReason::Length
+        );
+        assert_eq!(metadata.raw_reason(), Some("max_model_length"));
+
+        let stop = terminal_metadata_from_finish_reasons(Some("stop"), Some("STOP"))
+            .expect("terminal metadata");
+        assert_eq!(stop.reason(), completion::CompletionFinishReason::Stop);
+        assert_eq!(stop.raw_reason(), Some("STOP"));
+
+        let native_only = terminal_metadata_from_finish_reasons(None, Some("STOP"))
+            .expect("native reason should still be retained");
+        assert_eq!(
+            native_only.reason(),
+            completion::CompletionFinishReason::Unknown
+        );
+        assert_eq!(native_only.raw_reason(), Some("STOP"));
+        assert_eq!(terminal_metadata_from_finish_reasons(None, None), None);
+    }
+
+    #[test]
+    fn completion_response_rejects_top_level_error_envelope() {
+        let raw: CompletionResponse = serde_json::from_value(json!({
+            "error": {"code": 429, "message": "rate limited"}
+        }))
+        .expect("error envelope should deserialize for preservation");
+
+        let error = completion::CompletionResponse::try_from(raw)
+            .expect_err("provider error envelope must not become a model turn");
+        let body = error
+            .provider_response_body()
+            .expect("provider body should be retained");
+        assert!(body.contains("rate limited"));
+        assert!(body.contains("429"));
+    }
+
+    #[test]
+    fn completion_response_rejects_choice_error_with_partial_content() {
+        let raw: CompletionResponse = serde_json::from_value(json!({
+            "id": "gen-error",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "provider/model",
+            "choices": [{
+                "index": 0,
+                "native_finish_reason": "ERROR",
+                "finish_reason": "error",
+                "error": {"code": "upstream_error", "message": "provider failed"},
+                "message": {"role": "assistant", "content": "partial"}
+            }]
+        }))
+        .expect("choice error should deserialize");
+
+        let error = completion::CompletionResponse::try_from(raw)
+            .expect_err("choice error must not become a successful partial turn");
+        let body = error
+            .provider_response_body()
+            .expect("provider body should be retained");
+        assert!(body.contains("partial"));
+        assert!(body.contains("provider failed"));
+    }
 
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {

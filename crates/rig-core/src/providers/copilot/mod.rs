@@ -26,7 +26,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient, Transport,
 };
-use crate::completion::{self, CompletionError, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionTerminalMetadata, GetCompletionMetadata};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
@@ -582,11 +582,18 @@ pub enum CopilotStreamingResponse {
     Responses(responses_api::streaming::StreamingCompletionResponse),
 }
 
-impl GetTokenUsage for CopilotStreamingResponse {
+impl GetCompletionMetadata for CopilotStreamingResponse {
     fn token_usage(&self) -> completion::Usage {
         match self {
             Self::Chat(response) => response.token_usage(),
             Self::Responses(response) => response.token_usage(),
+        }
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        match self {
+            Self::Chat(response) => response.terminal_metadata(),
+            Self::Responses(response) => response.terminal_metadata(),
         }
     }
 }
@@ -662,6 +669,10 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
             )),
         }?;
 
+        let terminal_metadata =
+            openai_chat_completions_compatible::terminal_metadata_from_finish_reason(
+                choice.finish_reason.as_deref(),
+            );
         let choice = crate::OneOrMany::many(content).map_err(|_| {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
@@ -689,6 +700,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id: None,
         })
@@ -872,6 +884,7 @@ where
                         Ok(completion::CompletionResponse {
                             choice: core.choice,
                             usage: core.usage,
+                            terminal_metadata: core.terminal_metadata,
                             raw_response: CopilotCompletionResponse::Chat(Box::new(response)),
                             message_id: core.message_id,
                         })
@@ -943,6 +956,7 @@ where
                 Ok(completion::CompletionResponse {
                     choice: core.choice,
                     usage: core.usage,
+                    terminal_metadata: core.terminal_metadata,
                     raw_response: CopilotCompletionResponse::Responses(Box::new(response)),
                     message_id: core.message_id,
                 })
@@ -1034,6 +1048,7 @@ where
                 let mut final_usage = responses_api::ResponsesUsage::new();
                 let mut reasoning_metadata = None;
                 let mut reasoning_context = None;
+                let mut terminal_metadata = None;
                 let mut tool_calls: Vec<streaming::RawStreamingChoice<CopilotStreamingResponse>> = Vec::new();
                 let mut tool_call_internal_ids: HashMap<String, String> = HashMap::new();
                 let span = tracing::Span::current();
@@ -1139,9 +1154,13 @@ where
                             if let responses_api::streaming::StreamingCompletionChunk::Response(chunk) = data {
                                 let responses_api::streaming::ResponseChunk { kind, response, .. } = *chunk;
                                 match kind {
-                                    responses_api::streaming::ResponseChunkKind::ResponseCompleted => {
+                                    responses_api::streaming::ResponseChunkKind::ResponseCompleted
+                                    | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
                                         span.record("gen_ai.response.id", response.id.as_str());
                                         span.record("gen_ai.response.model", response.model.as_str());
+                                        terminal_metadata = responses_api::terminal_metadata_from_incomplete_details(
+                                            response.incomplete_details.as_ref(),
+                                        );
                                         if let Some(usage) = response.usage {
                                             final_usage = usage;
                                         }
@@ -1152,8 +1171,7 @@ where
                                             reasoning_context = response.reasoning_context;
                                         }
                                     }
-                                    responses_api::streaming::ResponseChunkKind::ResponseFailed
-                                    | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
+                                    responses_api::streaming::ResponseChunkKind::ResponseFailed => {
                                         terminated_with_error = true;
                                         // Deliberate two-tier behaviour matching the OpenAI Responses
                                         // SSE path: when the provider supplies an error object we
@@ -1215,6 +1233,7 @@ where
                     CopilotStreamingResponse::Responses(
                         responses_api::streaming::StreamingCompletionResponse {
                             usage: final_usage,
+                            terminal_metadata,
                             reasoning_metadata,
                             reasoning_context,
                         }
@@ -1557,6 +1576,18 @@ enum ChatFinishReason {
     Other(String),
 }
 
+impl ChatFinishReason {
+    fn as_raw(&self) -> &str {
+        match self {
+            Self::ToolCalls => "tool_calls",
+            Self::Stop => "stop",
+            Self::ContentFilter => "content_filter",
+            Self::Length => "length",
+            Self::Other(reason) => reason,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct ChatStreamingChoice {
     delta: ChatStreamingDelta,
@@ -1603,6 +1634,10 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                     } else {
                         CompatibleFinishReason::Other
                     },
+                    terminal_metadata:
+                        openai_chat_completions_compatible::terminal_metadata_from_finish_reason(
+                            choice.finish_reason.as_ref().map(ChatFinishReason::as_raw),
+                        ),
                     text: choice.delta.content.clone(),
                     reasoning: choice.delta.reasoning_content.clone(),
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
@@ -1614,9 +1649,14 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
         CopilotStreamingResponse::Chat(openai::completion::streaming::StreamingCompletionResponse {
             usage,
+            terminal_metadata,
         })
     }
 
@@ -2202,6 +2242,58 @@ mod tests {
             {
                 assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
                 assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
+                return;
+            }
+        }
+
+        panic!("responses stream should yield a final response");
+    }
+
+    #[tokio::test]
+    async fn responses_stream_preserves_incomplete_terminal_metadata() {
+        let incomplete = serde_json::json!({
+            "type": "response.incomplete",
+            "sequence_number": 1,
+            "response": {
+                "id": "resp_incomplete",
+                "object": "response",
+                "created_at": 1700000000,
+                "status": "incomplete",
+                "error": null,
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "instructions": null,
+                "max_output_tokens": 16,
+                "model": "gpt-5.3-codex",
+                "usage": null,
+                "output": [],
+                "tools": []
+            }
+        });
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[incomplete]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-5.3-codex");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(super::CopilotStreamingResponse::Responses(
+                response,
+            )) = item.expect("incomplete terminal response should not error")
+            {
+                let metadata = response
+                    .terminal_metadata
+                    .expect("Copilot accumulator should retain incomplete details");
+                assert_eq!(
+                    metadata.reason(),
+                    crate::completion::CompletionFinishReason::Length
+                );
+                assert_eq!(metadata.raw_reason(), Some("max_output_tokens"));
                 return;
             }
         }

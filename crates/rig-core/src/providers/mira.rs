@@ -12,6 +12,7 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::internal::openai_chat_completions_compatible::terminal_metadata_from_finish_reason;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
@@ -313,7 +314,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl crate::completion::GetTokenUsage for Usage {
+impl crate::completion::GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.prompt_tokens as u64;
@@ -327,7 +328,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let (content, usage) = match &response {
+        let (content, usage, terminal_metadata) = match &response {
             CompletionResponse::Structured { choices, usage, .. } => {
                 let choice = choices.first().ok_or_else(|| {
                     CompletionError::ResponseError("Response contained no choices".to_owned())
@@ -390,11 +391,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     }
                 };
 
-                (content, usage)
+                (
+                    content,
+                    usage,
+                    terminal_metadata_from_finish_reason(choice.finish_reason.as_deref()),
+                )
             }
             CompletionResponse::Simple(text) => (
                 vec![completion::AssistantContent::text(text)],
                 completion::Usage::new(),
+                None,
             ),
         };
 
@@ -407,6 +413,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id: None,
         })
@@ -461,6 +468,11 @@ mod tests {
             completion_response.choice.first(),
             completion::AssistantContent::text("Test response")
         );
+        let metadata = completion_response
+            .terminal_metadata
+            .expect("Mira finish_reason should be retained");
+        assert_eq!(metadata.reason(), completion::CompletionFinishReason::Stop);
+        assert_eq!(metadata.raw_reason(), Some("stop"));
     }
     #[test]
     fn test_client_initialization() {

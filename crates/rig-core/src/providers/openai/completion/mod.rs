@@ -4,11 +4,12 @@
 
 use super::{client::ApiResponse, streaming::StreamingCompletionResponse};
 use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
+    CompletionError, CompletionRequest as CoreCompletionRequest, GetCompletionMetadata,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
+use crate::providers::internal::openai_chat_completions_compatible::terminal_metadata_from_finish_reason;
 use crate::telemetry::{
     CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
 };
@@ -1194,6 +1195,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )),
         }?;
 
+        let terminal_metadata = terminal_metadata_from_finish_reason(Some(&choice.finish_reason));
         let choice = OneOrMany::many(content).map_err(|_| {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
@@ -1203,12 +1205,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
-
         Ok(completion::CompletionResponse {
             choice,
             usage,
+            terminal_metadata,
             raw_response: response,
             message_id: None,
         })
@@ -1358,7 +1360,7 @@ impl fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
@@ -1431,13 +1433,24 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// this to false.
     const STREAM_INCLUDE_USAGE: bool = true;
 
+    /// Normalize terminal reasons carried by a streaming choice.
+    fn streaming_terminal_metadata(
+        &self,
+        finish_reason: Option<&str>,
+        _native_finish_reason: Option<&str>,
+    ) -> Option<completion::CompletionTerminalMetadata> {
+        crate::providers::internal::openai_chat_completions_compatible::terminal_metadata_from_finish_reason(
+            finish_reason,
+        )
+    }
+
     /// The usage payload parsed from streaming chunks and carried on the
     /// final streaming response. OpenAI's [`Usage`] for most providers;
     /// providers with richer usage accounting (e.g. Mistral's cached-token
     /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
     type StreamingUsage: Clone
         + Default
-        + GetTokenUsage
+        + GetCompletionMetadata
         + Serialize
         + serde::de::DeserializeOwned
         + Unpin
@@ -1448,7 +1461,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// The chat-completions payload this provider returns.
     type Response: serde::de::DeserializeOwned
         + Serialize
-        + crate::telemetry::ProviderResponseExt<Usage: GetTokenUsage>
+        + crate::telemetry::ProviderResponseExt<Usage: GetCompletionMetadata>
         + TryInto<completion::CompletionResponse<Self::Response>, Error = CompletionError>
         + WasmCompatSend
         + WasmCompatSync;

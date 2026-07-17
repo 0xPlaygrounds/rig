@@ -10,7 +10,7 @@
 use crate::OneOrMany;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionResponse, GetTokenUsage, Message, Usage,
+    CompletionError, CompletionModel, CompletionResponse, GetCompletionMetadata, Message, Usage,
 };
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
@@ -239,7 +239,7 @@ pub type StreamingResult<R> =
 /// `inner` stream.
 pub struct StreamingCompletionResponse<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     pub(crate) inner: Abortable<StreamingResult<R>>,
     pub(crate) abort_handle: AbortHandle,
@@ -260,7 +260,7 @@ where
 
 impl<R> StreamingCompletionResponse<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     /// Wrap a provider stream and initialize aggregation state.
     pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
@@ -412,24 +412,26 @@ fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serd
 
 impl<R> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
+        let terminal_metadata = value.response.terminal_metadata();
         CompletionResponse {
             choice: value.choice,
-            // Derive usage from the final response. `Option<R>: GetTokenUsage`
+            // Derive usage from the final response. `Option<R>: GetCompletionMetadata`
             // yields the provider's usage when present and the zero sentinel
             // (`Usage::new`) when the stream produced no final response.
             usage: value.response.token_usage(),
             raw_response: value.response,
             message_id: value.message_id,
+            terminal_metadata,
         }
     }
 }
 
 impl<R> Stream for StreamingCompletionResponse<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     type Item = Result<StreamedAssistantContent<R>, CompletionError>;
 
@@ -566,7 +568,7 @@ pub trait StreamingPrompt<M, R>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     /// Stream a simple prompt to the model.
     ///
@@ -587,7 +589,7 @@ pub trait StreamingChat<M, R>: WasmCompatSend + WasmCompatSync
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     /// Stream a chat with history to the model.
     ///

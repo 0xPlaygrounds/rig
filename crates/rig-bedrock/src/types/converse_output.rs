@@ -78,6 +78,36 @@ pub enum StopReason {
     Unknown(UnknownVariantValue),
 }
 
+pub(crate) fn terminal_metadata_from_stop_reason(
+    stop_reason: &StopReason,
+) -> rig_core::completion::CompletionTerminalMetadata {
+    let raw_reason = match stop_reason {
+        StopReason::ContentFiltered => "content_filtered",
+        StopReason::EndTurn => "end_turn",
+        StopReason::GuardrailIntervened => "guardrail_intervened",
+        StopReason::MaxTokens => "max_tokens",
+        StopReason::StopSequence => "stop_sequence",
+        StopReason::ToolUse => "tool_use",
+        StopReason::Unknown(value) => &value.0,
+    };
+    terminal_metadata_from_raw_stop_reason(raw_reason)
+}
+
+pub(crate) fn terminal_metadata_from_raw_stop_reason(
+    raw_reason: &str,
+) -> rig_core::completion::CompletionTerminalMetadata {
+    use rig_core::completion::{CompletionFinishReason, CompletionTerminalMetadata};
+
+    let reason = match raw_reason {
+        "end_turn" | "stop_sequence" => CompletionFinishReason::Stop,
+        "max_tokens" => CompletionFinishReason::Length,
+        "tool_use" => CompletionFinishReason::ToolCalls,
+        "content_filtered" | "guardrail_intervened" => CompletionFinishReason::ContentFilter,
+        _ => CompletionFinishReason::Unknown,
+    };
+    CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason)
+}
+
 /// Opaque struct used as inner data for the `Unknown` variant defined in enums in
 /// the crate.
 ///
@@ -3766,5 +3796,27 @@ impl TryFrom<Document> for aws_smithy_types::Document {
             Document::Bool(value) => Ok(aws_smithy_types::Document::Bool(value)),
             Document::Null => Ok(aws_smithy_types::Document::Null),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_bedrock_stop_reasons_and_preserves_unknown_values() {
+        let tool = terminal_metadata_from_raw_stop_reason("tool_use");
+        assert_eq!(
+            tool.reason(),
+            rig_core::completion::CompletionFinishReason::ToolCalls
+        );
+        assert_eq!(tool.raw_reason(), Some("tool_use"));
+
+        let unknown = terminal_metadata_from_raw_stop_reason("future_reason");
+        assert_eq!(
+            unknown.reason(),
+            rig_core::completion::CompletionFinishReason::Unknown
+        );
+        assert_eq!(unknown.raw_reason(), Some("future_reason"));
     }
 }
