@@ -37,7 +37,7 @@ use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
+    completion::{self, CompletionError, CompletionRequest, GetCompletionMetadata},
 };
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -406,6 +406,68 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
+pub(crate) fn terminal_metadata_from_finish_reason(
+    finish_reason: Option<&FinishReason>,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let finish_reason = finish_reason?;
+    let (reason, raw_reason) = match finish_reason {
+        FinishReason::Stop => (completion::CompletionFinishReason::Stop, "STOP"),
+        FinishReason::MaxTokens => (completion::CompletionFinishReason::Length, "MAX_TOKENS"),
+        FinishReason::Safety => (completion::CompletionFinishReason::ContentFilter, "SAFETY"),
+        FinishReason::Recitation => (
+            completion::CompletionFinishReason::ContentFilter,
+            "RECITATION",
+        ),
+        FinishReason::Language => (
+            completion::CompletionFinishReason::ContentFilter,
+            "LANGUAGE",
+        ),
+        FinishReason::Blocklist => (
+            completion::CompletionFinishReason::ContentFilter,
+            "BLOCKLIST",
+        ),
+        FinishReason::ProhibitedContent => (
+            completion::CompletionFinishReason::ContentFilter,
+            "PROHIBITED_CONTENT",
+        ),
+        FinishReason::Spii => (completion::CompletionFinishReason::ContentFilter, "SPII"),
+        FinishReason::FinishReasonUnspecified => (
+            completion::CompletionFinishReason::Unknown,
+            "FINISH_REASON_UNSPECIFIED",
+        ),
+        FinishReason::Other => (completion::CompletionFinishReason::Unknown, "OTHER"),
+        FinishReason::MalformedFunctionCall => (
+            completion::CompletionFinishReason::Unknown,
+            "MALFORMED_FUNCTION_CALL",
+        ),
+        FinishReason::UnexpectedToolCall => (
+            completion::CompletionFinishReason::Unknown,
+            "UNEXPECTED_TOOL_CALL",
+        ),
+        FinishReason::MissingThoughtSignature => (
+            completion::CompletionFinishReason::Unknown,
+            "MISSING_THOUGHT_SIGNATURE",
+        ),
+        FinishReason::TooManyToolCalls => (
+            completion::CompletionFinishReason::Unknown,
+            "TOO_MANY_TOOL_CALLS",
+        ),
+        FinishReason::MalformedResponse => (
+            completion::CompletionFinishReason::Unknown,
+            "MALFORMED_RESPONSE",
+        ),
+        FinishReason::Unknown(raw_reason) => {
+            return Some(
+                completion::CompletionTerminalMetadata::new(
+                    completion::CompletionFinishReason::Unknown,
+                )
+                .with_raw_reason(raw_reason),
+            );
+        }
+    };
+    Some(completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
+}
+
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
     type Error = CompletionError;
 
@@ -420,6 +482,8 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         {
             return Err(err);
         }
+        let terminal_metadata =
+            terminal_metadata_from_finish_reason(candidate.finish_reason.as_ref());
 
         let content = candidate
             .content
@@ -513,7 +577,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -521,6 +585,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
 }
@@ -535,7 +600,7 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::completion::GetTokenUsage;
+    use crate::completion::GetCompletionMetadata;
     use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
         completion::CompletionError,
@@ -1424,7 +1489,7 @@ pub mod gemini_api_types {
         }
     }
 
-    impl GetTokenUsage for UsageMetadata {
+    impl GetCompletionMetadata for UsageMetadata {
         fn token_usage(&self) -> crate::completion::Usage {
             let mut usage = crate::completion::Usage::new();
 
@@ -1466,8 +1531,7 @@ pub mod gemini_api_types {
         ProhibitedContent,
     }
 
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    #[derive(Clone, Debug)]
     pub enum FinishReason {
         /// Default value. This value is unused.
         FinishReasonUnspecified,
@@ -1499,6 +1563,66 @@ pub mod gemini_api_types {
         TooManyToolCalls,
         /// The provider could not parse the generated response into a valid protocol shape.
         MalformedResponse,
+        /// A provider value introduced after this Rig version.
+        Unknown(String),
+    }
+
+    impl FinishReason {
+        fn as_raw_reason(&self) -> &str {
+            match self {
+                Self::FinishReasonUnspecified => "FINISH_REASON_UNSPECIFIED",
+                Self::Stop => "STOP",
+                Self::MaxTokens => "MAX_TOKENS",
+                Self::Safety => "SAFETY",
+                Self::Recitation => "RECITATION",
+                Self::Language => "LANGUAGE",
+                Self::Other => "OTHER",
+                Self::Blocklist => "BLOCKLIST",
+                Self::ProhibitedContent => "PROHIBITED_CONTENT",
+                Self::Spii => "SPII",
+                Self::MalformedFunctionCall => "MALFORMED_FUNCTION_CALL",
+                Self::UnexpectedToolCall => "UNEXPECTED_TOOL_CALL",
+                Self::MissingThoughtSignature => "MISSING_THOUGHT_SIGNATURE",
+                Self::TooManyToolCalls => "TOO_MANY_TOOL_CALLS",
+                Self::MalformedResponse => "MALFORMED_RESPONSE",
+                Self::Unknown(reason) => reason,
+            }
+        }
+    }
+
+    impl Serialize for FinishReason {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_str(self.as_raw_reason())
+        }
+    }
+
+    impl<'de> Deserialize<'de> for FinishReason {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            Ok(match String::deserialize(deserializer)?.as_str() {
+                "FINISH_REASON_UNSPECIFIED" => Self::FinishReasonUnspecified,
+                "STOP" => Self::Stop,
+                "MAX_TOKENS" => Self::MaxTokens,
+                "SAFETY" => Self::Safety,
+                "RECITATION" => Self::Recitation,
+                "LANGUAGE" => Self::Language,
+                "OTHER" => Self::Other,
+                "BLOCKLIST" => Self::Blocklist,
+                "PROHIBITED_CONTENT" => Self::ProhibitedContent,
+                "SPII" => Self::Spii,
+                "MALFORMED_FUNCTION_CALL" => Self::MalformedFunctionCall,
+                "UNEXPECTED_TOOL_CALL" => Self::UnexpectedToolCall,
+                "MISSING_THOUGHT_SIGNATURE" => Self::MissingThoughtSignature,
+                "TOO_MANY_TOOL_CALLS" => Self::TooManyToolCalls,
+                "MALFORMED_RESPONSE" => Self::MalformedResponse,
+                reason => Self::Unknown(reason.to_owned()),
+            })
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2204,6 +2328,47 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn finish_reason_normalization_preserves_gemini_reason() {
+        use crate::completion::CompletionFinishReason;
+
+        for (raw, expected, expected_raw) in [
+            (FinishReason::Stop, CompletionFinishReason::Stop, "STOP"),
+            (
+                FinishReason::MaxTokens,
+                CompletionFinishReason::Length,
+                "MAX_TOKENS",
+            ),
+            (
+                FinishReason::Safety,
+                CompletionFinishReason::ContentFilter,
+                "SAFETY",
+            ),
+            (
+                FinishReason::Other,
+                CompletionFinishReason::Unknown,
+                "OTHER",
+            ),
+        ] {
+            let metadata = terminal_metadata_from_finish_reason(Some(&raw))
+                .expect("supplied reason should produce metadata");
+            assert_eq!(metadata.reason(), expected);
+            assert_eq!(metadata.raw_reason(), Some(expected_raw));
+        }
+        assert_eq!(terminal_metadata_from_finish_reason(None), None);
+
+        let raw: FinishReason = serde_json::from_str(r#""FUTURE_REASON""#)
+            .expect("unknown provider reasons should deserialize");
+        let metadata = terminal_metadata_from_finish_reason(Some(&raw))
+            .expect("an unknown supplied reason should produce metadata");
+        assert_eq!(metadata.reason(), CompletionFinishReason::Unknown);
+        assert_eq!(metadata.raw_reason(), Some("FUTURE_REASON"));
+        assert_eq!(
+            serde_json::to_string(&raw).expect("unknown reason should serialize"),
+            r#""FUTURE_REASON""#
+        );
+    }
 
     #[test]
     fn test_usage_metadata_deserializes_without_total_token_count() {

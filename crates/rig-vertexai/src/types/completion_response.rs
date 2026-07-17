@@ -2,7 +2,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::OneOrMany;
-use rig_core::completion::{CompletionError, CompletionResponse, Usage};
+use rig_core::completion::{
+    CompletionError, CompletionFinishReason, CompletionResponse, CompletionTerminalMetadata, Usage,
+};
 use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
@@ -21,6 +23,19 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ProviderError("No candidates in response".to_string())
         })?;
+
+        if matches!(
+            candidate.finish_reason,
+            vertexai::model::candidate::FinishReason::MalformedFunctionCall
+        ) {
+            return Err(match serde_json::to_string(&value) {
+                Ok(body) => CompletionError::from_provider_body(body),
+                Err(error) => CompletionError::ProviderError(format!(
+                    "Vertex stopped with MALFORMED_FUNCTION_CALL: {}; failed to preserve response: {error}",
+                    candidate.finish_message.as_deref().unwrap_or("no details")
+                )),
+            });
+        }
 
         let content = candidate
             .content
@@ -136,14 +151,47 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                 reasoning_tokens: 0,
             })
             .unwrap_or_default();
+        let terminal_metadata = terminal_metadata_from_finish_reason(&candidate.finish_reason);
 
         Ok(CompletionResponse {
             choice,
             usage,
             raw_response: value,
             message_id: None,
+            terminal_metadata,
         })
     }
+}
+
+pub(crate) fn terminal_metadata_from_finish_reason(
+    reason: &vertexai::model::candidate::FinishReason,
+) -> Option<CompletionTerminalMetadata> {
+    use vertexai::model::candidate::FinishReason;
+
+    if matches!(reason, FinishReason::Unspecified) {
+        return None;
+    }
+
+    let canonical = match reason {
+        FinishReason::Stop => CompletionFinishReason::Stop,
+        FinishReason::MaxTokens => CompletionFinishReason::Length,
+        FinishReason::Safety
+        | FinishReason::Recitation
+        | FinishReason::Blocklist
+        | FinishReason::ProhibitedContent
+        | FinishReason::Spii
+        | FinishReason::ModelArmor => CompletionFinishReason::ContentFilter,
+        _ => CompletionFinishReason::Unknown,
+    };
+    let raw_reason = reason
+        .name()
+        .map(str::to_owned)
+        .or_else(|| reason.value().map(|value| value.to_string()));
+
+    Some(
+        CompletionTerminalMetadata::new(canonical)
+            .with_raw_reason(raw_reason.unwrap_or_else(|| reason.to_string())),
+    )
 }
 
 #[cfg(test)]
@@ -293,6 +341,11 @@ mod tests {
                 "Hello, world!".to_string()
             )))
         );
+        let metadata = response
+            .terminal_metadata
+            .expect("Vertex finish reason should be normalized");
+        assert_eq!(metadata.reason(), CompletionFinishReason::Stop);
+        assert_eq!(metadata.raw_reason(), Some("STOP"));
     }
 
     #[test]
@@ -316,6 +369,31 @@ mod tests {
             }
             _ => panic!("Expected ToolCall"),
         }
+    }
+
+    #[test]
+    fn malformed_function_call_remains_a_provider_error() {
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts([vertexai::model::Part::new().set_text("not a valid tool call")]);
+        let candidate = vertexai::model::Candidate::new()
+            .set_content(content)
+            .set_finish_reason(vertexai::model::candidate::FinishReason::MalformedFunctionCall)
+            .set_finish_message("invalid function arguments");
+        let response = VertexGenerateContentOutput(
+            vertexai::model::GenerateContentResponse::new().set_candidates([candidate]),
+        );
+
+        let error = match CompletionResponse::try_from(response) {
+            Ok(_) => panic!("malformed function calls must not become successful turns"),
+            Err(error) => error,
+        };
+        assert_eq!(error.provider_response_status(), None);
+        let body = error
+            .provider_response_body()
+            .expect("provider response should be preserved");
+        assert!(body.contains("finishReason"));
+        assert!(body.contains("invalid function arguments"));
     }
 
     #[test]

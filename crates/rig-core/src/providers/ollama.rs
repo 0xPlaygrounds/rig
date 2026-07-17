@@ -41,7 +41,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
-use crate::completion::{GetTokenUsage, Usage};
+use crate::completion::{GetCompletionMetadata, Usage};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
@@ -323,6 +323,7 @@ pub struct CompletionResponse {
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
     fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
+        let terminal_metadata = terminal_metadata_from_done_reason(resp.done_reason.as_deref());
         match resp.message {
             // Process only if an assistant message is present.
             Message::Assistant {
@@ -403,6 +404,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     },
                     raw_response,
                     message_id: None,
+                    terminal_metadata,
                 })
             }
             _ => Err(CompletionError::ResponseError(
@@ -410,6 +412,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )),
         }
     }
+}
+
+fn terminal_metadata_from_done_reason(
+    raw_reason: Option<&str>,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let raw_reason = raw_reason?;
+    let reason = match raw_reason {
+        "stop" => completion::CompletionFinishReason::Stop,
+        "length" => completion::CompletionFinishReason::Length,
+        _ => completion::CompletionFinishReason::Unknown,
+    };
+    Some(completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
 }
 
 /// Older reasoning models served by Ollama sometimes returned their reasoning
@@ -604,7 +618,7 @@ pub struct StreamingCompletionResponse {
     pub eval_duration: Option<u64>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl GetCompletionMetadata for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         let input_tokens = self.prompt_eval_count.unwrap_or_default();
@@ -614,6 +628,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.total_tokens = input_tokens + output_tokens;
 
         usage
+    }
+
+    fn terminal_metadata(&self) -> Option<completion::CompletionTerminalMetadata> {
+        terminal_metadata_from_done_reason(self.done_reason.as_deref())
     }
 }
 
@@ -1305,6 +1323,23 @@ pub struct ImageUrl {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn done_reason_normalization_preserves_unknown_and_missing_values() {
+        use crate::completion::CompletionFinishReason;
+
+        for (raw, expected) in [
+            ("stop", CompletionFinishReason::Stop),
+            ("length", CompletionFinishReason::Length),
+            ("load", CompletionFinishReason::Unknown),
+        ] {
+            let metadata = terminal_metadata_from_done_reason(Some(raw))
+                .expect("supplied reason should produce metadata");
+            assert_eq!(metadata.reason(), expected);
+            assert_eq!(metadata.raw_reason(), Some(raw));
+        }
+        assert_eq!(terminal_metadata_from_done_reason(None), None);
+    }
 
     #[test]
     fn splits_legacy_reasoning_with_or_without_opening_marker() {

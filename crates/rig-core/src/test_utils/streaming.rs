@@ -1,7 +1,7 @@
 //! Streaming helpers for [`MockCompletionModel`](super::MockCompletionModel).
 
 use crate::{
-    completion::{CompletionError, GetTokenUsage, Usage},
+    completion::{CompletionError, CompletionTerminalMetadata, GetCompletionMetadata, Usage},
     message::ReasoningContent,
     streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
 };
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MockResponse {
     usage: Usage,
+    terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl MockResponse {
@@ -19,12 +20,16 @@ impl MockResponse {
     pub fn new() -> Self {
         Self {
             usage: Usage::new(),
+            terminal_metadata: None,
         }
     }
 
     /// Create a mock raw response carrying token usage.
     pub fn with_usage(usage: Usage) -> Self {
-        Self { usage }
+        Self {
+            usage,
+            terminal_metadata: None,
+        }
     }
 
     /// Create a mock raw response whose usage has only `total_tokens` set.
@@ -33,11 +38,21 @@ impl MockResponse {
         usage.total_tokens = total_tokens;
         Self::with_usage(usage)
     }
+
+    /// Attach canonical terminal metadata to this mock raw response.
+    pub fn with_terminal_metadata(mut self, metadata: CompletionTerminalMetadata) -> Self {
+        self.terminal_metadata = Some(metadata);
+        self
+    }
 }
 
-impl GetTokenUsage for MockResponse {
+impl GetCompletionMetadata for MockResponse {
     fn token_usage(&self) -> Usage {
         self.usage
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -191,6 +206,14 @@ impl MockStreamEvent {
     /// Create a final response event with usage.
     pub fn final_response(usage: Usage) -> Self {
         Self::FinalResponse(MockResponse::with_usage(usage))
+    }
+
+    /// Create a final response event with usage and terminal metadata.
+    pub fn final_response_with_metadata(
+        usage: Usage,
+        metadata: CompletionTerminalMetadata,
+    ) -> Self {
+        Self::FinalResponse(MockResponse::with_usage(usage).with_terminal_metadata(metadata))
     }
 
     /// Create a final response event with default zero usage.

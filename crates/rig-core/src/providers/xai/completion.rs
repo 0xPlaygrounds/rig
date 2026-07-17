@@ -11,11 +11,14 @@ use tracing::{Instrument, Level, enabled};
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::ToolChoice;
 use crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
-use crate::providers::openai::responses_api::{Output, ResponsesUsage};
+use crate::providers::openai::responses_api::{
+    IncompleteDetailsReason, Output, ResponseError, ResponsesUsage,
+    terminal_metadata_from_incomplete_reason,
+};
 use crate::streaming::StreamingCompletionResponse as BaseStreamingCompletionResponse;
 
 /// xAI completion models as of 2025-06-04
@@ -128,6 +131,10 @@ pub struct CompletionResponse {
     pub object: String,
     #[serde(default)]
     pub status: Option<String>,
+    #[serde(default)]
+    pub incomplete_details: Option<IncompleteDetailsReason>,
+    #[serde(default)]
+    pub error: Option<ResponseError>,
     pub usage: Option<ResponsesUsage>,
 }
 
@@ -135,6 +142,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        if matches!(response.status.as_deref(), Some("failed" | "cancelled")) {
+            return Err(match serde_json::to_string(&response) {
+                Ok(body) => CompletionError::from_provider_body(body),
+                Err(error) => CompletionError::ProviderError(format!(
+                    "xAI response ended with status {}; failed to preserve response: {error}",
+                    response.status.as_deref().unwrap_or_default()
+                )),
+            });
+        }
+        let terminal_metadata = terminal_metadata_from_response(&response);
         let content: Vec<completion::AssistantContent> = response
             .output
             .iter()
@@ -149,7 +166,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(message) => Some(message.id.clone()),
@@ -161,8 +178,28 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id,
+            terminal_metadata,
         })
     }
+}
+
+fn terminal_metadata_from_response(
+    response: &CompletionResponse,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let raw_status = response.status.as_deref()?;
+    let reason = match raw_status {
+        "completed" => completion::CompletionFinishReason::Stop,
+        "incomplete" => {
+            return response
+                .incomplete_details
+                .as_ref()
+                .map(|details| terminal_metadata_from_incomplete_reason(&details.reason));
+        }
+        "failed" | "cancelled" => return None,
+        "in_progress" | "queued" => return None,
+        _ => completion::CompletionFinishReason::Unknown,
+    };
+    Some(completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_status))
 }
 
 // ================================================================
@@ -276,12 +313,112 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::XAICompletionRequest;
+    use super::{
+        CompletionResponse as XAICompletionResponse, XAICompletionRequest,
+        terminal_metadata_from_response,
+    };
     use crate::OneOrMany;
     use crate::completion::request::Document;
     use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
     use crate::message::ToolChoice;
     use crate::test_utils::MockCompletionModel;
+
+    #[test]
+    fn response_status_normalization_preserves_raw_status() {
+        use crate::completion::CompletionFinishReason;
+
+        let response: XAICompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "status-test",
+            "model": "grok-test",
+            "output": [],
+            "status": "completed",
+            "usage": null
+        }))
+        .expect("status fixture should deserialize");
+        let completed = terminal_metadata_from_response(&response)
+            .expect("completed status should be terminal");
+        assert_eq!(completed.reason(), CompletionFinishReason::Stop);
+        assert_eq!(completed.raw_reason(), Some("completed"));
+
+        let mut response = response;
+        response.status = Some("future_status".to_string());
+        let unknown = terminal_metadata_from_response(&response)
+            .expect("unknown terminal status should be preserved");
+        assert_eq!(unknown.reason(), CompletionFinishReason::Unknown);
+        assert_eq!(unknown.raw_reason(), Some("future_status"));
+
+        response.status = Some("in_progress".to_string());
+        assert_eq!(terminal_metadata_from_response(&response), None);
+        response.status = None;
+        assert_eq!(terminal_metadata_from_response(&response), None);
+    }
+
+    #[test]
+    fn incomplete_response_uses_provider_reason_for_terminal_metadata() {
+        use crate::completion::CompletionFinishReason;
+
+        for (raw_reason, expected) in [
+            ("max_output_tokens", CompletionFinishReason::Length),
+            ("content_filter", CompletionFinishReason::ContentFilter),
+            ("future_limit", CompletionFinishReason::Unknown),
+        ] {
+            let raw: XAICompletionResponse = serde_json::from_value(serde_json::json!({
+                "id": "resp_incomplete",
+                "model": "grok-test",
+                "status": "incomplete",
+                "incomplete_details": { "reason": raw_reason },
+                "output": [{
+                    "type": "message",
+                    "id": "msg_incomplete",
+                    "role": "assistant",
+                    "status": "incomplete",
+                    "content": [{
+                        "type": "output_text",
+                        "text": "partial",
+                        "annotations": []
+                    }]
+                }],
+                "usage": null
+            }))
+            .expect("incomplete response should deserialize");
+
+            let converted = crate::completion::CompletionResponse::try_from(raw)
+                .expect("partial completion should remain successful");
+            let metadata = converted
+                .terminal_metadata
+                .expect("incomplete reason should be normalized");
+            assert_eq!(metadata.reason(), expected);
+            assert_eq!(metadata.raw_reason(), Some(raw_reason));
+        }
+    }
+
+    #[test]
+    fn failed_response_preserves_provider_envelope() {
+        let response: XAICompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "xai-error",
+            "model": "grok-test",
+            "output": [],
+            "status": "failed",
+            "error": {
+                "code": "server_error",
+                "message": "xAI generation failed"
+            },
+            "usage": null
+        }))
+        .expect("failed response should deserialize");
+
+        let error = crate::completion::CompletionResponse::try_from(response)
+            .expect_err("failed status must remain a provider error");
+        assert_eq!(error.provider_response_status(), None);
+        let preserved = error
+            .provider_response_json()
+            .expect("preserved response should be JSON")
+            .expect("provider response should be present");
+        assert_eq!(preserved["status"], "failed");
+        assert_eq!(preserved["id"], "xai-error");
+        assert_eq!(preserved["error"]["code"], "server_error");
+        assert_eq!(preserved["error"]["message"], "xAI generation failed");
+    }
 
     #[test]
     fn xai_request_includes_normalized_documents() {

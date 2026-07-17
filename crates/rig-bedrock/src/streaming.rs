@@ -5,7 +5,7 @@ use crate::{
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::GetTokenUsage;
+use rig_core::completion::{CompletionTerminalMetadata, GetCompletionMetadata};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
@@ -19,6 +19,8 @@ use tracing_futures::Instrument;
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
     pub usage: Option<BedrockUsage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,7 +34,7 @@ pub struct BedrockUsage {
     pub cache_write_input_tokens: Option<i32>,
 }
 
-impl GetTokenUsage for BedrockStreamingResponse {
+impl GetCompletionMetadata for BedrockStreamingResponse {
     fn token_usage(&self) -> rig_core::completion::Usage {
         self.usage
             .as_ref()
@@ -47,6 +49,16 @@ impl GetTokenUsage for BedrockStreamingResponse {
             })
             .unwrap_or_default()
     }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
+    }
+}
+
+fn terminal_metadata_from_stop_reason(
+    reason: &aws_bedrock::StopReason,
+) -> CompletionTerminalMetadata {
+    crate::terminal_metadata::from_stop_reason(reason.as_str())
 }
 
 #[derive(Default)]
@@ -137,6 +149,7 @@ impl CompletionModel {
             let span = tracing::Span::current();
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut current_reasoning: Option<ReasoningState> = None;
+            let mut terminal_metadata: Option<CompletionTerminalMetadata> = None;
             let mut stream = response.stream;
             loop {
                 let output = match stream.recv().await {
@@ -228,6 +241,9 @@ impl CompletionModel {
                             }
                     },
                     aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
+                        terminal_metadata = Some(terminal_metadata_from_stop_reason(
+                            &message_stop_event.stop_reason,
+                        ));
                         match message_stop_event.stop_reason {
                             aws_bedrock::StopReason::ToolUse => {
                                 if let Some(tool_call) = current_tool_call.take() {
@@ -245,27 +261,31 @@ impl CompletionModel {
                                     yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }
                             }
-                            aws_bedrock::StopReason::MaxTokens => {
-                                yield Err(CompletionError::ProviderError("Exceeded max tokens".into()))
+                            aws_bedrock::StopReason::MalformedModelOutput
+                            | aws_bedrock::StopReason::MalformedToolUse => {
+                                yield Err(CompletionError::ProviderError(format!(
+                                    "Bedrock stopped with {}",
+                                    message_stop_event.stop_reason.as_str()
+                                )));
+                                return;
                             }
                             _ => {}
                         }
                     },
                     aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
                         // Extract usage information from metadata
-                        if let Some(usage) = metadata_event.usage {
-                            let final_response = BedrockStreamingResponse {
-                                usage: Some(BedrockUsage {
+                        let final_response = BedrockStreamingResponse {
+                            usage: metadata_event.usage.map(|usage| BedrockUsage {
                                     input_tokens: usage.input_tokens,
                                     output_tokens: usage.output_tokens,
                                     total_tokens: usage.total_tokens,
                                     cache_read_input_tokens: usage.cache_read_input_tokens,
                                     cache_write_input_tokens: usage.cache_write_input_tokens,
                                 }),
-                            };
-                            span.record_token_usage(&final_response);
-                            yield Ok(RawStreamingChoice::FinalResponse(final_response));
-                        }
+                            terminal_metadata: terminal_metadata.clone(),
+                        };
+                        span.record_token_usage(&final_response);
+                        yield Ok(RawStreamingChoice::FinalResponse(final_response));
                     },
                     _ => {}
                 }
@@ -279,6 +299,7 @@ impl CompletionModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rig_core::completion::CompletionFinishReason;
 
     #[test]
     fn test_bedrock_usage_creation() {
@@ -305,6 +326,7 @@ mod tests {
                 cache_read_input_tokens: Some(40),
                 cache_write_input_tokens: Some(10),
             }),
+            terminal_metadata: None,
         };
 
         assert_eq!(
@@ -323,7 +345,10 @@ mod tests {
 
     #[test]
     fn test_bedrock_streaming_response_without_usage() {
-        let response = BedrockStreamingResponse { usage: None };
+        let response = BedrockStreamingResponse {
+            usage: None,
+            terminal_metadata: None,
+        };
 
         // Zero-valued usage is rig's documented sentinel for "the provider
         // reported no usage metrics".
@@ -332,7 +357,42 @@ mod tests {
     }
 
     #[test]
-    fn test_get_token_usage_trait() {
+    fn bedrock_stop_reason_normalization_covers_terminal_categories() {
+        for (reason, expected) in [
+            (
+                aws_bedrock::StopReason::EndTurn,
+                CompletionFinishReason::Stop,
+            ),
+            (
+                aws_bedrock::StopReason::MaxTokens,
+                CompletionFinishReason::Length,
+            ),
+            (
+                aws_bedrock::StopReason::ModelContextWindowExceeded,
+                CompletionFinishReason::Length,
+            ),
+            (
+                aws_bedrock::StopReason::ToolUse,
+                CompletionFinishReason::ToolCalls,
+            ),
+            (
+                aws_bedrock::StopReason::ContentFiltered,
+                CompletionFinishReason::ContentFilter,
+            ),
+        ] {
+            let metadata = terminal_metadata_from_stop_reason(&reason);
+            assert_eq!(metadata.reason(), expected);
+            assert_eq!(metadata.raw_reason(), Some(reason.as_str()));
+        }
+
+        let unknown = aws_bedrock::StopReason::from("future_stop_reason");
+        let metadata = terminal_metadata_from_stop_reason(&unknown);
+        assert_eq!(metadata.reason(), CompletionFinishReason::Unknown);
+        assert_eq!(metadata.raw_reason(), Some("future_stop_reason"));
+    }
+
+    #[test]
+    fn test_get_completion_metadata_trait() {
         let response = BedrockStreamingResponse {
             usage: Some(BedrockUsage {
                 input_tokens: 448,
@@ -341,9 +401,10 @@ mod tests {
                 cache_read_input_tokens: Some(80),
                 cache_write_input_tokens: Some(20),
             }),
+            terminal_metadata: None,
         };
 
-        // Test that GetTokenUsage trait is properly implemented
+        // Test that GetCompletionMetadata trait is properly implemented
         assert_eq!(
             response.token_usage(),
             rig_core::completion::Usage {
@@ -399,6 +460,7 @@ mod tests {
                 cache_read_input_tokens: Some(30),
                 cache_write_input_tokens: Some(15),
             }),
+            terminal_metadata: None,
         };
 
         // Test serialization

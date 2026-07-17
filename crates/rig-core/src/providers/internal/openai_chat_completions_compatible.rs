@@ -13,7 +13,7 @@ use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionTerminalMetadata, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
@@ -83,6 +83,7 @@ impl CompatibleToolCallChunk {
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoice<D> {
     pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) terminal_metadata: Option<CompletionTerminalMetadata>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
@@ -92,6 +93,7 @@ pub(crate) struct CompatibleChoice<D> {
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoiceData<T, D> {
     pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) terminal_metadata: Option<CompletionTerminalMetadata>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<T>,
@@ -116,6 +118,7 @@ where
     fn from(value: CompatibleChoiceData<T, D>) -> Self {
         Self {
             finish_reason: value.finish_reason,
+            terminal_metadata: value.terminal_metadata,
             text: value.text,
             reasoning: value.reasoning,
             tool_calls: value.tool_calls.into_iter().map(Into::into).collect(),
@@ -156,13 +159,17 @@ where
 }
 
 pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
+    type Usage: Clone + Default + GetCompletionMetadata + WasmCompatSend + 'static;
     type Detail: WasmCompatSend + 'static;
-    type FinalResponse: Clone + Unpin + GetTokenUsage + WasmCompatSend + 'static;
+    type FinalResponse: Clone + Unpin + GetCompletionMetadata + WasmCompatSend + 'static;
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -231,6 +238,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut terminal_metadata = None;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -273,6 +281,10 @@ where
                     let Some(choice) = chunk.choice else {
                         continue;
                     };
+
+                    if choice.terminal_metadata.is_some() {
+                        terminal_metadata = choice.terminal_metadata.clone();
+                    }
 
                     for incoming in choice.tool_calls {
                         if let Some(existing) = tool_calls.get(&incoming.index)
@@ -387,7 +399,7 @@ where
         let final_usage = final_usage.unwrap_or_default();
         record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(final_usage, terminal_metadata),
         ));
     }
     .instrument(instrument_span);
@@ -399,7 +411,7 @@ where
 
 fn record_usage<T>(span: &tracing::Span, usage: &T)
 where
-    T: GetTokenUsage,
+    T: GetCompletionMetadata,
 {
     if span.is_disabled() {
         return;
@@ -576,7 +588,7 @@ fn take_finalized_tool_calls(
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::completion::GetTokenUsage;
+    use crate::completion::GetCompletionMetadata;
     use crate::streaming::{self, StreamedAssistantContent};
     use bytes::Bytes;
     use futures::StreamExt;
@@ -613,7 +625,7 @@ pub(crate) mod test_support {
         expected_name: &str,
         expect_final_response: bool,
     ) where
-        R: Clone + Unpin + GetTokenUsage,
+        R: Clone + Unpin + GetCompletionMetadata,
     {
         let mut saw_final = false;
         let mut collected_tool_calls = Vec::new();

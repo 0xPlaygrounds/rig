@@ -53,10 +53,10 @@ async fn hand_driven_single_turn_completes() {
                             matches!(
                                 outcome,
                                 ModelTurnOutcome::Continue {
-                                    response_hook_suppressed: false
+                                    prepared_hook_suppressed: false
                                 }
                             ),
-                            "unrecovered turns must not suppress the response hook"
+                            "unrecovered turns must not suppress the prepared-turn hook"
                         );
                     }
                     AgentRunStep::CallTools { calls } => {

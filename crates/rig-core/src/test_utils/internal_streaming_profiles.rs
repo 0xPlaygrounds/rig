@@ -1,7 +1,7 @@
 //! Crate-internal streaming profile helpers for compatible provider tests.
 
 use crate::{
-    completion::CompletionError,
+    completion::{CompletionError, CompletionTerminalMetadata},
     providers::internal::openai_chat_completions_compatible::{
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
         CompatibleToolCallChunk,
@@ -25,6 +25,7 @@ fn tool_call_choice(
 ) -> CompatibleChoice<()> {
     CompatibleChoice {
         finish_reason,
+        terminal_metadata: None,
         text: None,
         reasoning: None,
         tool_calls,
@@ -71,7 +72,11 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 }
@@ -134,7 +139,11 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 
@@ -176,7 +185,11 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 }

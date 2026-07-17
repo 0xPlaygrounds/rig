@@ -130,15 +130,15 @@ async fn repair_renames_tool_call_and_executes_it() {
                             assert!(repaired_calls < 6, "repair loop did not converge");
                         }
                         let ModelTurnOutcome::Continue {
-                            response_hook_suppressed,
+                            prepared_hook_suppressed,
                         } = outcome
                         else {
                             panic!("repaired turns continue: {outcome:?}");
                         };
                         assert_eq!(
-                            response_hook_suppressed,
+                            prepared_hook_suppressed,
                             repaired_calls > repaired_before,
-                            "exactly the recovered turns suppress the response hook"
+                            "exactly the recovered turns suppress the prepared-turn hook"
                         );
                     }
                     AgentRunStep::CallTools { calls } => {

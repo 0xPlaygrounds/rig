@@ -73,9 +73,25 @@ pub enum StopReason {
     EndTurn,
     GuardrailIntervened,
     MaxTokens,
+    ModelContextWindowExceeded,
     StopSequence,
     ToolUse,
     Unknown(UnknownVariantValue),
+}
+
+impl StopReason {
+    pub(crate) fn as_raw_reason(&self) -> &str {
+        match self {
+            Self::ContentFiltered => "content_filtered",
+            Self::EndTurn => "end_turn",
+            Self::GuardrailIntervened => "guardrail_intervened",
+            Self::MaxTokens => "max_tokens",
+            Self::ModelContextWindowExceeded => "model_context_window_exceeded",
+            Self::StopSequence => "stop_sequence",
+            Self::ToolUse => "tool_use",
+            Self::Unknown(value) => &value.0,
+        }
+    }
 }
 
 /// Opaque struct used as inner data for the `Unknown` variant defined in enums in
@@ -721,10 +737,20 @@ impl TryFrom<aws_sdk_bedrockruntime::types::StopReason> for StopReason {
                 Ok(StopReason::GuardrailIntervened)
             }
             aws_sdk_bedrockruntime::types::StopReason::MaxTokens => Ok(StopReason::MaxTokens),
+            aws_sdk_bedrockruntime::types::StopReason::ModelContextWindowExceeded => {
+                Ok(StopReason::ModelContextWindowExceeded)
+            }
             aws_sdk_bedrockruntime::types::StopReason::StopSequence => Ok(StopReason::StopSequence),
             aws_sdk_bedrockruntime::types::StopReason::ToolUse => Ok(StopReason::ToolUse),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for StopReason: {invalid:?}"
+            invalid @ (aws_sdk_bedrockruntime::types::StopReason::MalformedModelOutput
+            | aws_sdk_bedrockruntime::types::StopReason::MalformedToolUse) => {
+                Err(TypeConversionError::new(&format!(
+                    "Bedrock stopped with malformed output: {}",
+                    invalid.as_str()
+                )))
+            }
+            other => Ok(StopReason::Unknown(UnknownVariantValue(
+                other.as_str().to_owned(),
             ))),
         }
     }

@@ -7,9 +7,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
-    ObservationAction, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
-    ToolResultEvent,
+    AgentHook, CompletionCallAction, CompletionCallEvent, ModelTurnPrepared, ObservationAction,
+    ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
 use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
@@ -72,10 +71,10 @@ impl AgentHook for StepLogger {
         CompletionCallAction::continue_run()
     }
 
-    async fn on_completion_response(
+    async fn on_model_turn_prepared(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: CompletionResponseEvent<'_>,
+        event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
         let call_no = self.current_completion_call();
         println!("\n=== completion response #{call_no}: normalized choice ===");

@@ -582,6 +582,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let terminal_metadata = openai::completion::terminal_metadata_from_finish_reason(
+            choice.finish_reason.as_deref(),
+        );
 
         let content = match &choice.message {
             Message::Assistant {
@@ -727,12 +730,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 }
             })
             .unwrap_or_default();
-
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
 }

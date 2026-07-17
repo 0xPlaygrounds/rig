@@ -3,8 +3,8 @@
 use futures::StreamExt;
 use rig::client::CompletionClient;
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, GetTokenUsage,
-    ToolDefinition, Usage,
+    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse,
+    GetCompletionMetadata, ToolDefinition, Usage,
 };
 use rig::message::ToolChoice;
 use rig::providers::anthropic;

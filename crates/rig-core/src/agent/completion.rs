@@ -5,8 +5,8 @@ use super::runner::AgentRunner;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, GetTokenUsage,
-        Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
+        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
+        GetCompletionMetadata, Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     json_utils,
     message::ToolChoice,
@@ -698,7 +698,7 @@ where
 impl<M> StreamingPrompt<M, M::StreamingResponse> for Agent<M>
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: GetTokenUsage,
+    M::StreamingResponse: GetCompletionMetadata,
 {
     fn stream_prompt(
         &self,
@@ -711,7 +711,7 @@ where
 impl<M> StreamingChat<M, M::StreamingResponse> for Agent<M>
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: GetTokenUsage,
+    M::StreamingResponse: GetCompletionMetadata,
 {
     fn stream_chat<I, T>(
         &self,

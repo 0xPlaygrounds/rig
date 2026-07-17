@@ -178,10 +178,10 @@ async fn resume_while_invalid_tool_call_awaits_resolution() {
                 matches!(
                     outcome,
                     ModelTurnOutcome::Continue {
-                        response_hook_suppressed: true
+                        prepared_hook_suppressed: true
                     }
                 ),
-                "recovered turns suppress the response hook"
+                "recovered turns suppress the prepared-turn hook"
             );
 
             // The skipped call comes back preresolved; the driver must not

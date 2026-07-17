@@ -4,7 +4,7 @@
 
 use super::{client::ApiResponse, streaming::StreamingCompletionResponse};
 use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
+    CompletionError, CompletionRequest as CoreCompletionRequest, GetCompletionMetadata,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
@@ -1145,6 +1145,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let terminal_metadata =
+            terminal_metadata_from_finish_reason(Some(choice.finish_reason.as_str()));
 
         let content = match &choice.message {
             Message::Assistant {
@@ -1203,16 +1205,34 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
-
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
+}
+
+/// Normalize an OpenAI Chat Completions-compatible finish reason.
+///
+/// This helper is shared by blocking and streaming adapters, including the
+/// provider implementations that use the common compatible transport.
+pub(crate) fn terminal_metadata_from_finish_reason(
+    raw_reason: Option<&str>,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let raw_reason = raw_reason?;
+    let reason = match raw_reason {
+        "stop" => completion::CompletionFinishReason::Stop,
+        "length" => completion::CompletionFinishReason::Length,
+        "tool_calls" | "function_call" => completion::CompletionFinishReason::ToolCalls,
+        "content_filter" => completion::CompletionFinishReason::ContentFilter,
+        _ => completion::CompletionFinishReason::Unknown,
+    };
+    Some(completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
 }
 
 impl ProviderResponseExt for CompletionResponse {
@@ -1358,7 +1378,7 @@ impl fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
@@ -1437,7 +1457,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
     type StreamingUsage: Clone
         + Default
-        + GetTokenUsage
+        + GetCompletionMetadata
         + Serialize
         + serde::de::DeserializeOwned
         + Unpin
@@ -1448,7 +1468,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// The chat-completions payload this provider returns.
     type Response: serde::de::DeserializeOwned
         + Serialize
-        + crate::telemetry::ProviderResponseExt<Usage: GetTokenUsage>
+        + crate::telemetry::ProviderResponseExt<Usage: GetCompletionMetadata>
         + TryInto<completion::CompletionResponse<Self::Response>, Error = CompletionError>
         + WasmCompatSend
         + WasmCompatSync;
@@ -2054,6 +2074,26 @@ mod tests {
     use crate::telemetry::ProviderResponseExt;
     use crate::test_utils::MockCompletionModel;
     use std::collections::HashMap;
+
+    #[test]
+    fn finish_reason_normalization_preserves_known_unknown_and_missing_values() {
+        use crate::completion::CompletionFinishReason;
+
+        for (raw, expected) in [
+            ("stop", CompletionFinishReason::Stop),
+            ("length", CompletionFinishReason::Length),
+            ("tool_calls", CompletionFinishReason::ToolCalls),
+            ("function_call", CompletionFinishReason::ToolCalls),
+            ("content_filter", CompletionFinishReason::ContentFilter),
+            ("future_reason", CompletionFinishReason::Unknown),
+        ] {
+            let metadata = terminal_metadata_from_finish_reason(Some(raw))
+                .expect("supplied reason should produce metadata");
+            assert_eq!(metadata.reason(), expected);
+            assert_eq!(metadata.raw_reason(), Some(raw));
+        }
+        assert_eq!(terminal_metadata_from_finish_reason(None), None);
+    }
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {

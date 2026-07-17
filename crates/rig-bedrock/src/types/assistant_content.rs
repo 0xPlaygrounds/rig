@@ -12,7 +12,7 @@ use super::{
     converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
     json::AwsDocument,
 };
-use rig_core::completion::{self, GetTokenUsage};
+use rig_core::completion::{self, CompletionTerminalMetadata, GetCompletionMetadata};
 use rig_core::telemetry::ProviderResponseExt;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -75,10 +75,20 @@ impl ProviderResponseExt for AwsConverseOutput {
     }
 }
 
-impl GetTokenUsage for AwsConverseOutput {
+impl GetCompletionMetadata for AwsConverseOutput {
     fn token_usage(&self) -> completion::Usage {
         self.get_usage().unwrap_or_default()
     }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        Some(terminal_metadata_from_stop_reason(&self.0.stop_reason))
+    }
+}
+
+fn terminal_metadata_from_stop_reason(
+    reason: &super::converse_output::StopReason,
+) -> CompletionTerminalMetadata {
+    crate::terminal_metadata::from_stop_reason(reason.as_raw_reason())
 }
 
 impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOutput> {
@@ -109,12 +119,14 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
         }?;
 
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
+        let terminal_metadata = Some(terminal_metadata_from_stop_reason(&value.0.stop_reason));
 
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: value,
             message_id: None,
+            terminal_metadata,
         })
     }
 }
@@ -246,11 +258,11 @@ mod tests {
         errors::TypeConversionError, json::AwsDocument,
     };
 
-    use super::AwsConverseOutput;
+    use super::{AwsConverseOutput, terminal_metadata_from_stop_reason};
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::{
         OneOrMany, completion,
-        completion::GetTokenUsage,
+        completion::GetCompletionMetadata,
         message::{AssistantContent, ReasoningContent},
         telemetry::ProviderResponseExt,
     };
@@ -375,6 +387,36 @@ mod tests {
             completion.choice,
             OneOrMany::one(AssistantContent::Text("txt".into()))
         );
+        let metadata = completion
+            .terminal_metadata
+            .expect("Bedrock stop reason should be normalized");
+        assert_eq!(metadata.reason(), completion::CompletionFinishReason::Stop);
+        assert_eq!(metadata.raw_reason(), Some("end_turn"));
+    }
+
+    #[test]
+    fn bedrock_internal_terminal_metadata_preserves_limits_and_unknown_values() {
+        use super::super::converse_output::{StopReason, UnknownVariantValue};
+
+        let context_limit =
+            terminal_metadata_from_stop_reason(&StopReason::ModelContextWindowExceeded);
+        assert_eq!(
+            context_limit.reason(),
+            completion::CompletionFinishReason::Length
+        );
+        assert_eq!(
+            context_limit.raw_reason(),
+            Some("model_context_window_exceeded")
+        );
+
+        let unknown = terminal_metadata_from_stop_reason(&StopReason::Unknown(
+            UnknownVariantValue("future_stop_reason".to_string()),
+        ));
+        assert_eq!(
+            unknown.reason(),
+            completion::CompletionFinishReason::Unknown
+        );
+        assert_eq!(unknown.raw_reason(), Some("future_stop_reason"));
     }
 
     #[test]

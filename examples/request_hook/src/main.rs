@@ -22,7 +22,7 @@
 
 use anyhow::Result;
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, ModelTurnPrepared,
     ObservationAction, RequestPatch,
 };
 use rig::client::{CompletionClient, ProviderClient};
@@ -64,10 +64,10 @@ impl AgentHook for LoggingHook {
         CompletionCallAction::continue_run()
     }
 
-    async fn on_completion_response(
+    async fn on_model_turn_prepared(
         &self,
         ctx: &HookContext,
-        event: CompletionResponseEvent<'_>,
+        event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
         println!(
             "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",

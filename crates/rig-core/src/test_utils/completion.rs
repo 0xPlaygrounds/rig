@@ -9,7 +9,7 @@ use crate::{
     OneOrMany,
     completion::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-        Usage,
+        CompletionTerminalMetadata, Usage,
     },
     message::{ToolCall, ToolFunction},
     streaming::{StreamingCompletionResponse, StreamingResult},
@@ -56,6 +56,7 @@ struct MockTurnResponse {
     choice: OneOrMany<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
+    terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl MockTurn {
@@ -97,6 +98,7 @@ impl MockTurn {
                 choice: OneOrMany::one(content),
                 usage: Usage::new(),
                 message_id: None,
+                terminal_metadata: None,
             }),
         }
     }
@@ -110,6 +112,7 @@ impl MockTurn {
                 choice: OneOrMany::many(content)?,
                 usage: Usage::new(),
                 message_id: None,
+                terminal_metadata: None,
             }),
         })
     }
@@ -144,13 +147,27 @@ impl MockTurn {
         self
     }
 
+    /// Set canonical terminal metadata for this turn.
+    pub fn with_terminal_metadata(mut self, metadata: CompletionTerminalMetadata) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.terminal_metadata = Some(metadata);
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse<MockResponse>, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(CompletionResponse {
             choice: response.choice,
             usage: response.usage,
-            raw_response: MockResponse::with_usage(response.usage),
+            raw_response: response.terminal_metadata.clone().map_or_else(
+                || MockResponse::with_usage(response.usage),
+                |metadata| {
+                    MockResponse::with_usage(response.usage).with_terminal_metadata(metadata)
+                },
+            ),
             message_id: response.message_id,
+            terminal_metadata: response.terminal_metadata,
         })
     }
 }
@@ -304,7 +321,7 @@ impl CompletionModel for MockCompletionModel {
 mod tests {
     use super::*;
     use crate::{
-        completion::GetTokenUsage,
+        completion::GetCompletionMetadata,
         message::Message,
         streaming::{StreamedAssistantContent, ToolCallDeltaContent},
     };

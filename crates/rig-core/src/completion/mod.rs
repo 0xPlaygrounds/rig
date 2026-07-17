@@ -12,6 +12,9 @@
 //! Agent execution always goes through [`AgentRunner`](crate::agent::AgentRunner),
 //! including the high-level traits above. Call [`CompletionModel::completion`]
 //! directly only when intentionally making a raw, hook-free provider request.
+//! Direct blocking responses and fully collected streams expose normalized
+//! [`CompletionTerminalMetadata`] alongside the provider's typed raw response;
+//! managed agent hooks receive only canonical Rig data.
 //!
 //! `CompletionRequest` is Rig's canonical request representation. Provider modules
 //! translate it into provider-specific request bodies and convert responses back into

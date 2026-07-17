@@ -36,9 +36,8 @@ use tracing::{Instrument, info_span, span::Id};
 use super::{
     completion::{Agent, PreparedCompletionRequest},
     hook::{
-        AgentHook, CompletionCall, CompletionCallAction,
-        CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
-        InvalidToolCallAction, ModelTurnFinished, ObservationAction, RequestPatch,
+        AgentHook, CompletionCall, CompletionCallAction, HookContext, HookStack,
+        InvalidToolCallAction, ModelTurnPrepared, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     },
     prompt_request::{
@@ -915,7 +914,7 @@ where
                 resp.usage,
                 prepared.executable_tool_names,
                 prepared.allowed_tool_names,
-            )) {
+            ).with_terminal_metadata(resp.terminal_metadata.clone())) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     yield Err(Box::new(err).into());
@@ -950,7 +949,7 @@ where
                     }
                     ModelTurnOutcome::TurnRetried => break,
                     ModelTurnOutcome::Continue {
-                        response_hook_suppressed,
+                        prepared_hook_suppressed,
                     } => {
                         if runner.record_telemetry_content
                             && let Some(choice) = run.accepted_turn_choice()
@@ -958,41 +957,27 @@ where
                             crate::telemetry::record_model_output(&chat_span, &choice, true);
                         }
 
-                        if !response_hook_suppressed {
-                            // The response-finish event fires first, then the
-                            // normalized per-turn event. Both carry canonical
-                            // Rig data, are observe-only, and are suppressed for
-                            // recovered turns.
-                            if let Some(reason) = observe_action(
-                                runner
-                                    .hooks
-                                    .on_completion_response(
-                                        hook_ctx,
-                                        CompletionResponseEvent {
-                                            prompt: &current_prompt,
-                                            content: &resp.choice,
-                                            usage: resp.usage,
-                                            message_id: resp.message_id.as_deref(),
-                                        },
-                                    )
-                                    .await,
-                            ) {
-                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                        if !prepared_hook_suppressed {
+                            let Some(accepted_content) = run.accepted_turn_choice() else {
+                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(
+                                    "accepted model turn did not retain canonical content",
+                                ))));
                                 return;
-                            }
-                            if let Some(reason) = observe_action(
-                                runner
-                                    .hooks
-                                    .on_model_turn_finished(
-                                        hook_ctx,
-                                        ModelTurnFinished {
-                                            turn: hook_ctx.turn(),
-                                            content: &resp.choice,
-                                            usage: resp.usage,
-                                        },
-                                    )
-                                    .await,
-                            ) {
+                            };
+                            if let Some(reason) = observe_action(runner
+                                .hooks
+                                .on_model_turn_prepared(
+                                    hook_ctx,
+                                    ModelTurnPrepared {
+                                        turn: hook_ctx.turn(),
+                                        prompt: &current_prompt,
+                                        content: &accepted_content,
+                                        usage: resp.usage,
+                                        message_id: resp.message_id.as_deref(),
+                                        terminal_metadata: resp.terminal_metadata.as_ref(),
+                                    },
+                                )
+                                .await) {
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
@@ -1574,8 +1559,8 @@ mod tests {
 mod migrated_tests {
     use crate::agent::{
         CompletionCallAction, CompletionCallEvent, InvalidToolCallAction, InvalidToolCallContext,
-        ModelTurnFinished, ObservationAction, StreamResponseFinish, TextDelta, ToolCall,
-        ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
+        ModelTurnPrepared, ObservationAction, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
+        ToolResultAction, ToolResultEvent,
     };
 
     use std::sync::{
@@ -1594,7 +1579,8 @@ mod migrated_tests {
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{
-        CompletionError, CompletionModel, Document, Message, Prompt, PromptError, Usage,
+        CompletionError, CompletionFinishReason, CompletionModel, CompletionTerminalMetadata,
+        Document, Message, Prompt, PromptError, Usage,
     };
     use crate::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
@@ -1624,8 +1610,7 @@ mod migrated_tests {
 
     impl RecordingHook {
         /// Event kinds that should be identical across streaming and
-        /// non-streaming (excludes the medium-specific delta / response-finish
-        /// events).
+        /// non-streaming (excluding streaming-only deltas).
         fn shared_events(&self) -> Vec<StepEventKind> {
             self.events
                 .lock()
@@ -1636,6 +1621,7 @@ mod migrated_tests {
                     matches!(
                         kind,
                         StepEventKind::CompletionCall
+                            | StepEventKind::ModelTurnPrepared
                             | StepEventKind::ToolCall
                             | StepEventKind::ToolResult
                             | StepEventKind::InvalidToolCall
@@ -1648,8 +1634,7 @@ mod migrated_tests {
             self.tool_results.lock().expect("results lock").clone()
         }
 
-        /// Count of a single event kind across the whole run, including the
-        /// medium-specific response-finish events that `shared_events` excludes.
+        /// Count of a single event kind across the whole run.
         fn count(&self, kind: StepEventKind) -> usize {
             self.events
                 .lock()
@@ -1675,20 +1660,12 @@ mod migrated_tests {
             self.record(StepEventKind::CompletionCall);
             CompletionCallAction::continue_run()
         }
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _: &HookContext,
-            _: crate::agent::hook::CompletionResponse<'_>,
+            _: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            self.record(StepEventKind::CompletionResponse);
-            ObservationAction::continue_run()
-        }
-        async fn on_model_turn_finished(
-            &self,
-            _: &HookContext,
-            _: ModelTurnFinished<'_>,
-        ) -> ObservationAction {
-            self.record(StepEventKind::ModelTurnFinished);
+            self.record(StepEventKind::ModelTurnPrepared);
             ObservationAction::continue_run()
         }
         async fn on_invalid_tool_call(
@@ -1727,14 +1704,6 @@ mod migrated_tests {
             self.record(StepEventKind::ToolCallDelta);
             ObservationAction::continue_run()
         }
-        async fn on_stream_response_finish(
-            &self,
-            _: &HookContext,
-            _: StreamResponseFinish<'_>,
-        ) -> ObservationAction {
-            self.record(StepEventKind::StreamResponseFinish);
-            ObservationAction::continue_run()
-        }
     }
 
     #[derive(Clone, Debug, PartialEq)]
@@ -1743,71 +1712,41 @@ mod migrated_tests {
         content: OneOrMany<AssistantContent>,
         usage: Usage,
         message_id: Option<String>,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
     }
 
     #[derive(Clone, Default)]
     struct CanonicalResponseHook {
-        blocking: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
-        streaming: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
-        committed: Arc<Mutex<Vec<OneOrMany<AssistantContent>>>>,
+        snapshots: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
     }
 
     impl AgentHook for CanonicalResponseHook {
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            event: crate::agent::hook::CompletionResponse<'_>,
+            event: crate::agent::hook::ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            self.blocking
+            self.snapshots
                 .lock()
-                .expect("blocking snapshots")
+                .expect("prepared snapshots")
                 .push(CanonicalResponseSnapshot {
                     prompt: event.prompt.clone(),
                     content: event.content.clone(),
                     usage: event.usage,
                     message_id: event.message_id.map(str::to_owned),
+                    terminal_metadata: event.terminal_metadata.cloned(),
                 });
-            ObservationAction::continue_run()
-        }
-
-        async fn on_stream_response_finish(
-            &self,
-            _ctx: &HookContext,
-            event: StreamResponseFinish<'_>,
-        ) -> ObservationAction {
-            self.streaming
-                .lock()
-                .expect("streaming snapshots")
-                .push(CanonicalResponseSnapshot {
-                    prompt: event.prompt.clone(),
-                    content: event.content.clone(),
-                    usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
-                });
-            ObservationAction::continue_run()
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
-        ) -> ObservationAction {
-            self.committed
-                .lock()
-                .expect("committed snapshots")
-                .push(event.content.clone());
             ObservationAction::continue_run()
         }
     }
 
     #[derive(Clone, Default)]
-    struct FinishLifecycleHook {
+    struct PreparedLifecycleHook {
         snapshots: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
-        model_turns: Arc<AtomicU32>,
         stop: Arc<AtomicBool>,
     }
 
-    impl FinishLifecycleHook {
+    impl PreparedLifecycleHook {
         fn stopping() -> Self {
             let hook = Self::default();
             hook.stop.store(true, SeqCst);
@@ -1815,11 +1754,11 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook for FinishLifecycleHook {
-        async fn on_stream_response_finish(
+    impl AgentHook for PreparedLifecycleHook {
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            event: StreamResponseFinish<'_>,
+            event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
             self.snapshots
                 .lock()
@@ -1829,21 +1768,13 @@ mod migrated_tests {
                     content: event.content.clone(),
                     usage: event.usage,
                     message_id: event.message_id.map(str::to_owned),
+                    terminal_metadata: event.terminal_metadata.cloned(),
                 });
             if self.stop.load(SeqCst) {
                 ObservationAction::stop("stop at stream EOF")
             } else {
                 ObservationAction::continue_run()
             }
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
-        ) -> ObservationAction {
-            self.model_turns.fetch_add(1, SeqCst);
-            ObservationAction::continue_run()
         }
     }
 
@@ -1856,15 +1787,21 @@ mod migrated_tests {
         }
     }
 
+    fn canonical_terminal_metadata() -> CompletionTerminalMetadata {
+        CompletionTerminalMetadata::new(CompletionFinishReason::Length)
+            .with_raw_reason("provider_limit")
+    }
+
     #[tokio::test]
-    async fn blocking_completion_response_hook_receives_canonical_fields() {
+    async fn blocking_model_turn_prepared_receives_canonical_fields() {
         let hook = CanonicalResponseHook::default();
         let prompt = Message::user("canonical prompt");
         AgentBuilder::new(MockCompletionModel::new([MockTurn::text(
             "canonical response",
         )
         .with_usage(canonical_usage())
-        .with_message_id("msg-canonical")]))
+        .with_message_id("msg-canonical")
+        .with_terminal_metadata(canonical_terminal_metadata())]))
         .add_hook(hook.clone())
         .build()
         .runner(prompt.clone())
@@ -1873,25 +1810,27 @@ mod migrated_tests {
         .expect("blocking response");
 
         assert_eq!(
-            *hook.blocking.lock().expect("blocking snapshots"),
+            *hook.snapshots.lock().expect("blocking snapshots"),
             [CanonicalResponseSnapshot {
                 prompt,
                 content: OneOrMany::one(AssistantContent::text("canonical response")),
                 usage: canonical_usage(),
                 message_id: Some("msg-canonical".to_string()),
+                terminal_metadata: Some(canonical_terminal_metadata()),
             }]
         );
     }
 
     #[tokio::test]
-    async fn streaming_response_finish_matches_blocking_canonical_fields() {
+    async fn streaming_model_turn_prepared_matches_blocking_canonical_fields() {
         let prompt = Message::user("canonical prompt");
         let blocking_hook = CanonicalResponseHook::default();
         AgentBuilder::new(MockCompletionModel::new([MockTurn::text(
             "canonical response",
         )
         .with_usage(canonical_usage())
-        .with_message_id("msg-canonical")]))
+        .with_message_id("msg-canonical")
+        .with_terminal_metadata(canonical_terminal_metadata())]))
         .add_hook(blocking_hook.clone())
         .build()
         .runner(prompt.clone())
@@ -1902,7 +1841,10 @@ mod migrated_tests {
         let streaming_hook = CanonicalResponseHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
-            MockStreamEvent::final_response(canonical_usage()),
+            MockStreamEvent::final_response_with_metadata(
+                canonical_usage(),
+                canonical_terminal_metadata(),
+            ),
             MockStreamEvent::message_id("msg-canonical"),
         ]]))
         .add_hook(streaming_hook.clone())
@@ -1915,12 +1857,12 @@ mod migrated_tests {
         }
 
         let blocking = blocking_hook
-            .blocking
+            .snapshots
             .lock()
             .expect("blocking snapshots")
             .clone();
         let streaming = streaming_hook
-            .streaming
+            .snapshots
             .lock()
             .expect("streaming snapshots")
             .clone();
@@ -1930,8 +1872,8 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn streaming_response_finish_without_provider_message_id_reports_none() {
-        let hook = FinishLifecycleHook::default();
+    async fn streaming_model_turn_prepared_without_provider_message_id_reports_none() {
+        let hook = PreparedLifecycleHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
@@ -1951,8 +1893,8 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn streaming_response_finish_runs_before_buffered_final_is_exposed() {
-        let hook = FinishLifecycleHook::default();
+    async fn streaming_model_turn_prepared_runs_before_buffered_final_is_exposed() {
+        let hook = PreparedLifecycleHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
@@ -1973,28 +1915,27 @@ mod migrated_tests {
                 let snapshots = hook.snapshots.lock().expect("finish snapshots");
                 assert_eq!(snapshots.len(), 1, "hook must run before final exposure");
                 assert_eq!(snapshots[0].message_id.as_deref(), Some("msg-after-final"));
-                assert_eq!(
-                    hook.model_turns.load(SeqCst),
-                    0,
-                    "the turn must remain uncommitted while the final item is yielded"
-                );
             }
         }
 
         assert_eq!(provider_finals, 1);
         assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
-        assert_eq!(hook.model_turns.load(SeqCst), 1);
     }
 
     #[tokio::test]
-    async fn streaming_response_finish_stop_suppresses_final_and_turn_commit() {
-        let hook = FinishLifecycleHook::stopping();
+    async fn streaming_model_turn_prepared_stop_suppresses_final_and_turn_commit() {
+        let hook = PreparedLifecycleHook::stopping();
+        let tool_calls = Arc::new(AtomicU32::new(0));
         let prompt = Message::user("canonical prompt");
-        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
             MockStreamEvent::text("canonical response"),
+            MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
             MockStreamEvent::final_response(canonical_usage()),
             MockStreamEvent::message_id("msg-after-final"),
         ]]))
+        .tool(CountingAddTool {
+            calls: tool_calls.clone(),
+        })
         .add_hook(hook.clone())
         .build()
         .runner(prompt.clone())
@@ -2020,7 +1961,11 @@ mod migrated_tests {
             "the cancelled run must not produce a response"
         );
         assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
-        assert_eq!(hook.model_turns.load(SeqCst), 0);
+        assert_eq!(
+            tool_calls.load(SeqCst),
+            0,
+            "tools must not execute after stop"
+        );
         assert!(matches!(
             error,
             Some(StreamingError::Prompt(error))
@@ -2033,8 +1978,8 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
-        let hook = FinishLifecycleHook::default();
+    async fn provider_error_after_final_suppresses_prepared_hook_and_buffered_final() {
+        let hook = PreparedLifecycleHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
@@ -2059,7 +2004,6 @@ mod migrated_tests {
 
         assert!(!saw_provider_final, "the buffered final must remain hidden");
         assert!(hook.snapshots.lock().expect("finish snapshots").is_empty());
-        assert_eq!(hook.model_turns.load(SeqCst), 0);
         assert!(matches!(
             error,
             Some(StreamingError::Completion(CompletionError::ProviderError(message)))
@@ -2088,7 +2032,7 @@ mod migrated_tests {
         ];
 
         for (case, visible_item) in cases {
-            let hook = FinishLifecycleHook::default();
+            let hook = PreparedLifecycleHook::default();
             let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
                 MockStreamEvent::text("canonical response"),
                 MockStreamEvent::final_response(canonical_usage()),
@@ -2117,9 +2061,8 @@ mod migrated_tests {
             );
             assert!(
                 hook.snapshots.lock().expect("finish snapshots").is_empty(),
-                "{case}: finish hook must not run"
+                "{case}: prepared hook must not run"
             );
-            assert_eq!(hook.model_turns.load(SeqCst), 0, "{case}");
             assert!(
                 matches!(
                     error,
@@ -2133,7 +2076,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn visible_item_after_non_emittable_final_is_rejected() {
-        let hook = FinishLifecycleHook::default();
+        let hook = PreparedLifecycleHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::reasoning("think"),
             MockStreamEvent::final_response(canonical_usage()),
@@ -2152,7 +2095,6 @@ mod migrated_tests {
         }
 
         assert!(hook.snapshots.lock().expect("finish snapshots").is_empty());
-        assert_eq!(hook.model_turns.load(SeqCst), 0);
         assert!(matches!(
             error,
             Some(StreamingError::Completion(CompletionError::ResponseError(message)))
@@ -2161,7 +2103,7 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn streaming_response_finish_normalizes_interleaved_content() {
+    async fn streaming_model_turn_prepared_normalizes_interleaved_content() {
         let hook = CanonicalResponseHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
             vec![
@@ -2186,8 +2128,7 @@ mod migrated_tests {
             item.expect("stream item");
         }
 
-        let snapshots = hook.streaming.lock().expect("streaming snapshots");
-        let committed = hook.committed.lock().expect("committed snapshots");
+        let snapshots = hook.snapshots.lock().expect("streaming snapshots");
         let kinds = snapshots[0]
             .content
             .iter()
@@ -2199,10 +2140,6 @@ mod migrated_tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(kinds, ["reasoning", "text", "tool_call"]);
-        assert_eq!(
-            snapshots[0].content, committed[0],
-            "finish hook and committed turn must share one canonical choice"
-        );
     }
 
     fn blocking_model() -> MockCompletionModel {
@@ -2348,8 +2285,8 @@ mod migrated_tests {
         assert_eq!(blocking.output, "the answer is 5");
         assert_eq!(final_response.output(), blocking.output);
 
-        // Same medium-independent hook event sequence (model call, tool call,
-        // tool result, second model call).
+        // Same medium-independent hook event sequence (model call, accepted
+        // turn, tool call/result, second model call, accepted final turn).
         assert_eq!(
             blocking_hook.shared_events(),
             streaming_hook.shared_events()
@@ -2358,9 +2295,11 @@ mod migrated_tests {
             blocking_hook.shared_events(),
             vec![
                 StepEventKind::CompletionCall,
+                StepEventKind::ModelTurnPrepared,
                 StepEventKind::ToolCall,
                 StepEventKind::ToolResult,
                 StepEventKind::CompletionCall,
+                StepEventKind::ModelTurnPrepared,
             ]
         );
 
@@ -5100,6 +5039,17 @@ mod migrated_tests {
                 CompletionCallAction::continue_run()
             }
         }
+        async fn on_model_turn_prepared(
+            &self,
+            _: &HookContext,
+            _: ModelTurnPrepared<'_>,
+        ) -> ObservationAction {
+            if self.0 == StepEventKind::ModelTurnPrepared {
+                ObservationAction::stop("stop here")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
         async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
             if self.0 == StepEventKind::ToolCall {
                 ToolCallAction::stop("stop here")
@@ -5127,6 +5077,7 @@ mod migrated_tests {
     async fn run_terminates_from_each_shared_event() {
         for kind in [
             StepEventKind::CompletionCall,
+            StepEventKind::ModelTurnPrepared,
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
         ] {
@@ -5147,12 +5098,12 @@ mod migrated_tests {
     }
 
     /// The same fail-closed termination holds for the streaming driver across the
-    /// shared events it fires (it surfaces `StreamResponseFinish` instead of
-    /// `CompletionResponse`): each yields a stream error and no final response.
+    /// shared events it fires: each yields a stream error and no final response.
     #[tokio::test]
     async fn stream_terminates_from_each_shared_event() {
         for kind in [
             StepEventKind::CompletionCall,
+            StepEventKind::ModelTurnPrepared,
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
         ] {
@@ -5222,9 +5173,11 @@ mod migrated_tests {
             a_block.shared_events(),
             vec![
                 StepEventKind::CompletionCall,
+                StepEventKind::ModelTurnPrepared,
                 StepEventKind::ToolCall,
                 StepEventKind::ToolResult,
                 StepEventKind::CompletionCall,
+                StepEventKind::ModelTurnPrepared,
             ]
         );
         assert_eq!(blocking.output, "the answer is 5");
@@ -5780,16 +5733,12 @@ mod migrated_tests {
     }
 
     /// A turn that streams *text and* an invalid tool call, then is repaired, is
-    /// a recovered turn: its response-finish hook must be suppressed on BOTH
-    /// drivers — `CompletionResponse` under `run()`, `StreamResponseFinish` under
-    /// `stream()`. The shared-events parity harness deliberately excludes these
-    /// medium-specific events, so this asymmetry needs a dedicated assertion (it
-    /// is the exact event the harness cannot see).
+    /// a recovered turn: its prepared-turn hook must be suppressed on both
+    /// drivers.
     #[tokio::test]
-    async fn recovered_turn_suppresses_response_finish_hook_on_both_drivers() {
+    async fn recovered_turn_suppresses_model_turn_prepared_on_both_drivers() {
         // Turn 1 emits text then an invalid tool call (repaired to "add"); turn 2
-        // is a plain final-text turn whose response event DOES fire on both
-        // drivers — so a correct run sees exactly one response-finish event.
+        // is a plain final-text turn whose prepared event fires on both drivers.
         let blocking_model = MockCompletionModel::from_turns([
             MockTurn::from_contents([
                 AssistantContent::text("let me compute that"),
@@ -5839,48 +5788,22 @@ mod migrated_tests {
         // Recovery still reaches the same final answer.
         assert_eq!(blocking.output, "the answer is 5");
 
-        // Blocking: the recovered turn 1 suppresses `CompletionResponse`; only the
-        // plain turn 2 fires it.
+        // The recovered turn 1 is suppressed; only the accepted turn 2 fires.
         assert_eq!(
-            blocking_hook.count(StepEventKind::CompletionResponse),
+            streaming_hook.count(StepEventKind::ModelTurnPrepared),
             1,
-            "the recovered turn must not fire CompletionResponse"
-        );
-        // Streaming: the recovered turn 1 must likewise suppress
-        // `StreamResponseFinish` (without the fix this is 2).
-        assert_eq!(
-            streaming_hook.count(StepEventKind::StreamResponseFinish),
-            1,
-            "the recovered turn must not fire StreamResponseFinish"
-        );
-        // Stated as parity: the count of un-suppressed response-finish events is
-        // the same across drivers.
-        assert_eq!(
-            blocking_hook.count(StepEventKind::CompletionResponse),
-            streaming_hook.count(StepEventKind::StreamResponseFinish),
-        );
-
-        // The normalized per-turn `ModelTurnFinished` is suppressed on the
-        // recovered turn 1 on BOTH surfaces too (its own guard, separate from the
-        // medium-specific response-finish guards above), so only the accepted turn
-        // 2 fires it — count is 1, not 2, on each driver. Without the suppression
-        // this would be 2, and a per-turn accounting hook would double-count the
-        // recovered turn.
-        assert_eq!(
-            blocking_hook.count(StepEventKind::ModelTurnFinished),
-            1,
-            "the recovered turn must not fire ModelTurnFinished"
+            "the recovered turn must not fire ModelTurnPrepared"
         );
         assert_eq!(
-            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            blocking_hook.count(StepEventKind::ModelTurnPrepared),
             1,
-            "the recovered turn must not fire ModelTurnFinished on the streaming surface either"
+            "the recovered turn must not fire ModelTurnPrepared"
         );
         // Parity: the normalized per-turn event fires the same number of times on
         // both drivers even when a turn is recovered.
         assert_eq!(
-            blocking_hook.count(StepEventKind::ModelTurnFinished),
-            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            blocking_hook.count(StepEventKind::ModelTurnPrepared),
+            streaming_hook.count(StepEventKind::ModelTurnPrepared),
         );
     }
 
@@ -6792,7 +6715,7 @@ mod migrated_tests {
         assert_request(&streaming_requests[0]);
     }
 
-    // --- Hook system v2: extra_context, history view, ModelTurnFinished, chained rewrites ---
+    // --- Hook system v2: extra_context, history view, ModelTurnPrepared, chained rewrites ---
 
     fn hook_doc(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {
@@ -7303,10 +7226,10 @@ mod migrated_tests {
         );
     }
 
-    /// `ModelTurnFinished` fires exactly once per accepted turn on both surfaces,
-    /// including a streamed tool-only turn that fires no `StreamResponseFinish`.
+    /// `ModelTurnPrepared` fires exactly once per accepted turn on both surfaces,
+    /// including streamed tool-only turns.
     #[tokio::test]
-    async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() {
+    async fn model_turn_prepared_fires_once_per_accepted_turn_including_tool_only() {
         let blocking_hook = RecordingHook::default();
         AgentBuilder::new(blocking_model())
             .tool(MockAddTool)
@@ -7318,9 +7241,9 @@ mod migrated_tests {
             .await
             .expect("blocking run should succeed");
         assert_eq!(
-            blocking_hook.count(StepEventKind::ModelTurnFinished),
+            blocking_hook.count(StepEventKind::ModelTurnPrepared),
             2,
-            "one ModelTurnFinished per accepted turn (tool turn + text turn)"
+            "one ModelTurnPrepared per accepted turn (tool turn + text turn)"
         );
 
         let streaming_hook = RecordingHook::default();
@@ -7336,28 +7259,36 @@ mod migrated_tests {
             let _ = item.map_err(|err| panic!("stream item errored: {err}"));
         }
         assert_eq!(
-            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            streaming_hook.count(StepEventKind::ModelTurnPrepared),
             2,
-            "ModelTurnFinished fires once per turn on the streaming surface too"
-        );
-        // The tool-only first turn streams no assistant text, so only the second
-        // (text) turn fires StreamResponseFinish — proving ModelTurnFinished
-        // covers the gap.
-        assert_eq!(
-            streaming_hook.count(StepEventKind::StreamResponseFinish),
-            1,
-            "the tool-only turn fires no StreamResponseFinish"
+            "ModelTurnPrepared fires once per turn on the streaming surface too"
         );
     }
 
     #[tokio::test]
-    async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
-        let hook = RecordingHook::default();
+    async fn reasoning_only_turn_fires_model_turn_prepared_once_on_both_surfaces() {
+        let blocking_hook = RecordingHook::default();
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_content(
+            AssistantContent::reasoning("think"),
+        )]))
+        .add_hook(blocking_hook.clone())
+        .build()
+        .runner("reason")
+        .run()
+        .await
+        .expect("reasoning-only blocking turn should finish");
+        assert_eq!(
+            blocking_hook.count(StepEventKind::ModelTurnPrepared),
+            1,
+            "the accepted blocking reasoning-only turn fires ModelTurnPrepared"
+        );
+
+        let streaming_hook = RecordingHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::reasoning("think"),
             MockStreamEvent::final_response_with_total_tokens(0),
         ]]))
-        .add_hook(hook.clone())
+        .add_hook(streaming_hook.clone())
         .build()
         .runner("reason")
         .stream()
@@ -7367,30 +7298,25 @@ mod migrated_tests {
         }
 
         assert_eq!(
-            hook.count(StepEventKind::StreamResponseFinish),
-            0,
-            "reasoning-only turns must not fire StreamResponseFinish"
-        );
-        assert_eq!(
-            hook.count(StepEventKind::ModelTurnFinished),
+            streaming_hook.count(StepEventKind::ModelTurnPrepared),
             1,
-            "the accepted reasoning-only turn still fires ModelTurnFinished"
+            "the accepted streaming reasoning-only turn fires ModelTurnPrepared"
         );
     }
 
-    /// Records the content kinds of the first turn's `ModelTurnFinished`.
+    /// Records the content kinds of the first turn's `ModelTurnPrepared`.
     #[derive(Clone, Default)]
     struct CaptureFirstTurnContent {
         kinds: Arc<Mutex<Option<Vec<&'static str>>>>,
     }
 
     impl AgentHook for CaptureFirstTurnContent {
-        async fn on_model_turn_finished(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
+            event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            if let ModelTurnFinished { turn, content, .. } = event
+            if let ModelTurnPrepared { turn, content, .. } = event
                 && turn == 1
             {
                 let kinds = content
@@ -7408,14 +7334,14 @@ mod migrated_tests {
         }
     }
 
-    /// On the streaming surface, `ModelTurnFinished.content` carries the
+    /// On the streaming surface, `ModelTurnPrepared.content` carries the
     /// **canonical** committed content from `StreamedTurn::finish` (reasoning →
     /// text → tool calls), not the raw `stream.choice` aggregate. The turn streams
     /// reasoning, then a tool call, then text (a non-canonical emission order), so
     /// a raw-choice implementation would surface `reasoning, tool_call, text` —
     /// the canonical event instead reports `reasoning, text, tool_call`.
     #[tokio::test]
-    async fn streaming_model_turn_finished_carries_canonical_committed_content() {
+    async fn streaming_model_turn_prepared_carries_canonical_committed_content() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::reasoning("think"),
@@ -7442,7 +7368,7 @@ mod migrated_tests {
         assert_eq!(
             hook.kinds.lock().expect("kinds").clone(),
             Some(vec!["reasoning", "text", "tool_call"]),
-            "ModelTurnFinished carries the canonical reasoning->text->tool ordering \
+            "ModelTurnPrepared carries the canonical reasoning->text->tool ordering \
              from StreamedTurn::finish, not the raw stream.choice emission order"
         );
     }
@@ -7624,10 +7550,10 @@ mod migrated_tests {
     }
 
     impl AgentHook for RegisterLateFinalResultTool {
-        async fn on_model_turn_finished(
+        async fn on_model_turn_prepared(
             &self,
             ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
+            _event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
             if ctx.turn() == 1 {
                 self.handle.add_tool(FinalResultTool).await;
@@ -8041,7 +7967,7 @@ mod migrated_tests {
         );
     }
 
-    /// Captures whether any `ModelTurnFinished.content` carried a tool call named
+    /// Captures whether any `ModelTurnPrepared.content` carried a tool call named
     /// `final_result` — the model-emitted structured-output output-tool call.
     #[derive(Clone, Default)]
     struct CaptureOutputToolInModelTurn {
@@ -8049,12 +7975,12 @@ mod migrated_tests {
     }
 
     impl AgentHook for CaptureOutputToolInModelTurn {
-        async fn on_model_turn_finished(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
+            event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            if let ModelTurnFinished { content, .. } = event
+            if let ModelTurnPrepared { content, .. } = event
                 && content.iter().any(|c| {
                     matches!(c, AssistantContent::ToolCall(tc) if tc.function.name == "final_result")
                 })
@@ -8065,13 +7991,13 @@ mod migrated_tests {
         }
     }
 
-    /// `ModelTurnFinished.content` carries the **model-emitted** content — including
+    /// `ModelTurnPrepared.content` carries the **model-emitted** content — including
     /// a structured-output Tool-mode output-tool call — on both surfaces, even though
     /// the run persists that turn as assistant text (the structured output) with the
     /// tool call dropped. Guards the documented `content` contract: it is the model's
     /// committed turn content, not the finalized/persisted content, in Tool mode.
     #[tokio::test]
-    async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
+    async fn model_turn_prepared_content_carries_output_tool_call_in_tool_mode() {
         // Blocking surface.
         let hook = CaptureOutputToolInModelTurn::default();
         let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
@@ -8090,7 +8016,7 @@ mod migrated_tests {
         .expect("run should finalize via the output tool");
         assert!(
             *hook.saw_output_tool_call.lock().expect("lock"),
-            "ModelTurnFinished.content must carry the model-emitted output-tool call (blocking)"
+            "ModelTurnPrepared.content must carry the model-emitted output-tool call (blocking)"
         );
         assert!(
             response.output.contains("done"),
@@ -8115,7 +8041,7 @@ mod migrated_tests {
         while stream.next().await.is_some() {}
         assert!(
             *s_hook.saw_output_tool_call.lock().expect("lock"),
-            "ModelTurnFinished.content must carry the model-emitted output-tool call (streaming)"
+            "ModelTurnPrepared.content must carry the model-emitted output-tool call (streaming)"
         );
     }
 

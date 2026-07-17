@@ -23,4 +23,5 @@ pub mod completion;
 pub mod embedding;
 pub mod image;
 pub mod streaming;
+pub(crate) mod terminal_metadata;
 pub mod types;

@@ -1,8 +1,8 @@
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
-use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
+use crate::providers::cohere::completion::{CohereCompletionRequest, FinishReason, Usage};
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{json_utils, streaming};
@@ -56,15 +56,18 @@ struct Delta {
 
 #[derive(Debug, Deserialize)]
 struct MessageEndDelta {
+    finish_reason: Option<FinishReason>,
     usage: Option<Usage>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl GetCompletionMetadata for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         let tokens = self
             .usage
@@ -86,6 +89,16 @@ impl GetTokenUsage for StreamingCompletionResponse {
 
         usage
     }
+
+    fn terminal_metadata(&self) -> Option<crate::completion::CompletionTerminalMetadata> {
+        self.finish_reason
+            .as_ref()
+            .and_then(super::completion::terminal_metadata_from_finish_reason)
+    }
+}
+
+fn provider_error_from_stream_event(data: &str) -> CompletionError {
+    CompletionError::from_provider_body(data.to_owned())
 }
 
 impl<T> CompletionModel<T>
@@ -136,6 +149,8 @@ where
         let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
             let mut final_usage = None;
+            let mut final_finish_reason = None;
+            let mut stream_failed = false;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -168,9 +183,15 @@ where
                             },
 
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
+                                if matches!(delta.finish_reason.as_ref(), Some(FinishReason::Error)) {
+                                    stream_failed = true;
+                                    yield Err(provider_error_from_stream_event(data_str));
+                                    break;
+                                }
                                 let span = tracing::Span::current();
                                 span.record_token_usage(&delta.usage);
                                 final_usage = Some(delta.usage.clone());
+                                final_finish_reason = delta.finish_reason.clone();
                                 break;
                             },
 
@@ -237,8 +258,13 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
+            if stream_failed {
+                return;
+            }
+
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                finish_reason: final_finish_reason,
             }))
         }.instrument(span);
 
@@ -252,6 +278,19 @@ where
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn error_finish_reason_preserves_raw_stream_event() {
+        let raw = r#"{"type":"message-end","delta":{"finish_reason":"ERROR","usage":null}}"#;
+        let error = provider_error_from_stream_event(raw);
+
+        assert_eq!(error.provider_response_status(), None);
+        let preserved = error
+            .provider_response_json()
+            .expect("preserved event should be JSON")
+            .expect("provider event should be present");
+        assert_eq!(preserved["delta"]["finish_reason"], "ERROR");
+    }
 
     #[test]
     fn test_message_content_delta_deserialization() {

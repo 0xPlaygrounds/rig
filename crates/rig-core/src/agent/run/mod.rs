@@ -77,7 +77,7 @@ use crate::{
         assistant_text_from_choice, build_full_history, build_history_for_request,
         invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
     },
-    completion::{Message, PromptError, Usage},
+    completion::{CompletionTerminalMetadata, Message, PromptError, Usage},
     json_utils,
     message::{AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent},
 };
@@ -166,6 +166,9 @@ pub struct ModelTurn {
     pub choice: OneOrMany<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
     pub usage: Usage,
+    /// Canonical provider terminal metadata for this completion request.
+    #[serde(default)]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
     /// Executable Rig tools advertised to the provider for this turn.
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
@@ -186,9 +189,19 @@ impl ModelTurn {
             message_id,
             choice,
             usage,
+            terminal_metadata: None,
             executable_tool_names,
             allowed_tool_names,
         }
+    }
+
+    /// Attach canonical provider terminal metadata to this model turn.
+    pub fn with_terminal_metadata(
+        mut self,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self {
+        self.terminal_metadata = terminal_metadata;
+        self
     }
 }
 
@@ -199,16 +212,16 @@ impl ModelTurn {
 /// variant is a breaking change by design.
 #[derive(Debug)]
 pub enum ModelTurnOutcome {
-    /// The turn was accepted. Unless `response_hook_suppressed` is set, the
-    /// driver should run its completion-response hook now, then call
+    /// The turn was accepted. Unless `prepared_hook_suppressed` is set, the
+    /// driver should run its prepared-turn hook now, then call
     /// [`AgentRun::next_step`].
     ///
-    /// `response_hook_suppressed` is set when invalid tool-call recovery
+    /// `prepared_hook_suppressed` is set when invalid tool-call recovery
     /// (repair or skip) modified the turn, matching the agent loop's behavior
-    /// of not invoking `on_completion_response` for recovered turns.
+    /// of not invoking `on_model_turn_prepared` for recovered turns.
     Continue {
-        /// Whether the driver should suppress its completion-response hook.
-        response_hook_suppressed: bool,
+        /// Whether the driver should suppress its prepared-turn hook.
+        prepared_hook_suppressed: bool,
     },
     /// The model emitted a tool call that is unknown or disallowed for this
     /// turn. The driver must decide how to recover (typically by asking its
@@ -801,7 +814,7 @@ impl AgentRun {
             ));
         }
 
-        self.record_completion_call(turn.usage);
+        self.record_completion_call(turn.usage, turn.terminal_metadata);
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -830,10 +843,15 @@ impl AgentRun {
     /// ingestion paths. Callers own the once-per-turn `streamed_completion_call_recorded`
     /// guard/flag; this helper never touches it, so it cannot be mistaken for
     /// "a completion call happened" and re-introduce a double count.
-    fn record_completion_call(&mut self, usage: Usage) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage);
+    fn record_completion_call(
+        &mut self,
+        usage: Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> CompletionCall {
+        let call = CompletionCall::new(self.completion_call_index, usage)
+            .with_terminal_metadata(terminal_metadata);
         self.completion_call_index += 1;
-        self.completion_calls.push(call);
+        self.completion_calls.push(call.clone());
         self.usage += usage;
         call
     }
@@ -1163,7 +1181,7 @@ impl AgentRun {
 
         self.finalize_turn(message_id, items, has_tool_calls, skipped, Vec::new());
         Ok(ModelTurnOutcome::Continue {
-            response_hook_suppressed: recovered,
+            prepared_hook_suppressed: recovered,
         })
     }
 
@@ -1183,6 +1201,7 @@ impl AgentRun {
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
@@ -1198,7 +1217,7 @@ impl AgentRun {
         }
         self.streamed_completion_call_recorded = true;
 
-        Ok(self.record_completion_call(usage))
+        Ok(self.record_completion_call(usage, terminal_metadata))
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
@@ -1361,7 +1380,7 @@ impl AgentRun {
             // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
             // so routing the no-usage fallback through `record_completion_call`
             // leaves the run total unchanged while unifying the accounting.
-            self.record_completion_call(Usage::new());
+            self.record_completion_call(Usage::new(), None);
             self.streamed_completion_call_recorded = true;
         }
 
@@ -1518,8 +1537,8 @@ mod tests {
     fn expect_continue(outcome: ModelTurnOutcome) -> bool {
         match outcome {
             ModelTurnOutcome::Continue {
-                response_hook_suppressed,
-            } => response_hook_suppressed,
+                prepared_hook_suppressed,
+            } => prepared_hook_suppressed,
             outcome => panic!("expected Continue, got {outcome:?}"),
         }
     }
@@ -1839,7 +1858,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_tool_call_repair_renames_and_suppresses_response_hook() {
+    fn invalid_tool_call_repair_renames_and_suppresses_prepared_hook() {
         let mut run = AgentRun::new("call something").max_turns(2);
 
         expect_call_model(&mut run);
@@ -1976,7 +1995,7 @@ mod tests {
     fn model_response_rejected_after_streamed_completion_call_record() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("record should succeed");
 
         let err = run

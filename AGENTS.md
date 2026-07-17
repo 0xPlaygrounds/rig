@@ -170,14 +170,31 @@ Composition through `HookStack` remains event-dependent:
   `Repair`, `Skip`, or `Stop`).
 - **Observe-only events** return `ObservationAction` (`Continue` or `Stop`).
 
+`ModelTurnPrepared` is the single managed model-response event. It receives the
+accepted canonical content, usage, optional message ID, and optional canonical
+terminal metadata after invalid-tool resolution, but before tools execute or a
+final response is produced. It fires with identical semantics for blocking and
+streaming text, reasoning-only, and tool-only turns. A stop must prevent the
+state transition, tool execution, buffered streaming final item, and final
+response. Recovered, retried, and abandoned turns retain their existing hook
+suppression while every successfully received provider call remains present in
+completion-call accounting.
+
+Provider terminal reasons are normalized into `CompletionTerminalMetadata`;
+preserve an exact provider reason string when available, use `Unknown` for a
+supplied but unrecognized value, and use `None` only when no value was supplied.
+Keep raw provider response types on direct `CompletionModel` APIs rather than
+exposing them through managed hooks.
+
 Register observe-only hooks before steering hooks because stop actions
 short-circuit. Nested `HookStack`s must preserve merge and chaining semantics.
 `RequestPatch` remains per-turn and non-sticky; its documented merge rules are
 append `extra_context`, shallow-merge `additional_params`, intersect
 `active_tools`, and last-writer-wins scalars/history with a warning.
 
-Every hook semantic must behave identically on streaming and non-streaming
-surfaces (`AgentRunner::stream` and `AgentRunner::run` share `drive_agent`).
+Every managed hook semantic must behave identically on streaming and
+non-streaming surfaces (`AgentRunner::stream` and `AgentRunner::run` share
+`drive_agent`).
 
 ## Style
 

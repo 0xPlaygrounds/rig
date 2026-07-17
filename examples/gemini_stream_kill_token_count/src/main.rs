@@ -50,7 +50,7 @@ use std::time::Duration;
 
 use futures::{Stream, StreamExt};
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{CompletionError, CompletionModel, GetTokenUsage, Usage};
+use rig::completion::{CompletionError, CompletionModel, GetCompletionMetadata, Usage};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
@@ -83,7 +83,7 @@ enum Disruption {
 /// disruption shape against a genuine Gemini stream's partial output.
 struct Disrupt<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     inner: StreamingCompletionResponse<R>,
     mode: Disruption,
@@ -94,7 +94,7 @@ where
 
 impl<R> Disrupt<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     fn new(inner: StreamingCompletionResponse<R>, mode: Disruption, after_chars: usize) -> Self {
         // For `None`, make the trigger unreachable so it never fires.
@@ -114,7 +114,7 @@ where
 
 impl<R> Stream for Disrupt<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     type Item = Result<StreamedAssistantContent<R>, CompletionError>;
 
@@ -201,7 +201,7 @@ async fn drain_with_accounting<S, R>(
 ) -> anyhow::Result<Report>
 where
     S: Stream<Item = Result<StreamedAssistantContent<R>, CompletionError>> + Unpin,
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     let mut output = String::new();
     let mut authoritative: Option<Usage> = None;

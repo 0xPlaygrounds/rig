@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
     println!("\n\nfinal response: {}", response.output());
     print_usage("aggregate agent usage", response.usage());
 
-    if let Some(final_completion_call) = response.completion_calls().last().copied() {
+    if let Some(final_completion_call) = response.completion_calls().last() {
         let usage = final_completion_call.usage;
         if usage.has_values() {
             print_usage("final completion call usage", usage);

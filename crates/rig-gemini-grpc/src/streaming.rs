@@ -40,6 +40,10 @@ pub(crate) async fn stream(
         while let Some(item) = response_stream.next().await {
             match item {
                 Ok(resp) => {
+                    if let Some(error) = super::gemini_protocol_finish_reason_error(&resp) {
+                        yield Err(error);
+                        return;
+                    }
                     let mut is_final = false;
 
                     if let Some(candidate) = resp.candidates.first() {

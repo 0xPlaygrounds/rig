@@ -83,8 +83,8 @@ use candle_transformers::utils::apply_repeat_penalty;
 use futures::Stream;
 use rig_core::OneOrMany;
 use rig_core::completion::{
-    AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-    GetTokenUsage, Usage,
+    AssistantContent, CompletionError, CompletionFinishReason, CompletionModel, CompletionRequest,
+    CompletionResponse, CompletionTerminalMetadata, GetCompletionMetadata, Usage,
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
@@ -466,7 +466,7 @@ pub struct CandleCompletionResponse {
     pub tokens_per_second: Option<f64>,
 }
 
-impl GetTokenUsage for CandleCompletionResponse {
+impl GetCompletionMetadata for CandleCompletionResponse {
     fn token_usage(&self) -> Usage {
         Usage {
             input_tokens: self.prompt_tokens,
@@ -474,6 +474,14 @@ impl GetTokenUsage for CandleCompletionResponse {
             total_tokens: self.prompt_tokens.saturating_add(self.generated_tokens),
             ..Usage::new()
         }
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        let (reason, raw_reason) = match self.finish_reason {
+            FinishReason::Eos => (CompletionFinishReason::Stop, "eos"),
+            FinishReason::MaxTokens => (CompletionFinishReason::Length, "max_tokens"),
+        };
+        Some(CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
     }
 }
 
@@ -2675,11 +2683,13 @@ fn infer(
         CandleError::Inference("output protocol produced no assistant content".to_string())
     })?;
     let usage = raw_response.token_usage();
+    let terminal_metadata = raw_response.terminal_metadata();
     Ok(CompletionResponse {
         choice,
         usage,
         raw_response,
         message_id: None,
+        terminal_metadata,
     })
 }
 
@@ -4284,6 +4294,11 @@ mod tests {
         assert_eq!(usage.input_tokens, 5);
         assert_eq!(usage.output_tokens, 2);
         assert_eq!(usage.total_tokens, 7);
+        let metadata = response
+            .terminal_metadata()
+            .expect("local generation always has a finish reason");
+        assert_eq!(metadata.reason(), CompletionFinishReason::Stop);
+        assert_eq!(metadata.raw_reason(), Some("eos"));
         assert_eq!(response.finish_reason, FinishReason::Eos);
         assert_eq!(response.text, "done");
         assert_eq!(response.requested_max_tokens, 4);

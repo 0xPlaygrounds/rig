@@ -1,6 +1,6 @@
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, CompletionError, GetCompletionMetadata},
     http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
@@ -85,14 +85,71 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FinishReason {
     MaxTokens,
     StopSequence,
     Complete,
     Error,
     ToolCall,
+    /// A provider value introduced after this Rig version.
+    Unknown(String),
+}
+
+impl FinishReason {
+    pub(crate) fn as_raw_reason(&self) -> &str {
+        match self {
+            Self::MaxTokens => "MAX_TOKENS",
+            Self::StopSequence => "STOP_SEQUENCE",
+            Self::Complete => "COMPLETE",
+            Self::Error => "ERROR",
+            Self::ToolCall => "TOOL_CALL",
+            Self::Unknown(reason) => reason,
+        }
+    }
+}
+
+impl Serialize for FinishReason {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_raw_reason())
+    }
+}
+
+impl<'de> Deserialize<'de> for FinishReason {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(match String::deserialize(deserializer)?.as_str() {
+            "MAX_TOKENS" => Self::MaxTokens,
+            "STOP_SEQUENCE" => Self::StopSequence,
+            "COMPLETE" => Self::Complete,
+            "ERROR" => Self::Error,
+            "TOOL_CALL" => Self::ToolCall,
+            reason => Self::Unknown(reason.to_owned()),
+        })
+    }
+}
+
+pub(crate) fn terminal_metadata_from_finish_reason(
+    finish_reason: &FinishReason,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let reason = match finish_reason {
+        FinishReason::MaxTokens => completion::CompletionFinishReason::Length,
+        FinishReason::StopSequence | FinishReason::Complete => {
+            completion::CompletionFinishReason::Stop
+        }
+        FinishReason::ToolCall => completion::CompletionFinishReason::ToolCalls,
+        FinishReason::Error => return None,
+        FinishReason::Unknown(_) => completion::CompletionFinishReason::Unknown,
+    };
+    Some(
+        completion::CompletionTerminalMetadata::new(reason)
+            .with_raw_reason(finish_reason.as_raw_reason()),
+    )
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -103,7 +160,7 @@ pub struct Usage {
     pub tokens: Option<Tokens>,
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
@@ -141,6 +198,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        if matches!(response.finish_reason, FinishReason::Error) {
+            return Err(match serde_json::to_string(&response) {
+                Ok(body) => CompletionError::from_provider_body(body),
+                Err(error) => CompletionError::ProviderError(format!(
+                    "Cohere completion ended with finish reason ERROR; failed to preserve response: {error}"
+                )),
+            });
+        }
+        let terminal_metadata = terminal_metadata_from_finish_reason(&response.finish_reason);
         let (content, _, tool_calls) = response.message()?;
 
         let model_response = if !tool_calls.is_empty() {
@@ -200,6 +266,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
 }
@@ -714,6 +781,58 @@ where
 mod tests {
     use super::*;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn finish_reason_normalization_matches_cohere_categories() {
+        use crate::completion::CompletionFinishReason;
+
+        for (raw, expected) in [
+            (FinishReason::MaxTokens, CompletionFinishReason::Length),
+            (FinishReason::StopSequence, CompletionFinishReason::Stop),
+            (FinishReason::Complete, CompletionFinishReason::Stop),
+            (FinishReason::ToolCall, CompletionFinishReason::ToolCalls),
+        ] {
+            let metadata = terminal_metadata_from_finish_reason(&raw)
+                .expect("successful reason should produce metadata");
+            assert_eq!(metadata.reason(), expected);
+            assert_eq!(metadata.raw_reason(), Some(raw.as_raw_reason()));
+        }
+        assert_eq!(
+            terminal_metadata_from_finish_reason(&FinishReason::Error),
+            None
+        );
+
+        let raw: FinishReason = serde_json::from_str(r#""FUTURE_REASON""#)
+            .expect("unknown provider reasons should deserialize");
+        let metadata = terminal_metadata_from_finish_reason(&raw)
+            .expect("an unknown supplied reason should produce metadata");
+        assert_eq!(metadata.reason(), CompletionFinishReason::Unknown);
+        assert_eq!(metadata.raw_reason(), Some("FUTURE_REASON"));
+        assert_eq!(
+            serde_json::to_string(&raw).expect("unknown reason should serialize"),
+            r#""FUTURE_REASON""#
+        );
+    }
+
+    #[test]
+    fn error_finish_reason_preserves_provider_response() {
+        let response: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "cohere-error",
+            "message": { "role": "assistant", "content": [] },
+            "finish_reason": "ERROR"
+        }))
+        .expect("error response should deserialize");
+
+        let error = completion::CompletionResponse::try_from(response)
+            .expect_err("ERROR finish reason must remain a provider error");
+        assert_eq!(error.provider_response_status(), None);
+        let preserved = error
+            .provider_response_json()
+            .expect("preserved response should be JSON")
+            .expect("provider response should be present");
+        assert_eq!(preserved["finish_reason"], "ERROR");
+        assert_eq!(preserved["id"], "cohere-error");
+    }
 
     #[test]
     fn test_deserialize_completion_response() {

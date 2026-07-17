@@ -12,7 +12,7 @@ use super::completion::{
     streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming;
@@ -45,7 +45,7 @@ pub struct PartialUsage {
     pub traffic_type: Option<TrafficType>,
 }
 
-impl GetTokenUsage for PartialUsage {
+impl GetCompletionMetadata for PartialUsage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
@@ -82,9 +82,13 @@ pub struct StreamingCompletionResponse {
     pub model_version: Option<String>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
+impl GetCompletionMetadata for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage_metadata.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<crate::completion::CompletionTerminalMetadata> {
+        super::completion::terminal_metadata_from_finish_reason(self.finish_reason.as_ref())
     }
 }
 
@@ -434,7 +438,7 @@ mod tests {
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);

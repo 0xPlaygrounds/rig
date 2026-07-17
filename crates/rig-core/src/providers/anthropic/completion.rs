@@ -5,7 +5,7 @@ use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     client::Provider,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, CompletionError, GetCompletionMetadata},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
@@ -130,7 +130,7 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
@@ -218,6 +218,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let terminal_metadata = terminal_metadata_from_stop_reason(response.stop_reason.as_deref());
         let content = response
             .content
             .iter()
@@ -258,8 +259,25 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
+}
+
+pub(crate) fn terminal_metadata_from_stop_reason(
+    raw_reason: Option<&str>,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let raw_reason = raw_reason?;
+    let reason = match raw_reason {
+        "end_turn" | "stop_sequence" => completion::CompletionFinishReason::Stop,
+        "max_tokens" | "model_context_window_exceeded" => {
+            completion::CompletionFinishReason::Length
+        }
+        "tool_use" => completion::CompletionFinishReason::ToolCalls,
+        "refusal" => completion::CompletionFinishReason::ContentFilter,
+        _ => completion::CompletionFinishReason::Unknown,
+    };
+    Some(completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -2595,6 +2613,30 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn stop_reason_normalization_preserves_raw_values() {
+        use crate::completion::CompletionFinishReason;
+
+        for (raw, expected) in [
+            ("end_turn", CompletionFinishReason::Stop),
+            ("stop_sequence", CompletionFinishReason::Stop),
+            ("max_tokens", CompletionFinishReason::Length),
+            (
+                "model_context_window_exceeded",
+                CompletionFinishReason::Length,
+            ),
+            ("tool_use", CompletionFinishReason::ToolCalls),
+            ("refusal", CompletionFinishReason::ContentFilter),
+            ("pause_turn", CompletionFinishReason::Unknown),
+        ] {
+            let metadata = terminal_metadata_from_stop_reason(Some(raw))
+                .expect("supplied reason should produce metadata");
+            assert_eq!(metadata.reason(), expected);
+            assert_eq!(metadata.raw_reason(), Some(raw));
+        }
+        assert_eq!(terminal_metadata_from_stop_reason(None), None);
+    }
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {

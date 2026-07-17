@@ -4,7 +4,7 @@
 //! and more.
 
 use crate::OneOrMany;
-use crate::completion::{AssistantContent, GetTokenUsage, Message};
+use crate::completion::{AssistantContent, GetCompletionMetadata, Message};
 use crate::message::{
     DocumentSourceKind, Image, MimeType, Reasoning, ReasoningContent, ToolResult,
     ToolResultContent, UserContent,
@@ -452,7 +452,7 @@ pub trait SpanCombinator {
     /// Record Rig-normalized token usage fields on the span.
     fn record_token_usage<U>(&self, usage: &U)
     where
-        U: GetTokenUsage;
+        U: GetCompletionMetadata;
 
     /// Record provider response metadata such as response ID and model name.
     fn record_response_metadata<R>(&self, response: &R)
@@ -463,7 +463,7 @@ pub trait SpanCombinator {
 impl SpanCombinator for tracing::Span {
     fn record_token_usage<U>(&self, usage: &U)
     where
-        U: GetTokenUsage,
+        U: GetCompletionMetadata,
     {
         if self.is_disabled() {
             return;
@@ -512,7 +512,7 @@ impl SpanCombinator for tracing::Span {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::{AssistantContent, GetTokenUsage, Message, Usage};
+    use crate::completion::{AssistantContent, GetCompletionMetadata, Message, Usage};
     use serde_json::json;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
@@ -523,7 +523,7 @@ mod tests {
     #[derive(Clone)]
     struct TestUsage(Usage);
 
-    impl GetTokenUsage for TestUsage {
+    impl GetCompletionMetadata for TestUsage {
         fn token_usage(&self) -> Usage {
             self.0
         }

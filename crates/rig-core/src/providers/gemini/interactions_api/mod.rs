@@ -4,7 +4,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest, GetCompletionMetadata};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -503,6 +503,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata: None,
         })
     }
 }
@@ -632,7 +633,7 @@ fn split_data_uri(
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
     use super::split_data_uri;
-    use crate::completion::{CompletionError, GetTokenUsage, Usage};
+    use crate::completion::{CompletionError, GetCompletionMetadata, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
@@ -740,7 +741,7 @@ pub mod interactions_api_types {
         pub input: Option<InteractionInput>,
     }
 
-    impl GetTokenUsage for Interaction {
+    impl GetCompletionMetadata for Interaction {
         fn token_usage(&self) -> Usage {
             self.usage
                 .as_ref()
@@ -1292,7 +1293,7 @@ pub mod interactions_api_types {
         pub total_tokens: Option<u64>,
     }
 
-    impl GetTokenUsage for InteractionUsage {
+    impl GetCompletionMetadata for InteractionUsage {
         fn token_usage(&self) -> Usage {
             let mut usage = Usage::new();
             usage.input_tokens = self.total_input_tokens.unwrap_or_default();

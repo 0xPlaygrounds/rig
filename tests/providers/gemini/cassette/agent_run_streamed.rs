@@ -15,7 +15,7 @@ use rig::agent::{
     ToolCall as ToolCallEvent, ToolCallAction,
 };
 use rig::client::CompletionClient;
-use rig::completion::{GetTokenUsage, PromptError, Usage};
+use rig::completion::{GetCompletionMetadata, PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
@@ -79,7 +79,7 @@ async fn run_streamed_turn(
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
                 StreamedTurnEvent::Completed { usage, .. } => {
                     if !recorded {
-                        run.record_streamed_completion_call(usage)
+                        run.record_streamed_completion_call(usage, None)
                             .expect("completion call should record while the turn is pending");
                         recorded = true;
                     }
@@ -107,7 +107,7 @@ async fn run_streamed_turn(
                                 } => {
                                     let drained_usage = drain_stream_usage(&mut stream).await;
                                     if !recorded {
-                                        run.record_streamed_completion_call(drained_usage).expect(
+                                        run.record_streamed_completion_call(drained_usage, None).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -128,7 +128,7 @@ async fn run_streamed_turn(
         "the provider stream should end consistently"
     );
     if !recorded {
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("turns without provider usage still record a completion call");
     }
     let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.choice);
@@ -138,7 +138,7 @@ async fn run_streamed_turn(
 
 async fn drain_stream_usage<R>(stream: &mut rig::streaming::StreamingCompletionResponse<R>) -> Usage
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     while let Some(item) = stream.next().await {
         if let Ok(StreamedAssistantContent::Final(final_response)) = item {
@@ -157,7 +157,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::new()).is_err(),
+                fresh.record_streamed_completion_call(Usage::new(), None).is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 

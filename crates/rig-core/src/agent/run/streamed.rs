@@ -40,7 +40,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     OneOrMany,
     agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
-    completion::{CompletionError, GetTokenUsage, Message, Usage},
+    completion::{
+        CompletionError, CompletionTerminalMetadata, GetCompletionMetadata, Message, Usage,
+    },
     json_utils,
     message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult},
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},
@@ -280,6 +282,8 @@ pub enum StreamedTurnEvent {
         /// Provider-reported usage for this call. Zero-valued usage means the
         /// provider reported no usage metrics.
         usage: Usage,
+        /// Canonical provider terminal metadata for this call, when supplied.
+        terminal_metadata: Option<CompletionTerminalMetadata>,
         /// Whether the ingested final item should be forwarded to the
         /// consumer (set when the turn streamed text).
         emit_final: bool,
@@ -387,7 +391,7 @@ impl StreamedTurnAssembler {
         item: &StreamedAssistantContent<R>,
     ) -> Result<Vec<StreamedTurnEvent>, CompletionError>
     where
-        R: Clone + Unpin + GetTokenUsage,
+        R: Clone + Unpin + GetCompletionMetadata,
     {
         if self.pending_invalid.is_some() {
             return Err(CompletionError::ResponseError(
@@ -499,9 +503,14 @@ impl StreamedTurnAssembler {
                 }
 
                 let usage = final_response.token_usage();
+                let terminal_metadata = final_response.terminal_metadata();
                 let emit_final = self.saw_text;
                 self.saw_text = false;
-                Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
+                Ok(vec![StreamedTurnEvent::Completed {
+                    usage,
+                    terminal_metadata,
+                    emit_final,
+                }])
             }
             StreamedAssistantContent::Unknown(_) => {
                 // Unmodeled provider item (e.g. a hosted-tool result): forward it
@@ -875,7 +884,7 @@ mod tests {
             total_tokens: 12,
             ..Usage::new()
         };
-        run.record_streamed_completion_call(usage)
+        run.record_streamed_completion_call(usage, None)
             .expect("record should succeed");
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
@@ -897,7 +906,7 @@ mod tests {
             panic!("expected CallModel");
         };
         let asm = assembler();
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("record should succeed");
         let final_choice = OneOrMany::one(AssistantContent::text("done"));
         run.streamed_turn(asm.finish(None, &final_choice))
@@ -958,7 +967,7 @@ mod tests {
         asm.resolve_pending_invalid(&resolution);
 
         // Usage from the drained stream is recorded after the rollback.
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("record after rollback should succeed");
 
         // The rollback appended the partial assistant turn and feedback.
@@ -1029,7 +1038,7 @@ mod tests {
                 skipped_tool_result: None
             }
         ));
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("completion call should be recorded");
         assert_eq!(run.completion_calls().len(), 1);
 
@@ -1142,13 +1151,13 @@ mod tests {
         // even though the machine is in its initial PreparingRequest state.
         let mut run = AgentRun::new("hello");
         let err = run
-            .record_streamed_completion_call(Usage::new())
+            .record_streamed_completion_call(Usage::new(), None)
             .expect_err("recording before any model call must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
 
         // The run stays drivable.
         run.next_step().expect("next_step should still succeed");
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("recording during a pending model call succeeds");
     }
 
@@ -1168,7 +1177,7 @@ mod tests {
             internal_call_id: "internal_b".to_string(),
         })
         .expect("ingest should succeed");
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("record should succeed");
 
         let final_choice = OneOrMany::many(vec![
@@ -1212,10 +1221,10 @@ mod tests {
         let mut run = AgentRun::new("hello");
         run.next_step().expect("next_step");
 
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("first record succeeds");
         let err = run
-            .record_streamed_completion_call(Usage::new())
+            .record_streamed_completion_call(Usage::new(), None)
             .expect_err("second record for the same turn must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
         assert_eq!(run.completion_calls().len(), 1);
@@ -1229,7 +1238,7 @@ mod tests {
         let mut asm = assembler();
         asm.ingest(&tool_call_item("tc_1", "add"))
             .expect("ingest should succeed");
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), None)
             .expect("record should succeed");
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(None, &final_choice))

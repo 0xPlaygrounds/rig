@@ -3,7 +3,7 @@ pub mod streaming;
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use crate::{
     OneOrMany,
-    completion::{CompletionModel, Message, PromptError, Usage},
+    completion::{CompletionModel, CompletionTerminalMetadata, Message, PromptError, Usage},
     message::{AssistantContent, ToolResultContent, UserContent},
     tool::{ToolContext, ToolOutput},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
@@ -310,7 +310,7 @@ where
 }
 
 /// Details for one successfully completed completion request made by an agent run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
@@ -322,12 +322,30 @@ pub struct CompletionCall {
     /// from "unreported".
     #[serde(default, deserialize_with = "usage_null_as_default")]
     pub usage: Usage,
+    /// Canonical provider terminal metadata for this completion request.
+    ///
+    /// `None` means the provider supplied no terminal reason.
+    #[serde(default)]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl CompletionCall {
     /// Create details for one completion request in an agent run.
     pub fn new(call_index: usize, usage: Usage) -> Self {
-        Self { call_index, usage }
+        Self {
+            call_index,
+            usage,
+            terminal_metadata: None,
+        }
+    }
+
+    /// Attach canonical provider terminal metadata to this completion call.
+    pub fn with_terminal_metadata(
+        mut self,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self {
+        self.terminal_metadata = terminal_metadata;
+        self
     }
 }
 
@@ -873,14 +891,14 @@ mod tests {
         agent::{
             AgentBuilder,
             hook::{
-                AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
-                InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
-                ToolCall as ToolCallEvent, ToolCallAction,
+                AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext,
+                ModelTurnPrepared, ObservationAction, ToolCall as ToolCallEvent, ToolCallAction,
             },
         },
         completion::{
-            AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            StructuredOutputError, TypedPrompt, Usage,
+            AssistantContent, CompletionError, CompletionFinishReason, CompletionRequest,
+            CompletionTerminalMetadata, Message, Prompt, PromptError, StructuredOutputError,
+            TypedPrompt, Usage,
         },
         message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
@@ -942,12 +960,12 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl AgentHook for PanicOnUnknownToolHook {
-        async fn on_completion_response(
+        async fn on_model_turn_prepared(
             &self,
             _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
+            _event: ModelTurnPrepared<'_>,
         ) -> ObservationAction {
-            panic!("unknown tool response should fail before response hooks run")
+            panic!("unknown tool response should fail before prepared-turn hooks run")
         }
         async fn on_tool_call(
             &self,
@@ -1167,6 +1185,7 @@ mod tests {
             Some(&json!([
                 {
                     "call_index": 0,
+                    "terminal_metadata": null,
                     "usage": {
                         "input_tokens": 0,
                         "output_tokens": 0,
@@ -1179,6 +1198,7 @@ mod tests {
                 },
                 {
                     "call_index": 1,
+                    "terminal_metadata": null,
                     "usage": {
                         "input_tokens": 3,
                         "output_tokens": 4,
@@ -1330,6 +1350,17 @@ mod tests {
             round.completion_calls(),
             &[CompletionCall::new(0, usage(1, 2))]
         );
+    }
+
+    #[test]
+    fn completion_call_missing_terminal_metadata_defaults_to_none() {
+        let call: CompletionCall = serde_json::from_value(serde_json::json!({
+            "call_index": 3,
+            "usage": Usage::new()
+        }))
+        .expect("deserialize legacy completion call");
+
+        assert_eq!(call.terminal_metadata, None);
     }
 
     #[tokio::test]
@@ -2272,6 +2303,10 @@ mod tests {
 
     #[tokio::test]
     async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
+        let first_metadata = CompletionTerminalMetadata::new(CompletionFinishReason::ToolCalls)
+            .with_raw_reason("tool_calls");
+        let second_metadata =
+            CompletionTerminalMetadata::new(CompletionFinishReason::Stop).with_raw_reason("stop");
         let first_call_usage = Usage {
             input_tokens: 1,
             output_tokens: 1,
@@ -2293,8 +2328,11 @@ mod tests {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
                 .with_call_id("call_1")
-                .with_usage(first_call_usage),
-            MockTurn::text("").with_usage(second_call_usage),
+                .with_usage(first_call_usage)
+                .with_terminal_metadata(first_metadata.clone()),
+            MockTurn::text("")
+                .with_usage(second_call_usage)
+                .with_terminal_metadata(second_metadata.clone()),
         ]);
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
@@ -2321,8 +2359,10 @@ mod tests {
         assert_eq!(
             response.completion_calls(),
             &[
-                CompletionCall::new(0, first_call_usage),
+                CompletionCall::new(0, first_call_usage)
+                    .with_terminal_metadata(Some(first_metadata)),
                 CompletionCall::new(1, second_call_usage)
+                    .with_terminal_metadata(Some(second_metadata))
             ]
         );
 

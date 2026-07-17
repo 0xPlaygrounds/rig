@@ -400,6 +400,10 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
 
+        if let Some(error) = crate::gemini_protocol_finish_reason_error(&response) {
+            return Err(error);
+        }
+
         let content_ref = candidate.content.as_ref().ok_or_else(|| {
             CompletionError::ResponseError(format!(
                 "Gemini candidate missing content (finish_reason={})",
@@ -494,12 +498,14 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 reasoning_tokens: 0,
             })
             .unwrap_or_default();
+        let terminal_metadata = crate::gemini_terminal_metadata(candidate.finish_reason);
 
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
 }

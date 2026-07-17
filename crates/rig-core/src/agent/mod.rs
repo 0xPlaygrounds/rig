@@ -162,10 +162,10 @@ pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHa
 pub use completion::Agent;
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
-    AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
-    HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelTurnFinished, ObservationAction,
-    RequestPatch, RunId, Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
-    ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
+    AgentHook, CompletionCallAction, HookContext, HookStack, InvalidToolCallAction,
+    InvalidToolCallContext, ModelTurnPrepared, ObservationAction, RequestPatch, RunId, Scratchpad,
+    StepEventKind, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
+    ToolResultEvent,
 };
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,

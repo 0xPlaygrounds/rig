@@ -13,10 +13,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    InvalidToolCallAction, ModelTurnFinished, ObservationAction, RequestPatch,
-    StreamResponseFinish, TextDelta, ToolCall as ToolCallEvent, ToolCallAction, ToolCallDelta,
-    ToolResultAction, ToolResultEvent,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, InvalidToolCallAction,
+    ModelTurnPrepared, ObservationAction, RequestPatch, TextDelta, ToolCall as ToolCallEvent,
+    ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
 use rig::completion::Document;
 use rig::tool::Tool;
@@ -199,20 +198,12 @@ impl AgentHook for EventTap {
         self.record(ctx, "CompletionCall");
         CompletionCallAction::continue_run()
     }
-    async fn on_completion_response(
+    async fn on_model_turn_prepared(
         &self,
         ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
+        _event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
-        self.record(ctx, "CompletionResponse");
-        ObservationAction::continue_run()
-    }
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        _event: ModelTurnFinished<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "ModelTurnFinished");
+        self.record(ctx, "ModelTurnPrepared");
         ObservationAction::continue_run()
     }
     async fn on_invalid_tool_call(
@@ -257,18 +248,10 @@ impl AgentHook for EventTap {
         self.record(ctx, "ToolCallDelta");
         ObservationAction::continue_run()
     }
-    async fn on_stream_response_finish(
-        &self,
-        ctx: &HookContext,
-        _event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "StreamResponseFinish");
-        ObservationAction::continue_run()
-    }
 }
 
 /// Registered *after* an [`EventTap`]: reads the shared `Scratchpad` tally on each
-/// `ModelTurnFinished` and appends it — proving cross-hook, cross-turn shared
+/// `ModelTurnPrepared` and appends it — proving cross-hook, cross-turn shared
 /// state.
 #[derive(Clone, Default)]
 pub(crate) struct ScratchpadReader {
@@ -282,10 +265,10 @@ impl ScratchpadReader {
 }
 
 impl AgentHook for ScratchpadReader {
-    async fn on_model_turn_finished(
+    async fn on_model_turn_prepared(
         &self,
         ctx: &HookContext,
-        _event: ModelTurnFinished<'_>,
+        _event: ModelTurnPrepared<'_>,
     ) -> ObservationAction {
         let tally = ctx
             .scratchpad()

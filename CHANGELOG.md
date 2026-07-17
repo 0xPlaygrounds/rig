@@ -13,13 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(agent)* [**breaking**] Managed agent hooks are now provider-independent.
-  `AgentHook`, `HookStack`, and the internal erased-hook interface no longer
-  carry a completion-model type parameter. `CompletionResponseEvent` and
-  `StreamResponseFinish` now expose canonical Rig content, usage, prompt, and
-  message ID fields instead of typed provider responses. Direct
-  `CompletionModel` completion and streaming APIs continue to return their
-  typed raw provider responses.
+- *(agent, completion)* [**breaking**] Replace the overlapping managed
+  `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
+  events with one provider- and medium-independent `ModelTurnPrepared` event.
+  It observes the accepted canonical model content, usage, optional message ID,
+  and optional terminal metadata after invalid-tool resolution and before state
+  advancement, buffered streaming output, tool execution, or a final response.
+  Blocking and streaming text, reasoning-only, and tool-only turns now have the
+  same exactly-once lifecycle semantics. `AgentHook`, `HookStack`, and the
+  erased-hook interface remain non-generic, so one hook instance can attach to
+  models from different providers. Direct `CompletionModel` APIs continue to
+  expose typed raw provider responses.
 
   ```rust
   // Before
@@ -28,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   // After
   impl AgentHook for TelemetryHook { /* ... */ }
   ```
+
+- *(completion, providers)* [**breaking**] Replace `GetTokenUsage` with
+  `GetCompletionMetadata` and add canonical `CompletionFinishReason` /
+  `CompletionTerminalMetadata` to blocking responses, collected streams,
+  agent `ModelTurn`s, and every billed `CompletionCall`. Provider finish
+  reasons are normalized for OpenAI-compatible chat and Responses, Anthropic,
+  Cohere, Gemini, Ollama, xAI, Bedrock, Vertex AI, Gemini gRPC, and Candle while
+  preserving exact raw values. Missing reasons remain `None`, supplied unknown
+  values remain `Unknown`, and provider error frames remain errors.
 
 - *(agent)* [**breaking**] Remove the built-in `AgentBuilder::dynamic_context`,
   `ExtractorBuilder::dynamic_context`, and internal `DynamicContextStore`

@@ -313,7 +313,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl crate::completion::GetTokenUsage for Usage {
+impl crate::completion::GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.prompt_tokens as u64;
@@ -327,7 +327,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let (content, usage) = match &response {
+        let (content, usage, terminal_metadata) = match &response {
             CompletionResponse::Structured { choices, usage, .. } => {
                 let choice = choices.first().ok_or_else(|| {
                     CompletionError::ResponseError("Response contained no choices".to_owned())
@@ -390,11 +390,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     }
                 };
 
-                (content, usage)
+                (
+                    content,
+                    usage,
+                    crate::providers::openai::completion::terminal_metadata_from_finish_reason(
+                        choice.finish_reason.as_deref(),
+                    ),
+                )
             }
             CompletionResponse::Simple(text) => (
                 vec![completion::AssistantContent::text(text)],
                 completion::Usage::new(),
+                None,
             ),
         };
 
@@ -409,6 +416,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
 }

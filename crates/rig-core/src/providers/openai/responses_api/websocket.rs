@@ -622,7 +622,7 @@ fn terminal_response_result(
     response: CompletionResponse,
 ) -> Result<CompletionResponse, CompletionError> {
     match response.status {
-        ResponseStatus::Completed => Ok(response),
+        ResponseStatus::Completed | ResponseStatus::Incomplete => Ok(response),
         // Deliberate two-tier behaviour: when the provider supplies its own error
         // object we preserve the full failed-response envelope through
         // `from_provider_body` (status: None, no HTTP status on the websocket
@@ -641,16 +641,6 @@ fn terminal_response_result(
                 "failed response",
             ))),
         },
-        ResponseStatus::Incomplete => {
-            let reason = response
-                .incomplete_details
-                .as_ref()
-                .map(|details| details.reason.as_str())
-                .unwrap_or("unknown reason");
-            Err(CompletionError::ProviderError(format!(
-                "OpenAI websocket response was incomplete: {reason}"
-            )))
-        }
         other => Err(CompletionError::ProviderError(format!(
             "OpenAI websocket response ended in state {other:?}"
         ))),
@@ -833,7 +823,8 @@ mod tests {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::providers::openai::responses_api::{
-        CompletionResponse, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
+        CompletionResponse, IncompleteDetailsReason, ResponseError, ResponseObject, ResponseStatus,
+        ResponsesUsage,
     };
     use futures::{SinkExt, StreamExt};
     use serde_json::json;
@@ -1035,10 +1026,18 @@ mod tests {
     }
 
     #[test]
-    fn terminal_response_requires_completed_status() {
+    fn terminal_response_accepts_completed_and_incomplete_statuses() {
         let completed = terminal_response_result(sample_response(ResponseStatus::Completed))
             .expect("completed response should succeed");
         assert_eq!(completed.id, "resp_123");
+
+        let mut incomplete = sample_response(ResponseStatus::Incomplete);
+        incomplete.incomplete_details = Some(IncompleteDetailsReason {
+            reason: "max_output_tokens".to_string(),
+        });
+        let incomplete = terminal_response_result(incomplete)
+            .expect("incomplete response contains a successful partial completion");
+        assert_eq!(incomplete.status, ResponseStatus::Incomplete);
 
         let failed = terminal_response_result(sample_response(ResponseStatus::Failed))
             .expect_err("failed response should error");

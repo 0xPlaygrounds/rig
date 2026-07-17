@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{Level, enabled};
 
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionRequest, CompletionTerminalMetadata, GetCompletionMetadata,
+};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::{self, merge};
 use crate::providers::internal::openai_chat_completions_compatible::{
@@ -118,14 +120,21 @@ struct StreamingCompletionChunk<U = Usage> {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     pub usage: U,
+    /// Canonical terminal metadata captured from the final choice chunk.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
-impl<U> GetTokenUsage for StreamingCompletionResponse<U>
+impl<U> GetCompletionMetadata for StreamingCompletionResponse<U>
 where
-    U: GetTokenUsage,
+    U: GetCompletionMetadata,
 {
     fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -244,7 +253,7 @@ where
     Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::WasmCompatSend,
     U: Clone
         + Default
-        + GetTokenUsage
+        + GetCompletionMetadata
         + serde::de::DeserializeOwned
         + crate::wasm_compat::WasmCompatSend
         + Unpin
@@ -282,6 +291,16 @@ where
                         }
                         _ => CompatibleFinishReason::Other,
                     },
+                    terminal_metadata: choice.finish_reason.as_ref().and_then(|reason| {
+                        let raw_reason = match reason {
+                            FinishReason::ToolCalls => "tool_calls",
+                            FinishReason::Stop => "stop",
+                            FinishReason::ContentFilter => "content_filter",
+                            FinishReason::Length => "length",
+                            FinishReason::Other(reason) => reason.as_str(),
+                        };
+                        super::terminal_metadata_from_finish_reason(Some(raw_reason))
+                    }),
                     text: choice.delta.content.clone(),
                     reasoning: choice
                         .delta
@@ -297,8 +316,15 @@ where
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            terminal_metadata,
+        }
     }
 
     fn decorate_tool_call(
@@ -716,7 +742,7 @@ mod tests {
             80
         );
 
-        // Verify core Usage also has cached_input_tokens via GetTokenUsage
+        // Verify core Usage also has cached_input_tokens via GetCompletionMetadata
         let core_usage = res.token_usage();
         assert_eq!(core_usage.cached_input_tokens, 80);
         assert_eq!(core_usage.input_tokens, 100);

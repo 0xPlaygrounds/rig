@@ -18,7 +18,7 @@ use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
     ProviderBuilder, ProviderClient,
 };
-use crate::completion::GetTokenUsage;
+use crate::completion::GetCompletionMetadata;
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::openai;
@@ -245,7 +245,7 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         crate::completion::Usage {
             input_tokens: self.prompt_tokens as u64,
@@ -354,6 +354,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let terminal_metadata = openai::completion::terminal_metadata_from_finish_reason(Some(
+            choice.finish_reason.as_str(),
+        ));
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -398,12 +401,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         })?;
 
         let usage = response.usage.token_usage();
-
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            terminal_metadata,
         })
     }
 }

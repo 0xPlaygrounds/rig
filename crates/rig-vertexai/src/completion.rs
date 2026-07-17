@@ -6,7 +6,7 @@ use crate::types::{
 };
 use rig_core::completion::{
     CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest,
-    CompletionResponse, GetTokenUsage,
+    CompletionResponse, CompletionTerminalMetadata, GetCompletionMetadata,
 };
 use rig_core::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
@@ -37,9 +37,35 @@ pub struct CompletionModel {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PlaceholderStreamingResponse;
 
-impl GetTokenUsage for PlaceholderStreamingResponse {
+impl GetCompletionMetadata for PlaceholderStreamingResponse {
     fn token_usage(&self) -> rig_core::completion::Usage {
         rig_core::completion::Usage::new()
+    }
+}
+
+impl GetCompletionMetadata for VertexGenerateContentOutput {
+    fn token_usage(&self) -> rig_core::completion::Usage {
+        self.0
+            .usage_metadata
+            .as_ref()
+            .map(|usage| rig_core::completion::Usage {
+                input_tokens: usage.prompt_token_count as u64,
+                output_tokens: usage.candidates_token_count as u64,
+                total_tokens: usage.total_token_count as u64,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            })
+            .unwrap_or_default()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.0.candidates.first().and_then(|candidate| {
+            crate::types::completion_response::terminal_metadata_from_finish_reason(
+                &candidate.finish_reason,
+            )
+        })
     }
 }
 

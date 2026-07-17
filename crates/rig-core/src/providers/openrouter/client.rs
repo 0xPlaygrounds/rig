@@ -3,7 +3,7 @@ use crate::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
-    completion::GetTokenUsage,
+    completion::GetCompletionMetadata,
     http_client,
 };
 use http::HeaderValue;
@@ -120,7 +120,7 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
+impl GetCompletionMetadata for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let (cached_input, cache_creation) = self
             .prompt_tokens_details

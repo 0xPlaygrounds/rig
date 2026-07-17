@@ -10,7 +10,8 @@
 use crate::OneOrMany;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionResponse, GetTokenUsage, Message, Usage,
+    CompletionError, CompletionModel, CompletionResponse, CompletionTerminalMetadata,
+    GetCompletionMetadata, Message, Usage,
 };
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
@@ -239,7 +240,7 @@ pub type StreamingResult<R> =
 /// `inner` stream.
 pub struct StreamingCompletionResponse<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     pub(crate) inner: Abortable<StreamingResult<R>>,
     pub(crate) abort_handle: AbortHandle,
@@ -260,7 +261,7 @@ where
 
 impl<R> StreamingCompletionResponse<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     /// Wrap a provider stream and initialize aggregation state.
     pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
@@ -314,6 +315,14 @@ where
     /// usage metrics.
     pub fn usage(&self) -> Usage {
         self.response.token_usage()
+    }
+
+    /// Canonical provider terminal metadata for this response.
+    ///
+    /// This remains `None` until a final response carrying a terminal reason is
+    /// received, and stays `None` when the provider supplied no reason.
+    pub fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.response.terminal_metadata()
     }
 
     fn append_text_chunk(&mut self, text: &str) {
@@ -412,15 +421,16 @@ fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serd
 
 impl<R> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
         CompletionResponse {
             choice: value.choice,
-            // Derive usage from the final response. `Option<R>: GetTokenUsage`
+            // Derive usage from the final response. `Option<R>: GetCompletionMetadata`
             // yields the provider's usage when present and the zero sentinel
             // (`Usage::new`) when the stream produced no final response.
             usage: value.response.token_usage(),
+            terminal_metadata: value.response.terminal_metadata(),
             raw_response: value.response,
             message_id: value.message_id,
         }
@@ -429,7 +439,7 @@ where
 
 impl<R> Stream for StreamingCompletionResponse<R>
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     type Item = Result<StreamedAssistantContent<R>, CompletionError>;
 
@@ -566,7 +576,7 @@ pub trait StreamingPrompt<M, R>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     /// Stream a simple prompt to the model.
     ///
@@ -587,7 +597,7 @@ pub trait StreamingChat<M, R>: WasmCompatSend + WasmCompatSync
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     /// Stream a chat with history to the model.
     ///
@@ -770,7 +780,17 @@ mod tests {
 
     #[tokio::test]
     async fn into_completion_response_derives_usage_from_final_response() {
-        let mut stream = create_mock_stream();
+        let metadata =
+            CompletionTerminalMetadata::new(crate::completion::CompletionFinishReason::Length)
+                .with_raw_reason("length");
+        let stream_metadata = metadata.clone();
+        let raw_stream = stream! {
+            yield Ok(RawStreamingChoice::Message("response".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(
+                MockResponse::with_total_tokens(15).with_terminal_metadata(stream_metadata)
+            ));
+        };
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(raw_stream));
 
         // Drain the stream so the final response (and its usage) is captured.
         while stream.next().await.is_some() {}
@@ -781,6 +801,7 @@ mod tests {
         // ...and the From conversion carries it instead of a zero sentinel.
         let response: CompletionResponse<Option<MockResponse>> = stream.into();
         assert_eq!(response.usage.total_tokens, 15);
+        assert_eq!(response.terminal_metadata, Some(metadata));
     }
 
     #[tokio::test]

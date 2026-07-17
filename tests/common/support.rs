@@ -4,7 +4,7 @@
 use futures::StreamExt;
 use rig::{
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
-    completion::{AssistantContent, GetTokenUsage, ToolDefinition},
+    completion::{AssistantContent, GetCompletionMetadata, ToolDefinition},
     embeddings::Embedding,
     streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
     tool::Tool,
@@ -412,7 +412,7 @@ pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named<R>(
     expected_name: &str,
     expect_final_response: bool,
 ) where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     let mut saw_final = false;
     let mut saw_matching_tool_call = false;
@@ -559,7 +559,7 @@ pub(crate) async fn collect_raw_stream_observation<R>(
     mut stream: StreamingCompletionResponse<R>,
 ) -> RawStreamObservation
 where
-    R: Clone + Unpin + GetTokenUsage,
+    R: Clone + Unpin + GetCompletionMetadata,
 {
     let mut observation = RawStreamObservation::new();
 

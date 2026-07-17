@@ -15,7 +15,7 @@
 //! ```
 use super::InputAudio;
 use super::responses_api::streaming::StreamingCompletionResponse;
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::{CompletionError, GetCompletionMetadata};
 use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
@@ -958,7 +958,7 @@ impl ResponsesUsage {
     }
 }
 
-impl GetTokenUsage for ResponsesUsage {
+impl GetCompletionMetadata for ResponsesUsage {
     fn token_usage(&self) -> crate::completion::Usage {
         crate::completion::Usage {
             input_tokens: self.input_tokens,
@@ -2305,6 +2305,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        if matches!(
+            response.status,
+            ResponseStatus::Failed | ResponseStatus::Cancelled
+        ) {
+            let body = serde_json::to_string(&response).unwrap_or_else(|_| {
+                format!("OpenAI response ended with status {:?}", response.status)
+            });
+            return Err(crate::provider_response::completion_error_from_body(body));
+        }
+        let terminal_metadata = terminal_metadata_from_response(&response);
         // Extract the msg_ ID from the first Output::Message item
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(msg) => Some(msg.id.clone()),
@@ -2344,7 +2354,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(GetCompletionMetadata::token_usage)
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -2352,8 +2362,35 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id,
+            terminal_metadata,
         })
     }
+}
+
+pub(crate) fn terminal_metadata_from_response(
+    response: &CompletionResponse,
+) -> Option<completion::CompletionTerminalMetadata> {
+    let (reason, raw_reason) = match response.status {
+        ResponseStatus::Completed => (completion::CompletionFinishReason::Stop, "completed"),
+        ResponseStatus::Incomplete => {
+            let raw_reason = response.incomplete_details.as_ref()?.reason.as_str();
+            return Some(terminal_metadata_from_incomplete_reason(raw_reason));
+        }
+        ResponseStatus::Failed | ResponseStatus::Cancelled => return None,
+        ResponseStatus::InProgress | ResponseStatus::Queued => return None,
+    };
+    Some(completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason))
+}
+
+pub(crate) fn terminal_metadata_from_incomplete_reason(
+    raw_reason: &str,
+) -> completion::CompletionTerminalMetadata {
+    let reason = match raw_reason {
+        "max_output_tokens" => completion::CompletionFinishReason::Length,
+        "content_filter" => completion::CompletionFinishReason::ContentFilter,
+        _ => completion::CompletionFinishReason::Unknown,
+    };
+    completion::CompletionTerminalMetadata::new(reason).with_raw_reason(raw_reason)
 }
 
 /// An OpenAI Responses API message.
@@ -2778,6 +2815,45 @@ mod tests {
                 "required": ["location"]
             }),
         }
+    }
+
+    #[test]
+    fn incomplete_response_exposes_length_metadata_without_losing_raw_response() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_incomplete",
+            "object": "response",
+            "created_at": 0,
+            "status": "incomplete",
+            "incomplete_details": { "reason": "max_output_tokens" },
+            "model": "gpt-test",
+            "output": [{
+                "type": "message",
+                "id": "msg_incomplete",
+                "status": "incomplete",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "partial"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("incomplete response should deserialize");
+
+        let converted: completion::CompletionResponse<CompletionResponse> = response
+            .try_into()
+            .expect("an output-limited response remains a successful completion");
+        let metadata = converted
+            .terminal_metadata
+            .as_ref()
+            .expect("incomplete reason should be normalized");
+        assert_eq!(
+            metadata.reason(),
+            completion::CompletionFinishReason::Length
+        );
+        assert_eq!(metadata.raw_reason(), Some("max_output_tokens"));
+        assert_eq!(converted.raw_response.status, ResponseStatus::Incomplete);
     }
 
     fn rig_tool_result(content: message::ToolResultContent) -> message::Message {

@@ -1,5 +1,5 @@
 //! Hook-system stress suite: streaming lifecycle and blocking-vs-streaming
-//! parity — `TextDelta` / `StreamResponseFinish` / `ModelTurnFinished` on the
+//! parity — `TextDelta` / `ModelTurnPrepared` on the
 //! streaming surface, `ToolResultAction::Rewrite` redaction reaching the `FinalResponse`,
 //! `active_tools` narrowing and `Skip` on the streaming driver, and the same
 //! workflow producing the same answer on both surfaces. Recorded against real
@@ -21,7 +21,7 @@ use crate::support::{
 };
 
 #[tokio::test]
-async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
+async fn streaming_text_only_emits_text_deltas_and_prepared_turn() {
     let tap = EventTap::default();
     let probe = tap.clone();
 
@@ -52,12 +52,8 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 "a streamed text turn must emit TextDelta events"
             );
             assert!(
-                probe.count("StreamResponseFinish") >= 1,
-                "a streamed text turn must emit StreamResponseFinish"
-            );
-            assert!(
-                probe.count("ModelTurnFinished") >= 1,
-                "ModelTurnFinished must fire on the streaming surface"
+                probe.count("ModelTurnPrepared") >= 1,
+                "a streamed text turn must emit ModelTurnPrepared"
             );
         },
     )
@@ -65,7 +61,7 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
 }
 
 #[tokio::test]
-async fn streaming_tool_turns_fire_model_turn_finished() {
+async fn streaming_tool_turns_fire_model_turn_prepared() {
     let add = CountingAdd::default();
     let subtract = CountingSubtract::default();
     let tap = EventTap::default();
@@ -103,8 +99,8 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 "the streamed run should call tools"
             );
             assert!(
-                probe.count("ModelTurnFinished") >= 2,
-                "ModelTurnFinished must fire once per accepted turn on the streaming surface, \
+                probe.count("ModelTurnPrepared") >= 2,
+                "ModelTurnPrepared must fire once per accepted turn on the streaming surface, \
                  including tool turns"
             );
         },

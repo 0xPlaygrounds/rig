@@ -9,13 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(agent)* [**breaking**] Remove the completion-model parameter from
-  `AgentHook`, `HookStack`, and the erased hook interface. Managed response
-  hooks now receive canonical Rig lifecycle fields (`prompt`, `content`,
-  `usage`, and `message_id`) through non-generic `CompletionResponse` and
-  `StreamResponseFinish` events. This lets one concrete hook attach to agents
-  backed by different providers. Typed raw provider responses remain available
-  from direct `CompletionModel` completion and streaming APIs.
+- *(agent, completion)* [**breaking**] Replace the overlapping managed
+  `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
+  events with one provider- and medium-independent `ModelTurnPrepared` event.
+  It observes the accepted canonical model content, usage, optional message ID,
+  and optional terminal metadata after invalid-tool resolution and before state
+  advancement, buffered streaming output, tool execution, or a final response.
+  Blocking and streaming text, reasoning-only, and tool-only turns now have the
+  same exactly-once lifecycle semantics. `AgentHook`, `HookStack`, and the
+  erased-hook interface remain non-generic, so one hook instance can attach to
+  models from different providers. Direct `CompletionModel` APIs continue to
+  expose typed raw provider responses.
 
   ```rust
   // Before
@@ -24,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   // After
   impl AgentHook for TelemetryHook { /* ... */ }
   ```
+
+- *(completion, providers)* [**breaking**] Replace `GetTokenUsage` with
+  `GetCompletionMetadata` and add canonical `CompletionFinishReason` /
+  `CompletionTerminalMetadata` to blocking responses, collected streams,
+  agent `ModelTurn`s, and every billed `CompletionCall`. Provider finish
+  reasons are normalized for OpenAI-compatible chat and Responses, Anthropic,
+  Cohere, Gemini, Ollama, and xAI while preserving exact raw values. Missing
+  reasons remain `None`, supplied unknown values remain `Unknown`, and provider
+  error frames remain errors. Companion crates extend the same contract for
+  Bedrock, Vertex AI, Gemini gRPC, and Candle.
 
 - *(agent)* [**breaking**] Remove `AgentBuilder::dynamic_context`,
   `ExtractorBuilder::dynamic_context`, and the internal `DynamicContextStore`
