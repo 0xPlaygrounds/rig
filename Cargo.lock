@@ -10121,6 +10121,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-runtime-conformance"
+version = "0.40.0"
+dependencies = [
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rig-s3vectors"
 version = "0.40.0"
 dependencies = [

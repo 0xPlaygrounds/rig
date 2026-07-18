@@ -75,8 +75,9 @@ use tokio::sync::{Mutex, RwLock};
 use crate::OneOrMany;
 use crate::completion::ToolDefinition;
 use crate::message::{ImageMediaType, MimeType, ToolResultContent};
+use crate::tool::classic::ErasedTool;
 use crate::tool::server::{ManagedToolToken, ToolServerHandle};
-use crate::tool::{ErasedTool, ToolContext, ToolExecutionError, ToolOutput, ToolResult};
+use crate::tool::{ToolContext, ToolExecutionError, ToolOutput, ToolResult};
 use crate::wasm_compat::WasmBoxedFuture;
 
 /// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolContext`] to have
