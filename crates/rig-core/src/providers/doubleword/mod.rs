@@ -19,8 +19,8 @@
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = doubleword::Client::from_env()?;
-//! let agent = client.agent(doubleword::QWEN3_5_9B).build();
-//! # let _ = agent;
+//! let model = client.completion_model(doubleword::QWEN3_5_9B);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
