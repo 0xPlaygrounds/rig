@@ -13,7 +13,7 @@ use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
-    client::EmbeddingsClient,
+    client::{AgentModelExt, EmbeddingsClient},
     completion::{Document, Message, Prompt},
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     message::UserContent,

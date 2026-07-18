@@ -22,6 +22,7 @@ futures = { workspace = true }
 deranged = { workspace = true }
 
 [dev-dependencies]
+rig-agent = { path = "../rig-agent", version = "0.40.0", default-features = false }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 httpmock = { workspace = true }

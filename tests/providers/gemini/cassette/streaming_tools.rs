@@ -51,6 +51,37 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_streaming_tool_roundtrip_uses_portable_tools() {
+    use rig::bevy::{AgentSpec, BevyRuntime, topology::TenantId};
+
+    super::super::support::with_gemini_cassette(
+        "streaming_tools/streaming_tools_smoke",
+        |client| async move {
+            let runtime = BevyRuntime::default();
+            let add_revision = runtime.register_tool(TenantId::default(), Adder);
+            let subtract_revision = runtime.register_tool(TenantId::default(), Subtract);
+            let agent = runtime.spawn_agent(
+                AgentSpec::new(client.completion_model(gemini::completion::GEMINI_2_5_FLASH))
+                    .preamble(STREAMING_TOOLS_PREAMBLE)
+                    .additional_params(streaming_tool_params())
+                    .max_calls(3)
+                    .grant_tool("add", add_revision)
+                    .grant_tool("subtract", subtract_revision),
+            );
+
+            let outcome = agent
+                .stream_prompt(STREAMING_TOOLS_PROMPT, |_| {})
+                .await
+                .expect("Bevy tool stream should succeed");
+
+            assert_mentions_expected_number(&format!("{:?}", outcome.choice), -3);
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     super::super::support::with_gemini_cassette(

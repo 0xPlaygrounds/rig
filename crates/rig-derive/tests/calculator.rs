@@ -6,7 +6,7 @@
     clippy::unreachable
 )]
 
-use rig_core::tool::Tool;
+use portable::tool::Tool;
 use rig_derive::rig_tool;
 
 #[rig_tool(
@@ -21,21 +21,21 @@ async fn calculator(
     x: i32,
     y: i32,
     operation: String,
-) -> Result<i32, rig_core::tool::ToolExecutionError> {
+) -> Result<i32, portable::tool::ToolExecutionError> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),
         "multiply" => Ok(x * y),
         "divide" => {
             if y == 0 {
-                Err(rig_core::tool::ToolExecutionError::other(
+                Err(portable::tool::ToolExecutionError::other(
                     "Division by zero",
                 ))
             } else {
                 Ok(x / y)
             }
         }
-        _ => Err(rig_core::tool::ToolExecutionError::other(format!(
+        _ => Err(portable::tool::ToolExecutionError::other(format!(
             "Unknown operation: {operation}"
         ))),
     }
@@ -53,21 +53,21 @@ fn sync_calculator(
     x: i32,
     y: i32,
     operation: String,
-) -> Result<i32, rig_core::tool::ToolExecutionError> {
+) -> Result<i32, portable::tool::ToolExecutionError> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),
         "multiply" => Ok(x * y),
         "divide" => {
             if y == 0 {
-                Err(rig_core::tool::ToolExecutionError::other(
+                Err(portable::tool::ToolExecutionError::other(
                     "Division by zero",
                 ))
             } else {
                 Ok(x / y)
             }
         }
-        _ => Err(rig_core::tool::ToolExecutionError::other(format!(
+        _ => Err(portable::tool::ToolExecutionError::other(format!(
             "Unknown operation: {operation}"
         ))),
     }
@@ -77,7 +77,7 @@ fn sync_calculator(
 async fn test_calculator_tool() {
     let calculator = Calculator;
 
-    let definition = rig_core::tool::tool_definition(&calculator);
+    let definition = portable::tool::tool_definition(&calculator);
     assert_eq!(Calculator::NAME, "calculator");
     assert_eq!(
         definition.description,
@@ -139,10 +139,7 @@ async fn test_calculator_tool() {
     ];
 
     for (input, expected) in test_cases {
-        let result = calculator
-            .call(&mut rig_core::tool::ToolContext::new(), input)
-            .await
-            .unwrap();
+        let result = calculator.call(input).await.unwrap();
         assert_eq!(result, serde_json::json!(expected));
     }
 
@@ -152,11 +149,8 @@ async fn test_calculator_tool() {
         y: 0,
         operation: "divide".to_string(),
     };
-    let err = calculator
-        .call(&mut rig_core::tool::ToolContext::new(), div_zero)
-        .await
-        .unwrap_err();
-    assert!(err.kind() == rig_core::tool::ToolErrorKind::Other);
+    let err = calculator.call(div_zero).await.unwrap_err();
+    assert!(err.kind() == portable::tool::ToolErrorKind::Other);
 
     // Test invalid operation
     let invalid_op = CalculatorParameters {
@@ -164,23 +158,17 @@ async fn test_calculator_tool() {
         y: 3,
         operation: "power".to_string(),
     };
-    let err = calculator
-        .call(&mut rig_core::tool::ToolContext::new(), invalid_op)
-        .await
-        .unwrap_err();
-    assert!(err.kind() == rig_core::tool::ToolErrorKind::Other);
+    let err = calculator.call(invalid_op).await.unwrap_err();
+    assert!(err.kind() == portable::tool::ToolErrorKind::Other);
 
     // Test sync calculator
     let sync_calculator = SyncCalculator;
     let result = sync_calculator
-        .call(
-            &mut rig_core::tool::ToolContext::new(),
-            SyncCalculatorParameters {
-                x: 5,
-                y: 3,
-                operation: "add".to_string(),
-            },
-        )
+        .call(SyncCalculatorParameters {
+            x: 5,
+            y: 3,
+            operation: "add".to_string(),
+        })
         .await
         .unwrap();
 

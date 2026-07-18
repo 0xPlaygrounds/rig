@@ -23,7 +23,8 @@ proc-macro = true
 
 [dev-dependencies]
 anyhow = { workspace = true }
-rig-core = { path = "../rig-core" }
+portable = { package = "rig-core", path = "../rig-core" }
+classic = { package = "rig-agent", path = "../rig-agent", default-features = false }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

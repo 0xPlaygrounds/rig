@@ -2,8 +2,9 @@
 //!
 //! # Example
 //! ```rust,ignore
-//! use rig_core::client::{Nothing, CompletionClient};
-//! use rig_core::completion::Prompt;
+//! use rig_core::client::{Nothing, CompletionClient, EmbeddingsClient};
+//! use rig_core::completion::{AssistantContent, CompletionModel};
+//! use rig_core::embeddings::EmbeddingModel;
 //! use rig_core::providers::ollama;
 //!
 //! // Create a new Ollama client (defaults to http://localhost:11434, no auth)
@@ -16,15 +17,15 @@
 //!     .build()
 //!     .unwrap();
 //!
-//! // Create an agent with a preamble
-//! let comedian_agent = client
-//!     .agent("qwen2.5:14b")
-//!     .preamble("You are a comedian here to entertain the user using humour and jokes.")
+//! let model = client.completion_model("qwen2.5:14b");
+//! let request = model
+//!     .completion_request("Entertain me!")
+//!     .preamble("You are a comedian here to entertain the user using humour and jokes.".into())
 //!     .build();
-//!
-//! // Prompt the agent and print the response
-//! let response = comedian_agent.prompt("Entertain me!").await?;
-//! println!("{response}");
+//! let response = model.completion(request).await?;
+//! if let AssistantContent::Text(text) = response.choice.first() {
+//!     println!("{}", text.text);
+//! }
 //!
 //! // Create an embedding model using the "all-minilm" model
 //! let emb_model = client.embedding_model("all-minilm", 384);
@@ -33,9 +34,6 @@
 //!     "Why is the grass green?".to_owned()
 //! ]).await?;
 //! println!("Embedding response: {:?}", embeddings);
-//!
-//! // Create an extractor if needed
-//! let extractor = client.extractor::<serde_json::Value>("llama3.2").build();
 //! ```
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,

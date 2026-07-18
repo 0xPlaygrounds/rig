@@ -6,7 +6,7 @@ use rig_core::completion::{AssistantContent, CompletionRequest, ToolDefinition};
 use rig_core::message::{
     Message, Reasoning, ToolCall, ToolChoice, ToolFunction, ToolResultContent, UserContent,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     BEGIN_OF_TEXT, CandleError, END_HEADER, END_OF_TURN, IM_END, IM_START, ModelFamily,
@@ -38,6 +38,12 @@ struct QwenToolCallEnvelope {
     id: Option<String>,
     name: String,
     arguments: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct RenderedQwenToolCall<'a> {
+    name: &'a str,
+    arguments: &'a serde_json::Value,
 }
 
 #[derive(Debug)]
@@ -618,10 +624,10 @@ fn render_qwen_message(
                         if call_count > 0 || !rendered.is_empty() {
                             rendered.push('\n');
                         }
-                        let envelope = serde_json::json!({
-                            "name": call.function.name,
-                            "arguments": call.function.arguments,
-                        });
+                        let envelope = RenderedQwenToolCall {
+                            name: &call.function.name,
+                            arguments: &call.function.arguments,
+                        };
                         rendered.push_str(TOOL_CALL_START);
                         rendered.push('\n');
                         rendered.push_str(&serde_json::to_string(&envelope).map_err(|error| {
@@ -921,7 +927,7 @@ mod tests {
         assert!(prompt.contains("# Tools"));
         assert!(prompt.contains("\"enum\":[\"a\",\"b\"]"));
         assert!(prompt.contains(
-            "<tool_call>\n{\"arguments\":{\"value\":2},\"name\":\"calculate\"}\n</tool_call>"
+            "<tool_call>\n{\"name\":\"calculate\",\"arguments\":{\"value\":2}}\n</tool_call>"
         ));
         assert!(prompt.contains("<tool_response>\n2\n</tool_response>"));
         assert!(prompt.ends_with("<|im_start|>assistant\n<think>\n\n</think>\n\n"));

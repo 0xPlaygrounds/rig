@@ -1,10 +1,9 @@
 //! The `rig` prelude.
 //!
 //! Bringing this module into scope with `use rig::prelude::*` pulls in the
-//! everyday API surface — the provider-client traits, agents, prompting and
-//! chatting (blocking and streaming), embeddings, tools, and vector-store
-//! querying — so a basic agent or RAG program only needs to additionally import
-//! its provider module (`rig::providers::…`).
+//! everyday portable API surface — provider-client traits, completion models,
+//! embeddings, tools, and vector-store querying. Agent-runtime conveniences
+//! are exported by `rig-agent::prelude` and the root `rig::prelude`.
 //!
 //! This is deliberately the *common* path, not the whole crate. Advanced
 //! surfaces — the hook system, the run-loop stepping types, message content
@@ -25,19 +24,8 @@ pub use crate::client::image_generation::ImageGenerationClient;
 #[cfg(feature = "audio")]
 pub use crate::client::audio_generation::AudioGenerationClient;
 
-// Agents.
-pub use crate::agent::Agent;
-
-// Completion: prompting, chatting, the model trait, and the core types.
-pub use crate::completion::{
-    Chat, CompletionError, CompletionModel, Message, Prompt, PromptError, StructuredOutputError,
-    TypedPrompt,
-};
-
-// Streaming counterparts of the blocking `Prompt`/`Chat` traits, plus the items
-// yielded when consuming an agent stream.
-pub use crate::agent::{MultiTurnStreamItem, StreamingResult};
-pub use crate::streaming::{StreamingChat, StreamingPrompt};
+// Completion model and portable core types.
+pub use crate::completion::{CompletionError, CompletionModel, Message};
 
 // Embeddings. `Embed` is re-exported from the crate root so that, with the
 // `derive` feature enabled, the `#[derive(Embed)]` macro comes along with the
@@ -46,7 +34,7 @@ pub use crate::Embed;
 pub use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 
 // Tools.
-pub use crate::tool::{Tool, ToolSet};
+pub use crate::tool::Tool;
 
 // Vector stores.
 pub use crate::vector_store::VectorStoreIndex;

@@ -16,7 +16,7 @@ use rig_derive::rig_tool;
     description = "Add two numbers",
     params(a = "First number", b = "Second number")
 )]
-fn add_implicit(a: i32, b: i32) -> Result<i32, rig_core::tool::ToolExecutionError> {
+fn add_implicit(a: i32, b: i32) -> Result<i32, portable::tool::ToolExecutionError> {
     Ok(a + b)
 }
 
@@ -26,25 +26,25 @@ fn add_implicit(a: i32, b: i32) -> Result<i32, rig_core::tool::ToolExecutionErro
     params(a = "First number", b = "Second number"),
     required(a)
 )]
-fn add_explicit(a: i32, b: i32) -> Result<i32, rig_core::tool::ToolExecutionError> {
+fn add_explicit(a: i32, b: i32) -> Result<i32, portable::tool::ToolExecutionError> {
     Ok(a + b)
 }
 
 // Explicit `required()` means all params are optional.
 #[rig_tool(description = "Search optionally", required())]
-fn search_optional(limit: Option<i32>) -> Result<String, rig_core::tool::ToolExecutionError> {
+fn search_optional(limit: Option<i32>) -> Result<String, portable::tool::ToolExecutionError> {
     Ok(format!("{limit:?}"))
 }
 
 // No params at all — required should be empty
 #[rig_tool(description = "Returns a constant")]
-fn constant() -> Result<i32, rig_core::tool::ToolExecutionError> {
+fn constant() -> Result<i32, portable::tool::ToolExecutionError> {
     Ok(42)
 }
 
 #[tokio::test]
 async fn test_required_defaults_to_all_params() {
-    let def = rig_core::tool::tool_definition(&AddImplicit);
+    let def = portable::tool::tool_definition(&AddImplicit);
     let required = def.parameters["required"].as_array().unwrap();
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
 
@@ -61,7 +61,7 @@ async fn test_required_defaults_to_all_params() {
 
 #[tokio::test]
 async fn test_explicit_required_overrides_default() {
-    let def = rig_core::tool::tool_definition(&AddExplicit);
+    let def = portable::tool::tool_definition(&AddExplicit);
     let required = def.parameters["required"].as_array().unwrap();
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
 
@@ -74,7 +74,7 @@ async fn test_explicit_required_overrides_default() {
 
 #[tokio::test]
 async fn test_explicit_empty_required_overrides_default() {
-    let def = rig_core::tool::tool_definition(&SearchOptional);
+    let def = portable::tool::tool_definition(&SearchOptional);
     let required = def.parameters["required"].as_array().unwrap();
 
     assert!(
@@ -85,7 +85,7 @@ async fn test_explicit_empty_required_overrides_default() {
 
 #[tokio::test]
 async fn test_no_params_means_empty_required() {
-    let def = rig_core::tool::tool_definition(&Constant);
+    let def = portable::tool::tool_definition(&Constant);
     let required = def.parameters["required"].as_array().unwrap();
 
     assert!(

@@ -3,7 +3,7 @@
 use rig::client::CompletionClient;
 use rig::completion::{Prompt, TypedPrompt};
 use rig::providers::openai;
-use rig::test_utils::decode_structured_output;
+use rig_agent::test_utils::decode_structured_output;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -105,6 +105,76 @@ async fn prompt_typed_and_output_schema() {
                 decode_structured_output("openai_output_schema_weather", &response)
                     .expect("schema response should deserialize");
             assert_weather_forecast(&parsed, &["chicago"]);
+        },
+    )
+    .await;
+}
+
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_native_structured_output_uses_provider_schema() {
+    use rig::bevy::{AgentSpec, BevyRuntime, policy::OutputMode};
+    use rig::completion::AssistantContent;
+
+    with_openai_cassette(
+        "structured_output/structured_output_smoke",
+        |client| async move {
+            let runtime = BevyRuntime::default();
+            let agent = runtime.spawn_agent(
+                AgentSpec::new(client.completion_model(openai::GPT_4O))
+                    .output_schema::<SmokeStructuredOutput>()
+                    .output_mode(OutputMode::Native),
+            );
+
+            let outcome = agent
+                .prompt(STRUCTURED_OUTPUT_PROMPT)
+                .await
+                .expect("Bevy structured output should succeed");
+            let text = outcome
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect::<String>();
+            let structured: SmokeStructuredOutput =
+                serde_json::from_str(&text).expect("OpenAI structured output should deserialize");
+            assert_smoke_structured_output(&structured);
+        },
+    )
+    .await;
+}
+
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_tool_structured_output_uses_synthetic_terminal_tool() {
+    use rig::bevy::{AgentSpec, BevyRuntime, policy::OutputMode};
+    use rig::completion::AssistantContent;
+
+    with_openai_cassette(
+        "structured_output/bevy_tool_structured_output",
+        |client| async move {
+            let outcome = BevyRuntime::default()
+                .spawn_agent(
+                    AgentSpec::new(client.completion_model(openai::GPT_4O))
+                        .output_schema::<SmokeStructuredOutput>()
+                        .output_mode(OutputMode::Tool),
+                )
+                .prompt(STRUCTURED_OUTPUT_PROMPT)
+                .await
+                .expect("Bevy tool-mode structured output should succeed");
+            let text = outcome
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect::<String>();
+            let structured: SmokeStructuredOutput =
+                serde_json::from_str(&text).expect("OpenAI tool-mode output should deserialize");
+            assert_smoke_structured_output(&structured);
         },
     )
     .await;

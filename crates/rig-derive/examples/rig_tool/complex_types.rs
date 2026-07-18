@@ -19,7 +19,7 @@ fn list_items(
     tags: Vec<String>,
     /// Maximum number of results
     limit: Option<i32>,
-) -> Result<Vec<String>, rig_core::tool::ToolExecutionError> {
+) -> Result<Vec<String>, portable::tool::ToolExecutionError> {
     let direction = match order {
         SortOrder::Ascending => "ascending",
         SortOrder::Descending => "descending",
@@ -31,7 +31,7 @@ fn list_items(
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let def = rig_core::tool::tool_definition(&ListItems);
+    let def = portable::tool::tool_definition(&ListItems);
     println!("Tool definition:\n{}", serde_json::to_string_pretty(&def)?);
 
     Ok(())

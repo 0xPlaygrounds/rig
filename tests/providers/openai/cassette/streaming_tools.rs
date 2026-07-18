@@ -109,6 +109,36 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_streaming_tool_roundtrip_uses_portable_tools() {
+    use rig::bevy::{AgentSpec, BevyRuntime, topology::TenantId};
+
+    with_openai_cassette(
+        "streaming_tools/streaming_tools_smoke",
+        |client| async move {
+            let runtime = BevyRuntime::default();
+            let add_revision = runtime.register_tool(TenantId::default(), Adder);
+            let subtract_revision = runtime.register_tool(TenantId::default(), Subtract);
+            let agent = runtime.spawn_agent(
+                AgentSpec::new(client.completion_model(openai::GPT_4O))
+                    .preamble(STREAMING_TOOLS_PREAMBLE)
+                    .max_calls(2)
+                    .grant_tool("add", add_revision)
+                    .grant_tool("subtract", subtract_revision),
+            );
+
+            let outcome = agent
+                .stream_prompt(STREAMING_TOOLS_PROMPT, |_| {})
+                .await
+                .expect("Bevy tool stream should succeed");
+
+            assert_mentions_expected_number(&format!("{:?}", outcome.choice), -3);
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn example_streaming_with_tools() {
     with_openai_cassette("streaming_tools/example_streaming_with_tools", |client| async move {

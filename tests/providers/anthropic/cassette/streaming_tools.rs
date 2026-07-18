@@ -45,6 +45,36 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_streaming_tool_roundtrip_uses_portable_tools() {
+    use rig::bevy::{AgentSpec, BevyRuntime, topology::TenantId};
+
+    with_anthropic_cassette(
+        "streaming_tools/streaming_tools_smoke",
+        |client| async move {
+            let runtime = BevyRuntime::default();
+            let add_revision = runtime.register_tool(TenantId::default(), Adder);
+            let subtract_revision = runtime.register_tool(TenantId::default(), Subtract);
+            let agent = runtime.spawn_agent(
+                AgentSpec::new(client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6))
+                    .preamble(STREAMING_TOOLS_PREAMBLE)
+                    .max_calls(2)
+                    .grant_tool("add", add_revision)
+                    .grant_tool("subtract", subtract_revision),
+            );
+
+            let outcome = agent
+                .stream_prompt(STREAMING_TOOLS_PROMPT, |_| {})
+                .await
+                .expect("Bevy tool stream should succeed");
+
+            assert_mentions_expected_number(&format!("{:?}", outcome.choice), -3);
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message() {
     with_anthropic_cassette(
@@ -213,11 +243,7 @@ impl Tool for OutOfOrderAlphaSignal {
         AlphaSignal.parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
@@ -240,11 +266,7 @@ impl Tool for OutOfOrderBetaSignal {
         BetaSignal.parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }

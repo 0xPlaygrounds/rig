@@ -26,34 +26,24 @@ fn runtime_tools() -> Vec<DynamicTool> {
         "required": ["x", "y"]
     });
     vec![
-        DynamicTool::new(
-            "add",
-            "Add x and y",
-            parameters.clone(),
-            |_context, args| {
-                Box::pin(async move {
-                    let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
-                        rig::tool::ToolExecutionError::invalid_args(error.to_string())
-                            .with_source(error)
-                    })?;
-                    Ok(ToolOutput::json(json!(args.x + args.y)))
-                })
-            },
-        ),
-        DynamicTool::new(
-            "subtract",
-            "Subtract y from x",
-            parameters,
-            |_context, args| {
-                Box::pin(async move {
-                    let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
-                        rig::tool::ToolExecutionError::invalid_args(error.to_string())
-                            .with_source(error)
-                    })?;
-                    Ok(ToolOutput::json(json!(args.x - args.y)))
-                })
-            },
-        ),
+        DynamicTool::new("add", "Add x and y", parameters.clone(), |args| {
+            Box::pin(async move {
+                let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
+                    rig::tool::ToolExecutionError::invalid_args(error.to_string())
+                        .with_source(error)
+                })?;
+                Ok(ToolOutput::json(json!(args.x + args.y)))
+            })
+        }),
+        DynamicTool::new("subtract", "Subtract y from x", parameters, |args| {
+            Box::pin(async move {
+                let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
+                    rig::tool::ToolExecutionError::invalid_args(error.to_string())
+                        .with_source(error)
+                })?;
+                Ok(ToolOutput::json(json!(args.x - args.y)))
+            })
+        }),
     ]
 }
 

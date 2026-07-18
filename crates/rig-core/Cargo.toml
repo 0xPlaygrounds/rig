@@ -41,11 +41,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-rmcp = { workspace = true, optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
-serenity = { workspace = true, optional = true }
 fastrand = { workspace = true }
 eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
@@ -92,20 +90,6 @@ reqwest-middleware = { workspace = true, features = [
   "rustls",
 ] }
 
-# Required for `rmcp` example
-hyper-util = { workspace = true, features = ["service", "server"] }
-rmcp = { workspace = true, features = [
-  "client",
-  "macros",
-  "reqwest",                                  # required for some strange reason
-  "transport-streamable-http-client",
-  "transport-streamable-http-client-reqwest",
-  "transport-streamable-http-server-session",
-  "transport-streamable-http-server",
-  "transport-worker",
-] }
-axum = { workspace = true }
-
 # required for otel
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
@@ -119,14 +103,12 @@ audio = []
 image = []
 derive = ["dep:rig-derive"]
 test-utils = []
-discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 wasm = [
   "dep:wasm-bindgen-futures",
 ]
-rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
 reqwest = [
   "reqwest/charset",

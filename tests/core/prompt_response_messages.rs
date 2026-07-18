@@ -4,7 +4,8 @@
 use rig::agent::AgentBuilder;
 use rig::completion::{Chat, Message, Prompt, Usage};
 use rig::message::{AssistantContent, UserContent};
-use rig::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
+use rig_agent::test_utils::MockAddTool;
+use rig_core::test_utils::{MockCompletionModel, MockTurn};
 
 // ---------------------------------------------------------------------------
 // Mock model infrastructure

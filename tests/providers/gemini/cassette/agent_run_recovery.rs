@@ -9,7 +9,7 @@ use rig::client::CompletionClient;
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
 use rig::providers::gemini;
-use rig::test_utils::validate_unknown_tool_failure;
+use rig_agent::test_utils::validate_unknown_tool_failure;
 
 use super::super::agent_run_support::{
     FORCE_TOOLS_PREAMBLE, GeminiAgent, assistant_tool_call_names, call_model,
@@ -331,6 +331,46 @@ async fn repair_to_disallowed_name_fails_with_unknown_tool_call() {
                 "the error names the rejected repair target"
             );
             assert_eq!(allowed_tools, vec!["subtract".to_string()]);
+        },
+    )
+    .await;
+}
+
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_repair_policy_recovers_a_provider_backed_invalid_call() {
+    use rig::bevy::{AgentSpec, BevyRuntime, policy::InvalidToolPolicy, topology::TenantId};
+
+    use super::super::agent_run_support::Sum;
+
+    with_gemini_cassette(
+        "agent_run_recovery/bevy_repair_renames_tool_call_and_executes_it",
+        |client| async move {
+            let runtime = BevyRuntime::default();
+            let revision = runtime.register_tool(TenantId::default(), Sum);
+            let outcome = runtime
+                .spawn_agent(
+                    AgentSpec::new(client.completion_model(gemini::completion::GEMINI_2_5_FLASH))
+                        .preamble(FORCE_TOOLS_PREAMBLE)
+                        .max_calls(3)
+                        .grant_tool("sum", revision)
+                        .invalid_tool_policy(InvalidToolPolicy::Repair {
+                            name: "sum".into(),
+                            arguments: r#"{"x":2,"y":3}"#.into(),
+                        }),
+                )
+                .prompt("Use the add tool to compute 2 + 3, then state the result.")
+                .await
+                .expect("Bevy repair policy should recover the provider-backed call");
+
+            assert_mentions_expected_number(&format!("{:?}", outcome.choice), 5);
+            let recorded = outcome
+                .transcript
+                .iter()
+                .flat_map(assistant_tool_call_names)
+                .collect::<Vec<_>>();
+            assert!(recorded.iter().any(|name| name == "sum"), "{recorded:?}");
+            assert!(!recorded.iter().any(|name| name == "add"), "{recorded:?}");
         },
     )
     .await;

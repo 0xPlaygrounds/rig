@@ -40,7 +40,7 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
+use rig::tool::{ContextualTool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -79,7 +79,7 @@ enum ProbeError {
 
 struct SystemProbe;
 
-impl Tool for SystemProbe {
+impl ContextualTool for SystemProbe {
     const NAME: &'static str = "system_probe";
     type Error = ProbeError;
     type Args = ProbeArgs;

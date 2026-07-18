@@ -1,33 +1,22 @@
-//! Conversation memory: Rig-managed persistent conversation history for agents.
+//! Portable conversation-memory backend contracts.
 //!
-//! Memory differs from existing agent context features:
-//! - [`crate::agent::AgentBuilder::context`]: static documents always included in prompts.
-//! - [`crate::agent::RequestPatch::extra_context`]: per-turn documents supplied by application hooks.
-//! - [`crate::agent::prompt_request::PromptRequest::history`]: caller-managed message history.
-//! - **Memory** (this module): Rig-managed history loaded and saved automatically per
-//!   conversation id.
+//! Runtime crates decide when history loads and which committed messages are
+//! appended. This module owns only the backend interface, errors, and in-process
+//! implementation.
 //!
 //! # Example
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! use rig_core::client::{CompletionClient, ProviderClient};
-//! use rig_core::completion::Prompt;
-//! use rig_core::memory::InMemoryConversationMemory;
-//! use rig_core::providers::openai;
+//! use rig_core::{
+//!     memory::{ConversationMemory, InMemoryConversationMemory},
+//!     message::Message,
+//! };
 //!
 //! let memory = InMemoryConversationMemory::new();
-//!
-//! let openai = openai::Client::from_env()?;
-//! let agent = openai.agent("gpt-4o").memory(memory).build();
-//!
-//! agent.prompt("My name is Alice.")
-//!     .conversation("thread-1")
-//!     .await?;
-//!
-//! let answer = agent.prompt("What's my name?")
-//!     .conversation("thread-1")
-//!     .await?;
+//! memory.append("thread-1", vec![Message::user("My name is Alice.")]).await?;
+//! let history = memory.load("thread-1").await?;
+//! assert_eq!(history.len(), 1);
 //! # Ok(()) }
 //! ```
 //!

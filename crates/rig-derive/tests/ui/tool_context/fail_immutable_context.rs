@@ -1,12 +1,12 @@
 #![allow(unused_imports)]
 
-use rig_core::tool::ToolContext;
+use classic::tool::ToolContext;
 use rig_derive::rig_tool;
 
 #[rig_tool]
 fn immutable_context(
     #[rig(context)] context: &ToolContext,
-) -> Result<(), rig_core::tool::ToolExecutionError> {
+) -> Result<(), portable::tool::ToolExecutionError> {
     let _ = context;
     Ok(())
 }

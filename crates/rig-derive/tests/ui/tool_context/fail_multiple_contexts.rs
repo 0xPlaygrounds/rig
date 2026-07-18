@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use rig_core::tool::ToolContext;
+use classic::tool::ToolContext;
 use rig_derive::rig_tool;
 
 #[rig_tool]
@@ -9,7 +9,7 @@ fn multiple_contexts(
     first: &mut ToolContext,
     #[rig(context)]
     second: &mut ToolContext,
-) -> Result<(), rig_core::tool::ToolExecutionError> {
+) -> Result<(), portable::tool::ToolExecutionError> {
     let _ = (first, second);
     Ok(())
 }

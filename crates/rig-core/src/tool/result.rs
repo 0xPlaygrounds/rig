@@ -377,13 +377,15 @@ pub struct ToolResult {
 }
 
 impl ToolResult {
-    pub(crate) fn success(output: ToolOutput) -> Self {
+    /// Construct a successful canonical result at a runtime boundary.
+    pub fn success(output: ToolOutput) -> Self {
         Self {
             disposition: ToolDisposition::Success(output),
         }
     }
 
-    pub(crate) fn failed(error: ToolExecutionError) -> Self {
+    /// Construct a failed or refused canonical result.
+    pub fn failed(error: ToolExecutionError) -> Self {
         let disposition = if error.is_refusal() {
             ToolDisposition::Refused(error)
         } else {
@@ -392,7 +394,8 @@ impl ToolResult {
         Self { disposition }
     }
 
-    pub(crate) fn skipped(reason: impl Into<String>) -> Self {
+    /// Construct a result for a call suppressed before execution.
+    pub fn skipped(reason: impl Into<String>) -> Self {
         Self {
             disposition: ToolDisposition::Skipped(ToolOutput::text(reason)),
         }
@@ -461,7 +464,8 @@ impl ToolResult {
         self.error().is_some_and(|error| error.kind == kind)
     }
 
-    pub(crate) fn status_name(&self) -> &'static str {
+    /// Stable telemetry name for this result's disposition.
+    pub fn status_name(&self) -> &'static str {
         match &self.disposition {
             ToolDisposition::Success(_) => "success",
             ToolDisposition::Error(_) => "error",

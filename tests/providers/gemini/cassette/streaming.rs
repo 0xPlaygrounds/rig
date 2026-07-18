@@ -189,3 +189,40 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     )
     .await;
 }
+
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_streaming_emits_and_returns_typed_provider_final() {
+    use rig::bevy::{AgentSpec, BevyRuntime, effects::SubscriptionEvent};
+
+    super::super::support::with_gemini_cassette(
+        "streaming/final_metadata_handles_terminal_finish_reason_chunk",
+        |client| async move {
+            let runtime = BevyRuntime::default();
+            let agent = runtime.spawn_agent(AgentSpec::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+            ));
+            let mut provider_finals = 0;
+
+            let outcome = agent
+                .stream_prompt(
+                    "Reply with exactly: contentless final metadata ok",
+                    |event| {
+                        if matches!(event, SubscriptionEvent::ProviderFinal(_)) {
+                            provider_finals += 1;
+                        }
+                    },
+                )
+                .await
+                .expect("Bevy stream should succeed");
+
+            assert_eq!(provider_finals, 1);
+            assert_nonempty_response(&format!("{:?}", outcome.choice));
+            assert!(
+                !format!("{:?}", outcome.provider_final).is_empty(),
+                "Bevy local streaming should return the concrete Gemini final"
+            );
+        },
+    )
+    .await;
+}

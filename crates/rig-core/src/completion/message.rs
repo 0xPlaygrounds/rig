@@ -88,7 +88,6 @@ pub enum ReasoningContent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[non_exhaustive]
 /// Assistant reasoning payload with an optional provider-supplied identifier.
 pub struct Reasoning {
     /// Provider reasoning identifier, when supplied by the upstream API.
@@ -631,7 +630,8 @@ pub enum ImageDetail {
 impl Message {
     /// This helper method is primarily used to extract the first string prompt from a `Message`.
     /// Since `Message` might have more than just text content, we need to find the first text.
-    pub(crate) fn rag_text(&self) -> Option<String> {
+    #[doc(hidden)]
+    pub fn rag_text(&self) -> Option<String> {
         match self {
             Message::User { content } => {
                 for item in content.iter() {

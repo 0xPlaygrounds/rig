@@ -93,13 +93,26 @@ For a curated list of Rig projects, libraries, tools, articles, and production u
 Are you also using Rig? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
 ## Get Started
-Use the root `rig` facade when you want feature-gated access to companion crates,
-or use `rig-core` directly when you only need the core provider abstractions.
+Use the root `rig` facade for the default classic runtime and feature-gated
+companion crates. Use `rig-core` directly for portable provider and data
+contracts without orchestration.
 
 ```bash
 cargo add rig
 # or: cargo add rig-core
 ```
+
+The runtime split is explicit:
+
+- `rig` enables the classic `agent` feature by default.
+- `rig-agent` owns classic builders, runners, hooks, extraction, contextual
+  tools, and high-level prompt/streaming traits.
+- `rig-bevy` is an experimental native-only ECS runtime, enabled with
+  `rig = { version = "...", default-features = false, features = ["bevy"] }`.
+- `rig-core` stays runtime-neutral and WASM-compatible.
+
+Importing both runtime preludes is safe: classic construction uses `.agent()`,
+while ECS-native construction uses `.bevy_agent()`.
 
 ### Simple example
 ```rust

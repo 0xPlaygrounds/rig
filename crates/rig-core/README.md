@@ -1,5 +1,6 @@
-# Rig
-Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
+# rig-core
+`rig-core` contains Rig's portable provider, request/response, message, embedding,
+vector-store, memory, telemetry, and tool contracts. It contains no agent runtime.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig_core/).
 ## Table of contents
@@ -13,7 +14,6 @@ More information about this crate can be found in the [crate documentation](http
   - [Who is using Rig in production?](#who-is-using-rig-in-production)
 
 ## Features
-- Agentic workflows that can handle multi-turn streaming and prompting
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
@@ -28,8 +28,12 @@ cargo add rig-core
 ```
 
 ## Simple example
-```rust
-use rig_core::{client::{CompletionClient, ProviderClient}, completion::Prompt, providers::openai};
+```rust,no_run
+use rig_core::{
+    client::{CompletionClient, ProviderClient},
+    completion::{AssistantContent, CompletionModel},
+    providers::openai,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -37,20 +41,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This requires the `OPENAI_API_KEY` environment variable to be set.
     let openai_client = openai::Client::from_env()?;
 
-    let agent = openai_client.agent(openai::GPT_5_2).build();
-
-    // Prompt the model and print its response
-    let response = agent
-        .prompt("Who are you?")
-        .await?;
-
-    println!("{response}");
+    let model = openai_client.completion_model(openai::GPT_5_2);
+    let request = model.completion_request("Who are you?").build();
+    let response = model.completion(request).await?;
+    for item in response.choice {
+        if let AssistantContent::Text(text) = item {
+            println!("{}", text.text);
+        }
+    }
 
     Ok(())
 }
 ```
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
+
+Use the root `rig` crate for the default classic runtime, depend on `rig-agent`
+directly for classic orchestration, or enable the experimental `rig-bevy`
+runtime through `rig`'s `bevy` feature.
 
 You can find more examples in the repository-level `examples/` directory. Many provider-specific examples now also live as ignored live integration tests under the repository-level `tests/providers` directory, organized by provider. When running those provider-backed tests, prefer provider-specific targets such as `cargo test -p rig --test openai -- --ignored --test-threads=1` to avoid rate-limiting. More detailed walkthroughs are regularly published on our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
 

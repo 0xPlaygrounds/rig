@@ -1,5 +1,7 @@
 #[cfg(feature = "derive")]
 mod embed_macro;
+#[cfg(feature = "agent")]
+mod facade_client;
 mod loaders;
 mod prompt_response_messages;
 mod provider_layout;

@@ -102,11 +102,7 @@ impl Tool for CountingAdd {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x + args.y)
     }
@@ -132,11 +128,7 @@ impl Tool for CountingSubtract {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x - args.y)
     }
@@ -172,11 +164,7 @@ impl Tool for CountingPing {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(PING_OUTPUT.to_string())
     }
@@ -222,11 +210,7 @@ impl Tool for CodewordLookup {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         match args.team.as_str() {
             "blue" => Ok(BLUE_CODEWORD.to_string()),
@@ -278,11 +262,7 @@ impl Tool for StrictRegister {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(format!("registered {} guests", args.seats))
     }
@@ -309,11 +289,7 @@ impl Tool for MottoTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(MOTTO_OUTPUT.to_string())
     }
 }
@@ -353,11 +329,7 @@ impl Tool for ConfigTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ConfigOutput {
             service: "cassette-lab".to_string(),
             max_retries: 3,
@@ -383,11 +355,7 @@ impl Tool for BadgeImageTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ToolOutput::content(OneOrMany::one(
             ToolResultContent::image_base64(RED_PIXEL_PNG_BASE64, Some(ImageMediaType::PNG), None),
         )))
@@ -536,11 +504,7 @@ macro_rules! embeddable_operation {
                 operation_definition(Self::NAME, $description).parameters
             }
 
-            async fn call(
-                &self,
-                _context: &mut rig::tool::ToolContext,
-                args: Self::Args,
-            ) -> Result<Self::Output, Self::Error> {
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
                 self.counter.bump();
                 let op: fn(i64, i64) -> i64 = $op;
                 Ok(op(args.x, args.y))

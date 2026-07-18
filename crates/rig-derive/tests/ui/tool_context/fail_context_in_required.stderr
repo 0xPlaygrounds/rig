@@ -5,5 +5,5 @@ error: `ToolContext` is host-only and cannot be listed in `params(...)` or `requ
  8 | |     #[rig(context)]
  9 | |     context: &mut ToolContext,
 10 | |     query: String,
-11 | | ) -> Result<String, rig_core::tool::ToolExecutionError> {
+11 | | ) -> Result<String, portable::tool::ToolExecutionError> {
    | |_______________________________________________________^

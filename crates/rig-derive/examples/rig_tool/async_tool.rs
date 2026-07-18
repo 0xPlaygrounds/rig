@@ -1,7 +1,7 @@
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::completion::Prompt;
-use rig_core::providers;
-use rig_core::tool::ToolExecutionError;
+use classic::prelude::{AgentClientExt, Prompt};
+use portable::client::ProviderClient;
+use portable::providers;
+use portable::tool::ToolExecutionError;
 use rig_derive::rig_tool;
 use std::time::Duration;
 
@@ -36,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "ASYNCOPERATION: {}",
-        serde_json::to_string_pretty(&rig_core::tool::tool_definition(&AsyncOperation))?
+        serde_json::to_string_pretty(&portable::tool::tool_definition(&AsyncOperation))?
     );
 
     for prompt in [

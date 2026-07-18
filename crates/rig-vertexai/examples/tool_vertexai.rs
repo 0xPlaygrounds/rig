@@ -1,6 +1,6 @@
 use anyhow::Result;
-use rig_core::prelude::*;
-use rig_core::{completion::Prompt, tool::Tool};
+use rig_agent::prelude::{AgentClientExt, Prompt};
+use rig_core::tool::Tool;
 use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -33,11 +33,7 @@ impl Tool for Adder {
         json!(schema_for!(OperationArgs))
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig_core::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
@@ -54,7 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create agent with a calculator tool
     let calculator_agent = client
         .agent(GEMINI_2_5_FLASH_LITE)
-        .tool(Adder)
+        .portable_tool(Adder)
         .max_tokens(1024)
         .build();
 

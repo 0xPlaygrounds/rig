@@ -12,12 +12,12 @@
 //! Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 //!
 //! # Table of contents
-//! - [High-level features](#high-level-features)
+//! - [Portable features](#portable-features)
 //! - [Simple Example](#simple-example)
 //! - [Core Concepts](#core-concepts)
 //! - [Integrations](#integrations)
 //!
-//! # High-level features
+//! # Portable features
 //! - Full support for LLM completion and embedding workflows
 //! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
 //! - Integrate LLMs in your app with minimal boilerplate
@@ -26,24 +26,24 @@
 //! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
-//!     completion::Prompt,
+//!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create OpenAI client and agent.
+//!     // Create an OpenAI client and portable model.
 //!     // This requires the `OPENAI_API_KEY` environment variable to be set.
 //!     let openai_client = openai::Client::from_env()?;
 //!
-//!     let agent = openai_client.agent(openai::GPT_5_2).build();
-//!
-//!     // Prompt the model and print its response
-//!     let response = agent
-//!         .prompt("Who are you?")
-//!         .await?;
-//!
-//!     println!("{response}");
+//!     let model = openai_client.completion_model(openai::GPT_5_2);
+//!     let request = model.completion_request("Who are you?").build();
+//!     let response = model.completion(request).await?;
+//!     for item in response.choice {
+//!         if let AssistantContent::Text(text) = item {
+//!             println!("{}", text.text);
+//!         }
+//!     }
 //!
 //!     Ok(())
 //! }
@@ -59,32 +59,21 @@
 //! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
 //! low-level interface for creating completion and embedding requests and executing them.
 //!
-//! ## Agents
-//! Rig also provides high-level abstractions over LLMs in the form of the [Agent](crate::agent::Agent) type.
-//!
-//! The [Agent](crate::agent::Agent) type can be used to create anything from simple agents that use vanilla models to full blown
-//! RAG systems that can be used to answer questions using a knowledge base.
+//! Runtime orchestration is intentionally outside this crate. Use `rig-agent`
+//! for the classic agent runtime or experimental `rig-bevy` for ECS-native
+//! execution. The root `rig` facade selects and composes those runtimes.
 //!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
 //! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
 //! trait, which can be implemented to define vector stores and indices respectively.
-//! There are two complementary ways to use an index with an [Agent](crate::agent::Agent):
-//! - For passive RAG, implement an [`AgentHook`](crate::agent::AgentHook) that queries the index
-//!   in `on_completion_call` and returns a
-//!   [`RequestPatch::extra_context`](crate::agent::RequestPatch::extra_context). This keeps
-//!   query selection, document formatting, and retrieval failure policy in application code.
-//! - For active RAG, expose the index through its blanket [`Tool`](crate::tool::Tool)
-//!   implementation, or through a custom tool, so the model decides when and how to retrieve.
-//!
-//! Indexes can also serve custom architectures that use multiple LLMs or agents.
+//! Indexes can be used directly by custom architectures or adapted into
+//! retrieval tools by either runtime.
 //!
 //! ## Conversation memory
-//! Rig can transparently load and persist per-conversation history through the
-//! [ConversationMemory](crate::memory::ConversationMemory) trait. Attach a backend
-//! with [`AgentBuilder::memory`](crate::agent::AgentBuilder::memory) and identify the
-//! conversation per-request via
-//! [`PromptRequest::conversation`](crate::agent::prompt_request::PromptRequest::conversation).
+//! Portable memory backends implement
+//! [ConversationMemory](crate::memory::ConversationMemory). Runtime crates own
+//! load timing, commit timing, and conversation selection.
 //! The default in-process backend
 //! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
 //! for tests and single-process agents; reusable history-shaping policies (sliding
@@ -149,21 +138,19 @@
 
 extern crate self as rig;
 
-pub mod agent;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
-pub mod extractor;
 pub mod http_client;
 pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
-pub mod integrations;
-pub(crate) mod json_utils;
+#[doc(hidden)]
+pub mod json_utils;
 pub mod loaders;
 pub mod markers;
 pub mod memory;
@@ -186,7 +173,6 @@ pub mod wasm_compat;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
-pub use extractor::ExtractionResponse;
 pub use one_or_many::{EmptyListError, OneOrMany};
 pub use provider_response::ProviderResponseError;
 pub use schemars;

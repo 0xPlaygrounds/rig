@@ -5,7 +5,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
-use rig::test_utils::validate_extraction_fields;
+use rig_agent::test_utils::validate_extraction_fields;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

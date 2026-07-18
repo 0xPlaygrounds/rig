@@ -370,10 +370,8 @@ fn output_messages(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryOutput
     }]
 }
 
-pub(crate) fn system_instructions_json(
-    instructions: Option<&str>,
-    enabled: bool,
-) -> Option<String> {
+#[doc(hidden)]
+pub fn system_instructions_json(instructions: Option<&str>, enabled: bool) -> Option<String> {
     if !enabled {
         return None;
     }
@@ -392,7 +390,8 @@ pub(crate) fn system_instructions_json(
 /// Message content can contain prompts, retrieved context, tool results, and
 /// other sensitive or high-cardinality data. Keep this disabled unless the
 /// caller has explicitly opted in for debugging/observability.
-pub(crate) fn record_model_input(span: &tracing::Span, messages: &[Message], enabled: bool) {
+#[doc(hidden)]
+pub fn record_model_input(span: &tracing::Span, messages: &[Message], enabled: bool) {
     if !enabled || span.is_disabled() {
         return;
     }
@@ -408,7 +407,8 @@ pub(crate) fn record_model_input(span: &tracing::Span, messages: &[Message], ena
 /// Message content can contain model responses, tool calls, and other sensitive
 /// or high-cardinality data. Keep this disabled unless the caller has explicitly
 /// opted in for debugging/observability.
-pub(crate) fn record_model_output(
+#[doc(hidden)]
+pub fn record_model_output(
     span: &tracing::Span,
     content: &OneOrMany<AssistantContent>,
     enabled: bool,

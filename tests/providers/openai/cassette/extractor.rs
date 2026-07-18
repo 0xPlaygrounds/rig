@@ -1,7 +1,7 @@
 //! OpenAI extractor smoke test.
 
-use rig::providers::openai;
-use rig::test_utils::validate_extraction_fields;
+use rig::{client::CompletionClient, providers::openai};
+use rig_agent::test_utils::validate_extraction_fields;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};

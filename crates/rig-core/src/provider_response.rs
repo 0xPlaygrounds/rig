@@ -234,29 +234,4 @@ mod tests {
         #[cfg(feature = "audio")]
         assert_funnel!(crate::audio_generation::AudioGenerationError);
     }
-
-    /// `PromptError` advertises that it forwards the `provider_response_*` helpers
-    /// to a wrapped `CompletionError`; this confirms the status, body, and JSON all
-    /// surface through the wrapper unchanged.
-    #[test]
-    fn prompt_error_forwards_provider_response_to_completion_error() {
-        let body = r#"{"error":{"message":"boom"}}"#;
-        let inner = crate::completion::CompletionError::from_http_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            body,
-        );
-        let err = crate::completion::PromptError::CompletionError(inner);
-
-        assert_eq!(
-            err.provider_response_status(),
-            Some(StatusCode::SERVICE_UNAVAILABLE),
-        );
-        assert_eq!(err.provider_response_body(), Some(body));
-        assert_eq!(
-            err.provider_response_json()
-                .expect("valid json")
-                .expect("present json")["error"]["message"],
-            "boom",
-        );
-    }
 }

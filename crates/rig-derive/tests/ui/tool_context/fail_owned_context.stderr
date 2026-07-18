@@ -1,5 +1,5 @@
 error: a `ToolContext` parameter must have type `&mut ToolContext`
  --> tests/ui/tool_context/fail_owned_context.rs:5:14
   |
-5 |     context: rig_core::tool::ToolContext,
-  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |     context: classic::tool::ToolContext,
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^

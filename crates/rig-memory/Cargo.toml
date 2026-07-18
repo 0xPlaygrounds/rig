@@ -16,6 +16,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+rig-agent = { path = "../rig-agent", version = "0.40.0", default-features = false }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 

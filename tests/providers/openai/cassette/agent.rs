@@ -24,3 +24,28 @@ async fn completion_smoke() {
     })
     .await;
 }
+
+#[cfg(feature = "bevy")]
+#[tokio::test]
+async fn bevy_blocking_preserves_typed_raw_final() {
+    use rig::bevy::{AgentSpec, BevyRuntime};
+
+    with_openai_cassette("agent/completion_smoke", |client| async move {
+        let runtime = BevyRuntime::default();
+        let agent = runtime.spawn_agent(
+            AgentSpec::new(client.completion_model(openai::GPT_4O)).preamble(BASIC_PREAMBLE),
+        );
+
+        let outcome = agent
+            .prompt(BASIC_PROMPT)
+            .await
+            .expect("Bevy completion should succeed");
+
+        assert_nonempty_response(&format!("{:?}", outcome.choice));
+        assert!(
+            !format!("{:?}", outcome.raw_response).is_empty(),
+            "Bevy local mode should expose the concrete OpenAI final"
+        );
+    })
+    .await;
+}

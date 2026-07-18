@@ -2,9 +2,16 @@
 //! Public facade for Rig.
 //!
 //! The `rig` crate is the user-facing entry point for Rig. It re-exports the
-//! full public API of `rig_core`, so core traits, builders, providers, tools,
-//! vector-store abstractions, and request/response types are available through
-//! `rig::...` paths.
+//! portable API of `rig_core` together with the selected runtime APIs.
+//!
+//! # Runtime features
+//!
+//! The default `agent` feature selects the classic `rig-agent` runtime and
+//! keeps existing `rig::prelude::*`, `.agent()`, prompt, hook, and contextual
+//! tool behavior. The opt-in `bevy` feature exposes the experimental native ECS
+//! runtime under [`bevy`] without adding it to the default prelude. Disabling
+//! default features selects neither runtime; core-only applications should
+//! normally depend directly on `rig-core`.
 //!
 //! # Companion integrations
 //!
@@ -23,11 +30,158 @@
 //! # When to use `rig-core` directly
 //!
 //! Depend on the `rig-core` package directly when you only need the core Rig
-//! implementation crate, including provider abstractions, built-in core
+//! contract crate, including provider abstractions, built-in core
 //! providers, tools, memory traits, and vector-store traits, without the root
 //! facade's companion integration feature surface.
 
-pub use rig_core::*;
+#[cfg(feature = "audio")]
+pub use rig_core::audio_generation;
+#[cfg(feature = "image")]
+pub use rig_core::image_generation;
+#[cfg(any(test, feature = "test-utils"))]
+pub use rig_core::test_utils;
+#[cfg(feature = "derive")]
+pub use rig_core::tool_macro;
+pub use rig_core::{
+    Embed, EmptyListError, OneOrMany, ProviderResponseError, http_client, id, loaders, markers,
+    message, model, one_or_many, providers, rerank, schemars, telemetry, transcription,
+    vector_store, wasm_compat,
+};
+
+/// Provider clients and portable model constructors.
+pub mod client {
+    pub use rig_core::client::*;
+
+    #[cfg(feature = "agent")]
+    pub use rig_agent::client::AgentModelExt;
+
+    /// Facade completion-client extension combining portable model construction
+    /// with classic runtime constructors.
+    #[cfg(feature = "agent")]
+    pub trait CompletionClient: rig_core::client::CompletionClient + Sized {
+        /// Construct a portable completion model.
+        fn completion_model(
+            &self,
+            model: impl Into<String>,
+        ) -> <Self as rig_core::client::CompletionClient>::CompletionModel {
+            rig_core::client::CompletionClient::completion_model(self, model)
+        }
+
+        /// Construct a classic agent builder.
+        fn agent(
+            &self,
+            model: impl Into<String>,
+        ) -> rig_agent::agent::AgentBuilder<
+            <Self as rig_core::client::CompletionClient>::CompletionModel,
+        > {
+            rig_agent::client::AgentClientExt::agent(self, model)
+        }
+
+        /// Construct a classic structured extractor builder.
+        fn extractor<T>(
+            &self,
+            model: impl Into<String>,
+        ) -> rig_agent::extractor::ExtractorBuilder<
+            <Self as rig_core::client::CompletionClient>::CompletionModel,
+            T,
+        >
+        where
+            T: rig_core::schemars::JsonSchema
+                + for<'de> serde::Deserialize<'de>
+                + serde::Serialize
+                + rig_core::wasm_compat::WasmCompatSend
+                + rig_core::wasm_compat::WasmCompatSync
+                + 'static,
+        {
+            rig_agent::client::AgentClientExt::extractor(self, model)
+        }
+    }
+
+    #[cfg(feature = "agent")]
+    impl<C> CompletionClient for C where C: rig_core::client::CompletionClient {}
+}
+
+/// Portable completion contracts plus classic prompting conveniences when enabled.
+pub mod completion {
+    pub use rig_core::completion::*;
+
+    #[cfg(feature = "agent")]
+    pub use rig_agent::completion::{
+        Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt,
+    };
+}
+
+/// Portable embedding contracts plus classic runtime embedding tools when enabled.
+pub mod embeddings {
+    pub use rig_core::embeddings::*;
+
+    #[cfg(feature = "agent")]
+    pub use rig_agent::embeddings::{ToolSchema, tool};
+}
+
+/// Portable stream values plus classic high-level streaming traits when enabled.
+pub mod streaming {
+    pub use rig_core::streaming::*;
+
+    #[cfg(feature = "agent")]
+    pub use rig_agent::streaming::{StreamingChat, StreamingPrompt};
+}
+
+/// Portable tool contracts plus classic contextual dispatch when enabled.
+pub mod tool {
+    pub use rig_core::tool::*;
+
+    #[cfg(feature = "agent")]
+    pub use rig_agent::tool::server::{ToolServer, ToolServerHandle};
+    #[cfg(feature = "agent")]
+    pub use rig_agent::tool::{
+        ContextualTool, MissingToolContext, ToolContext, ToolEmbedding, ToolSet,
+    };
+
+    /// Classic tool-server APIs.
+    #[cfg(feature = "agent")]
+    pub mod server {
+        pub use rig_agent::tool::server::*;
+    }
+
+    /// Classic Model Context Protocol integration.
+    #[cfg(feature = "rmcp")]
+    pub mod rmcp {
+        pub use rig_agent::tool::rmcp::*;
+    }
+}
+
+/// The classic Rig agent runtime.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod agent {
+    pub use rig_agent::agent::*;
+    pub use rig_agent::client::{AgentClientExt, AgentModelExt};
+}
+
+#[cfg(feature = "agent")]
+pub use rig_agent::{ExtractionResponse, extractor, integrations};
+
+/// The experimental ECS-native Rig runtime.
+#[cfg(feature = "bevy")]
+#[cfg_attr(docsrs, doc(cfg(feature = "bevy")))]
+pub mod bevy {
+    pub use rig_bevy::*;
+}
+
+/// Common imports for the portable core and the default classic runtime.
+pub mod prelude {
+    pub use rig_core::prelude::*;
+
+    #[cfg(feature = "agent")]
+    pub use crate::{
+        agent::{Agent, AgentModelExt, MultiTurnStreamItem, StreamingResult},
+        client::CompletionClient,
+        completion::{Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt},
+        streaming::{StreamingChat, StreamingPrompt},
+        tool::{ContextualTool, ToolSet},
+    };
+}
 
 /// Conversation memory APIs and optional memory policy helpers.
 ///

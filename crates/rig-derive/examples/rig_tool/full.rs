@@ -1,6 +1,6 @@
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::completion::Prompt;
-use rig_core::providers;
+use classic::prelude::{AgentClientExt, Prompt};
+use portable::client::ProviderClient;
+use portable::providers;
 use rig_derive::rig_tool;
 
 /// A tool that performs string operations
@@ -10,13 +10,13 @@ fn string_processor(
     text: String,
     /// The operation to perform (uppercase, lowercase, reverse)
     operation: String,
-) -> Result<String, rig_core::tool::ToolExecutionError> {
+) -> Result<String, portable::tool::ToolExecutionError> {
     let result = match operation.as_str() {
         "uppercase" => text.to_uppercase(),
         "lowercase" => text.to_lowercase(),
         "reverse" => text.chars().rev().collect(),
         _ => {
-            return Err(rig_core::tool::ToolExecutionError::other(format!(
+            return Err(portable::tool::ToolExecutionError::other(format!(
                 "Unknown operation: {operation}"
             )));
         }
@@ -39,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "STRINGPROCESSOR: {}",
-        serde_json::to_string_pretty(&rig_core::tool::tool_definition(&StringProcessor))?
+        serde_json::to_string_pretty(&portable::tool::tool_definition(&StringProcessor))?
     );
 
     for prompt in [

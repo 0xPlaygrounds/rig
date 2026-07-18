@@ -1,6 +1,6 @@
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::completion::Prompt;
-use rig_core::providers;
+use classic::prelude::{AgentClientExt, Prompt};
+use portable::client::ProviderClient;
+use portable::providers;
 use rig_derive::rig_tool;
 
 // Demonstrates explicit attribute override.
@@ -16,21 +16,21 @@ fn calculator(
     y: i32,
     /// The operation to perform
     operation: String,
-) -> Result<i32, rig_core::tool::ToolExecutionError> {
+) -> Result<i32, portable::tool::ToolExecutionError> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),
         "multiply" => Ok(x * y),
         "divide" => {
             if y == 0 {
-                Err(rig_core::tool::ToolExecutionError::other(
+                Err(portable::tool::ToolExecutionError::other(
                     "Division by zero",
                 ))
             } else {
                 Ok(x / y)
             }
         }
-        _ => Err(rig_core::tool::ToolExecutionError::other(format!(
+        _ => Err(portable::tool::ToolExecutionError::other(format!(
             "Unknown operation: {operation}"
         ))),
     }
@@ -50,7 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "CALCULATOR: {}",
-        serde_json::to_string_pretty(&rig_core::tool::tool_definition(&CALCULATOR))?
+        serde_json::to_string_pretty(&portable::tool::tool_definition(&CALCULATOR))?
     );
 
     for prompt in [

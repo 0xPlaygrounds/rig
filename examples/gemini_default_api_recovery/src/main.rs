@@ -114,11 +114,7 @@ impl Tool for JavaScript {
         schema_for!(JavaScriptProgram).to_value()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ExecutorResponse::ok(json!({
             "id": "collection-canary-id",
             "title": "Canary Collection",

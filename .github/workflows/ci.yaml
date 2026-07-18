@@ -122,8 +122,8 @@ jobs:
       - name: Compile default-feature root test targets
         run: cargo test -p rig --tests --no-run
 
-      - name: Test rig-core agent unit tests with all features
-        run: cargo nextest run -p rig-core --all-features -E 'test(agent::)' --retries 2
+      - name: Test classic rig-agent unit tests with all features
+        run: cargo nextest run -p rig-agent --all-features -E 'test(agent::)' --retries 2
 
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1

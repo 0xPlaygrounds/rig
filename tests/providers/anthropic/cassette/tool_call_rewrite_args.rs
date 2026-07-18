@@ -15,8 +15,8 @@ use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
-use rig::test_utils::validate_rewritten_arguments;
 use rig::tool::Tool;
+use rig_agent::test_utils::validate_rewritten_arguments;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -82,11 +82,7 @@ impl Tool for GetWeather {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.calls.lock().expect("calls lock").push(ObservedCall {
             location: args.location.clone(),
             units: args.units.clone(),

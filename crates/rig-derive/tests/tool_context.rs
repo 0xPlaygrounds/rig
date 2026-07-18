@@ -8,7 +8,8 @@
     clippy::unreachable
 )]
 
-use rig_core::tool::{Tool, ToolContext};
+use classic::tool::{ContextualTool, ToolContext};
+use portable::tool::Tool;
 use rig_derive::rig_tool;
 
 #[derive(Clone)]
@@ -28,7 +29,7 @@ fn sync_context_in_the_middle(
     left: i32,
     #[rig(context)] context: &mut ToolContext,
     right: i32,
-) -> Result<i32, rig_core::tool::ToolExecutionError> {
+) -> Result<i32, portable::tool::ToolExecutionError> {
     let offset = context.require::<Offset>()?.0;
     context.insert_result(Invocation("sync"));
     Ok(left + right + offset)
@@ -44,14 +45,14 @@ async fn required_context_uses_the_standard_tool_error_path() {
         .await
         .unwrap_err();
 
-    assert!(error.is::<rig_core::tool::MissingToolContext>());
+    assert!(error.is::<classic::tool::MissingToolContext>());
 }
 
 #[rig_tool(description = "Prefix text using host context")]
 async fn async_context_first(
-    context: &mut rig_core::tool::ToolContext,
+    context: &mut classic::tool::ToolContext,
     value: String,
-) -> Result<String, rig_core::tool::ToolExecutionError> {
+) -> Result<String, portable::tool::ToolExecutionError> {
     let prefix = context
         .get::<Prefix>()
         .map(|prefix| prefix.0.clone())
@@ -62,7 +63,7 @@ async fn async_context_first(
 }
 
 mod domain {
-    #[derive(serde::Deserialize, rig_core::schemars::JsonSchema)]
+    #[derive(serde::Deserialize, portable::schemars::JsonSchema)]
     pub struct ToolContext {
         pub label: String,
     }
@@ -71,24 +72,24 @@ mod domain {
 #[rig_tool(description = "An application argument named ToolContext is not runtime context")]
 fn domain_context_is_an_ordinary_argument(
     context: domain::ToolContext,
-) -> Result<String, rig_core::tool::ToolExecutionError> {
+) -> Result<String, portable::tool::ToolExecutionError> {
     Ok(context.label)
 }
 
-type RuntimeContextAlias = rig_core::tool::ToolContext;
+type RuntimeContextAlias = classic::tool::ToolContext;
 
 #[rig_tool(description = "An explicitly marked alias receives runtime context")]
 fn marked_context_alias(
     #[rig(context)] context: &mut RuntimeContextAlias,
     value: String,
-) -> Result<String, rig_core::tool::ToolExecutionError> {
+) -> Result<String, portable::tool::ToolExecutionError> {
     context.insert_result(Invocation("alias"));
     Ok(value)
 }
 
 #[tokio::test]
 async fn sync_context_is_excluded_from_schema_and_passed_in_argument_order() {
-    let definition = rig_core::tool::tool_definition(&SyncContextInTheMiddle);
+    let definition = classic::tool::tool_definition(&SyncContextInTheMiddle);
     let properties = definition.parameters["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 2);
     assert!(properties.contains_key("left"));
@@ -116,7 +117,7 @@ async fn sync_context_is_excluded_from_schema_and_passed_in_argument_order() {
 
 #[tokio::test]
 async fn async_context_is_excluded_from_schema_and_passed_to_the_function() {
-    let definition = rig_core::tool::tool_definition(&AsyncContextFirst);
+    let definition = classic::tool::tool_definition(&AsyncContextFirst);
     let properties = definition.parameters["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 1);
     assert!(properties.contains_key("value"));
@@ -144,27 +145,26 @@ async fn async_context_is_excluded_from_schema_and_passed_to_the_function() {
 
 #[tokio::test]
 async fn same_named_domain_type_remains_a_model_argument() {
-    let definition = rig_core::tool::tool_definition(&DomainContextIsAnOrdinaryArgument);
+    let definition = portable::tool::tool_definition(&DomainContextIsAnOrdinaryArgument);
     let properties = definition.parameters["properties"].as_object().unwrap();
     assert!(properties.contains_key("context"));
 
-    let output = DomainContextIsAnOrdinaryArgument
-        .call(
-            &mut ToolContext::new(),
-            DomainContextIsAnOrdinaryArgumentParameters {
-                context: domain::ToolContext {
-                    label: "domain".to_string(),
-                },
+    let output = Tool::call(
+        &DomainContextIsAnOrdinaryArgument,
+        DomainContextIsAnOrdinaryArgumentParameters {
+            context: domain::ToolContext {
+                label: "domain".to_string(),
             },
-        )
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(output, "domain");
 }
 
 #[tokio::test]
 async fn explicit_marker_supports_imported_aliases() {
-    let definition = rig_core::tool::tool_definition(&MarkedContextAlias);
+    let definition = classic::tool::tool_definition(&MarkedContextAlias);
     let properties = definition.parameters["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 1);
     assert!(properties.contains_key("value"));

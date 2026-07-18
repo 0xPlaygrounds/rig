@@ -1,0 +1,51 @@
+[package]
+name = "rig-agent"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "The classic, provider-agnostic agent runtime for Rig."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+async-stream = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+indexmap = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+rmcp = { workspace = true, optional = true, features = ["client"] }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serenity = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
+tracing = { workspace = true }
+tracing-futures = { workspace = true, features = ["futures-03"] }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+# The classic runtime remains WASM-compatible without requiring callers to
+# remember a target-specific feature flag.
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["wasm"] }
+
+[features]
+default = []
+discord-bot = ["dep:serenity"]
+rmcp = ["dep:rmcp"]
+test-utils = ["rig-core/test-utils"]
+wasm = ["rig-core/wasm"]
+
+[dev-dependencies]
+anyhow = { workspace = true }
+rig-runtime-conformance = { path = "../rig-runtime-conformance" }
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["test-utils"] }
+tokio = { workspace = true, features = ["full"] }
+tokio-test = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
