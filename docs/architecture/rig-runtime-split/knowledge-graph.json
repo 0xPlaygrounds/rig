@@ -1,0 +1,1995 @@
+{
+  "metadata": {
+    "repository": "https://github.com/0xPlaygrounds/rig",
+    "branch": "agent/research-core-runtime-split",
+    "revision": "87f3f5b77a3caeffa10d60225c41e386753bf05e",
+    "intended_comparison_base": "origin/main@87f3f5b77a3caeffa10d60225c41e386753bf05e",
+    "merge_base": "87f3f5b77a3caeffa10d60225c41e386753bf05e",
+    "comparison_revisions": {
+      "local_start": "d6d2dfa089868223c19040956bbcce62f6311173",
+      "pr_2182_base": "d6d2dfa089868223c19040956bbcce62f6311173",
+      "pr_2182_head": "f5737b34dc889e146c3be1c126f84d2d326ad36a",
+      "pr_2182_merge": "87f3f5b77a3caeffa10d60225c41e386753bf05e",
+      "ecs_pr_6_base": "6f3df71c6c14698e38bd0706d9b142ec3d0d9187",
+      "ecs_pr_6_head": "8f1d72dd50bfb723f088c91eeef4202451a08f09",
+      "ecs_pr_6_current_merge_base": "1f1ee4d9bb58b24f9e85572c783f93f173e65dc4"
+    },
+    "generation_date": "2026-07-18",
+    "scope": "Research-only ownership and migration graph for splitting portable contracts, the classic runtime, and a Bevy ECS-native runtime. Production code, manifests, features, and cassettes are unchanged.",
+    "worktree_at_start": {
+      "staged_tracked": [],
+      "unstaged_tracked": [],
+      "untracked_preserved": [
+        "rtn",
+        "rtn2",
+        "rtnalias",
+        "rtnalias2",
+        "unstable"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "crate.rig",
+      "name": "rig",
+      "kind": "crate",
+      "visibility": "public",
+      "source_path": "src/lib.rs",
+      "symbol": "crate rig facade",
+      "current_owner": "rig",
+      "proposed_owner": "rig",
+      "portability_classification": "facade convenience",
+      "rationale": "The facade is the only allowed convergence point for core, runtimes, and integrations."
+    },
+    {
+      "id": "crate.rig-core",
+      "name": "rig-core",
+      "kind": "crate",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/lib.rs",
+      "symbol": "crate rig_core",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "mixed responsibility becoming narrow contracts",
+      "rationale": "Current core mixes portable contracts, classic runtime, providers, and integrations; target core owns contracts and canonical values."
+    },
+    {
+      "id": "crate.rig-agent",
+      "name": "rig-agent",
+      "kind": "proposed crate",
+      "visibility": "public",
+      "source_path": null,
+      "symbol": "proposed classic runtime crate",
+      "current_owner": "rig-core agent-related modules",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Owns the complete current runtime and hooks without semantic change during extraction."
+    },
+    {
+      "id": "crate.rig-bevy",
+      "name": "rig-bevy",
+      "kind": "proposed crate",
+      "visibility": "public experimental",
+      "source_path": null,
+      "symbol": "proposed Bevy ECS-native runtime crate",
+      "current_owner": "absent; researched in ECS PR #6",
+      "proposed_owner": "rig-bevy",
+      "portability_classification": "Bevy runtime behavior",
+      "rationale": "Isolates Bevy dependencies, ECS topology, schedules, systems, effects, policies, persistence, and handles."
+    },
+    {
+      "id": "crate.rig-derive",
+      "name": "rig-derive",
+      "kind": "proc-macro crate",
+      "visibility": "public through re-export",
+      "source_path": "crates/rig-derive/src/lib.rs",
+      "symbol": "Embed derive and rig_tool attribute",
+      "current_owner": "rig-derive",
+      "proposed_owner": "rig-derive",
+      "portability_classification": "derive macros",
+      "rationale": "Embed remains core-oriented; tool expansion must distinguish portable authoring from classic contextual execution."
+    },
+    {
+      "id": "crate.rig-bedrock",
+      "name": "rig-bedrock",
+      "kind": "companion provider crate",
+      "visibility": "public",
+      "source_path": "crates/rig-bedrock/Cargo.toml",
+      "symbol": "package rig-bedrock",
+      "current_owner": "rig-bedrock",
+      "proposed_owner": "rig-bedrock",
+      "portability_classification": "provider integration",
+      "rationale": "Should depend on core contracts; runtime examples may use facade/runtime dev dependencies."
+    },
+    {
+      "id": "crate.rig-candle",
+      "name": "rig-candle",
+      "kind": "companion model crate",
+      "visibility": "public",
+      "source_path": "crates/rig-candle/Cargo.toml",
+      "symbol": "package rig-candle",
+      "current_owner": "rig-candle",
+      "proposed_owner": "rig-candle",
+      "portability_classification": "provider/model integration",
+      "rationale": "Local model implementation consumes core model contracts and should not pull either runtime."
+    },
+    {
+      "id": "crate.rig-fastembed",
+      "name": "rig-fastembed",
+      "kind": "companion embedding crate",
+      "visibility": "public",
+      "source_path": "crates/rig-fastembed/Cargo.toml",
+      "symbol": "package rig-fastembed",
+      "current_owner": "rig-fastembed",
+      "proposed_owner": "rig-fastembed",
+      "portability_classification": "provider/model integration",
+      "rationale": "Embedding implementation consumes core embedding contracts."
+    },
+    {
+      "id": "crate.rig-gemini-grpc",
+      "name": "rig-gemini-grpc",
+      "kind": "companion provider crate",
+      "visibility": "public",
+      "source_path": "crates/rig-gemini-grpc/Cargo.toml",
+      "symbol": "package rig-gemini-grpc",
+      "current_owner": "rig-gemini-grpc",
+      "proposed_owner": "rig-gemini-grpc",
+      "portability_classification": "provider integration",
+      "rationale": "Provider implementation consumes core requests and canonical responses."
+    },
+    {
+      "id": "crate.rig-helixdb",
+      "name": "rig-helixdb",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-helixdb/Cargo.toml",
+      "symbol": "package rig-helixdb",
+      "current_owner": "rig-helixdb",
+      "proposed_owner": "rig-helixdb",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-lancedb",
+      "name": "rig-lancedb",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-lancedb/Cargo.toml",
+      "symbol": "package rig-lancedb",
+      "current_owner": "rig-lancedb",
+      "proposed_owner": "rig-lancedb",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-memory",
+      "name": "rig-memory",
+      "kind": "companion memory crate",
+      "visibility": "public",
+      "source_path": "crates/rig-memory/Cargo.toml",
+      "symbol": "package rig-memory",
+      "current_owner": "rig-memory",
+      "proposed_owner": "rig-memory",
+      "portability_classification": "memory integration",
+      "rationale": "Consumes core memory/message contracts; runtimes orchestrate load and commit timing."
+    },
+    {
+      "id": "crate.rig-milvus",
+      "name": "rig-milvus",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-milvus/Cargo.toml",
+      "symbol": "package rig-milvus",
+      "current_owner": "rig-milvus",
+      "proposed_owner": "rig-milvus",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-mongodb",
+      "name": "rig-mongodb",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-mongodb/Cargo.toml",
+      "symbol": "package rig-mongodb",
+      "current_owner": "rig-mongodb",
+      "proposed_owner": "rig-mongodb",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-neo4j",
+      "name": "rig-neo4j",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-neo4j/Cargo.toml",
+      "symbol": "package rig-neo4j",
+      "current_owner": "rig-neo4j",
+      "proposed_owner": "rig-neo4j",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-postgres",
+      "name": "rig-postgres",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-postgres/Cargo.toml",
+      "symbol": "package rig-postgres",
+      "current_owner": "rig-postgres",
+      "proposed_owner": "rig-postgres",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-qdrant",
+      "name": "rig-qdrant",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-qdrant/Cargo.toml",
+      "symbol": "package rig-qdrant",
+      "current_owner": "rig-qdrant",
+      "proposed_owner": "rig-qdrant",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-s3vectors",
+      "name": "rig-s3vectors",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-s3vectors/Cargo.toml",
+      "symbol": "package rig-s3vectors",
+      "current_owner": "rig-s3vectors",
+      "proposed_owner": "rig-s3vectors",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-scylladb",
+      "name": "rig-scylladb",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-scylladb/Cargo.toml",
+      "symbol": "package rig-scylladb",
+      "current_owner": "rig-scylladb",
+      "proposed_owner": "rig-scylladb",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-sqlite",
+      "name": "rig-sqlite",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-sqlite/Cargo.toml",
+      "symbol": "package rig-sqlite",
+      "current_owner": "rig-sqlite",
+      "proposed_owner": "rig-sqlite",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-surrealdb",
+      "name": "rig-surrealdb",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-surrealdb/Cargo.toml",
+      "symbol": "package rig-surrealdb",
+      "current_owner": "rig-surrealdb",
+      "proposed_owner": "rig-surrealdb",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-vectorize",
+      "name": "rig-vectorize",
+      "kind": "companion vector-store crate",
+      "visibility": "public",
+      "source_path": "crates/rig-vectorize/Cargo.toml",
+      "symbol": "package rig-vectorize",
+      "current_owner": "rig-vectorize",
+      "proposed_owner": "rig-vectorize",
+      "portability_classification": "vector-store integration",
+      "rationale": "Consumes portable vector-store contracts."
+    },
+    {
+      "id": "crate.rig-vertexai",
+      "name": "rig-vertexai",
+      "kind": "companion provider crate",
+      "visibility": "public",
+      "source_path": "crates/rig-vertexai/Cargo.toml",
+      "symbol": "package rig-vertexai",
+      "current_owner": "rig-vertexai",
+      "proposed_owner": "rig-vertexai",
+      "portability_classification": "provider integration",
+      "rationale": "Provider implementation consumes core requests and canonical responses."
+    },
+    {
+      "id": "module.agent",
+      "name": "rig_core::agent",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/agent/mod.rs",
+      "symbol": "Agent, AgentBuilder, AgentRunner, AgentRun, hooks, prompt requests",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Complete current agent runtime and extension lifecycle."
+    },
+    {
+      "id": "module.audio-generation",
+      "name": "rig_core::audio_generation",
+      "kind": "feature-gated public module",
+      "visibility": "public with audio feature",
+      "source_path": "crates/rig-core/src/audio_generation.rs",
+      "symbol": "AudioGenerationModel, request, response, error",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable contract and canonical value",
+      "rationale": "Independent provider capability."
+    },
+    {
+      "id": "module.client",
+      "name": "rig_core::client",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/client/mod.rs",
+      "symbol": "ProviderClient, CompletionClient, generic Client, Provider, Capabilities",
+      "current_owner": "rig-core",
+      "proposed_owner": "split between rig-core and rig-agent client extension",
+      "portability_classification": "mixed contract and facade convenience",
+      "rationale": "Model/client capability stays core; agent and extractor constructors move."
+    },
+    {
+      "id": "module.completion",
+      "name": "rig_core::completion",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/completion/mod.rs",
+      "symbol": "Message, CompletionModel, request/response/usage, Prompt, Chat, TypedPrompt",
+      "current_owner": "rig-core",
+      "proposed_owner": "split between rig-core contracts and rig-agent facade traits/errors",
+      "portability_classification": "mixed contract, canonical value, and classic behavior",
+      "rationale": "Low-level provider contracts are shared; prompt facade promises runtime orchestration."
+    },
+    {
+      "id": "module.embeddings",
+      "name": "rig_core::embeddings",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/embeddings/mod.rs",
+      "symbol": "EmbeddingModel, EmbeddingsBuilder, Embed, embedding tool helpers",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core with runtime tool conveniences split out",
+      "portability_classification": "mixed portable contract and runtime convenience",
+      "rationale": "Embedding is portable; executable retrieval integration is runtime-specific."
+    },
+    {
+      "id": "module.extractor",
+      "name": "rig_core::extractor",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/extractor.rs",
+      "symbol": "Extractor, ExtractorBuilder, ExtractionResponse, ExtractionError",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Implementation owns an Agent, output-tool recovery, retries, and hooks."
+    },
+    {
+      "id": "module.http-client",
+      "name": "rig_core::http_client",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/http_client/mod.rs",
+      "symbol": "HttpClientExt, Request, Response, SSE, retry, multipart",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "provider integration contract",
+      "rationale": "Providers need transport without either runtime."
+    },
+    {
+      "id": "module.id",
+      "name": "rig_core::id",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/id.rs",
+      "symbol": "provider message/content ID helpers",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "canonical value utility",
+      "rationale": "IDs participate in provider canonical round trips."
+    },
+    {
+      "id": "module.image-generation",
+      "name": "rig_core::image_generation",
+      "kind": "feature-gated public module",
+      "visibility": "public with image feature",
+      "source_path": "crates/rig-core/src/image_generation.rs",
+      "symbol": "ImageGenerationModel, request, response, error",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable contract and canonical value",
+      "rationale": "Independent provider capability."
+    },
+    {
+      "id": "module.integrations",
+      "name": "rig_core::integrations",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/integrations/mod.rs",
+      "symbol": "cli_chatbot and discord_bot agent integrations",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent integrations",
+      "portability_classification": "classic runtime integration",
+      "rationale": "Current integrations import and store the classic Agent."
+    },
+    {
+      "id": "module.loaders",
+      "name": "rig_core::loaders",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/loaders/mod.rs",
+      "symbol": "FileLoader, PDF and EPUB loaders",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core for this migration",
+      "portability_classification": "integration utility",
+      "rationale": "Runtime-neutral and outside the split scope."
+    },
+    {
+      "id": "module.markers",
+      "name": "rig_core::markers",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/markers.rs",
+      "symbol": "Missing, Provided",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "canonical builder utility",
+      "rationale": "Used by low-level provider request builders."
+    },
+    {
+      "id": "module.memory",
+      "name": "rig_core::memory",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/memory.rs",
+      "symbol": "ConversationMemory, MemoryError, DemotionHook, Compactor, InMemoryConversationMemory",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core contracts/backend; runtime orchestration split out",
+      "portability_classification": "mixed backend contract and runtime behavior",
+      "rationale": "Storage operations are portable; load/append timing belongs to runtimes."
+    },
+    {
+      "id": "module.model",
+      "name": "rig_core::model",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/model/mod.rs",
+      "symbol": "model listing values",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable contract and canonical value",
+      "rationale": "Provider capability independent of runtimes."
+    },
+    {
+      "id": "module.one-or-many",
+      "name": "rig_core::one_or_many",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/one_or_many.rs",
+      "symbol": "OneOrMany, EmptyListError",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "canonical value",
+      "rationale": "Non-empty collection used by canonical content."
+    },
+    {
+      "id": "module.prelude",
+      "name": "rig_core::prelude",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/prelude.rs",
+      "symbol": "client, agent, prompt, streaming, embedding, tool, vector re-exports",
+      "current_owner": "rig-core",
+      "proposed_owner": "split core, rig-agent, rig-bevy, and root facade preludes",
+      "portability_classification": "facade convenience",
+      "rationale": "Current prelude mixes contracts and classic runtime and would collide with Bevy ergonomics."
+    },
+    {
+      "id": "module.providers",
+      "name": "rig_core::providers",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/providers/mod.rs",
+      "symbol": "25 public built-in provider modules",
+      "current_owner": "rig-core",
+      "proposed_owner": "provider integration crates after the runtime split",
+      "portability_classification": "provider integration implementation",
+      "rationale": "Not provider-neutral, but movement is an orthogonal follow-up to preserve reviewability."
+    },
+    {
+      "id": "module.rerank",
+      "name": "rig_core::rerank",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/rerank.rs",
+      "symbol": "RerankModel, RerankResult, RerankResponse, RerankError",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable contract and canonical value",
+      "rationale": "Independent provider capability."
+    },
+    {
+      "id": "module.streaming",
+      "name": "rig_core::streaming",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/streaming.rs",
+      "symbol": "RawStreamingChoice, StreamingCompletionResponse, StreamingPrompt, StreamingChat",
+      "current_owner": "rig-core",
+      "proposed_owner": "raw provider primitives in rig-core; runtime facades in rig-agent",
+      "portability_classification": "mixed canonical/provider values and classic facade",
+      "rationale": "Raw streams are shared; high-level traits return classic runtime request types."
+    },
+    {
+      "id": "module.test-utils",
+      "name": "rig_core::test_utils",
+      "kind": "feature-gated public module",
+      "visibility": "public under test or test-utils feature",
+      "source_path": "crates/rig-core/src/test_utils/mod.rs",
+      "symbol": "mock completion/streaming/HTTP/models and model conformance",
+      "current_owner": "rig-core",
+      "proposed_owner": "split core mocks, rig-agent tests, and test-only runtime conformance",
+      "portability_classification": "testing infrastructure",
+      "rationale": "Current helpers mix provider/model and agent-runtime scenarios."
+    },
+    {
+      "id": "module.tool",
+      "name": "rig_core::tool",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/tool/mod.rs",
+      "symbol": "Tool, ToolEmbedding, ToolOutput, ToolResult, ToolContext, ToolSet, DynamicTool, server",
+      "current_owner": "rig-core",
+      "proposed_owner": "portable authoring/canonical values in core; classic execution in rig-agent; ECS execution in rig-bevy",
+      "portability_classification": "mixed contract, value, and runtime infrastructure",
+      "rationale": "Highest-risk internal split; runtime contexts and registries must not constrain both runtimes."
+    },
+    {
+      "id": "module.transcription",
+      "name": "rig_core::transcription",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/transcription.rs",
+      "symbol": "TranscriptionModel, request, response, error",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable contract and canonical value",
+      "rationale": "Independent provider capability."
+    },
+    {
+      "id": "module.vector-store",
+      "name": "rig_core::vector_store",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/vector_store/mod.rs",
+      "symbol": "VectorStoreIndex, VectorStoreIndexDyn, filters, requests, in-memory store, tool integration",
+      "current_owner": "rig-core",
+      "proposed_owner": "portable store contracts in core; automatic runtime tool adapters split out",
+      "portability_classification": "mixed backend contract and runtime convenience",
+      "rationale": "Search is portable; advertising/executing it as a tool belongs to runtimes."
+    },
+    {
+      "id": "module.wasm-compat",
+      "name": "rig_core::wasm_compat",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/wasm_compat.rs",
+      "symbol": "WasmCompatSend, WasmCompatSync, WasmBoxedFuture, timeout",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "target portability contract",
+      "rationale": "Prevents native runtime requirements from leaking into core/provider APIs."
+    },
+    {
+      "id": "module.telemetry",
+      "name": "rig_core::telemetry",
+      "kind": "public module",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/telemetry/mod.rs",
+      "symbol": "CompletionSpanBuilder, CompletionOperation, ProviderResponseExt, SpanCombinator",
+      "current_owner": "rig-core",
+      "proposed_owner": "provider semantic helpers in core; runtime spans split to runtime crates",
+      "portability_classification": "mixed provider helper and classic runtime telemetry",
+      "rationale": "Current builder recognizes the classic agent span target."
+    },
+    {
+      "id": "symbol.completion-client",
+      "name": "CompletionClient",
+      "kind": "public trait",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/client/completion.rs",
+      "symbol": "CompletionClient::{completion_model, agent, extractor}",
+      "current_owner": "rig-core",
+      "proposed_owner": "completion_model in rig-core; agent/extractor in rig-agent::AgentClientExt",
+      "portability_classification": "mixed client contract and facade convenience",
+      "rationale": "Direct current boundary crossing from core client to classic builders."
+    },
+    {
+      "id": "symbol.completion-contracts",
+      "name": "Completion contracts",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/completion/request.rs",
+      "symbol": "CompletionModel, CompletionRequest, CompletionResponse<T>, CompletionError, Usage",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable contract and canonical value",
+      "rationale": "Stable provider/runtime boundary with typed raw response."
+    },
+    {
+      "id": "symbol.message-values",
+      "name": "Canonical messages and content",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/completion/message.rs",
+      "symbol": "Message, UserContent, AssistantContent, ToolCall, ToolResult, media/document content",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "canonical value",
+      "rationale": "Providers and both runtimes exchange these values."
+    },
+    {
+      "id": "symbol.prompt-facades",
+      "name": "Classic invocation facade",
+      "kind": "public trait/error group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/completion/request.rs",
+      "symbol": "Prompt, Chat, TypedPrompt, PromptError, StructuredOutputError",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Promises tool execution, transcript mutation, memory, budgets, cancellation, and structured recovery."
+    },
+    {
+      "id": "symbol.raw-streaming",
+      "name": "Raw streaming contracts",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/streaming.rs",
+      "symbol": "RawStreamingChoice<R>, RawStreamingToolCall, StreamingCompletionResponse<R>, StreamedAssistantContent<R>",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "provider contract and canonical value",
+      "rationale": "Provider implementations and direct consumers need raw/typed final streaming."
+    },
+    {
+      "id": "symbol.agent-runtime",
+      "name": "Classic Agent runtime",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/agent",
+      "symbol": "Agent, AgentBuilder, AgentRunner, AgentRun, AgentRunStep, prompt request/response types",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Owns classic progression and should move intact before refactoring."
+    },
+    {
+      "id": "symbol.hooks",
+      "name": "Classic hook system",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/agent/hook.rs",
+      "symbol": "AgentHook, HookStack, HookContext, lifecycle events/actions, RequestPatch, Scratchpad",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Event-specific steering and composition depend on classic lifecycle."
+    },
+    {
+      "id": "symbol.response-retry",
+      "name": "Model-turn response retry",
+      "kind": "public behavior/symbol group",
+      "visibility": "public hook action with runtime implementation",
+      "source_path": "crates/rig-core/src/agent/hook.rs",
+      "symbol": "RetryRequest, ModelTurnAction, AgentHook::on_model_turn_finished",
+      "current_owner": "rig-core classic runtime",
+      "proposed_owner": "rig-agent with equivalent rig-bevy conformance behavior",
+      "portability_classification": "classic behavior and shared observable specification",
+      "rationale": "Merged PR #2182 behavior is current oracle and absent from the older ECS experiment base."
+    },
+    {
+      "id": "symbol.tool-contracts",
+      "name": "Portable tool authoring and values",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/tool/mod.rs",
+      "symbol": "Tool, ToolEmbedding, ToolDefinition, ToolOutput, IntoToolOutput, ToolExecutionError, ToolErrorKind",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core after internal split",
+      "portability_classification": "portable contract and canonical value",
+      "rationale": "Both runtimes need authoring metadata, typed outputs, and normalized failures."
+    },
+    {
+      "id": "symbol.classic-tool-runtime",
+      "name": "Classic tool execution infrastructure",
+      "kind": "public/private symbol group",
+      "visibility": "mixed public and crate-private",
+      "source_path": "crates/rig-core/src/tool",
+      "symbol": "ToolContext, ToolSet, ToolSetBuilder, ToolServer, ToolServerHandle, ErasedTool, registry snapshots and dispatch",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Registry, context, live server, snapshots, parsing, and execution sequencing are runtime-specific."
+    },
+    {
+      "id": "symbol.vector-contracts",
+      "name": "Vector-store contracts",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/vector_store/mod.rs",
+      "symbol": "VectorStoreIndex, VectorStoreIndexDyn, VectorStoreError, VectorSearchRequest, filters",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable backend contract",
+      "rationale": "Companion stores and both runtimes consume these contracts."
+    },
+    {
+      "id": "symbol.memory-contracts",
+      "name": "Conversation memory contracts",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/memory.rs",
+      "symbol": "ConversationMemory, MemoryError, DemotionHook, Compactor, InMemoryConversationMemory",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "portable backend contract",
+      "rationale": "Backends store canonical messages independently of runtime progression."
+    },
+    {
+      "id": "symbol.extractor-runtime",
+      "name": "Classic extractor",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/extractor.rs",
+      "symbol": "Extractor, ExtractorBuilder, ExtractionResponse, ExtractionError",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "classic runtime behavior",
+      "rationale": "Agent-based retry and output-tool orchestration is not a low-level completion contract."
+    },
+    {
+      "id": "symbol.telemetry-provider",
+      "name": "Provider telemetry helpers",
+      "kind": "public symbol group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/telemetry/mod.rs",
+      "symbol": "CompletionOperation, CompletionSpanBuilder provider fields, ProviderResponseExt, SpanCombinator",
+      "current_owner": "rig-core",
+      "proposed_owner": "provider-only portions in rig-core",
+      "portability_classification": "provider integration contract",
+      "rationale": "Provider GenAI metadata is shared; runtime span ownership must split."
+    },
+    {
+      "id": "symbol.provider-response",
+      "name": "Provider response preservation",
+      "kind": "public error/private helper group",
+      "visibility": "ProviderResponseError public re-export; helpers crate-private",
+      "source_path": "crates/rig-core/src/provider_response.rs",
+      "symbol": "ProviderResponseError and impl_provider_response_helpers",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core",
+      "portability_classification": "provider integration contract",
+      "rationale": "Both runtimes forward preserved provider errors through their own error types."
+    },
+    {
+      "id": "symbol.output-mode",
+      "name": "Structured-output mode and recovery boundary",
+      "kind": "public symbol and provider-capability group",
+      "visibility": "public",
+      "source_path": "crates/rig-core/src/agent/run/output_mode.rs",
+      "symbol": "OutputMode, structured-output recovery, CompletionModel::composes_native_output_with_tools",
+      "current_owner": "rig-core agent runtime plus a method on the core CompletionModel trait",
+      "proposed_owner": "OutputMode/recovery in rig-agent; a narrowly named provider capability in rig-core",
+      "portability_classification": "mixed provider capability and classic runtime behavior",
+      "rationale": "Provider composition support is portable evidence, while selecting modes, synthetic tools, rollback, and recovery are runtime progression."
+    },
+    {
+      "id": "symbol.bevy-topology",
+      "name": "Bevy topology and schedules",
+      "kind": "proposed symbol group",
+      "visibility": "public runtime API",
+      "source_path": null,
+      "symbol": "components, relationships, stable IDs, schedules, systems, progress/quiescence",
+      "current_owner": "absent; ECS PR #6 runtime/topology evidence",
+      "proposed_owner": "rig-bevy",
+      "portability_classification": "Bevy runtime behavior",
+      "rationale": "Must be authoritative ECS state, not a mirror of AgentRun."
+    },
+    {
+      "id": "symbol.bevy-effects",
+      "name": "Bevy owned effect boundary",
+      "kind": "proposed symbol group",
+      "visibility": "public/runtime-private mix",
+      "source_path": null,
+      "symbol": "owned model/tool/store effects, completion ingress, generations, cancellation, stale-result handling",
+      "current_owner": "absent; ECS PR #6 runtime/effects evidence",
+      "proposed_owner": "rig-bevy",
+      "portability_classification": "Bevy runtime behavior",
+      "rationale": "No world borrow enters futures; only systems mutate authoritative state."
+    },
+    {
+      "id": "symbol.bevy-policy",
+      "name": "Bevy policy and capability system",
+      "kind": "proposed symbol group",
+      "visibility": "public runtime extension API",
+      "source_path": null,
+      "symbol": "policy components/systems, capability and grant entities, ordered decisions",
+      "current_owner": "absent; ECS PR #6 runtime/policy evidence",
+      "proposed_owner": "rig-bevy",
+      "portability_classification": "Bevy runtime behavior",
+      "rationale": "ECS-native extension mechanism must not wrap HookStack."
+    },
+    {
+      "id": "symbol.bevy-persistence",
+      "name": "Bevy persistence and debugging",
+      "kind": "proposed symbol group",
+      "visibility": "public runtime API",
+      "source_path": null,
+      "symbol": "explicit domain snapshots, rebinding, retirement, explanation/debug views",
+      "current_owner": "absent; ECS PR #6 snapshot/debug evidence",
+      "proposed_owner": "rig-bevy",
+      "portability_classification": "Bevy runtime behavior",
+      "rationale": "Persist stable canonical records, never raw World or runtime-only implementations."
+    },
+    {
+      "id": "test.core-model-conformance",
+      "name": "Current model conformance helpers",
+      "kind": "test infrastructure",
+      "visibility": "test-utils feature",
+      "source_path": "crates/rig-core/src/test_utils/model_conformance.rs",
+      "symbol": "provider/model and agent scenarios",
+      "current_owner": "rig-core",
+      "proposed_owner": "split core provider fixtures and shared runtime scenario package",
+      "portability_classification": "testing infrastructure",
+      "rationale": "Existing tests supply observable behavior but currently mix test layers."
+    },
+    {
+      "id": "test.classic-runner",
+      "name": "Classic runtime unit/parity tests",
+      "kind": "test suite",
+      "visibility": "private tests",
+      "source_path": "crates/rig-core/src/agent/runner.rs",
+      "symbol": "blocking/streaming, hooks, retries, concurrency, telemetry tests",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-agent",
+      "portability_classification": "testing infrastructure for classic behavior",
+      "rationale": "Behavior oracle for semantic-preserving extraction."
+    },
+    {
+      "id": "test.provider-cassettes",
+      "name": "Provider cassette tests and fixtures",
+      "kind": "test suite and fixtures",
+      "visibility": "workspace tests",
+      "source_path": "tests/providers",
+      "symbol": "low-level provider request/response regression tests",
+      "current_owner": "root tests",
+      "proposed_owner": "core/provider integration test layer",
+      "portability_classification": "provider testing infrastructure",
+      "rationale": "Run once per provider mapping; do not rerecord for runtime movement."
+    },
+    {
+      "id": "test.runtime-conformance",
+      "name": "Shared runtime conformance scenarios",
+      "kind": "proposed test-only package",
+      "visibility": "dev-only",
+      "source_path": null,
+      "symbol": "scripted effects, canonical transcripts/events, private harness adapter",
+      "current_owner": "scattered current classic tests",
+      "proposed_owner": "test-only rig-runtime-conformance",
+      "portability_classification": "testing infrastructure",
+      "rationale": "Constrains observable parity without a production shared state machine."
+    },
+    {
+      "id": "example.runtime-imports",
+      "name": "Workspace agent/examples import surface",
+      "kind": "example group",
+      "visibility": "public examples",
+      "source_path": "examples",
+      "symbol": "70 example files with direct rig/rig_core runtime-bearing references",
+      "current_owner": "workspace examples",
+      "proposed_owner": "explicit classic or Bevy example surfaces",
+      "portability_classification": "facade/testing evidence",
+      "rationale": "Examples define practical migration paths and must select a runtime explicitly."
+    },
+    {
+      "id": "test.runtime-imports",
+      "name": "External tests referencing classic runtime surfaces",
+      "kind": "test reference group",
+      "visibility": "workspace tests",
+      "source_path": "docs/architecture/rig-runtime-split/runtime-import-inventory.md",
+      "symbol": "256 root and rig-derive test files with direct rig/rig_core runtime-bearing references",
+      "current_owner": "provider, integration, core, fixture, and derive tests",
+      "proposed_owner": "split provider mapping, rig-agent, shared conformance, integration, and derive test layers",
+      "portability_classification": "mixed provider and runtime testing infrastructure",
+      "rationale": "Import ownership must be separated without rerecording provider cassettes or moving wire assertions into a runtime crate."
+    },
+    {
+      "id": "constraint.wasm",
+      "name": "WASM-compatible portable bounds",
+      "kind": "target constraint",
+      "visibility": "public contract",
+      "source_path": "crates/rig-core/src/wasm_compat.rs",
+      "symbol": "target-selective Send, Sync, boxed future, stream, timeout",
+      "current_owner": "rig-core",
+      "proposed_owner": "rig-core reused by rig-agent; rig-bevy may add stricter adapter bounds",
+      "portability_classification": "target constraint",
+      "rationale": "ECS/native executor requirements must not weaken portable provider/tool/storage contracts."
+    },
+    {
+      "id": "reference.ecs-pr6",
+      "name": "ECS PR #6 experiment",
+      "kind": "reference change set",
+      "visibility": "external open PR",
+      "source_path": "https://github.com/gold-silver-copper/rig-ecs/pull/6",
+      "symbol": "674-file ECS-native runtime replacement experiment",
+      "current_owner": "external research reference",
+      "proposed_owner": "evidence only",
+      "portability_classification": "mixed experiment",
+      "rationale": "Provides ECS concepts and boundary failure evidence but is not a specification."
+    }
+  ],
+  "edges": [
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "dependencies.rig-core", "anchor": "root dependency declaration"},
+      "graph": "current and target",
+      "migration_implication": "Facade remains an allowed consumer of core."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-core",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "root features forwarding rig-core capabilities", "anchor": "features table; complete map in runtime-import-inventory.md"},
+      "graph": "current and target",
+      "migration_implication": "Runtime-free core and transport features must not select either runtime after the split."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-bedrock",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-bedrock", "anchor": "line 168; feature bedrock"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-candle",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-candle", "anchor": "line 169; feature candle"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-fastembed",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-fastembed", "anchor": "line 170; fastembed feature family"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-gemini-grpc",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-gemini-grpc", "anchor": "line 171; feature gemini-grpc"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-helixdb",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-helixdb", "anchor": "line 172; feature helixdb"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-lancedb",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-lancedb", "anchor": "line 173; feature lancedb"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-memory",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-memory", "anchor": "line 174; feature memory"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-milvus",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-milvus", "anchor": "line 175; feature milvus"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-mongodb",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-mongodb", "anchor": "line 176; feature mongodb"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-neo4j",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-neo4j", "anchor": "line 177; feature neo4j"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-postgres",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-postgres", "anchor": "line 178; feature postgres"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-qdrant",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-qdrant", "anchor": "line 179; feature qdrant"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-s3vectors",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-s3vectors", "anchor": "line 180; feature s3vectors"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-scylladb",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-scylladb", "anchor": "line 181; feature scylladb"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-sqlite",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-sqlite", "anchor": "line 182; feature sqlite"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-surrealdb",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-surrealdb", "anchor": "line 183; feature surrealdb"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-vectorize",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-vectorize", "anchor": "line 184; feature vectorize"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-vertexai",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "Cargo.toml", "symbol": "optional dependency rig-vertexai", "anchor": "line 185; feature vertexai"},
+      "graph": "current and target",
+      "migration_implication": "The facade selects the integration; the integration continues to depend only on core contracts."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "crate.rig-derive",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "crates/rig-core/Cargo.toml", "symbol": "optional dependency rig-derive", "anchor": "line 37; derive feature at line 120"},
+      "graph": "current",
+      "migration_implication": "Portable derives continue to resolve core paths; runtime-specific macro output must move with its owner."
+    },
+    {
+      "source": "crate.rig-bedrock",
+      "target": "crate.rig-derive",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-bedrock/Cargo.toml", "symbol": "dependency rig-derive", "anchor": "line 22"},
+      "graph": "current",
+      "migration_implication": "Macro output used by the provider crate must continue to target only portable contracts."
+    },
+    {
+      "source": "crate.rig-derive",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-derive/Cargo.toml", "symbol": "dev-dependency rig-core", "anchor": "line 26"},
+      "graph": "current",
+      "migration_implication": "This edge is test-only and must not become a production proc-macro dependency."
+    },
+    {
+      "source": "example.runtime-imports",
+      "target": "crate.rig",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "examples/rag_dynamic_tools/Cargo.toml", "symbol": "rig.workspace = true", "anchor": "line 11"},
+      "graph": "current",
+      "migration_implication": "Examples must select an explicit runtime surface when imports are updated."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-core",
+      "relationship_kind": "re-exports",
+      "evidence": {"source_path": "src/lib.rs", "symbol": "pub use rig_core::*", "anchor": "line 30"},
+      "graph": "current",
+      "migration_implication": "Replace indiscriminate glob where runtime namespaces split."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.agent",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod agent", "anchor": "line 152"},
+      "graph": "current",
+      "migration_implication": "Proposed move to rig-agent."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.audio-generation",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod audio_generation", "anchor": "lines 153-155"},
+      "graph": "current",
+      "migration_implication": "Remain core and feature-gated."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.audio-generation",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "cfg(feature = audio)", "anchor": "line 153"},
+      "graph": "current",
+      "migration_implication": "Preserve feature ownership in core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.client",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod client", "anchor": "line 156"},
+      "graph": "current",
+      "migration_implication": "Split runtime construction extension."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.completion",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod completion", "anchor": "line 157"},
+      "graph": "current",
+      "migration_implication": "Split classic facade traits/errors."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.embeddings",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod embeddings", "anchor": "line 158"},
+      "graph": "current",
+      "migration_implication": "Keep contracts; split runtime tool convenience."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.extractor",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod extractor", "anchor": "line 159"},
+      "graph": "current",
+      "migration_implication": "Proposed move to rig-agent."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.http-client",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod http_client", "anchor": "line 160"},
+      "graph": "current",
+      "migration_implication": "Remain core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.id",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod id", "anchor": "line 161"},
+      "graph": "current",
+      "migration_implication": "Remain core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.image-generation",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod image_generation", "anchor": "lines 162-164"},
+      "graph": "current",
+      "migration_implication": "Remain core and feature-gated."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.image-generation",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "cfg(feature = image)", "anchor": "line 162"},
+      "graph": "current",
+      "migration_implication": "Preserve feature ownership in core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.integrations",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod integrations", "anchor": "line 165"},
+      "graph": "current",
+      "migration_implication": "Move current agent integrations to rig-agent."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.loaders",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod loaders", "anchor": "line 167"},
+      "graph": "current",
+      "migration_implication": "Remain core for this migration."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.markers",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod markers", "anchor": "line 168"},
+      "graph": "current",
+      "migration_implication": "Remain core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.memory",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod memory", "anchor": "line 169"},
+      "graph": "current",
+      "migration_implication": "Split orchestration from backend contract."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.model",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod model", "anchor": "line 170"},
+      "graph": "current",
+      "migration_implication": "Remain core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.one-or-many",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod one_or_many", "anchor": "line 171"},
+      "graph": "current",
+      "migration_implication": "Remain core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.prelude",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod prelude", "anchor": "line 172"},
+      "graph": "current",
+      "migration_implication": "Split preludes by owner."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.providers",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod providers", "anchor": "line 174"},
+      "graph": "current",
+      "migration_implication": "Keep temporarily, decompose separately."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.rerank",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod rerank", "anchor": "line 175"},
+      "graph": "current",
+      "migration_implication": "Remain core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.streaming",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod streaming", "anchor": "line 177"},
+      "graph": "current",
+      "migration_implication": "Split runtime facade from raw provider streams."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.test-utils",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod test_utils", "anchor": "lines 178-180"},
+      "graph": "current",
+      "migration_implication": "Split test layers."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.test-utils",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "cfg(any(test, feature = test-utils))", "anchor": "line 178"},
+      "graph": "current",
+      "migration_implication": "Conformance package remains dev-only."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.tool",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod tool", "anchor": "line 181"},
+      "graph": "current",
+      "migration_implication": "Proposed internal split."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.transcription",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod transcription", "anchor": "line 182"},
+      "graph": "current",
+      "migration_implication": "Remain core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.vector-store",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod vector_store", "anchor": "line 183"},
+      "graph": "current",
+      "migration_implication": "Split automatic runtime tool conveniences."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.wasm-compat",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod wasm_compat", "anchor": "line 184"},
+      "graph": "current",
+      "migration_implication": "Remain core and constrain runtime adapters."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "module.telemetry",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "crates/rig-core/src/lib.rs", "symbol": "pub mod telemetry", "anchor": "line 198"},
+      "graph": "current",
+      "migration_implication": "Split provider helpers from runtime spans."
+    },
+    {
+      "source": "symbol.agent-runtime",
+      "target": "symbol.prompt-facades",
+      "relationship_kind": "implements",
+      "evidence": {"source_path": "crates/rig-core/src/agent/completion.rs", "symbol": "Agent implementations of Prompt, Chat, and TypedPrompt", "anchor": "lines 648-795"},
+      "graph": "current",
+      "migration_implication": "Move the facade traits, their Agent implementations, and runtime request types together to rig-agent."
+    },
+    {
+      "source": "module.streaming",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "constructs",
+      "evidence": {"source_path": "crates/rig-core/src/streaming.rs", "symbol": "StreamingPrompt and StreamingChat return StreamingPromptRequest", "anchor": "lines 565-626"},
+      "graph": "current",
+      "migration_implication": "Keep raw provider streaming values core and move the multi-turn facade to rig-agent."
+    },
+    {
+      "source": "module.integrations",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-core/src/integrations/cli_chatbot.rs", "symbol": "AgentImpl imports Agent, MultiTurnStreamItem, and StreamingPrompt", "anchor": "lines 1-20"},
+      "graph": "current",
+      "migration_implication": "Move CLI and Discord agent helpers to the classic runtime or facade integration layer."
+    },
+    {
+      "source": "module.prelude",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "re-exports",
+      "evidence": {"source_path": "crates/rig-core/src/prelude.rs", "symbol": "Agent, prompting, streaming, and ToolSet re-exports", "anchor": "lines 28-49"},
+      "graph": "current",
+      "migration_implication": "Create a portable core prelude and explicit runtime preludes; keep the root facade prelude classic-compatible."
+    },
+    {
+      "source": "module.embeddings",
+      "target": "symbol.classic-tool-runtime",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-core/src/embeddings/tool.rs", "symbol": "ToolSchema consumes ErasedEmbeddingTool and ToolEmbedding", "anchor": "lines 1-6 and 89-108"},
+      "graph": "current",
+      "migration_implication": "Keep portable embedding values core and move dynamic tool erasure/registry coupling to a runtime adapter."
+    },
+    {
+      "source": "symbol.completion-client",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "constructs",
+      "evidence": {"source_path": "crates/rig-core/src/client/completion.rs", "symbol": "CompletionClient::agent -> AgentBuilder", "anchor": "lines 32-52"},
+      "graph": "current",
+      "migration_implication": "Move method to rig-agent extension trait."
+    },
+    {
+      "source": "symbol.completion-client",
+      "target": "symbol.extractor-runtime",
+      "relationship_kind": "constructs",
+      "evidence": {"source_path": "crates/rig-core/src/client/completion.rs", "symbol": "CompletionClient::extractor -> ExtractorBuilder", "anchor": "lines 54-60"},
+      "graph": "current",
+      "migration_implication": "Move method to rig-agent extension trait."
+    },
+    {
+      "source": "module.providers",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "constructs",
+      "evidence": {"source_path": "crates/rig-core/src/providers/openai/completion/mod.rs", "symbol": "GenericCompletionModel<OpenAICompletionsExt, reqwest::Client>::into_agent_builder -> AgentBuilder", "anchor": "lines 1898-1901"},
+      "graph": "current",
+      "migration_implication": "Remove the provider inherent method and provide blanket rig-agent::model::AgentModelExt instead; provider code must remain runtime-free."
+    },
+    {
+      "source": "symbol.agent-runtime",
+      "target": "symbol.completion-contracts",
+      "relationship_kind": "invokes",
+      "evidence": {"source_path": "crates/rig-core/src/agent/prompt_request/streaming.rs", "symbol": "drive_agent prepares and dispatches CompletionModel calls", "anchor": "lines 471-540"},
+      "graph": "current",
+      "migration_implication": "Becomes rig-agent -> rig-core dependency."
+    },
+    {
+      "source": "symbol.output-mode",
+      "target": "symbol.completion-contracts",
+      "relationship_kind": "invokes",
+      "evidence": {"source_path": "crates/rig-core/src/agent/completion.rs", "symbol": "output-mode resolution calls CompletionModel::composes_native_output_with_tools", "anchor": "lines 330-350"},
+      "graph": "current",
+      "migration_implication": "Keep the provider capability boolean core; move mode selection and recovery state to rig-agent."
+    },
+    {
+      "source": "symbol.agent-runtime",
+      "target": "symbol.hooks",
+      "relationship_kind": "runtime-orchestrates",
+      "evidence": {"source_path": "crates/rig-core/src/agent/prompt_request/streaming.rs", "symbol": "drive_agent resolves completion-call hooks", "anchor": "lines 519-527"},
+      "graph": "current",
+      "migration_implication": "Move both to rig-agent."
+    },
+    {
+      "source": "symbol.response-retry",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "runtime-orchestrates",
+      "evidence": {"source_path": "crates/rig-core/src/agent/hook.rs", "symbol": "AgentHook::on_model_turn_finished", "anchor": "lines 940-949"},
+      "graph": "current",
+      "migration_implication": "Preserve classic implementation; specify equivalent Bevy behavior through conformance."
+    },
+    {
+      "source": "symbol.classic-tool-runtime",
+      "target": "symbol.tool-contracts",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-core/src/tool/mod.rs", "symbol": "ErasedTool/ToolSet dispatch typed Tool and ToolOutput", "anchor": "lines 217-511"},
+      "graph": "current",
+      "migration_implication": "Invert as rig-agent -> rig-core."
+    },
+    {
+      "source": "symbol.agent-runtime",
+      "target": "symbol.classic-tool-runtime",
+      "relationship_kind": "runtime-orchestrates",
+      "evidence": {"source_path": "crates/rig-core/src/agent/prompt_request/streaming.rs", "symbol": "TurnSource::run_tool_calls and ToolRegistrySnapshot", "anchor": "lines 427-436"},
+      "graph": "current",
+      "migration_implication": "Move execution infrastructure with classic runtime."
+    },
+    {
+      "source": "symbol.agent-runtime",
+      "target": "symbol.vector-contracts",
+      "relationship_kind": "runtime-orchestrates",
+      "evidence": {"source_path": "crates/rig-core/src/agent/builder.rs", "symbol": "retrieved_tools combines VectorStoreIndexDyn with ToolSet", "anchor": "lines 526-550"},
+      "graph": "current",
+      "migration_implication": "Runtime adapters own retrieval-tool registration while the vector index contract remains core."
+    },
+    {
+      "source": "module.vector-store",
+      "target": "symbol.tool-contracts",
+      "relationship_kind": "implements",
+      "evidence": {"source_path": "crates/rig-core/src/vector_store/mod.rs", "symbol": "automatic vector-store Tool integration", "anchor": "VectorStoreOutput and Tool implementations"},
+      "graph": "current",
+      "migration_implication": "Keep index contract core; move registration/execution convenience to runtime adapters."
+    },
+    {
+      "source": "symbol.agent-runtime",
+      "target": "symbol.memory-contracts",
+      "relationship_kind": "runtime-orchestrates",
+      "evidence": {"source_path": "crates/rig-core/src/agent/prompt_request/streaming.rs", "symbol": "drive_agent memory_handle load/append lifecycle", "anchor": "lines 478-485 and completion path"},
+      "graph": "current",
+      "migration_implication": "Each runtime implements shared memory conformance."
+    },
+    {
+      "source": "symbol.extractor-runtime",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-core/src/extractor.rs", "symbol": "Extractor.agent and AgentBuilder", "anchor": "lines 37-79 and 247-335"},
+      "graph": "current",
+      "migration_implication": "Move extractor to rig-agent."
+    },
+    {
+      "source": "module.telemetry",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-core/src/telemetry/mod.rs", "symbol": "CompletionSpanBuilder recognizes rig::agent_chat", "anchor": "lines 66-113"},
+      "graph": "current",
+      "migration_implication": "Remove agent span awareness from core; move runtime telemetry."
+    },
+    {
+      "source": "module.providers",
+      "target": "symbol.completion-contracts",
+      "relationship_kind": "provider-maps",
+      "evidence": {"source_path": "crates/rig-core/src/providers", "symbol": "provider CompletionModel implementations map CompletionRequest/Response", "anchor": "provider modules"},
+      "graph": "current",
+      "migration_implication": "Provider mappings must remain runtime-neutral and eventually move to integration crates."
+    },
+    {
+      "source": "test.core-model-conformance",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "test-covers",
+      "evidence": {"source_path": "crates/rig-core/src/test_utils/model_conformance.rs", "symbol": "streaming, invalid recovery, cancellation and max-turn scenarios", "anchor": "lines 2150-2297"},
+      "graph": "current",
+      "migration_implication": "Split runtime scenarios into shared test-only conformance."
+    },
+    {
+      "source": "test.classic-runner",
+      "target": "symbol.response-retry",
+      "relationship_kind": "test-covers",
+      "evidence": {"source_path": "crates/rig-core/src/agent/runner.rs", "symbol": "response retry parity/telemetry tests", "anchor": "lines 3472-3689"},
+      "graph": "current",
+      "migration_implication": "Move unchanged to rig-agent and use as behavior oracle."
+    },
+    {
+      "source": "test.classic-runner",
+      "target": "symbol.classic-tool-runtime",
+      "relationship_kind": "test-covers",
+      "evidence": {"source_path": "crates/rig-core/src/agent/runner.rs", "symbol": "parallel tool history/concurrency/termination tests", "anchor": "lines 4096-5084"},
+      "graph": "current",
+      "migration_implication": "Retain as classic-specific tests plus shared observable scenarios."
+    },
+    {
+      "source": "example.runtime-imports",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/runtime-import-inventory.md", "symbol": "70 complete example paths", "anchor": "Complete example paths"},
+      "graph": "current",
+      "migration_implication": "Assign each example an explicit classic, Bevy, or portable import path during migration."
+    },
+    {
+      "source": "test.runtime-imports",
+      "target": "symbol.agent-runtime",
+      "relationship_kind": "test-covers",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/runtime-import-inventory.md", "symbol": "256 complete test import sites", "anchor": "Complete test import groups"},
+      "graph": "current",
+      "migration_implication": "Split provider/core, classic-runtime, facade, and derive tests by the contract under test."
+    },
+    {
+      "source": "test.provider-cassettes",
+      "target": "module.providers",
+      "relationship_kind": "test-covers",
+      "evidence": {"source_path": "tests/README.md", "symbol": "provider cassette replay suites", "anchor": "provider test instructions"},
+      "graph": "current",
+      "migration_implication": "Run once at provider mapping layer; fixtures unchanged for runtime work."
+    },
+    {
+      "source": "crate.rig-derive",
+      "target": "symbol.tool-contracts",
+      "relationship_kind": "implements",
+      "evidence": {"source_path": "crates/rig-derive/src/lib.rs", "symbol": "generated impl rig_core::tool::Tool", "anchor": "lines 691-735"},
+      "graph": "current",
+      "migration_implication": "Update generated paths after tool boundary decision."
+    },
+    {
+      "source": "crate.rig-derive",
+      "target": "symbol.classic-tool-runtime",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-derive/src/lib.rs", "symbol": "generated ToolContext argument", "anchor": "lines 691-701"},
+      "graph": "current",
+      "migration_implication": "Provide explicit classic contextual expansion or migrate to portable contract."
+    },
+    {
+      "source": "module.wasm-compat",
+      "target": "symbol.completion-contracts",
+      "relationship_kind": "target-gates",
+      "evidence": {"source_path": "crates/rig-core/src/completion/request.rs", "symbol": "CompletionModel and error target bounds", "anchor": "lines 100-108 and 576"},
+      "graph": "current",
+      "migration_implication": "Preserve in core."
+    },
+    {
+      "source": "module.wasm-compat",
+      "target": "symbol.tool-contracts",
+      "relationship_kind": "target-gates",
+      "evidence": {"source_path": "crates/rig-core/src/tool/mod.rs", "symbol": "Tool/Args/Error/WasmBoxedFuture bounds", "anchor": "lines 133-180 and erased dispatch"},
+      "graph": "current",
+      "migration_implication": "Do not replace globally with Bevy-native Send/Sync."
+    },
+    {
+      "source": "reference.ecs-pr6",
+      "target": "symbol.bevy-topology",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "https://github.com/gold-silver-copper/rig-ecs/blob/8f1d72dd50bfb723f088c91eeef4202451a08f09/crates/rig-core/src/runtime/topology.rs", "symbol": "ECS entities and relationships", "anchor": "head 8f1d72dd50bfb723f088c91eeef4202451a08f09"},
+      "graph": "reference",
+      "migration_implication": "Port invariants into rig-bevy, not core."
+    },
+    {
+      "source": "reference.ecs-pr6",
+      "target": "symbol.bevy-effects",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "https://github.com/gold-silver-copper/rig-ecs/blob/8f1d72dd50bfb723f088c91eeef4202451a08f09/crates/rig-core/src/runtime/effects.rs", "symbol": "EcsEffect, requests, completions, deltas", "anchor": "head 8f1d72dd50bfb723f088c91eeef4202451a08f09"},
+      "graph": "reference",
+      "migration_implication": "Port owned-effect/correlation invariants in vertical slices."
+    },
+    {
+      "source": "reference.ecs-pr6",
+      "target": "symbol.bevy-policy",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "https://github.com/gold-silver-copper/rig-ecs/blob/8f1d72dd50bfb723f088c91eeef4202451a08f09/crates/rig-core/src/runtime/policy.rs", "symbol": "policy components, capabilities and decisions", "anchor": "head 8f1d72dd50bfb723f088c91eeef4202451a08f09"},
+      "graph": "reference",
+      "migration_implication": "Do not adapt HookStack; use ECS-native policy."
+    },
+    {
+      "source": "reference.ecs-pr6",
+      "target": "symbol.bevy-persistence",
+      "relationship_kind": "defines",
+      "evidence": {"source_path": "https://github.com/gold-silver-copper/rig-ecs/blob/8f1d72dd50bfb723f088c91eeef4202451a08f09/crates/rig-core/src/runtime/snapshot.rs", "symbol": "explicit snapshots and restoration records; runtime/debug.rs provides explanations", "anchor": "head 8f1d72dd50bfb723f088c91eeef4202451a08f09"},
+      "graph": "reference",
+      "migration_implication": "Redesign public schemas while retaining explicit-record invariant."
+    },
+    {
+      "source": "reference.ecs-pr6",
+      "target": "constraint.wasm",
+      "relationship_kind": "prohibited-dependency",
+      "evidence": {"source_path": "https://github.com/gold-silver-copper/rig-ecs/compare/6f3df71c6c14698e38bd0706d9b142ec3d0d9187...8f1d72dd50bfb723f088c91eeef4202451a08f09", "symbol": "deleted crates/rig-core/src/wasm_compat.rs and raw Send/Sync propagation", "anchor": "exact base-to-head comparison"},
+      "graph": "reference",
+      "migration_implication": "Reject constraint leakage; localize stricter bounds to rig-bevy adapters."
+    },
+    {
+      "source": "crate.rig-bedrock",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-bedrock/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 19"},
+      "graph": "current and target",
+      "migration_implication": "No runtime dependency required for provider implementation."
+    },
+    {
+      "source": "crate.rig-candle",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-candle/Cargo.toml", "symbol": "rig-core dependencies", "anchor": "lines 25-34"},
+      "graph": "current and target",
+      "migration_implication": "No runtime dependency required for model implementation."
+    },
+    {
+      "source": "crate.rig-fastembed",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-fastembed/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 14"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow embedding contract dependency."
+    },
+    {
+      "source": "crate.rig-gemini-grpc",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-gemini-grpc/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 14"},
+      "graph": "current and target",
+      "migration_implication": "No runtime dependency required for provider implementation."
+    },
+    {
+      "source": "crate.rig-helixdb",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-helixdb/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 18"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-lancedb",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-lancedb/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 15"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-memory",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-memory/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 14"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow memory/message contract dependency."
+    },
+    {
+      "source": "crate.rig-milvus",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-milvus/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 13"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-mongodb",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-mongodb/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 16"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-neo4j",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-neo4j/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 18"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-postgres",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-postgres/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 14"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-qdrant",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-qdrant/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 14"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-s3vectors",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-s3vectors/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 21"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-scylladb",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-scylladb/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 14"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-sqlite",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-sqlite/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 15"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-surrealdb",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-surrealdb/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 13"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-vectorize",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-vectorize/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 14"},
+      "graph": "current and target",
+      "migration_implication": "Keep narrow vector contract dependency."
+    },
+    {
+      "source": "crate.rig-vertexai",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "crates/rig-vertexai/Cargo.toml", "symbol": "rig-core dependency", "anchor": "line 16"},
+      "graph": "current and target",
+      "migration_implication": "No runtime dependency required for provider implementation."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-agent",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "selected architecture", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "Classic runtime remains default facade surface."
+    },
+    {
+      "source": "crate.rig",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "feature-gates",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "rig::bevy namespace", "anchor": "Public-surface consequences"},
+      "graph": "target",
+      "migration_implication": "Bevy is opt-in and namespaced."
+    },
+    {
+      "source": "crate.rig-agent",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "dependency rule 2", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "Classic runtime consumes canonical contracts."
+    },
+    {
+      "source": "crate.rig-bevy",
+      "target": "crate.rig-core",
+      "relationship_kind": "depends-on",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "dependency rule 2", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "ECS runtime consumes canonical contracts."
+    },
+    {
+      "source": "module.agent",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-move",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "agent module ownership row", "anchor": "Complete public rig-core module ownership"},
+      "graph": "target",
+      "migration_implication": "Move without semantic changes in migration PR 4."
+    },
+    {
+      "source": "module.extractor",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-move",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "extractor module ownership row", "anchor": "Complete public rig-core module ownership"},
+      "graph": "target",
+      "migration_implication": "Classic extractor moves after dependency inversion."
+    },
+    {
+      "source": "module.client",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-split",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "AgentClientExt", "anchor": "Proposed public namespaces"},
+      "graph": "target",
+      "migration_implication": "Only agent/extractor constructor extension moves."
+    },
+    {
+      "source": "module.completion",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-split",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "Prompt/Chat/TypedPrompt and runtime errors", "anchor": "Symbol and responsibility ownership matrix"},
+      "graph": "target",
+      "migration_implication": "Keep model/request/response contracts in core."
+    },
+    {
+      "source": "symbol.output-mode",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-split",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "OutputMode, structured-output recovery, and provider capability boundary", "anchor": "Symbol and responsibility ownership matrix"},
+      "graph": "target",
+      "migration_implication": "Move mode state and recovery to rig-agent while the provider capability method remains rig-core."
+    },
+    {
+      "source": "module.streaming",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-split",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "runtime streaming facade", "anchor": "Symbol and responsibility ownership matrix"},
+      "graph": "target",
+      "migration_implication": "Keep raw provider streaming values in core."
+    },
+    {
+      "source": "module.tool",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-split",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "ToolContext/ToolSet/ToolServer ownership", "anchor": "Symbol and responsibility ownership matrix"},
+      "graph": "target",
+      "migration_implication": "Classic tool infrastructure moves; portable authoring remains core."
+    },
+    {
+      "source": "module.memory",
+      "target": "crate.rig-agent",
+      "relationship_kind": "proposed-split",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "memory load/append orchestration", "anchor": "Symbol and responsibility ownership matrix"},
+      "graph": "target",
+      "migration_implication": "Contract remains core; orchestration belongs to each runtime."
+    },
+    {
+      "source": "symbol.bevy-topology",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "proposed-move",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ecs-reference-analysis.md", "symbol": "concepts to port", "anchor": "Concepts to port, redesign, reject, or defer"},
+      "graph": "target",
+      "migration_implication": "Implement in ECS vertical slices."
+    },
+    {
+      "source": "symbol.bevy-effects",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "proposed-move",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ecs-reference-analysis.md", "symbol": "owned effect invariant", "anchor": "Persistence and effect boundaries"},
+      "graph": "target",
+      "migration_implication": "No ECS borrow enters futures; generation checked on ingress."
+    },
+    {
+      "source": "symbol.bevy-policy",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "proposed-move",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "dependency rule 6", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "ECS policy is independent of classic hooks."
+    },
+    {
+      "source": "symbol.bevy-persistence",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "proposed-move",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "migration PR 9d", "anchor": "PR 9d"},
+      "graph": "target",
+      "migration_implication": "Persist explicit stable records and rebind implementations."
+    },
+    {
+      "source": "symbol.agent-runtime",
+      "target": "symbol.message-values",
+      "relationship_kind": "owns-state-for",
+      "evidence": {"source_path": "crates/rig-core/src/agent/run/mod.rs", "symbol": "AgentRun", "anchor": "pub struct AgentRun"},
+      "graph": "current",
+      "migration_implication": "Move classic history and turn state with the classic runtime instead of leaving runtime ownership in core."
+    },
+    {
+      "source": "symbol.bevy-persistence",
+      "target": "symbol.bevy-topology",
+      "relationship_kind": "serializes",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ecs-reference-analysis.md", "symbol": "stable domain snapshots", "anchor": "Persistence and effect boundaries"},
+      "graph": "target",
+      "migration_implication": "Serialize explicit versioned domain records, never Bevy World internals or implementation handles."
+    },
+    {
+      "source": "test.runtime-conformance",
+      "target": "crate.rig-agent",
+      "relationship_kind": "test-covers",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "shared behavioral conformance", "anchor": "Shared behavioral conformance"},
+      "graph": "target",
+      "migration_implication": "Classic runtime implements private dev harness."
+    },
+    {
+      "source": "test.runtime-conformance",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "test-covers",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "shared behavioral conformance", "anchor": "Shared behavioral conformance"},
+      "graph": "target",
+      "migration_implication": "Bevy runtime implements private dev harness without shared production engine."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "crate.rig-agent",
+      "relationship_kind": "prohibited-dependency",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "dependency rule 1", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "Compatibility cannot be implemented in core."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "prohibited-dependency",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "dependency rule 1", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "Core remains runtime-neutral."
+    },
+    {
+      "source": "crate.rig-core",
+      "target": "symbol.bevy-topology",
+      "relationship_kind": "prohibited-dependency",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "no bevy_ecs in core", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "No Bevy types, derives, entities, or schedules in core public APIs."
+    },
+    {
+      "source": "crate.rig-agent",
+      "target": "crate.rig-bevy",
+      "relationship_kind": "prohibited-dependency",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "dependency rule 2", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "No ECS adapter around HookStack or AgentRun."
+    },
+    {
+      "source": "crate.rig-bevy",
+      "target": "crate.rig-agent",
+      "relationship_kind": "prohibited-dependency",
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/architecture-decision.md", "symbol": "dependency rule 2", "anchor": "Decision"},
+      "graph": "target",
+      "migration_implication": "Bevy owns independent progression and policy."
+    }
+  ]
+}
