@@ -496,9 +496,10 @@ impl AgentRun {
     ///
     /// [`RetryRequest::Repeat`] discards the rejected assistant response and
     /// repeats the same prompt. [`RetryRequest::Feedback`] records the rejected
-    /// response followed by corrective user feedback. Both modes preserve
-    /// completion-call and usage accounting, and the next call consumes the
-    /// existing total model-call budget.
+    /// response followed by corrective user feedback. Canonical empty assistant
+    /// turns are omitted from history, matching normal turn advancement. Both
+    /// modes preserve completion-call and usage accounting, and the next call
+    /// consumes the existing total model-call budget.
     ///
     /// Tool-bearing turns cannot be retried through this operation because
     /// preserving them without matching tool results would create invalid
@@ -530,10 +531,12 @@ impl AgentRun {
                         "model-turn retry lost the rejected assistant content",
                     ));
                 };
-                self.new_messages.push(Message::Assistant {
-                    id: turn.message_id,
-                    content,
-                });
+                if !is_empty_assistant_turn(&content) {
+                    self.new_messages.push(Message::Assistant {
+                        id: turn.message_id,
+                        content,
+                    });
+                }
                 self.new_messages.push(Message::user(feedback));
             }
         }

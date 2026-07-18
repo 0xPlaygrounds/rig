@@ -9094,6 +9094,52 @@ mod migrated_tests {
     }
 
     #[tokio::test]
+    async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
+        let first_usage = retry_usage(5, 1);
+        let second_usage = retry_usage(7, 2);
+        let model = MockCompletionModel::from_turns([
+            MockTurn::text("").with_usage(first_usage),
+            MockTurn::text("accepted").with_usage(second_usage),
+        ]);
+        let response = AgentBuilder::new(model.clone())
+            .add_hook(BoundedResponseRetry::new(
+                "",
+                1,
+                TestRetryMode::Feedback("provide an answer"),
+            ))
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("feedback retry should recover from an empty turn");
+
+        assert_eq!(response.output, "accepted");
+        assert_eq!(response.usage, first_usage + second_usage);
+        assert_eq!(response.completion_calls.len(), 2);
+        assert_eq!(
+            response.messages.expect("response messages"),
+            vec![
+                Message::user("question"),
+                Message::user("provide an answer"),
+                Message::assistant("accepted"),
+            ]
+        );
+        assert_eq!(
+            model.requests()[1]
+                .chat_history
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![
+                Message::user("question"),
+                Message::user("provide an answer"),
+            ],
+            "the retry request must not contain an empty assistant message"
+        );
+    }
+
+    #[tokio::test]
     async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounting() {
         let first_usage = retry_usage(10, 3);
         let second_usage = retry_usage(7, 2);
@@ -9210,6 +9256,77 @@ mod migrated_tests {
         assert_eq!(
             serde_json::to_value(streaming.messages).expect("streaming history"),
             serde_json::to_value(blocking.messages).expect("blocking history")
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
+        let first_usage = retry_usage(5, 1);
+        let second_usage = retry_usage(7, 2);
+        let model = MockCompletionModel::from_stream_turns([
+            [
+                MockStreamEvent::text(""),
+                MockStreamEvent::final_response(first_usage),
+            ],
+            [
+                MockStreamEvent::text("accepted"),
+                MockStreamEvent::final_response(second_usage),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model.clone())
+            .add_hook(BoundedResponseRetry::new(
+                "",
+                1,
+                TestRetryMode::Feedback("provide an answer"),
+            ))
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .stream()
+            .await;
+
+        let mut retries = Vec::new();
+        let mut provider_finals = 0;
+        let mut completion_calls = 0;
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item") {
+                MultiTurnStreamItem::ModelTurnRetried { turn } => retries.push(turn),
+                MultiTurnStreamItem::CompletionCall(_) => completion_calls += 1,
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_)) => {
+                    provider_finals += 1;
+                }
+                MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
+                _ => {}
+            }
+        }
+
+        assert_eq!(retries, vec![1]);
+        assert_eq!(provider_finals, 1, "the rejected final is suppressed");
+        assert_eq!(completion_calls, 2);
+        let response = final_response.expect("run final response");
+        assert_eq!(response.output, "accepted");
+        assert_eq!(response.usage, first_usage + second_usage);
+        assert_eq!(response.completion_calls.len(), 2);
+        assert_eq!(
+            response.messages.expect("response messages"),
+            vec![
+                Message::user("question"),
+                Message::user("provide an answer"),
+                Message::assistant("accepted"),
+            ]
+        );
+        assert_eq!(
+            model.requests()[1]
+                .chat_history
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![
+                Message::user("question"),
+                Message::user("provide an answer"),
+            ],
+            "the retry request must not contain an empty assistant message"
         );
     }
 
