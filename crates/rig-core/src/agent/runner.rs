@@ -8957,6 +8957,32 @@ mod migrated_tests {
         mode: TestRetryMode,
     }
 
+    #[derive(Clone, Default)]
+    struct StatefulCompletionPatch {
+        calls: Arc<AtomicU32>,
+    }
+
+    impl StatefulCompletionPatch {
+        fn calls(&self) -> u32 {
+            self.calls.load(SeqCst)
+        }
+    }
+
+    impl AgentHook for StatefulCompletionPatch {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            let call = self.calls.fetch_add(1, SeqCst);
+            CompletionCallAction::patch(RequestPatch::new().temperature(if call == 0 {
+                0.1
+            } else {
+                0.9
+            }))
+        }
+    }
+
     impl BoundedResponseRetry {
         fn new(rejected_text: &'static str, max_retries: usize, mode: TestRetryMode) -> Self {
             Self {
@@ -9012,14 +9038,16 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn blocking_model_turn_repeat_preserves_accounting_and_reuses_request() {
+    async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparation() {
         let first_usage = retry_usage(10, 3);
         let second_usage = retry_usage(7, 2);
+        let completion_patch = StatefulCompletionPatch::default();
         let model = MockCompletionModel::from_turns([
             MockTurn::text("rejected").with_usage(first_usage),
             MockTurn::text("accepted").with_usage(second_usage),
         ]);
         let response = AgentBuilder::new(model.clone())
+            .add_hook(completion_patch.clone())
             .add_hook(BoundedResponseRetry::new(
                 "rejected",
                 1,
@@ -9046,7 +9074,13 @@ mod migrated_tests {
         let first = requests[0].chat_history.iter().cloned().collect::<Vec<_>>();
         let second = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
         assert_eq!(first, vec![Message::user("question")]);
-        assert_eq!(second, first, "Repeat must resend the same request");
+        assert_eq!(
+            second, first,
+            "Repeat must preserve the prompt and preceding history"
+        );
+        assert_eq!(requests[0].temperature, Some(0.1));
+        assert_eq!(requests[1].temperature, Some(0.9));
+        assert_eq!(completion_patch.calls(), 2);
     }
 
     #[tokio::test]

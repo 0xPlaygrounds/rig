@@ -56,10 +56,11 @@
 //!
 //! # Retrying a completed model turn
 //!
-//! A hook can reject a tool-free turn and either repeat the same request or
-//! preserve the rejected response and append corrective feedback. Retries use
-//! the run's existing total model-call budget. A narrower policy limit belongs
-//! to the hook and can be stored in the run-scoped [`Scratchpad`]:
+//! A hook can reject a tool-free turn and either reuse the same prompt and
+//! preceding history with fresh request preparation, or preserve the rejected
+//! response and append corrective feedback. Retries use the run's existing
+//! total model-call budget. A narrower policy limit belongs to the hook and can
+//! be stored in the run-scoped [`Scratchpad`]:
 //!
 //! ```
 //! use std::{collections::HashMap, sync::atomic::{AtomicUsize, Ordering}};
@@ -424,7 +425,11 @@ pub struct ModelTurnFinished<'a> {
 /// How an accepted, tool-free model turn should be retried.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RetryRequest {
-    /// Discard the rejected response and issue the same request again.
+    /// Discard the rejected response and reuse the same prompt and preceding
+    /// history with fresh request preparation.
+    ///
+    /// Completion-call hooks, retrieval, and dynamic tool resolution run again,
+    /// so the resulting provider request may differ from the rejected attempt.
     Repeat,
     /// Preserve the rejected assistant response and append corrective feedback.
     Feedback(String),
@@ -453,7 +458,8 @@ impl ModelTurnAction {
         Self::Continue
     }
 
-    /// Discards the response and repeats the same request.
+    /// Discards the response and reuses the same prompt and preceding history
+    /// with fresh request preparation.
     pub fn repeat() -> Self {
         Self::Retry(RetryRequest::Repeat)
     }

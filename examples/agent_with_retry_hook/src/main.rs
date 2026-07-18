@@ -6,8 +6,9 @@
 //!
 //! [`RetryMode::Feedback`] preserves the rejected assistant response and adds a
 //! corrective user message. [`RetryMode::Repeat`] discards the response and
-//! repeats the same request. Tool-bearing turns must instead be handled by
-//! tool-call hooks.
+//! reuses the same prompt and preceding history with fresh request preparation.
+//! Completion-call hooks, retrieval, and dynamic tool resolution therefore run
+//! again. Tool-bearing turns must instead be handled by tool-call hooks.
 //!
 //! Requires `OPENAI_API_KEY`. Run with:
 //! `cargo run -p agent_with_retry_hook`.
@@ -121,9 +122,10 @@ async fn main() -> Result<()> {
     println!("Final response: {}", response.output);
     println!("Model calls: {}", response.completion_calls.len());
 
-    // Repeat is a distinct policy: it discards the rejected response and sends
-    // the same request again. It is configured here but not run because this
-    // deterministic protocol deliberately returns the same marker each time.
+    // Repeat is a distinct policy: it discards the rejected response and reuses
+    // the prompt and preceding history, while freshly preparing the next
+    // request. It is configured here but not run because this deterministic
+    // protocol deliberately returns the same marker each time.
     let _repeat_agent = client
         .agent(openai::GPT_4O_MINI)
         .default_max_turns(2)
