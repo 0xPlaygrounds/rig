@@ -1,0 +1,32 @@
+[package]
+name = "rig-bevy"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.89"
+license = "MIT"
+readme = "README.md"
+description = "Experimental native Bevy ECS runtime for Rig"
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_ecs = { workspace = true, default-features = false, features = ["std", "async_executor", "bevy_reflect", "serialize"] }
+futures = { workspace = true }
+http = { workspace = true }
+jsonschema = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["serde", "v4"] }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["test-utils"] }
+rig-runtime-conformance = { path = "../rig-runtime-conformance" }

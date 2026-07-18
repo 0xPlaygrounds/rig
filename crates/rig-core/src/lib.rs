@@ -23,27 +23,27 @@
 //! - Integrate LLMs in your app with minimal boilerplate
 //!
 //! # Simple example
-//! ```ignore
+//! ```no_run
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
-//!     completion::Prompt,
+//!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create OpenAI client and agent.
+//!     // Create an OpenAI client and completion model.
 //!     // This requires the `OPENAI_API_KEY` environment variable to be set.
 //!     let openai_client = openai::Client::from_env()?;
+//!     let model = openai_client.completion_model(openai::GPT_5_2);
 //!
-//!     let agent = openai_client.agent(openai::GPT_5_2).build();
-//!
-//!     // Prompt the model and print its response
-//!     let response = agent
-//!         .prompt("Who are you?")
-//!         .await?;
-//!
-//!     println!("{response}");
+//!     let request = model.completion_request("Who are you?").build();
+//!     let response = model.completion(request).await?;
+//!     for item in response.choice {
+//!         if let AssistantContent::Text(text) = item {
+//!             println!("{}", text.text);
+//!         }
+//!     }
 //!
 //!     Ok(())
 //! }
@@ -59,32 +59,27 @@
 //! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
 //! low-level interface for creating completion and embedding requests and executing them.
 //!
-//! ## Agents
-//! Rig also provides high-level abstractions over LLMs in the form of the [Agent](crate::agent::Agent) type.
-//!
-//! The [Agent](crate::agent::Agent) type can be used to create anything from simple agents that use vanilla models to full blown
-//! RAG systems that can be used to answer questions using a knowledge base.
+//! ## Agent runtimes
+//! This crate owns the provider-agnostic model, message, tool, and storage
+//! contracts. The sibling `rig-agent` crate provides the classic builder and
+//! run-loop API, while `rig-bevy` provides the native ECS runtime.
 //!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
 //! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
 //! trait, which can be implemented to define vector stores and indices respectively.
-//! There are two complementary ways to use an index with an [Agent](crate::agent::Agent):
-//! - For passive RAG, implement an [`AgentHook`](crate::agent::AgentHook) that queries the index
-//!   in `on_completion_call` and returns a
-//!   [`RequestPatch::extra_context`](crate::agent::RequestPatch::extra_context). This keeps
-//!   query selection, document formatting, and retrieval failure policy in application code.
-//! - For active RAG, expose the index through its blanket [`Tool`](crate::tool::Tool)
-//!   implementation, or through a custom tool, so the model decides when and how to retrieve.
+//! Indexes can be queried directly by applications or runtimes. For active RAG,
+//! expose the index through its blanket [`Tool`](crate::tool::Tool)
+//! implementation, or through a custom tool, so the model decides when and how
+//! to retrieve. The classic `rig-agent` runtime can also query indexes from
+//! hooks and append the resulting documents to a turn's extra context.
 //!
 //! Indexes can also serve custom architectures that use multiple LLMs or agents.
 //!
 //! ## Conversation memory
-//! Rig can transparently load and persist per-conversation history through the
-//! [ConversationMemory](crate::memory::ConversationMemory) trait. Attach a backend
-//! with [`AgentBuilder::memory`](crate::agent::AgentBuilder::memory) and identify the
-//! conversation per-request via
-//! [`PromptRequest::conversation`](crate::agent::prompt_request::PromptRequest::conversation).
+//! Runtimes can load and persist per-conversation history through the
+//! [ConversationMemory](crate::memory::ConversationMemory) trait. Both
+//! `rig-agent` and `rig-bevy` integrate this portable backend contract.
 //! The default in-process backend
 //! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
 //! for tests and single-process agents; reusable history-shaping policies (sliding

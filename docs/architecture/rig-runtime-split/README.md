@@ -31,6 +31,8 @@ independent runtimes, shared conformance) from the architecture evaluation.
 - [`implementation-decisions.md`](implementation-decisions.md): refreshed
   implementation baseline, resolved early design choices, and phase-gate
   evidence for the implementation pull request.
+- [`migration-guide.md`](migration-guide.md): final dependency, owner, tool,
+  runtime-construction, provider-final, and persistence migration guidance.
 - [`knowledge-graph.json`](knowledge-graph.json): machine-readable nodes,
   ownership, current/target edges, and source evidence.
 - [`architecture-decision.md`](architecture-decision.md): selected decision,
@@ -48,7 +50,7 @@ independent runtimes, shared conformance) from the architecture evaluation.
 
 | Item | Exact value | Evidence |
 | --- | --- | --- |
-| Repository | `0xPlaygrounds/rig` | root [`Cargo.toml`](../../../Cargo.toml#L1) and `origin` |
+| Repository | `0xPlaygrounds/rig` | root [`Cargo.toml`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/Cargo.toml#L1) and `origin` |
 | Research branch | `agent/research-core-runtime-split` | `git branch --show-current` |
 | Current/source revision | `87f3f5b77a3caeffa10d60225c41e386753bf05e` | checked-out `origin/main`; merged PR #2182 |
 | Intended comparison base | `origin/main` at `87f3f5b77a3caeffa10d60225c41e386753bf05e` | fetched before research |
@@ -73,57 +75,57 @@ behavioral parity with the runtime being split today.
    the complete agent runtime, extractor, provider implementations, CLI/Discord
    agent integrations, tool registries and servers, memory orchestration hooks,
    and test infrastructure alongside portable contracts. The authoritative
-   list is [`crates/rig-core/src/lib.rs:152-198`](../../../crates/rig-core/src/lib.rs#L152).
+   list is [`crates/rig-core/src/lib.rs:152-198`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/lib.rs#L152).
 2. The lowest-level client trait directly constructs classic runtime values:
    `CompletionClient::agent()` returns `AgentBuilder`, and
    `CompletionClient::extractor()` returns `ExtractorBuilder`
-   ([`client/completion.rs:1-60`](../../../crates/rig-core/src/client/completion.rs#L1)).
+   ([`client/completion.rs:1-60`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/client/completion.rs#L1)).
    OpenAI also has an inherent
    `GenericCompletionModel::into_agent_builder()` that returns `AgentBuilder`
-   ([`openai/completion/mod.rs:1898-1901`](../../../crates/rig-core/src/providers/openai/completion/mod.rs#L1898)).
+   ([`openai/completion/mod.rs:1898-1901`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/providers/openai/completion/mod.rs#L1898)).
    Both are direct `rig-core -> classic runtime` dependencies; the latter must
    become a `rig-agent` model extension rather than remain provider code.
 3. The high-level `Prompt`, `Chat`, and `TypedPrompt` traits and their error
    types are classic orchestration facades, not provider contracts. The current
    revision no longer defines the older `Completion` facade trait; its low-level
    replacement is `CompletionModel` plus `CompletionRequestBuilder`
-   ([`completion/request.rs:358-631`](../../../crates/rig-core/src/completion/request.rs#L358)).
+   ([`completion/request.rs:358-631`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/completion/request.rs#L358)).
 4. Raw streaming primitives and high-level runtime streaming are mixed in one
    module. `RawStreamingChoice` and `StreamingCompletionResponse<R>` are provider
    contracts, while `StreamingPrompt` and `StreamingChat` construct classic
    `StreamingPromptRequest`s
-   ([`streaming.rs:67-261`](../../../crates/rig-core/src/streaming.rs#L67),
-   [`streaming.rs:565-626`](../../../crates/rig-core/src/streaming.rs#L565)).
+   ([`streaming.rs:67-261`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/streaming.rs#L67),
+   [`streaming.rs:565-626`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/streaming.rs#L565)).
 5. The current classic runtime already has an intentional internal boundary:
    serializable `AgentRun` is sans-I/O, while `drive_agent` is the single outer
    loop shared by blocking and streaming drivers
-   ([`agent/run/mod.rs:277-317`](../../../crates/rig-core/src/agent/run/mod.rs#L277),
-   [`prompt_request/streaming.rs:471-489`](../../../crates/rig-core/src/agent/prompt_request/streaming.rs#L471)).
+   ([`agent/run/mod.rs:277-317`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/run/mod.rs#L277),
+   [`prompt_request/streaming.rs:471-489`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/prompt_request/streaming.rs#L471)).
    Those pieces should move together to `rig-agent`; they should not become a
    cross-runtime engine.
 6. Hooks are structurally part of classic orchestration. They carry run/turn
    context and operate on exact classic lifecycle events. `HookStack` merges
    request patches, chains tool rewrites, and short-circuits terminal actions
-   ([`agent/hook.rs:915-1031`](../../../crates/rig-core/src/agent/hook.rs#L915),
-   [`agent/hook.rs:1251-1377`](../../../crates/rig-core/src/agent/hook.rs#L1251)).
+   ([`agent/hook.rs:915-1031`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/hook.rs#L915),
+   [`agent/hook.rs:1251-1377`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/hook.rs#L1251)).
 7. Tool ownership must split internally. `Tool`, `ToolOutput`, tool errors, and
    provider-facing definitions are portable authoring/canonical contracts.
    `ToolSet`, `ToolServer`, `ToolServerHandle`, mutable `ToolContext`, snapshots,
    dispatch, and execution sequencing are classic-runtime infrastructure
-   ([`tool/mod.rs:133-180`](../../../crates/rig-core/src/tool/mod.rs#L133),
-   [`tool/mod.rs:511`](../../../crates/rig-core/src/tool/mod.rs#L511),
-   [`tool/server.rs:126-230`](../../../crates/rig-core/src/tool/server.rs#L126)).
+   ([`tool/mod.rs:133-180`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/mod.rs#L133),
+   [`tool/mod.rs:511`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/mod.rs#L511),
+   [`tool/server.rs:126-230`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/server.rs#L126)).
 8. `ConversationMemory` is a portable backend contract, but loading before a
    run and appending only committed turns are runtime behaviors
-   ([`memory.rs:85-117`](../../../crates/rig-core/src/memory.rs#L85),
-   [`drive_agent` memory handle](../../../crates/rig-core/src/agent/prompt_request/streaming.rs#L478)).
+   ([`memory.rs:85-117`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/memory.rs#L85),
+   [`drive_agent` memory handle](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/prompt_request/streaming.rs#L478)).
 9. Every non-example companion library depends on `rig-core`; the root facade
    depends on `rig-core` and optionally re-exports 18 companion crates. Pulling
    Bevy into `rig-core` would therefore impose it on providers, vector stores,
    memory, local inference, and facade users that never select the ECS runtime.
 10. WASM compatibility is a cross-cutting portable constraint. Current contracts
     deliberately use `WasmCompatSend`, `WasmCompatSync`, and `WasmBoxedFuture`
-    ([`wasm_compat.rs`](../../../crates/rig-core/src/wasm_compat.rs)). PR #6's
+    ([`wasm_compat.rs`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/wasm_compat.rs)). PR #6's
     global conversion to raw `Send + Sync`, deletion of `wasm_compat`, and
     disabling of Copilot's WASM token exchange are ECS constraint leakage, not
     requirements of provider-neutral contracts.
@@ -161,7 +163,7 @@ flowchart TD
 ```
 
 The evidence is `cargo metadata --no-deps --format-version 1`, the root
-workspace/dependency declarations ([`Cargo.toml:17-28`](../../../Cargo.toml#L17)),
+workspace/dependency declarations ([`Cargo.toml:17-28`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/Cargo.toml#L17)),
 and each companion manifest's `rig-core` dependency. Public dependencies include
 the traits and values present in exported signatures. Private dependencies
 include provider conversion helpers and runtime implementation imports; both are

@@ -10,7 +10,7 @@ external examples/tests directly import the current classic runtime through
 
 The root package declares 41 features. Values below come from
 `cargo metadata --no-deps --format-version 1`; the declarations begin at
-[`Cargo.toml:254`](../../../Cargo.toml#L254).
+[`Cargo.toml:254`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/Cargo.toml#L254).
 
 | Feature | Exact current forwarding | Boundary class after split |
 | --- | --- | --- |

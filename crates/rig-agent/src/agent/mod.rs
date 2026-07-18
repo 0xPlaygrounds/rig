@@ -18,11 +18,8 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
-//!     completion::{Chat, Prompt},
-//!     providers::openai,
-//! };
+//! use rig_agent::{client::AgentClientExt, completion::{Chat, Prompt}};
+//! use rig_core::{client::ProviderClient, providers::openai};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let openai = openai::Client::from_env()?;
@@ -55,10 +52,14 @@
 //!
 //! Passive RAG agent example
 //! ```no_run
-//! use rig_core::{
+//! use rig_agent::{
 //!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
-//!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
-//!     completion::{Document, Message, Prompt},
+//!     client::AgentClientExt,
+//!     completion::Prompt,
+//! };
+//! use rig_core::{
+//!     client::{EmbeddingsClient, ProviderClient},
+//!     completion::{Document, Message},
 //!     embeddings::EmbeddingsBuilder,
 //!     message::UserContent,
 //!     providers::openai,

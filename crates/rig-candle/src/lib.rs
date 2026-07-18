@@ -7,7 +7,7 @@
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!
 //! ```no_run
-//! use rig_core::{agent::AgentBuilder, completion::Prompt};
+//! use rig_agent::{agent::AgentBuilder, completion::Prompt};
 //! use rig_candle::{CandleModel, ModelData};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {

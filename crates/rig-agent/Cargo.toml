@@ -36,6 +36,13 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
+wasm-bindgen-futures = { workspace = true, optional = true }
+
+# `rig-core` relaxes its portable async bounds behind this feature. Enable it
+# automatically for browser-WASM builds so `cargo check --target wasm32-unknown-unknown`
+# remains a valid standalone `rig-agent` portability lane.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["wasm"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -51,5 +58,5 @@ image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
 test-utils = ["rig-core/test-utils"]
 discord-bot = ["dep:serenity"]
-wasm = ["rig-core/wasm"]
+wasm = ["rig-core/wasm", "dep:wasm-bindgen-futures"]
 rmcp = ["dep:rmcp"]

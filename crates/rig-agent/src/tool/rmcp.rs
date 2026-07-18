@@ -37,8 +37,8 @@
 //! session ids, or A2A `context_id`/`task_id`, which the model never sees:
 //!
 //! ```rust,ignore
-//! use rig_core::tool::rmcp::Meta;
-//! use rig_core::tool::ToolContext;
+//! use rig_agent::tool::rmcp::Meta;
+//! use rig_agent::tool::ToolContext;
 //!
 //! let mut meta = Meta::new();
 //! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
@@ -266,10 +266,10 @@ fn cancel_timed_out_request(handle: rmcp::service::RequestHandle<rmcp::service::
         .await;
     };
 
-    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    #[cfg(not(target_arch = "wasm32"))]
     tokio::spawn(cancellation);
 
-    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(cancellation);
 }
 

@@ -19,7 +19,7 @@ use rig::completion::{GetTokenUsage, PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
-use rig::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
+use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
     Add, FORCE_TOOLS_PREAMBLE, GeminiAgent, assert_canonical_assistant_order,

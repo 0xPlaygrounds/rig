@@ -5,7 +5,8 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::AgentClientExt, providers::openai};
+//! use rig_agent::client::AgentClientExt;
+//! use rig_core::providers::openai;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the OpenAI client

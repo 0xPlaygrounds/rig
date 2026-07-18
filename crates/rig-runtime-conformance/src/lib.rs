@@ -6,11 +6,17 @@
 //! from their own tests and adapt them to their native APIs independently.
 
 mod fixtures;
+mod report;
 mod scenarios;
 
 pub use fixtures::{
     CountingPortableTool, CountingPortableToolArgs, ScriptedCompletionModel,
     ScriptedCompletionTurn, ScriptedRawResponse, ScriptedStreamEvent, scripted_text_model,
 };
+pub use report::{
+    ConformanceFailure, ObservationAssertion, ReportBuildError, ScenarioReport, verify_report,
+};
 pub use rig_core::test_utils::{AppendFailingMemory, CountingMemory, FailingMemory};
-pub use scenarios::{ALL_SCENARIOS, ScenarioDefinition, ScenarioId, scenario};
+pub use scenarios::{
+    ALL_SCENARIOS, ObservationDefinition, ScenarioDefinition, ScenarioId, scenario,
+};

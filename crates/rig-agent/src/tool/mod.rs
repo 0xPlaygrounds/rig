@@ -11,7 +11,7 @@
 //! without first passing through a string.
 //!
 //! ```
-//! use rig_core::tool::{Tool, ToolContext};
+//! use rig_agent::tool::{Tool, ToolContext};
 //! use serde::{Deserialize, Serialize};
 //! use std::convert::Infallible;
 //!

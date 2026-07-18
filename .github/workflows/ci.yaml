@@ -73,6 +73,46 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package rig-core --features wasm --target wasm32-unknown-unknown
 
+      - name: Run classic runtime check on wasm target
+        run: cargo check --package rig-agent --target wasm32-unknown-unknown
+
+  runtime-feature-isolation:
+    name: stable / runtime feature isolation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Check isolated and combined runtime feature graphs
+        run: |
+          cargo check -p rig-core --no-default-features
+          cargo check -p rig-agent --all-features
+          cargo check -p rig-bevy --all-features
+          cargo check -p rig --no-default-features
+          cargo check -p rig --no-default-features --features agent
+          cargo check -p rig --no-default-features --features bevy
+          cargo check -p rig --no-default-features --features agent,bevy
+
+  bevy-msrv:
+    name: Rust 1.89 / isolated rig-bevy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install rig-bevy MSRV
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.89.0
+
+      - name: Check rig-bevy at its isolated MSRV
+        run: cargo check -p rig-bevy --all-features
+
   clippy:
     name: stable / clippy
     runs-on: ubuntu-latest
@@ -125,8 +165,8 @@ jobs:
       - name: Compile default-feature root test targets
         run: cargo test -p rig --tests --no-run
 
-      - name: Test rig-core agent unit tests with all features
-        run: cargo nextest run -p rig-core --all-features -E 'test(agent::)' --retries 2
+      - name: Test classic agent unit tests with all features
+        run: cargo nextest run -p rig-agent --all-features -E 'test(agent::)' --retries 2
 
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
@@ -183,6 +223,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Run cargo doc
-        run: cargo doc --no-deps --all-features
+        run: >-
+          cargo doc --no-deps --all-features
+          -p rig -p rig-core -p rig-agent -p rig-bevy -p rig-runtime-conformance
         env:
           RUSTDOCFLAGS: -D warnings

@@ -33,7 +33,7 @@
 //! # Example
 //!
 //! ```
-//! use rig_core::agent::{
+//! use rig_agent::agent::{
 //!     AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
 //! };
 //!
@@ -64,10 +64,8 @@
 //!
 //! ```
 //! use std::{collections::HashMap, sync::atomic::{AtomicUsize, Ordering}};
-//! use rig_core::{
-//!     agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished},
-//!     message::AssistantContent,
-//! };
+//! use rig_agent::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
+//! use rig_core::message::AssistantContent;
 //!
 //! static NEXT_HOOK_ID: AtomicUsize = AtomicUsize::new(1);
 //!

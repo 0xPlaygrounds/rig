@@ -2,6 +2,8 @@ mod support;
 
 mod cassette {
     mod agent;
+    #[cfg(feature = "bevy")]
+    mod bevy_runtime;
     mod default_max_turns;
     mod document_file_id;
     mod empty_end_turn;

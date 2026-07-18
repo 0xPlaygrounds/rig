@@ -2,7 +2,7 @@
 
 use rig::client::AgentClientExt;
 use rig::providers::openai;
-use rig::test_utils::validate_extraction_fields;
+use rig_agent::test_utils::validate_extraction_fields;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};

@@ -12,7 +12,7 @@
 //! to drive an agent with custom, composable hooks:
 //!
 //! ```rust,no_run
-//! # use rig_core::agent::Agent;
+//! # use rig_agent::Agent;
 //! # use rig_core::completion::CompletionModel;
 //! # async fn example<M: CompletionModel + 'static>(agent: Agent<M>) -> Result<(), Box<dyn std::error::Error>> {
 //! let response = agent
@@ -88,7 +88,9 @@ macro_rules! build_chat_span {
             $runner.record_telemetry_content,
         );
         ::tracing::info_span!(
-            target: "rig::agent_chat",
+            // This literal mirrors rig-core's portable
+            // `telemetry::COMPLETION_PARENT_SPAN_TARGET` marker.
+            target: "rig::completion_parent",
             parent: ::tracing::Span::current(),
             $name,
             gen_ai.operation.name = $operation,

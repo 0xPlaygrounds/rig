@@ -44,6 +44,13 @@ pub mod agent {
     pub use rig_agent::agent::*;
 }
 
+/// Experimental native-only ECS runtime.
+#[cfg(feature = "bevy")]
+#[cfg_attr(docsrs, doc(cfg(feature = "bevy")))]
+pub mod bevy {
+    pub use rig_bevy::*;
+}
+
 /// Provider clients plus classic agent/extractor constructors.
 pub mod client {
     #[cfg(feature = "agent")]

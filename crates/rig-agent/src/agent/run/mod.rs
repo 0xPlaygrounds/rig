@@ -34,7 +34,7 @@
 //! the same machine can be driven by hand for custom provider control flow:
 //!
 //! ```rust,no_run
-//! use rig_core::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+//! use rig_agent::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut run = AgentRun::new("What is 2+2?").max_turns(3);

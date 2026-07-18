@@ -531,11 +531,8 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
 ///
 /// # Example
 /// ```no_run
-/// use rig_core::{
-///     client::{CompletionClient, ProviderClient},
-///     completion::Prompt,
-///     providers::openai,
-/// };
+/// use rig_agent::{client::AgentClientExt, completion::Prompt};
+/// use rig_core::{client::ProviderClient, providers::openai};
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// let openai = openai::Client::from_env()?;

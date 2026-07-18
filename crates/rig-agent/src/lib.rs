@@ -20,6 +20,15 @@ extern crate self as rig;
 
 pub use rig_core::*;
 
+/// Direct access to portable provider, data, memory, and tool contracts.
+///
+/// This explicit namespace is also the stable expansion root for portable
+/// `#[rig_tool]` functions in crates that depend on `rig-agent` without a
+/// separate direct `rig-core` dependency.
+pub mod core {
+    pub use rig_core::*;
+}
+
 pub mod agent;
 pub mod client;
 pub mod completion;

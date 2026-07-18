@@ -1552,7 +1552,9 @@ pub mod gemini_api_types {
     /// Gemini API Configuration options for model generation and outputs. Not all parameters are
     /// configurable for every model. From [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
     /// ### Rig Note:
-    /// Can be used to construct a typesafe `additional_params` in rig_core::[AgentBuilder](crate::agent::AgentBuilder).
+    /// Can be serialized into a type-safe
+    /// [`CompletionRequest::additional_params`](crate::completion::CompletionRequest::additional_params)
+    /// value or a runtime builder's additional parameters.
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {

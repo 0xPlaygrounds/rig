@@ -249,7 +249,7 @@ where
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call. Exceeding the budget returns
-    /// [`crate::completion::request::PromptError::MaxTurnsError`].
+    /// [`crate::completion::PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.runner = self.runner.max_turns(max_turns);
         self

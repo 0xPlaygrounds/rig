@@ -40,7 +40,8 @@ WASM core checking, clippy, tests, doctests, and documentation.
 
 ### Tool boundary
 
-`rig_core::tool::Tool` becomes the context-free portable authoring contract.
+`rig_core::tool::Tool` is the context-free portable authoring contract (also
+exported under the explicit `PortableTool` name).
 The complete mutable `ToolContext`, registry, server, snapshot, dispatch, and
 concurrency implementation moves to `rig-agent`. `rig-agent` exposes a separate
 contextual authoring trait and adapts both portable and contextual tools into
@@ -76,7 +77,7 @@ The root facade adds optional `agent` and `bevy` dependencies/features. Default
 features select `agent`; `bevy` is opt-in and namespaced. The default prelude
 combines core contracts with classic extensions. `rig::bevy::prelude` exposes
 the ECS runtime. Classic clients use `AgentClientExt::agent`; Bevy clients use
-the deliberately distinct `BevyCompletionClientExt::bevy_agent` spelling.
+the deliberately distinct `BevyClientExt::bevy_agent` spelling.
 
 ### Provider finals
 
@@ -106,3 +107,38 @@ dependency on `rig-core`.
 
 The guard runs in CI before formatting and remains applicable throughout the
 migration rather than checking only the final manifests.
+
+## Implemented runtime and acceptance evidence
+
+The ECS runtime owns progression through an explicitly ordered schedule with
+deferred-command boundaries. Its bounded owned effects carry runtime, run,
+operation, generation, correlation, tenant, capability, grant, and revision
+identity. Ingress validates these facts before exactly-once accounting or
+canonical commit. Tool batches commit in provider call order even when bodies
+finish out of order. Vector indexes register as distinct store capabilities and
+execute through that same immutable grant/effect path. Cancellation is processed
+before ingress, terminal state remains observable until retention cleanup, and
+late completions are diagnostic only. Protected restore validates duplicate,
+missing, mismatched, and cross-tenant relationships before creating entities.
+
+The shared conformance ledger contains all 15 researched scenarios. Both
+runtime adapters produce exact observation reports checked by
+`verify_report`; the support crate contains no production runtime trait or
+orchestration engine.
+
+Committed cassette replay plus scripted HTTP responses exercised through the
+real provider request/response converters supply the provider acceptance matrix
+without live credentials or cassette churn:
+
+| Provider | Blocking | Streaming + typed final | Portable tools | Structured output |
+| --- | --- | --- | --- | --- |
+| OpenAI Responses | classic + ECS | classic + ECS | classic + ECS | explicit native + tool mapping in both runtimes |
+| Anthropic Messages | classic + ECS | classic + ECS | classic + ECS | explicit tool + prompted mapping in both runtimes |
+| Gemini Generate Content | classic + ECS | classic + ECS | classic + ECS | explicit native mapping + invalid-output recovery in both runtimes |
+
+Direct core typed-final coverage remains in provider suites. Each provider's
+classic streaming smoke test explicitly binds the final event to its concrete
+provider streaming-response type; classic blocking intentionally promises only
+the canonical final. ECS local blocking and streaming tests type the raw final
+through the concrete model's associated response type. Hosted diagnostics do
+not claim that concrete type.

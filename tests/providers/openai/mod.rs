@@ -2,6 +2,8 @@ mod support;
 
 mod cassette {
     mod agent;
+    #[cfg(feature = "bevy")]
+    mod bevy_runtime;
     mod chat_history;
     mod completions_api;
     mod document_ordering;

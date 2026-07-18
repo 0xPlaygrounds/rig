@@ -1,12 +1,14 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
 use rig::client::AgentClientExt;
+use rig::completion::GetTokenUsage;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
+    collect_stream_final_response_and_provider_final,
 };
 
 #[tokio::test]
@@ -18,11 +20,15 @@ async fn streaming_smoke() {
             .build();
 
         let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
-        let response = collect_stream_final_response(&mut stream)
+        let (response, provider_final): (
+            _,
+            openai::responses_api::streaming::StreamingCompletionResponse,
+        ) = collect_stream_final_response_and_provider_final(&mut stream)
             .await
             .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
+        assert!(provider_final.token_usage().total_tokens > 0);
     })
     .await;
 }

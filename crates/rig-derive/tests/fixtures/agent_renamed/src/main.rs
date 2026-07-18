@@ -1,5 +1,18 @@
-use agent_runtime::tool::{Tool, ToolContext, ToolExecutionError};
-use rig_macros::rig_tool;
+use agent_runtime::{
+    Embed, rig_tool,
+    tool::{Tool, ToolContext, ToolExecutionError},
+};
+
+#[derive(Embed)]
+struct EmbeddedDocument {
+    #[embed]
+    body: String,
+}
+
+#[rig_tool]
+fn portable_echo(value: String) -> Result<String, ToolExecutionError> {
+    Ok(value)
+}
 
 #[rig_tool]
 fn contextual_echo(
@@ -10,7 +23,11 @@ fn contextual_echo(
 }
 
 fn assert_contextual<T: Tool>() {}
+fn assert_portable<T: agent_runtime::core::tool::PortableTool>() {}
+fn assert_embed<T: agent_runtime::core::embeddings::Embed>() {}
 
 fn main() {
     assert_contextual::<ContextualEcho>();
+    assert_portable::<PortableEcho>();
+    assert_embed::<EmbeddedDocument>();
 }

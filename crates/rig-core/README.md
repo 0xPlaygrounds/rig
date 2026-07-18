@@ -6,14 +6,14 @@ More information about this crate can be found in the [crate documentation](http
 
 - [Rig](#rig)
   - [Table of contents](#table-of-contents)
-  - [High-level features](#high-level-features)
+  - [Features](#features)
   - [Installation](#installation)
   - [Simple example:](#simple-example)
   - [Integrations](#integrations)
-  - [Who is using Rig in production?](#who-is-using-rig-in-production)
+  - [Who is using Rig?](#who-is-using-rig)
 
 ## Features
-- Agentic workflows that can handle multi-turn streaming and prompting
+- Portable contracts for agent runtimes, including completions, messages, tools, and memory
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
@@ -29,22 +29,26 @@ cargo add rig-core
 
 ## Simple example
 ```rust
-use rig_core::{client::{CompletionClient, ProviderClient}, completion::Prompt, providers::openai};
+use rig_core::{
+    client::{CompletionClient, ProviderClient},
+    completion::{AssistantContent, CompletionModel},
+    providers::openai,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create OpenAI client and model
+    // Create an OpenAI client and completion model.
     // This requires the `OPENAI_API_KEY` environment variable to be set.
     let openai_client = openai::Client::from_env()?;
 
-    let agent = openai_client.agent(openai::GPT_5_2).build();
-
-    // Prompt the model and print its response
-    let response = agent
-        .prompt("Who are you?")
-        .await?;
-
-    println!("{response}");
+    let model = openai_client.completion_model(openai::GPT_5_2);
+    let request = model.completion_request("Who are you?").build();
+    let response = model.completion(request).await?;
+    for item in response.choice {
+        if let AssistantContent::Text(text) = item {
+            println!("{}", text.text);
+        }
+    }
 
     Ok(())
 }

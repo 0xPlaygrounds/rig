@@ -31,7 +31,14 @@ pub(crate) fn rig_core_path() -> proc_macro2::TokenStream {
                 let ident = format_ident!("{name}");
                 quote!(::#ident)
             }
-            Err(_) => quote!(::rig_core),
+            Err(_) => match proc_macro_crate::crate_name("rig-agent") {
+                Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::core),
+                Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                    let ident = format_ident!("{name}");
+                    quote!(::#ident::core)
+                }
+                Err(_) => quote!(::rig_core),
+            },
         },
     }
 }
@@ -67,7 +74,14 @@ fn rig_portable_path() -> proc_macro2::TokenStream {
                 let ident = format_ident!("{name}");
                 quote!(::#ident::core)
             }
-            Err(_) => quote!(::rig_core),
+            Err(_) => match proc_macro_crate::crate_name("rig-agent") {
+                Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::core),
+                Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                    let ident = format_ident!("{name}");
+                    quote!(::#ident::core)
+                }
+                Err(_) => quote!(::rig_core),
+            },
         },
     }
 }

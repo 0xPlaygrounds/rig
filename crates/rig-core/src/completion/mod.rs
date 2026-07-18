@@ -11,7 +11,11 @@
 //! # Example
 //!
 //! ```no_run
-//! use rig_core::{client::{CompletionClient, ProviderClient}, providers::openai};
+//! use rig_core::{
+//!     client::{CompletionClient, ProviderClient},
+//!     completion::CompletionModel,
+//!     providers::openai,
+//! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = openai::Client::from_env()?;

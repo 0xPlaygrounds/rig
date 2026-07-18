@@ -2,12 +2,11 @@
 
 set -euo pipefail
 
-metadata="$(mktemp)"
-trap 'rm -f "$metadata"' EXIT
-
-cargo metadata --format-version 1 >"$metadata"
-
-jq -e '
+check_declared_graph() {
+  local metadata
+  metadata="$(mktemp)"
+  cargo metadata --format-version 1 "$@" >"$metadata"
+  jq -e '
   . as $metadata |
   def package($name): $metadata.packages[] | select(.name == $name);
   def has_package($name): any($metadata.packages[]; .name == $name);
@@ -43,5 +42,28 @@ jq -e '
     excludes($dependencies; ["rig-agent", "rig-bevy"])
   )
 ' "$metadata" >/dev/null
+  rm -f "$metadata"
+}
+
+check_resolved_tree_excludes() {
+  local package="$1"
+  shift
+  local tree
+  tree="$(cargo tree -p "$package" --all-features --target all -e all)"
+  for forbidden in "$@"; do
+    if grep -Eq "(^|[^[:alnum:]_-])${forbidden} v" <<<"$tree"; then
+      echo "forbidden resolved dependency: ${package} -> ${forbidden}" >&2
+      return 1
+    fi
+  done
+}
+
+check_declared_graph
+check_declared_graph --all-features
+check_declared_graph --no-default-features
+
+check_resolved_tree_excludes rig-core rig-agent rig-bevy bevy_ecs
+check_resolved_tree_excludes rig-agent rig-bevy bevy_ecs
+check_resolved_tree_excludes rig-bevy rig-agent
 
 echo "runtime dependency graph guard passed"

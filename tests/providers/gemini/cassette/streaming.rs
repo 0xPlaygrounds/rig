@@ -11,6 +11,7 @@ use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
+    collect_stream_final_response_and_provider_final,
 };
 
 #[tokio::test]
@@ -36,11 +37,13 @@ async fn streaming_smoke() {
             .build();
 
         let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
-        let response = collect_stream_final_response(&mut stream)
-            .await
-            .expect("streaming prompt should succeed");
+        let (response, provider_final): (_, gemini::streaming::StreamingCompletionResponse) =
+            collect_stream_final_response_and_provider_final(&mut stream)
+                .await
+                .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
+        assert!(provider_final.token_usage().total_tokens > 0);
     })
     .await;
 }
