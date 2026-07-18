@@ -1,8 +1,9 @@
 # Rig runtime split research package
 
-Status: proposed architecture plus a user-requested implementation handoff.
-This PR currently changes documentation only; it has not yet changed production
-Rust, manifests, features, or cassettes or performed the migration.
+Status: implementation in progress on `agent/implement-runtime-split`. The
+research revisions remain the architectural baseline; implementation decisions
+and refreshed evidence are recorded in
+[`implementation-decisions.md`](implementation-decisions.md).
 
 The recommendation is a three-crate topology implemented as a narrow contracts
 layer plus two independent runtimes:
@@ -27,6 +28,9 @@ independent runtimes, shared conformance) from the architecture evaluation.
 - [`total-migration-implementation-prompt.md`](total-migration-implementation-prompt.md):
   standalone execution prompt for implementing the complete core/classic/Bevy
   migration in this pull request.
+- [`implementation-decisions.md`](implementation-decisions.md): refreshed
+  implementation baseline, resolved early design choices, and phase-gate
+  evidence for the implementation pull request.
 - [`knowledge-graph.json`](knowledge-graph.json): machine-readable nodes,
   ownership, current/target edges, and source evidence.
 - [`architecture-decision.md`](architecture-decision.md): selected decision,

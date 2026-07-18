@@ -8,7 +8,8 @@ sequencing, or completion gate.
 
 ## Mission
 
-Complete the full researched runtime migration in the existing pull request:
+Complete the full researched runtime migration in the implementation pull
+request:
 
 - narrow `rig-core` to portable contracts, canonical values, and low-level
   provider/backend integration boundaries;
@@ -21,11 +22,12 @@ Complete the full researched runtime migration in the existing pull request:
   orchestration;
 - leave the full workspace, required targets, documentation, and CI green.
 
-Do all implementation work in PR
-[`0xPlaygrounds/rig#2186`](https://github.com/0xPlaygrounds/rig/pull/2186).
-Do not open a second implementation PR or defer a required runtime slice to a
-future PR. Use ordered commits and hard internal phase gates inside this PR so
-the researched migration order remains reviewable.
+Do all implementation work in one unique implementation pull request. Do not
+defer a required runtime slice to a future PR. Use ordered commits and hard
+internal phase gates inside this PR so the researched migration order remains
+reviewable. PR #2186 remains the documentation-only research source; the later
+user request for a unique implementation PR supersedes its original same-PR
+instruction.
 
 This is a breaking migration. Backward compatibility and semver are not
 constraints. Prefer clean ownership and explicit migration errors over shims
@@ -582,10 +584,10 @@ moved.
 ## One-PR implementation sequence
 
 Do not flatten this work into one unreviewable edit. Use the following ordered
-phases as commits or clearly separated commit groups in PR #2186. Keep each
-phase buildable and reviewable where feasible. Run the phase gate before
-advancing; if a temporary bridge is unavoidable, keep it same-crate or in root
-`rig`, document it, and remove it before the final gate.
+phases as commits or clearly separated commit groups in the implementation PR.
+Keep each phase buildable and reviewable where feasible. Run the phase gate
+before advancing; if a temporary bridge is unavoidable, keep it same-crate or
+in root `rig`, document it, and remove it before the final gate.
 
 ### Phase 0 — baseline, decisions, and guardrails
 
@@ -731,8 +733,8 @@ intentional runtime-specific difference is named, tested, and documented.
    and all in-scope lower-severity issues.
 6. Rerun affected checks and repeat independent review until no confirmed
    P0/P1 remains.
-7. Push to the existing PR, wait for every required CI check, and inspect all
-   unresolved actionable review threads.
+7. Push to the implementation PR, wait for every required CI check, and inspect
+   all unresolved actionable review threads.
 
 Gate: all required checks are successful, the PR is mergeable, no actionable
 review thread is unresolved, and the completion audit is satisfied.
@@ -878,8 +880,9 @@ All of the following must be true:
     pass.
 12. A final independent full-diff review finds no unresolved confirmed P0/P1
     issue or hidden shared orchestration engine.
-13. PR #2186 contains the entire implementation, is mergeable, has no pending
-    or failing required checks, and has no unresolved actionable review thread.
+13. The unique implementation PR contains the entire implementation, is
+    mergeable, has no pending or failing required checks, and has no unresolved
+    actionable review thread.
 14. `rig-bevy` is honestly documented as experimental; classic remains default
     until separate operational evidence justifies another status.
 

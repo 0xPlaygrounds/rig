@@ -35,6 +35,9 @@ jobs:
       - name: Run cargo fmt
         run: cargo fmt -- --check
 
+      - name: Check runtime dependency direction
+        run: bash ci/check-runtime-dependency-graph.sh
+
       # Guard against CWD-relative test fixture paths. `cargo test` runs from the
       # crate root while `cargo nextest` (CI's runner) runs from the workspace
       # root, so a bare `tests/data/...` path passes under one and fails under the
