@@ -175,6 +175,9 @@ redis = "1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"
+a2a = { package = "a2a-lf", version = "0.3.0" }
+a2a-client = { package = "a2a-client-lf", version = "0.2.1", default-features = false }
+a2a-server = { package = "a2a-server-lf", version = "0.4.1", default-features = false }
 rmcp = "2"
 url = "2"
 rusqlite = "0.32"
@@ -229,6 +232,7 @@ workspace = true
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
+rig-a2a = { path = "crates/rig-a2a", version = "0.42.0", optional = true, default-features = false }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.42.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.42.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.42.0", optional = true, default-features = false }
@@ -329,6 +333,7 @@ test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
 # lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.
 facade-build-tests = []
+a2a = ["dep:rig-a2a"]
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [
@@ -368,6 +373,7 @@ websocket-rustls = ["rig-core/websocket-rustls"]
 websocket-native-tls = ["rig-core/websocket-native-tls"]
 rustls = [
   "rig-core/rustls",
+  "rig-a2a?/rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
   "rig-helixdb?/rustls",
   "rig-lancedb?/rig-rustls",
@@ -375,6 +381,7 @@ rustls = [
 ]
 native-tls = [
   "rig-core/native-tls",
+  "rig-a2a?/native-tls",
   "rig-fastembed?/hf-hub-native-tls",
   "rig-helixdb?/native-tls",
   "rig-lancedb?/rig-native-tls",

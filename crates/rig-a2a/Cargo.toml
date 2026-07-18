@@ -1,0 +1,42 @@
+[package]
+name = "rig-a2a"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "Agent-to-Agent (A2A) protocol client integration for the Rig agent framework."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+rig-agent = { path = "../rig-agent", version = "0.42.0", default-features = false }
+a2a = { workspace = true }
+a2a-client = { workspace = true }
+async-stream = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+indexmap = { workspace = true }
+# `stream` backs the bounded agent-card body read in `client.rs`; declare it
+# rather than relying on another dependency to unify it in.
+reqwest = { workspace = true, features = ["json", "stream"] }
+url = { workspace = true }
+
+[dev-dependencies]
+a2a-server = { workspace = true }
+anyhow = { workspace = true }
+axum = { workspace = true }
+schemars = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = ["test-utils"] }
+rig-agent = { path = "../rig-agent", version = "0.42.0", default-features = false, features = ["test-utils"] }
+
+[features]
+default = ["rustls"]
+rustls = ["a2a-client/rustls-tls"]
+native-tls = ["a2a-client/native-tls"]
