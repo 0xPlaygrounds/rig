@@ -71,7 +71,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OneOrMany,
-    agent::hook::{InvalidToolCallAction, InvalidToolCallContext},
+    agent::hook::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
     agent::prompt_request::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
@@ -490,6 +490,60 @@ impl AgentRun {
         };
 
         OneOrMany::from_iter_optional(turn.items.clone())
+    }
+
+    /// Reject the accepted model turn and return the run to request preparation.
+    ///
+    /// This transition is valid only after a model turn has been accepted and
+    /// before [`Self::next_step`] advances it into tool execution or successful
+    /// finalization. It never changes usage, completion-call records, or the
+    /// current model-call count, so the next [`Self::next_step`] enforces the
+    /// existing total `max_turns` budget.
+    ///
+    /// [`RetryRequest::Repeat`] discards the rejected assistant response and
+    /// repeats the same prompt with the same preceding history.
+    /// [`RetryRequest::Feedback`] retains the rejected assistant response and
+    /// appends a user feedback message as the next prompt.
+    ///
+    /// Tool-bearing turns are rejected with [`PromptError::PromptCancelled`]
+    /// because ordinary feedback cannot safely follow unanswered tool calls.
+    /// Handle those turns through tool-call hooks instead.
+    pub fn retry_model_turn(&mut self, request: RetryRequest) -> Result<(), PromptError> {
+        let turn = match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::AwaitingAdvance(turn) => turn,
+            other => {
+                self.state = other;
+                return Err(self.protocol_violation(
+                    "retry_model_turn called without an accepted model turn awaiting advancement",
+                ));
+            }
+        };
+
+        if turn.has_tool_calls {
+            return Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "response retry is not supported for tool-bearing model turns; handle tool calls through tool-call hooks",
+            ));
+        }
+
+        match request {
+            RetryRequest::Repeat => {}
+            RetryRequest::Feedback(feedback) => {
+                let Some(content) = OneOrMany::from_iter_optional(turn.items) else {
+                    return Err(self.protocol_violation(
+                        "retry_model_turn found an accepted turn without assistant content",
+                    ));
+                };
+                self.new_messages.push(Message::Assistant {
+                    id: turn.message_id,
+                    content,
+                });
+                self.new_messages.push(Message::user(feedback));
+            }
+        }
+
+        self.state = RunState::PreparingRequest;
+        Ok(())
     }
 
     /// The full conversation: input history followed by [`Self::messages`].
@@ -1577,6 +1631,130 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn repeat_retry_reissues_same_prompt_without_rejected_response_in_history() {
+        let mut run = AgentRun::new("question").max_turns(2);
+        let (first_prompt, first_history, first_turn) = expect_call_model(&mut run);
+        assert_eq!(first_turn, 1);
+
+        expect_continue(
+            run.model_response(text_turn("rejected").with_usage_for_test(usage(3, 2)))
+                .expect("first model response"),
+        );
+        run.retry_model_turn(RetryRequest::Repeat)
+            .expect("repeat retry should be accepted");
+
+        let (second_prompt, second_history, second_turn) = expect_call_model(&mut run);
+        assert_eq!(second_turn, 2);
+        assert_eq!(second_prompt, first_prompt);
+        assert_eq!(second_history, first_history);
+        assert_eq!(run.messages(), &[Message::user("question")]);
+        assert_eq!(run.usage(), usage(3, 2));
+        assert_eq!(run.completion_calls().len(), 1);
+
+        expect_continue(
+            run.model_response(text_turn("accepted").with_usage_for_test(usage(4, 1)))
+                .expect("second model response"),
+        );
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, "accepted");
+        assert_eq!(response.usage, usage(7, 3));
+        assert_eq!(response.completion_calls.len(), 2);
+        assert_eq!(
+            response.messages,
+            Some(vec![
+                Message::user("question"),
+                Message::assistant("accepted")
+            ])
+        );
+    }
+
+    #[test]
+    fn feedback_retry_records_rejected_response_and_corrective_user_message() {
+        let mut run = AgentRun::new("question").max_turns(2);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("rejected").with_usage_for_test(usage(2, 1)))
+                .expect("first model response"),
+        );
+        run.retry_model_turn(RetryRequest::Feedback("be precise".into()))
+            .expect("feedback retry should be accepted");
+
+        let (prompt, history, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 2);
+        assert_eq!(prompt, Message::user("be precise"));
+        assert_eq!(
+            history,
+            vec![Message::user("question"), Message::assistant("rejected")]
+        );
+
+        expect_continue(
+            run.model_response(text_turn("accepted").with_usage_for_test(usage(3, 2)))
+                .expect("second model response"),
+        );
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, "accepted");
+        assert_eq!(response.usage, usage(5, 3));
+        assert_eq!(response.completion_calls.len(), 2);
+        assert_eq!(
+            response.messages,
+            Some(vec![
+                Message::user("question"),
+                Message::assistant("rejected"),
+                Message::user("be precise"),
+                Message::assistant("accepted"),
+            ])
+        );
+    }
+
+    #[test]
+    fn response_retry_consumes_existing_total_model_call_budget() {
+        let mut run = AgentRun::new("question").max_turns(1);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("rejected").with_usage_for_test(usage(2, 1)))
+                .expect("model response"),
+        );
+        run.retry_model_turn(RetryRequest::Repeat)
+            .expect("retry transition should succeed before budget check");
+
+        let error = run
+            .next_step()
+            .expect_err("retry should exhaust the one-call budget");
+        assert!(matches!(
+            error,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(run.turn(), 1);
+        assert_eq!(run.usage(), usage(2, 1));
+        assert_eq!(run.completion_calls().len(), 1);
+    }
+
+    #[test]
+    fn response_retry_rejects_tool_bearing_turn_without_advancing_to_tools() {
+        let mut run = AgentRun::new("use a tool").max_turns(2);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("tool turn should be accepted"),
+        );
+
+        let error = run
+            .retry_model_turn(RetryRequest::Feedback("do not use tools".into()))
+            .expect_err("tool-bearing response retry must fail closed");
+        assert!(matches!(
+            error,
+            PromptError::PromptCancelled { reason, chat_history }
+                if reason.contains("tool-bearing model turns")
+                    && chat_history == vec![Message::user("use a tool")]
+        ));
+        let error = run
+            .next_step()
+            .expect_err("failed retry must not execute rejected tools");
+        assert!(matches!(error, PromptError::PromptCancelled { .. }));
+        assert_eq!(run.messages(), &[Message::user("use a tool")]);
     }
 
     #[test]

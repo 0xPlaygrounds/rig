@@ -258,8 +258,8 @@ where
     /// Append a hook for this request (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
     /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, and only observe-only/recovery
-    /// events use first-non-`Continue`-wins). See the
+    /// `ToolCall`/`ToolResult` rewrites chain, and model-turn Retry/Stop actions
+    /// short-circuit later hooks). See the
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where

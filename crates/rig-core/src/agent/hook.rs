@@ -12,8 +12,8 @@
 //! [`RequestPatch`] values accumulate and merge; tool-call argument rewrites and
 //! tool-result presentation rewrites chain into later hooks. Nested stacks obey
 //! the same rules as flat stacks, including preserving an argument rewrite when
-//! an inner stack later skips or stops. Every stop action short-circuits the
-//! remaining hooks for that event.
+//! an inner stack later skips or stops. [`ModelTurnAction::Retry`] and every stop
+//! action short-circuit the remaining hooks for that event.
 //!
 //! Register observe-only hooks before steering hooks when every observation is
 //! required: a steering stop intentionally prevents later observers from
@@ -26,29 +26,85 @@
 //! Blocking and streaming agents share the same request, tool-call, and
 //! tool-result resolution path. Streaming adds delta-specific observations, but
 //! shared lifecycle actions have identical semantics on both surfaces.
+//! Completed-response validation belongs in
+//! [`AgentHook::on_model_turn_finished`]. A retry consumes another call from the
+//! run's existing `max_turns` budget; hook-specific limits and counters belong in
+//! the run-scoped [`Scratchpad`]. [`RetryRequest::Repeat`] discards the rejected
+//! assistant turn and repeats the preceding request, while
+//! [`RetryRequest::Feedback`] records that assistant turn and adds corrective
+//! user feedback. Tool-bearing turns cannot be retried through this event; use
+//! tool-call hooks instead.
 //!
-//! # Example
+//! Streaming deltas are provisional until `on_model_turn_finished` accepts the
+//! turn. When it requests a retry, the stream emits
+//! [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
+//! so consumers can discard or visually reset the rejected turn's provisional
+//! output.
+//!
+//! # Bounded response validation
+//!
+//! Retry limits belong to the hook rather than the agent. This example stores a
+//! per-hook-instance counter in the run-scoped scratchpad and stops explicitly
+//! when its limit is exhausted:
 //!
 //! ```
-//! use rig_core::agent::{
-//!     AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
+//! use std::{collections::HashMap, sync::atomic::{AtomicUsize, Ordering}};
+//! use rig_core::{
+//!     agent::{
+//!         AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, RetryRequest,
+//!     },
+//!     message::AssistantContent,
 //! };
 //!
-//! struct ResponseLogger;
+//! static NEXT_VALIDATOR_ID: AtomicUsize = AtomicUsize::new(1);
 //!
-//! impl AgentHook for ResponseLogger {
-//!     async fn on_completion_response(
-//!         &self,
-//!         _ctx: &HookContext,
-//!         event: CompletionResponseEvent<'_>,
-//!     ) -> ObservationAction {
-//!         println!(
-//!             "message {:?}: {:?} ({:?})",
-//!             event.message_id, event.content, event.usage
-//!         );
-//!         ObservationAction::continue_run()
+//! #[derive(Clone, Default)]
+//! struct ValidatorState {
+//!     attempts_by_instance: HashMap<usize, usize>,
+//! }
+//!
+//! struct ResponseValidator {
+//!     id: usize,
+//!     max_retries: usize,
+//! }
+//!
+//! impl ResponseValidator {
+//!     fn new(max_retries: usize) -> Self {
+//!         Self {
+//!             id: NEXT_VALIDATOR_ID.fetch_add(1, Ordering::Relaxed),
+//!             max_retries,
+//!         }
 //!     }
 //! }
+//!
+//! impl AgentHook for ResponseValidator {
+//!     async fn on_model_turn_finished(
+//!         &self,
+//!         ctx: &HookContext,
+//!         event: ModelTurnFinished<'_>,
+//!     ) -> ModelTurnAction {
+//!         let accepted = event.content.iter().any(|item| {
+//!             matches!(item, AssistantContent::Text(text) if text.text.contains("approved"))
+//!         });
+//!         if accepted {
+//!             return ModelTurnAction::continue_run();
+//!         }
+//!
+//!         let attempts = ctx.scratchpad().update::<ValidatorState, _>(|state| {
+//!             let attempts = state.attempts_by_instance.entry(self.id).or_default();
+//!             *attempts += 1;
+//!             *attempts
+//!         });
+//!         if attempts <= self.max_retries {
+//!             ModelTurnAction::retry(RetryRequest::feedback(
+//!                 "Return an approved response.",
+//!             ))
+//!         } else {
+//!             ModelTurnAction::stop("response validation retry limit exhausted")
+//!         }
+//!     }
+//! }
+//! # let _ = ResponseValidator::new(2);
 //! ```
 
 use std::collections::HashMap;
@@ -769,6 +825,59 @@ impl InvalidToolCallAction {
     }
 }
 
+/// How an accepted, tool-free model turn should be retried.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RetryRequest {
+    /// Discard the rejected assistant response and repeat the same request with
+    /// the same preceding history.
+    Repeat,
+    /// Record the rejected assistant response, append this corrective user
+    /// feedback, and make another model call.
+    Feedback(String),
+}
+
+impl RetryRequest {
+    /// Creates a retry that repeats the original request without retaining the
+    /// rejected assistant response in conversation history.
+    pub fn repeat() -> Self {
+        Self::Repeat
+    }
+
+    /// Creates a retry that retains the rejected response and appends corrective
+    /// user feedback.
+    pub fn feedback(feedback: impl Into<String>) -> Self {
+        Self::Feedback(feedback.into())
+    }
+}
+
+/// Action for the canonical completed-model-turn hook.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelTurnAction {
+    /// Accept the model turn and continue the run.
+    Continue,
+    /// Reject the model turn and request another model call.
+    Retry(RetryRequest),
+    /// Stop the run with a reason.
+    Stop(String),
+}
+
+impl ModelTurnAction {
+    /// Creates an action that accepts the model turn.
+    pub fn continue_run() -> Self {
+        Self::Continue
+    }
+
+    /// Creates an action that rejects the model turn and retries it.
+    pub fn retry(request: RetryRequest) -> Self {
+        Self::Retry(request)
+    }
+
+    /// Creates an action that stops the run with the supplied reason.
+    pub fn stop(reason: impl Into<String>) -> Self {
+        Self::Stop(reason.into())
+    }
+}
+
 /// Action for observe-only lifecycle events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ObservationAction {
@@ -815,15 +924,19 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// Observes the content and usage produced at the end of a model turn.
+    /// Observes and may reject the canonical content produced by an accepted
+    /// model turn, before tool execution or successful finalization.
     ///
-    /// The default action continues the run.
+    /// [`ModelTurnAction::Retry`] is supported only for turns without tool
+    /// calls. Each retry consumes another call from the run's existing total
+    /// model-call budget. Hook-specific retry limits should be kept in the
+    /// run-scoped [`Scratchpad`]. The default action accepts the turn.
     fn on_model_turn_finished(
         &self,
         _ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
-        async { ObservationAction::Continue }
+    ) -> impl Future<Output = ModelTurnAction> + WasmCompatSend {
+        async { ModelTurnAction::Continue }
     }
 
     /// Resolves a model-emitted tool call that cannot be dispatched as written.
@@ -928,7 +1041,7 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         &'a self,
         ctx: &'a HookContext,
         event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    ) -> WasmBoxedFuture<'a, ModelTurnAction>;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -984,7 +1097,7 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
+    ) -> WasmBoxedFuture<'a, ModelTurnAction> {
         Box::pin(self.on_model_turn_finished(ctx, event))
     }
     fn invalid_tool_call<'a>(
@@ -1167,14 +1280,14 @@ impl AgentHook for HookStack {
         &self,
         ctx: &HookContext,
         event: ModelTurnFinished<'_>,
-    ) -> ObservationAction {
+    ) -> ModelTurnAction {
         for hook in &self.hooks {
             let action = hook.model_turn_finished(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
+            if !matches!(action, ModelTurnAction::Continue) {
                 return action;
             }
         }
-        ObservationAction::Continue
+        ModelTurnAction::Continue
     }
     async fn on_invalid_tool_call(
         &self,
@@ -1296,6 +1409,111 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[derive(Clone)]
+    struct ModelTurnRecorder {
+        label: usize,
+        log: Arc<std::sync::Mutex<Vec<usize>>>,
+        action: ModelTurnAction,
+    }
+
+    impl AgentHook for ModelTurnRecorder {
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            _event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            self.log.lock().unwrap().push(self.label);
+            self.action.clone()
+        }
+    }
+
+    fn model_turn_event(content: &OneOrMany<AssistantContent>) -> ModelTurnFinished<'_> {
+        ModelTurnFinished {
+            turn: 1,
+            content,
+            usage: Usage::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn model_turn_continue_visits_every_hook_in_order() {
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut stack = HookStack::with(ModelTurnRecorder {
+            label: 1,
+            log: log.clone(),
+            action: ModelTurnAction::Continue,
+        });
+        stack.push(ModelTurnRecorder {
+            label: 2,
+            log: log.clone(),
+            action: ModelTurnAction::Continue,
+        });
+        let content = OneOrMany::one(AssistantContent::text("answer"));
+
+        assert_eq!(
+            stack
+                .on_model_turn_finished(&HookContext::new(false, None), model_turn_event(&content),)
+                .await,
+            ModelTurnAction::Continue
+        );
+        assert_eq!(*log.lock().unwrap(), vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn model_turn_retry_and_stop_short_circuit_nested_stacks() {
+        let content = OneOrMany::one(AssistantContent::text("answer"));
+
+        let retry_log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut inner = HookStack::with(ModelTurnRecorder {
+            label: 1,
+            log: retry_log.clone(),
+            action: ModelTurnAction::Continue,
+        });
+        inner.push(ModelTurnRecorder {
+            label: 2,
+            log: retry_log.clone(),
+            action: ModelTurnAction::retry(RetryRequest::repeat()),
+        });
+        inner.push(ModelTurnRecorder {
+            label: 3,
+            log: retry_log.clone(),
+            action: ModelTurnAction::Continue,
+        });
+        let mut outer = HookStack::with(inner);
+        outer.push(ModelTurnRecorder {
+            label: 4,
+            log: retry_log.clone(),
+            action: ModelTurnAction::Continue,
+        });
+
+        assert_eq!(
+            outer
+                .on_model_turn_finished(&HookContext::new(false, None), model_turn_event(&content),)
+                .await,
+            ModelTurnAction::retry(RetryRequest::repeat())
+        );
+        assert_eq!(*retry_log.lock().unwrap(), vec![1, 2]);
+
+        let stop_log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut stopped = HookStack::with(ModelTurnRecorder {
+            label: 1,
+            log: stop_log.clone(),
+            action: ModelTurnAction::stop("stop"),
+        });
+        stopped.push(ModelTurnRecorder {
+            label: 2,
+            log: stop_log.clone(),
+            action: ModelTurnAction::Continue,
+        });
+        assert_eq!(
+            stopped
+                .on_model_turn_finished(&HookContext::new(false, None), model_turn_event(&content),)
+                .await,
+            ModelTurnAction::stop("stop")
+        );
+        assert_eq!(*stop_log.lock().unwrap(), vec![1]);
     }
 
     #[derive(Clone)]
@@ -2136,11 +2354,13 @@ mod migrated_tests {
         fn call(_: ToolCallAction) {}
         fn result(_: ToolResultAction) {}
         fn invalid(_: InvalidToolCallAction) {}
+        fn model_turn(_: ModelTurnAction) {}
         fn observation(_: ObservationAction) {}
         completion(CompletionCallAction::continue_run());
         call(ToolCallAction::run());
         result(ToolResultAction::keep());
         invalid(InvalidToolCallAction::fail());
+        model_turn(ModelTurnAction::retry(RetryRequest::repeat()));
         observation(ObservationAction::continue_run());
         let calls = AtomicUsize::new(0);
         calls.fetch_add(1, Ordering::Relaxed);

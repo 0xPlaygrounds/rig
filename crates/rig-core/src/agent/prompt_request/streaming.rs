@@ -11,9 +11,9 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, ToolExecution, acquire_agent_span, append_run_messages,
-        build_chat_span, new_execute_tool_span, observe_action, resolve_completion_call,
-        run_single_tool,
+        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, acquire_agent_span,
+        append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
+        resolve_completion_call, resolve_model_turn, run_single_tool,
     },
     completion::GetTokenUsage,
     message::{AssistantContent, UserContent},
@@ -106,6 +106,18 @@ pub enum MultiTurnStreamItem<R> {
     /// }
     /// ```
     CompletionCall(CompletionCall),
+    /// The completed model turn was rejected by
+    /// [`AgentHook::on_model_turn_finished`] and another model call will be
+    /// attempted.
+    ///
+    /// Text and reasoning deltas for that turn may already have been emitted.
+    /// Consumers should discard or visually reset provisional output associated
+    /// with `turn`. The rejected turn's provider-final item and agent-level final
+    /// response are not emitted.
+    ModelTurnRetried {
+        /// One-based model-call index of the rejected turn.
+        turn: usize,
+    },
     /// The final result from the stream: the unified [`PromptResponse`] shared
     /// with the blocking surface.
     FinalResponse(PromptResponse),
@@ -326,8 +338,8 @@ where
     /// Append a hook to this request's hook stack (on top of any the agent
     /// already carries). Hooks run in registration order; how their results
     /// compose is event-dependent (`CompletionCall` request patches accumulate
-    /// and merge, `ToolCall`/`ToolResult` rewrites chain, and only
-    /// observe-only/recovery events use first-non-`Continue`-wins). See the
+    /// and merge, `ToolCall`/`ToolResult` rewrites chain, and model-turn
+    /// Retry/Stop actions short-circuit later hooks). See the
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
@@ -1322,9 +1334,6 @@ where
                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                 return;
             }
-            if let Some(item) = pending_final {
-                yield Ok(MultiTurnStreamItem::stream_item(item));
-            }
             self.last_message_id = streamed_turn.message_id.clone();
             // The canonical (committed) assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
@@ -1337,6 +1346,43 @@ where
                 yield Err(Box::new(err).into());
                 return;
             }
+
+            // Normalized per-turn event, fired once the turn is committed on the
+            // streaming surface — including tool-only / reasoning-only turns that
+            // fire no `StreamResponseFinish`. Suppressed for recovered turns,
+            // mirroring the blocking surface's `Continue` arm.
+            let decision = if turn_recovered {
+                ModelTurnDecision::Accept
+            } else {
+                resolve_model_turn(
+                    &runner.hooks,
+                    hook_ctx,
+                    ModelTurnFinished {
+                        turn: hook_ctx.turn(),
+                        content: &canonical_choice,
+                        usage: last_usage,
+                    },
+                )
+                .await
+            };
+            match decision {
+                ModelTurnDecision::Accept => {}
+                ModelTurnDecision::Retry(request) => {
+                    if let Err(err) = run.retry_model_turn(request) {
+                        yield Err(Box::new(err).into());
+                        return;
+                    }
+                    yield Ok(MultiTurnStreamItem::ModelTurnRetried {
+                        turn: hook_ctx.turn(),
+                    });
+                    return;
+                }
+                ModelTurnDecision::Terminate(reason) => {
+                    yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                    return;
+                }
+            }
+
             // Only accepted, canonical output belongs in content telemetry.
             // Keep caller-owned spans untouched, matching the blocking source.
             if self.created_agent_span && self.record_telemetry_content {
@@ -1350,28 +1396,8 @@ where
                 &canonical_choice,
                 runner.record_telemetry_content,
             );
-
-            // Normalized per-turn event, fired once the turn is committed on the
-            // streaming surface — including tool-only / reasoning-only turns that
-            // fire no `StreamResponseFinish`. Suppressed for recovered turns,
-            // mirroring the blocking surface's `Continue` arm.
-            if !turn_recovered
-                && let Some(reason) = observe_action(
-                    runner
-                        .hooks
-                        .on_model_turn_finished(
-                            hook_ctx,
-                            ModelTurnFinished {
-                                turn: hook_ctx.turn(),
-                                content: &canonical_choice,
-                                usage: last_usage,
-                            },
-                        )
-                        .await,
-                )
-            {
-                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                return;
+            if let Some(item) = pending_final {
+                yield Ok(MultiTurnStreamItem::stream_item(item));
             }
 
             self.last_final_choice = final_turn_content;
