@@ -1,8 +1,8 @@
 # Rig runtime split research package
 
-Status: proposed architecture, not an implementation plan approval. This package
-contains research only; it does not change production Rust, manifests, features,
-or cassettes.
+Status: proposed architecture plus a user-requested implementation handoff.
+This PR currently changes documentation only; it has not yet changed production
+Rust, manifests, features, or cassettes or performed the migration.
 
 The recommendation is a three-crate topology implemented as a narrow contracts
 layer plus two independent runtimes:
@@ -24,6 +24,9 @@ independent runtimes, shared conformance) from the architecture evaluation.
 
 ## Package contents
 
+- [`total-migration-implementation-prompt.md`](total-migration-implementation-prompt.md):
+  standalone execution prompt for implementing the complete core/classic/Bevy
+  migration in this pull request.
 - [`knowledge-graph.json`](knowledge-graph.json): machine-readable nodes,
   ownership, current/target edges, and source evidence.
 - [`architecture-decision.md`](architecture-decision.md): selected decision,
