@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::message::{Message, UserContent};
 use rig::providers::anthropic;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};

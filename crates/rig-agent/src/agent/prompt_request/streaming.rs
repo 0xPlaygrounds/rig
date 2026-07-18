@@ -1633,8 +1633,7 @@ mod migrated_tests {
     use crate::agent::hook::{AgentHook, HookContext};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::agent::run::streamed::merge_reasoning_blocks;
-    use crate::client::ProviderClient;
-    use crate::client::completion::CompletionClient;
+    use crate::client::AgentClientExt;
     use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
@@ -1649,6 +1648,7 @@ mod migrated_tests {
     };
     use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
+    use rig_core::client::ProviderClient;
     use serde::Deserialize;
     use std::collections::{BTreeSet, HashMap};
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -1658,6 +1658,16 @@ mod migrated_tests {
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+    fn reasoning(
+        id: Option<&str>,
+        content: impl IntoIterator<Item = ReasoningContent>,
+    ) -> crate::message::Reasoning {
+        let mut reasoning = crate::message::Reasoning::new("");
+        reasoning.id = id.map(str::to_string);
+        reasoning.content = content.into_iter().collect();
+        reasoning
+    }
 
     struct StopAgentStreamingBeforeCompletion;
 
@@ -1747,23 +1757,23 @@ mod migrated_tests {
     #[test]
     fn merge_reasoning_blocks_preserves_order_and_signatures() {
         let mut accumulated = Vec::new();
-        let first = crate::message::Reasoning {
-            id: Some("rs_1".to_string()),
-            content: vec![ReasoningContent::Text {
+        let first = reasoning(
+            Some("rs_1"),
+            [ReasoningContent::Text {
                 text: "step-1".to_string(),
                 signature: Some("sig-1".to_string()),
             }],
-        };
-        let second = crate::message::Reasoning {
-            id: Some("rs_1".to_string()),
-            content: vec![
+        );
+        let second = reasoning(
+            Some("rs_1"),
+            [
                 ReasoningContent::Text {
                     text: "step-2".to_string(),
                     signature: Some("sig-2".to_string()),
                 },
                 ReasoningContent::Summary("summary".to_string()),
             ],
-        };
+        );
 
         merge_reasoning_blocks(&mut accumulated, &first);
         merge_reasoning_blocks(&mut accumulated, &second);
@@ -1786,20 +1796,20 @@ mod migrated_tests {
 
     #[test]
     fn merge_reasoning_blocks_keeps_distinct_ids_as_separate_items() {
-        let mut accumulated = vec![crate::message::Reasoning {
-            id: Some("rs_a".to_string()),
-            content: vec![ReasoningContent::Text {
+        let mut accumulated = vec![reasoning(
+            Some("rs_a"),
+            [ReasoningContent::Text {
                 text: "step-1".to_string(),
                 signature: None,
             }],
-        }];
-        let incoming = crate::message::Reasoning {
-            id: Some("rs_b".to_string()),
-            content: vec![ReasoningContent::Text {
+        )];
+        let incoming = reasoning(
+            Some("rs_b"),
+            [ReasoningContent::Text {
                 text: "step-2".to_string(),
                 signature: None,
             }],
-        };
+        );
 
         merge_reasoning_blocks(&mut accumulated, &incoming);
         assert_eq!(accumulated.len(), 2);
@@ -1815,43 +1825,37 @@ mod migrated_tests {
 
     #[test]
     fn merge_reasoning_blocks_keeps_none_ids_separate_items() {
-        let mut accumulated = vec![crate::message::Reasoning {
-            id: None,
-            content: vec![ReasoningContent::Text {
+        let mut accumulated = vec![reasoning(
+            None,
+            [ReasoningContent::Text {
                 text: "first".to_string(),
                 signature: None,
             }],
-        }];
-        let incoming = crate::message::Reasoning {
-            id: None,
-            content: vec![ReasoningContent::Text {
+        )];
+        let incoming = reasoning(
+            None,
+            [ReasoningContent::Text {
                 text: "second".to_string(),
                 signature: None,
             }],
-        };
+        );
 
         merge_reasoning_blocks(&mut accumulated, &incoming);
         assert_eq!(accumulated.len(), 2);
-        assert!(matches!(
-            accumulated.first(),
-            Some(crate::message::Reasoning {
-                id: None,
-                content
-            }) if matches!(
-                content.first(),
-                Some(ReasoningContent::Text { text, .. }) if text == "first"
-            )
-        ));
-        assert!(matches!(
-            accumulated.get(1),
-            Some(crate::message::Reasoning {
-                id: None,
-                content
-            }) if matches!(
-                content.first(),
-                Some(ReasoningContent::Text { text, .. }) if text == "second"
-            )
-        ));
+        assert!(accumulated.first().is_some_and(|reasoning| {
+            reasoning.id.is_none()
+                && matches!(
+                    reasoning.content.first(),
+                    Some(ReasoningContent::Text { text, .. }) if text == "first"
+                )
+        }));
+        assert!(accumulated.get(1).is_some_and(|reasoning| {
+            reasoning.id.is_none()
+                && matches!(
+                    reasoning.content.first(),
+                    Some(ReasoningContent::Text { text, .. }) if text == "second"
+                )
+        }));
     }
 
     #[test]

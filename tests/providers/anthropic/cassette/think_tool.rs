@@ -1,6 +1,6 @@
 //! Migrated from `examples/anthropic_think_tool.rs`.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::tool::builtin::ThinkTool;

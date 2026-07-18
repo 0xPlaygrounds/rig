@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;

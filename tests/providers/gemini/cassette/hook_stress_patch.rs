@@ -4,7 +4,7 @@
 //! proven by a downstream-observable change (the model can't echo settings).
 
 use rig::agent::RequestPatch;
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;

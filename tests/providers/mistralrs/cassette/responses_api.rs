@@ -1,6 +1,6 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses API client.
 
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::message::AssistantContent;
 

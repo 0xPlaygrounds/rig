@@ -2,7 +2,7 @@ use anyhow::Result;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;

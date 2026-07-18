@@ -1,0 +1,55 @@
+[package]
+name = "rig-agent"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Rig's classic agent runtime."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[lib]
+name = "rig_agent"
+path = "src/lib.rs"
+doctest = true
+
+[dependencies]
+async-stream = { workspace = true }
+fastrand = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+indexmap = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+rig-derive = { path = "../rig-derive", version = "0.40.0", optional = true }
+rmcp = { workspace = true, optional = true, features = ["client"] }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serenity = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
+tracing = { workspace = true }
+tracing-futures = { workspace = true, features = ["futures-03"] }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+rig-runtime-conformance = { path = "../rig-runtime-conformance" }
+tokio = { workspace = true, features = ["full"] }
+tokio-test = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[features]
+default = ["derive"]
+audio = ["rig-core/audio"]
+image = ["rig-core/image"]
+derive = ["dep:rig-derive", "rig-core/derive"]
+test-utils = ["rig-core/test-utils"]
+discord-bot = ["dep:serenity"]
+wasm = ["rig-core/wasm"]
+rmcp = ["dep:rmcp"]

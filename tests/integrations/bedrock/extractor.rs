@@ -1,6 +1,6 @@
 //! AWS Bedrock extractor smoke tests inspired by the provider extractor tests.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::message::Message;
 
 use super::{

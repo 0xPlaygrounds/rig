@@ -3,7 +3,7 @@
 //! `agent.stream_prompt()`, pinning the wire contract of the handrolled tool
 //! pipeline ahead of the rmcp migration.
 
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::Prompt;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;

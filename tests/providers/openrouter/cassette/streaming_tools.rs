@@ -1,7 +1,7 @@
 //! Cassette-backed OpenRouter streaming tools coverage.
 
 use rig::OneOrMany;
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::streaming::StreamingPrompt;

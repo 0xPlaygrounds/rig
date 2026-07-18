@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::providers::xai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

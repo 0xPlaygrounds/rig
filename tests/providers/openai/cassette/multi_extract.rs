@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
+use rig::client::AgentClientExt;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

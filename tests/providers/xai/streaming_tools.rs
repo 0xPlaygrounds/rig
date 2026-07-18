@@ -1,7 +1,7 @@
 //! xAI streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message};

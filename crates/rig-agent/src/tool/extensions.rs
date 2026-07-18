@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::{
-    tool::result::ToolExecutionError,
+    tool::ToolExecutionError,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 

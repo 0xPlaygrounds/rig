@@ -1,6 +1,6 @@
 //! Gemini structured output smoke test.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::test_utils::decode_structured_output;
 

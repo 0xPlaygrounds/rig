@@ -1,6 +1,6 @@
 //! Migrated from `examples/huggingface_subproviders.rs`.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::providers::huggingface::{self, SubProvider};
 

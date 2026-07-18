@@ -54,6 +54,8 @@ edition = "2024"
 # The `rig` facade is the workspace-root package; examples depend on it via
 # `rig.workspace = true` (add per-example features at the use site).
 rig = { path = ".", version = "0.40.0" }
+rig-agent = { path = "crates/rig-agent", version = "0.40.0" }
+rig-core = { path = "crates/rig-core", version = "0.40.0" }
 anyhow = "1.0.102"
 arrow-array = "58"
 as-any = "0.3.2"
@@ -165,6 +167,7 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.40.0", default-features = false }
+rig-agent = { path = "crates/rig-agent", version = "0.40.0", optional = true, default-features = false }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.40.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.40.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.40.0", optional = true, default-features = false }
@@ -172,6 +175,7 @@ rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.40.0", optiona
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.40.0", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.40.0", optional = true, default-features = false }
 rig-memory = { path = "crates/rig-memory", version = "0.40.0", optional = true, default-features = false }
+rig-derive = { path = "crates/rig-derive", version = "0.40.0", optional = true }
 rig-milvus = { path = "crates/rig-milvus", version = "0.40.0", optional = true, default-features = false }
 rig-mongodb = { path = "crates/rig-mongodb", version = "0.40.0", optional = true, default-features = false }
 rig-neo4j = { path = "crates/rig-neo4j", version = "0.40.0", optional = true, default-features = false }
@@ -195,6 +199,9 @@ aws-smithy-eventstream = { workspace = true }
 aws-smithy-runtime-api = { workspace = true }
 aws-smithy-types = { workspace = true }
 rig-core = { path = "crates/rig-core", version = "0.40.0", default-features = false, features = [
+  "test-utils",
+] }
+rig-agent = { path = "crates/rig-agent", version = "0.40.0", default-features = false, features = [
   "test-utils",
 ] }
 tokio = { workspace = true, features = ["full"] }
@@ -252,8 +259,9 @@ tracing-opentelemetry = { workspace = true }
 url = { workspace = true }
 
 [features]
-default = ["rig-core/default", "rustls"]
-test-utils = ["rig-core/test-utils"]
+default = ["rig-core/default", "agent", "derive", "rustls"]
+agent = ["dep:rig-agent"]
+test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [
@@ -278,15 +286,15 @@ sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
-audio = ["rig-core/audio"]
-image = ["rig-core/image"]
-derive = ["rig-core/derive"]
-discord-bot = ["rig-core/discord-bot"]
+audio = ["rig-core/audio", "rig-agent?/audio"]
+image = ["rig-core/image", "rig-agent?/image"]
+derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
+discord-bot = ["agent", "rig-agent/discord-bot"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
 rayon = ["rig-core/rayon"]
-wasm = ["rig-core/wasm"]
-rmcp = ["rig-core/rmcp"]
+wasm = ["rig-core/wasm", "rig-agent?/wasm"]
+rmcp = ["agent", "rig-agent/rmcp"]
 socks = ["rig-core/socks"]
 reqwest = ["rig-core/reqwest"]
 websocket = ["rig-core/websocket"]

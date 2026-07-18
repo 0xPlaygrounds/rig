@@ -11,7 +11,7 @@ use rig::agent::{
     ObservationAction, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
     ToolResultEvent,
 };
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::TypedPrompt;
 use rig::tool::Tool;
 

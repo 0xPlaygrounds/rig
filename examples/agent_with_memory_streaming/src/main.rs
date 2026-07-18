@@ -8,7 +8,7 @@
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingResult};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::memory::InMemoryConversationMemory;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;

@@ -8,7 +8,7 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
 

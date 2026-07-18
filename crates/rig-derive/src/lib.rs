@@ -36,6 +36,42 @@ pub(crate) fn rig_core_path() -> proc_macro2::TokenStream {
     }
 }
 
+fn rig_agent_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-agent") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident)
+            }
+            Err(_) => quote!(::rig_agent),
+        },
+    }
+}
+
+fn rig_portable_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-core") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::core),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident::core)
+            }
+            Err(_) => quote!(::rig_core),
+        },
+    }
+}
+
 //References:
 //<https://doc.rust-lang.org/book/ch19-06-macros.html#how-to-write-a-custom-derive-macro>
 //<https://doc.rust-lang.org/reference/procedural-macros.html>
@@ -302,7 +338,7 @@ fn is_tool_context_type(ty: &Type) -> bool {
     matches!(
         segments.as_slice(),
         [root, tool, context]
-            if matches!(root.as_str(), "rig" | "rig_core")
+            if matches!(root.as_str(), "rig" | "rig_agent")
                 && tool == "tool"
                 && context == "ToolContext"
     )
@@ -566,7 +602,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         Some(desc) => quote! { #desc.to_string() },
         None => match fn_doc {
             Some(doc) => quote! { #doc.to_string() },
-            None => quote! { format!("Function to {}", Self::NAME) },
+            None => quote! { format!("Function to {}", #tool_name) },
         },
     };
 
@@ -681,14 +717,38 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
-    let rig_core = rig_core_path();
+    let has_context = context_param_name.is_some();
+    let tool_owner = if has_context {
+        rig_agent_path()
+    } else {
+        rig_portable_path()
+    };
 
     // Generate the call implementation based on whether the function is async
-    let call_impl = if is_async {
+    let call_impl = if has_context && is_async {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #rig_core::tool::ToolContext,
+                _context: &mut #tool_owner::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                #fn_name(#(#call_arguments),*).await
+            }
+        }
+    } else if has_context {
+        quote! {
+            async fn call(
+                &self,
+                _context: &mut #tool_owner::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                #fn_name(#(#call_arguments),*)
+            }
+        }
+    } else if is_async {
+        quote! {
+            async fn call(
+                &self,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*).await
@@ -698,7 +758,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #rig_core::tool::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*)
@@ -706,9 +765,9 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    let schemars_crate = format!("{}::schemars", rig_core.to_string().replace(' ', ""));
+    let schemars_crate = format!("{}::schemars", tool_owner.to_string().replace(' ', ""));
     let expanded = quote! {
-        #[derive(serde::Deserialize, #rig_core::schemars::JsonSchema)]
+        #[derive(serde::Deserialize, #tool_owner::schemars::JsonSchema)]
         #[schemars(crate = #schemars_crate)]
         #vis struct #params_struct_name {
             #(#field_tokens,)*
@@ -719,7 +778,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(Default)]
         #vis struct #struct_name;
 
-        impl #rig_core::tool::Tool for #struct_name {
+        impl #tool_owner::tool::Tool for #struct_name {
             const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;
@@ -732,8 +791,8 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             fn parameters(&self) -> serde_json::Value {
                 let mut schema = serde_json::to_value(
-                    #rig_core::schemars::schema_for!(#params_struct_name)
-                ).expect("schema serialization");
+                    #tool_owner::schemars::schema_for!(#params_struct_name)
+                ).unwrap_or_else(|_| serde_json::json!({"type": "object"}));
                 schema["required"] = serde_json::json!([#(#required_args),*]);
                 schema
             }

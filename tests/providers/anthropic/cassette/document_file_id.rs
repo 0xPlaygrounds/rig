@@ -2,7 +2,7 @@
 
 use futures::FutureExt;
 use rig::OneOrMany;
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,

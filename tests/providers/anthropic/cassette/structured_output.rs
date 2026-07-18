@@ -1,6 +1,6 @@
 //! Anthropic structured output smoke test.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::test_utils::decode_structured_output;

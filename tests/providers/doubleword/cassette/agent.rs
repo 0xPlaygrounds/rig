@@ -1,6 +1,6 @@
 //! Cassette-backed Doubleword completion coverage.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};

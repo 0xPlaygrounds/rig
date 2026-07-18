@@ -1,6 +1,6 @@
 //! ChatGPT non-interactive OAuth cassette coverage.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::providers::chatgpt;
 use rig::streaming::StreamingPrompt;
 

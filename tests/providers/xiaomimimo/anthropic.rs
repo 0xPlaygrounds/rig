@@ -1,6 +1,6 @@
 //! Xiaomi MiMo Anthropic-compatible completion smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::xiaomimimo;
 

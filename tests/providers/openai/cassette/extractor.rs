@@ -1,5 +1,6 @@
 //! OpenAI extractor smoke test.
 
+use rig::client::AgentClientExt;
 use rig::providers::openai;
 use rig::test_utils::validate_extraction_fields;
 

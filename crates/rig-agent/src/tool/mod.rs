@@ -110,6 +110,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+pub mod builtin;
+
 use futures::Future;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -120,10 +122,16 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-use super::{IntoToolOutput, ToolContext, ToolExecutionError, ToolOutput, ToolResult};
+pub(crate) mod extensions;
+#[cfg(feature = "rmcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+pub mod rmcp;
+pub mod server;
 
-#[cfg(test)]
-use super::ToolErrorKind;
+pub use extensions::{MissingToolContext, ToolContext};
+pub use rig_core::tool::{
+    IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
+};
 
 /// A typed LLM tool.
 ///
@@ -173,6 +181,36 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         context: &mut ToolContext,
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
+}
+
+impl<T> Tool for T
+where
+    T: rig_core::tool::Tool,
+{
+    const NAME: &'static str = <T as rig_core::tool::Tool>::NAME;
+    type Args = <T as rig_core::tool::Tool>::Args;
+    type Output = <T as rig_core::tool::Tool>::Output;
+    type Error = <T as rig_core::tool::Tool>::Error;
+
+    fn description(&self) -> String {
+        rig_core::tool::Tool::description(self)
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        rig_core::tool::Tool::parameters(self)
+    }
+
+    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+        rig_core::tool::Tool::map_error(self, error)
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        rig_core::tool::Tool::call(self, args).await
+    }
 }
 
 /// A tool that can be stored in a vector store and reconstructed for RAG.
@@ -657,9 +695,15 @@ impl ToolSet {
         self.tools
             .iter()
             .filter_map(|(name, registration)| match &registration.tool {
-                RegisteredTool::Embedding(tool) => {
-                    Some(ToolSchema::from_tool(name.clone(), &**tool))
-                }
+                RegisteredTool::Embedding(tool) => Some(
+                    tool.serialized_context()
+                        .map_err(EmbedError::new)
+                        .map(|context| ToolSchema {
+                            name: name.clone(),
+                            context,
+                            embedding_docs: tool.embedding_docs(),
+                        }),
+                ),
                 RegisteredTool::Static(_) => None,
             })
             .collect()

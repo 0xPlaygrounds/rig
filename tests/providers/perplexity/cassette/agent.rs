@@ -1,6 +1,6 @@
 //! Perplexity non-streaming completion cassette coverage.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::providers::perplexity;
 

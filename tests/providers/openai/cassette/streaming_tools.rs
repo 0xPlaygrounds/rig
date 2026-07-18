@@ -1,7 +1,7 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 
 use rig::OneOrMany;
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::providers::openai;

@@ -5,7 +5,7 @@ use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     stream_to_stdout,
 };
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::groq;
 use rig::streaming::StreamingPrompt;

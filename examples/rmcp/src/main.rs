@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use rig::{
-    client::{CompletionClient, ProviderClient},
+    client::{AgentClientExt, ProviderClient},
     completion::Prompt,
     providers::openai,
     tool::{rmcp::McpClientHandler, server::ToolServer},

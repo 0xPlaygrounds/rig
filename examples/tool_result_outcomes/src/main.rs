@@ -36,7 +36,7 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
     ToolResultAction, ToolResultEvent,
 };
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::openai;

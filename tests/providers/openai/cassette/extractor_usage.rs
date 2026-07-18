@@ -7,6 +7,7 @@
 //! - Both `extract` and `extract_with_chat_history` variants work
 
 use anyhow::Result;
+use rig::client::AgentClientExt;
 use rig::extractor::ExtractionResponse;
 use rig::providers;
 use schemars::JsonSchema;

@@ -14,7 +14,7 @@ use rig::agent::{
     AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
     ToolCall as ToolCallEvent, ToolCallAction,
 };
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{GetTokenUsage, PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;

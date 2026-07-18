@@ -2,9 +2,8 @@
 //! Public facade for Rig.
 //!
 //! The `rig` crate is the user-facing entry point for Rig. It re-exports the
-//! full public API of `rig_core`, so core traits, builders, providers, tools,
-//! vector-store abstractions, and request/response types are available through
-//! `rig::...` paths.
+//! portable contracts from `rig_core` and the classic runtime from `rig_agent`,
+//! preserving the familiar `rig::...` paths.
 //!
 //! # Companion integrations
 //!
@@ -28,6 +27,94 @@
 //! facade's companion integration feature surface.
 
 pub use rig_core::*;
+
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};
+
+/// Direct access to the portable provider and data contracts.
+pub mod core {
+    pub use rig_core::*;
+}
+
+/// Classic agent orchestration and lifecycle APIs.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod agent {
+    pub use rig_agent::agent::*;
+}
+
+/// Provider clients plus classic agent/extractor constructors.
+pub mod client {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::client::{AgentClientExt, AgentModelExt, CompletionClient};
+    pub use rig_core::client::*;
+}
+
+/// Low-level completion contracts plus classic prompting traits and errors.
+pub mod completion {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::completion::{
+        Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt,
+    };
+    pub use rig_core::completion::*;
+}
+
+/// Classic typed extraction.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod extractor {
+    pub use rig_agent::extractor::*;
+}
+
+/// Classic runtime integrations.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod integrations {
+    pub use rig_agent::integrations::*;
+}
+
+/// Common classic-runtime imports.
+pub mod prelude {
+    #[cfg(feature = "derive")]
+    pub use crate::Embed;
+    #[cfg(feature = "agent")]
+    pub use rig_agent::prelude::*;
+    #[cfg(not(feature = "agent"))]
+    pub use rig_core::prelude::*;
+}
+
+/// Low-level streaming values plus classic streaming traits.
+pub mod streaming {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::streaming::{StreamingChat, StreamingPrompt};
+    pub use rig_core::streaming::*;
+}
+
+/// Contextual classic tools and explicitly named portable tool contracts.
+pub mod tool {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::tool::*;
+    #[cfg(not(feature = "agent"))]
+    pub use rig_core::tool::*;
+    #[cfg(feature = "agent")]
+    pub use rig_core::tool::{
+        PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
+    };
+}
+
+#[cfg(all(feature = "agent", any(test, feature = "test-utils")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
+pub mod test_utils {
+    pub use rig_agent::test_utils::*;
+}
+
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use rig_derive::rig_tool;
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use rig_derive::rig_tool as tool_macro;
 
 /// Conversation memory APIs and optional memory policy helpers.
 ///

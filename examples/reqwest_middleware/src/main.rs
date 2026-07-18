@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
-use rig::{client::CompletionClient, completion::Prompt, providers::anthropic};
+use rig::{client::AgentClientExt, completion::Prompt, providers::anthropic};
 
 fn build_http_client() -> reqwest_middleware::ClientWithMiddleware {
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);

@@ -1,6 +1,6 @@
 //! Copilot non-interactive OAuth cassette coverage.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_noninteractive_oauth_cassette};

@@ -1,7 +1,7 @@
 //! Groq streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::providers::groq;

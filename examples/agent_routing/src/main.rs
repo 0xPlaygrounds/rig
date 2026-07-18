@@ -3,7 +3,7 @@
 //! Run it to see a classifier agent choose which second prompt should run.
 
 use anyhow::{Result, bail};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::providers::openai::client::Client;

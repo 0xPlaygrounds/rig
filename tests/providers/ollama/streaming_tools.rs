@@ -1,6 +1,6 @@
 //! Migrated from `examples/ollama_streaming_with_tools.rs`.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::providers::ollama;
 use rig::streaming::StreamingPrompt;
 

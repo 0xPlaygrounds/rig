@@ -1,6 +1,6 @@
 //! Migrated from `examples/ollama_structured_output.rs`.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::ollama;
 use schemars::JsonSchema;

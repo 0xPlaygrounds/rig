@@ -1,7 +1,7 @@
 //! OpenAI-backed regression coverage for retrying a completed model turn.
 
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::openai;

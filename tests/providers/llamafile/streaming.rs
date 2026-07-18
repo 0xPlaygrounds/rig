@@ -1,6 +1,6 @@
 //! Llamafile streaming coverage.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::streaming::StreamingPrompt;
 
 use crate::support::{

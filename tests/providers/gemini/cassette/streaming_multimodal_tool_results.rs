@@ -3,7 +3,7 @@
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
 };

@@ -1,7 +1,7 @@
 //! Dedicated GPT-5.5 live smoke tests.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, CompletionClient, ProviderClient};
 use rig::completion::message::Image;
 use rig::completion::{Chat, Message};
 use rig::completion::{Prompt, TypedPrompt};

@@ -73,9 +73,8 @@ use rmcp::service::PeerRequestOptions;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::OneOrMany;
-use crate::completion::ToolDefinition;
 use crate::message::{ImageMediaType, MimeType, ToolResultContent};
-use crate::tool::classic::ErasedTool;
+use crate::tool::ErasedTool;
 use crate::tool::server::{ManagedToolToken, ToolServerHandle};
 use crate::tool::{ToolContext, ToolExecutionError, ToolOutput, ToolResult};
 use crate::wasm_compat::WasmBoxedFuture;
@@ -149,26 +148,6 @@ impl McpTool {
     #[cfg(test)]
     pub(crate) fn timeout(&self) -> Option<Duration> {
         self.timeout
-    }
-}
-
-impl From<&rmcp::model::Tool> for ToolDefinition {
-    fn from(val: &rmcp::model::Tool) -> Self {
-        Self {
-            name: val.name.to_string(),
-            description: val.description.clone().unwrap_or(Cow::from("")).to_string(),
-            parameters: val.schema_as_json_value(),
-        }
-    }
-}
-
-impl From<rmcp::model::Tool> for ToolDefinition {
-    fn from(val: rmcp::model::Tool) -> Self {
-        Self {
-            name: val.name.to_string(),
-            description: val.description.clone().unwrap_or(Cow::from("")).to_string(),
-            parameters: val.schema_as_json_value(),
-        }
     }
 }
 

@@ -1,7 +1,7 @@
 //! Integration tests for ChatGPT extractor usage tracking.
 
 use anyhow::{Result, anyhow};
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::extractor::ExtractionResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

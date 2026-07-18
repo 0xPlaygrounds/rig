@@ -1,6 +1,6 @@
 //! Gemini extractor coverage, including the migrated example path.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,

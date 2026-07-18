@@ -1,6 +1,6 @@
 //! OpenAI agent completion smoke test.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::providers::openai;
 

@@ -1,6 +1,6 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 

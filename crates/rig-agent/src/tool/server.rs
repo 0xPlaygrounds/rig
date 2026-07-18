@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use tokio::sync::RwLock;
 
 #[cfg(feature = "rmcp")]
-use crate::tool::classic::ErasedTool;
+use crate::tool::ErasedTool;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},

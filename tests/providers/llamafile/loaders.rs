@@ -1,6 +1,6 @@
 //! Llamafile loaders smoke test.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::loaders::FileLoader;
 

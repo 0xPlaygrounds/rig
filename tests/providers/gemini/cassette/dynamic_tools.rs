@@ -7,7 +7,7 @@
 //! build time, query embedding at prompt time) alongside the completion
 //! turns.
 
-use rig::client::{CompletionClient, EmbeddingsClient};
+use rig::client::{AgentClientExt, EmbeddingsClient};
 use rig::completion::{Chat, Message};
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::gemini;

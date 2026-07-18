@@ -2,7 +2,7 @@
 //! terminate-early, and observation of every call/result pair.
 
 use rig::agent::AgentHook;
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::{Prompt, PromptError};
 use rig::providers::gemini;
 use rig::tool::Tool;

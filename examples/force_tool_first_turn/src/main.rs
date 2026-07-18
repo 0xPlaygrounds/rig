@@ -22,7 +22,7 @@
 
 use anyhow::Result;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::{Prompt, PromptError};
 use rig::message::ToolChoice;
 use rig::providers::openai;

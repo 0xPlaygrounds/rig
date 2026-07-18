@@ -149,20 +149,17 @@
 
 extern crate self as rig;
 
-pub mod agent;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
-pub mod extractor;
 pub mod http_client;
 pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
-pub mod integrations;
 pub(crate) mod json_utils;
 pub mod loaders;
 pub mod markers;
@@ -186,13 +183,12 @@ pub mod wasm_compat;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
-pub use extractor::ExtractionResponse;
 pub use one_or_many::{EmptyListError, OneOrMany};
 pub use provider_response::ProviderResponseError;
 pub use schemars;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use rig_derive::{Embed, rig_tool as tool_macro};
+pub use rig_derive::Embed;
 
 pub mod telemetry;

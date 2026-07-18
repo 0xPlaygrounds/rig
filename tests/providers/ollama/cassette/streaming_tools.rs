@@ -3,7 +3,7 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_ollama_cassette;

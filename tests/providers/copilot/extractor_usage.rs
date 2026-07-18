@@ -1,7 +1,7 @@
 //! Copilot integration tests for extractor usage tracking.
 
 use anyhow::Result;
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::extractor::ExtractionResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

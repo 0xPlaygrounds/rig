@@ -3,7 +3,7 @@
 //! Run it to see a single prompt combine text instructions with a video URL input.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::message::{Message, UserContent, Video};
 use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use rig::{

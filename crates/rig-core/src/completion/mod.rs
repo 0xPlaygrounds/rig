@@ -1,17 +1,8 @@
 //! Provider-agnostic completion and chat abstractions.
 //!
 //! This module contains the low-level request and response types used by provider
-//! implementations, plus the high-level traits most callers use through
-//! [`Agent`](crate::agent::Agent):
-//!
-//! - [`Prompt`] sends one user prompt and returns assistant text.
-//! - [`Chat`] sends a prompt with existing history and returns assistant text.
-//! - [`TypedPrompt`] requests structured output and deserializes it into a Rust type.
-//! - [`CompletionModel`] is the provider-facing trait implemented by completion models.
-//!
-//! Agent execution always goes through [`AgentRunner`](crate::agent::AgentRunner),
-//! including the high-level traits above. Call [`CompletionModel::completion`]
-//! directly only when intentionally making a raw, hook-free provider request.
+//! implementations. [`CompletionModel`] is the provider-facing trait implemented
+//! by completion models; runtimes build orchestration on top of this boundary.
 //!
 //! `CompletionRequest` is Rig's canonical request representation. Provider modules
 //! translate it into provider-specific request bodies and convert responses back into
@@ -20,21 +11,14 @@
 //! # Example
 //!
 //! ```no_run
-//! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
-//!     completion::Prompt,
-//!     providers::openai,
-//! };
+//! use rig_core::{client::{CompletionClient, ProviderClient}, providers::openai};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = openai::Client::from_env()?;
-//! let agent = client
-//!     .agent(openai::GPT_5_2)
-//!     .preamble("Answer concisely.")
-//!     .build();
-//!
-//! let answer = agent.prompt("What is Rig?").await?;
-//! println!("{answer}");
+//! let model = client.completion_model(openai::GPT_5_2);
+//! let request = model.completion_request("What is Rig?").build();
+//! let response = model.completion(request).await?;
+//! println!("{:?}", response.choice);
 //! # Ok(())
 //! # }
 //! ```

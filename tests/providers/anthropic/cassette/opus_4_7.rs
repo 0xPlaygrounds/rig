@@ -1,7 +1,7 @@
 //! Dedicated Claude Opus 4.7 live smoke tests.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::message::Image;
 use rig::completion::{Chat, Message, Prompt};
 use rig::message::{DocumentSourceKind, ImageMediaType};

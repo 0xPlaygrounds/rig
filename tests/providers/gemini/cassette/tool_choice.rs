@@ -1,6 +1,6 @@
 //! Gemini tool-choice cassette coverage.
 
-use rig::client::CompletionClient;
+use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
 use rig::message::ToolChoice;
 use rig::providers::gemini;

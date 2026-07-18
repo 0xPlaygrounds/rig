@@ -1,7 +1,7 @@
 //! Integration for deploying your Rig agents (and more) as Discord bots.
 //! This feature is not WASM-compatible (and as such, is incompatible with the `worker` feature).
 use crate::agent::Agent;
-use crate::completion::{CompletionModel, request::Chat};
+use crate::completion::{Chat, CompletionModel};
 use crate::message::Message as RigMessage;
 use serenity::all::{
     Command, CommandInteraction, Context, CreateCommand, CreateThread, EventHandler,

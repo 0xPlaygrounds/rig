@@ -1,6 +1,6 @@
 //! Llamafile structured output coverage.
 
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::{Prompt, TypedPrompt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

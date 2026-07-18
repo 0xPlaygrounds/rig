@@ -1,7 +1,7 @@
 //! Integration tests for DeepSeek extractor usage tracking.
 
 use anyhow::{Result, anyhow};
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::extractor::ExtractionResponse;
 use rig::message::Message;
 use rig::providers::deepseek;

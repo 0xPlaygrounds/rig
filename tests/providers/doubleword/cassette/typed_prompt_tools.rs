@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::client::CompletionClient;
+use rig::client::AgentClientExt;
 use rig::completion::TypedPrompt;
 use rig::tool::Tool;
 use schemars::JsonSchema;

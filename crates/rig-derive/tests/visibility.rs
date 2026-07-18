@@ -33,10 +33,10 @@ mod tools {
 
     /// Verify that a private tool is accessible within its defining module.
     pub async fn use_private_tool() -> i32 {
-        use rig_core::tool::Tool;
+        use rig_agent::tool::Tool;
         let tool = PrivateAdder;
         tool.call(
-            &mut rig_core::tool::ToolContext::new(),
+            &mut rig_agent::tool::ToolContext::new(),
             PrivateAdderParameters { x: 99 },
         )
         .await
@@ -46,17 +46,17 @@ mod tools {
 
 #[tokio::test]
 async fn test_pub_tool_accessible_from_outside_module() {
-    use rig_core::tool::Tool;
+    use rig_agent::tool::Tool;
 
     // PublicAdder and its parameters struct are accessible outside the `tools` module.
     let tool = tools::PublicAdder;
-    let def = rig_core::tool::tool_definition(&tool);
+    let def = rig_agent::tool::tool_definition(&tool);
     assert_eq!(def.name, "public_adder");
     assert_eq!(def.description, "A public tool for testing visibility");
 
     let result = tool
         .call(
-            &mut rig_core::tool::ToolContext::new(),
+            &mut rig_agent::tool::ToolContext::new(),
             tools::PublicAdderParameters { x: 41 },
         )
         .await

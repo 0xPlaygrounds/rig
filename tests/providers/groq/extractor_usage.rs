@@ -1,7 +1,7 @@
 //! Integration tests for Groq extractor usage tracking.
 
 use anyhow::{Result, anyhow};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::{AgentClientExt, ProviderClient};
 use rig::extractor::ExtractionResponse;
 use rig::message::Message;
 use rig::providers::groq;
