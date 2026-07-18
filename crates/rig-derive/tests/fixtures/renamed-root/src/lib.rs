@@ -1,4 +1,4 @@
-use facade::rig_tool;
+use facade::tool_macro as rig_tool;
 use facade::tool::ToolContext;
 
 #[rig_tool(description = "portable through renamed facade")]
@@ -16,7 +16,7 @@ pub fn contextual(
 }
 
 pub fn assert_owners() {
-    fn portable_owner<T: facade::core::tool::Tool>() {}
+    fn portable_owner<T: facade::tool::Tool>() {}
     fn contextual_owner<T: facade::tool::ContextualTool>() {}
     portable_owner::<Portable>();
     contextual_owner::<Contextual>();
