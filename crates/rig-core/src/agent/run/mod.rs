@@ -515,16 +515,9 @@ impl AgentRun {
         };
 
         if turn.has_tool_calls {
-            let mut history = self.full_history();
-            if let Some(content) = OneOrMany::from_iter_optional(turn.items.clone()) {
-                history.push(Message::Assistant {
-                    id: turn.message_id.clone(),
-                    content,
-                });
-            }
             return Err(PromptError::prompt_cancelled(
-                history,
-                "model-turn retry does not support tool-bearing turns; use tool-call hooks instead",
+                self.full_history(),
+                "model-turn retry does not support tool-bearing model turns; use tool-call hooks instead",
             ));
         }
 
@@ -1726,8 +1719,16 @@ mod tests {
             .retry_model_turn(RetryRequest::Feedback("do not call tools".to_string()))
             .expect_err("tool-bearing retries must fail closed");
 
-        assert!(matches!(err, PromptError::PromptCancelled { .. }));
-        assert!(err.to_string().contains("tool-bearing turns"));
+        let PromptError::PromptCancelled {
+            chat_history,
+            reason,
+        } = err
+        else {
+            panic!("tool-bearing retry should return PromptCancelled");
+        };
+        assert!(reason.contains("tool-bearing model turns"));
+        assert!(reason.contains("tool-call hooks"));
+        assert_eq!(chat_history, vec![Message::user("add things")]);
         assert!(run.next_step().is_err(), "failed run cannot execute tools");
     }
 

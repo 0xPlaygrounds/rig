@@ -2250,11 +2250,15 @@ mod migrated_tests {
     #[test]
     fn action_types_are_event_specific() {
         fn completion(_: CompletionCallAction) {}
+        fn model_turn(_: ModelTurnAction) {}
+        fn retry_request(_: RetryRequest) {}
         fn call(_: ToolCallAction) {}
         fn result(_: ToolResultAction) {}
         fn invalid(_: InvalidToolCallAction) {}
         fn observation(_: ObservationAction) {}
         completion(CompletionCallAction::continue_run());
+        model_turn(ModelTurnAction::retry_with_feedback("try again"));
+        retry_request(RetryRequest::Repeat);
         call(ToolCallAction::run());
         result(ToolResultAction::keep());
         invalid(InvalidToolCallAction::fail());

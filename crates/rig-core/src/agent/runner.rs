@@ -3304,6 +3304,7 @@ mod migrated_tests {
         use std::collections::{HashMap, HashSet};
         use std::sync::{Arc, Mutex};
 
+        use futures::StreamExt;
         use tracing::Instrument;
         use tracing::field::{Field, Visit};
         use tracing::span::{Attributes, Record};
@@ -3311,10 +3312,15 @@ mod migrated_tests {
         use tracing_subscriber::layer::{Context, SubscriberExt};
         use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
-        use crate::agent::{AgentBuilder, HookContext, ToolResultAction, ToolResultEvent};
-        use crate::completion::Usage;
-        use crate::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
+        use crate::agent::{
+            AgentBuilder, HookContext, MultiTurnStreamItem, ToolResultAction, ToolResultEvent,
+        };
+        use crate::completion::{PromptError, Usage};
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
         use crate::tool::{ToolContext, ToolExecutionError};
+
+        use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
 
         #[derive(Clone)]
         struct CapturedSpan {
@@ -3322,6 +3328,7 @@ mod migrated_tests {
             name: String,
             field_names: HashSet<String>,
             u64_fields: HashMap<String, u64>,
+            string_fields: HashMap<String, Vec<String>>,
         }
 
         #[derive(Clone, Default)]
@@ -3338,16 +3345,26 @@ mod migrated_tests {
                     name: name.to_string(),
                     field_names: HashSet::new(),
                     u64_fields: HashMap::new(),
+                    string_fields: HashMap::new(),
                 });
             }
 
-            fn record(&self, id: &Id, names: HashSet<String>, u64s: HashMap<String, u64>) {
+            fn record(
+                &self,
+                id: &Id,
+                names: HashSet<String>,
+                u64s: HashMap<String, u64>,
+                strings: HashMap<String, String>,
+            ) {
                 let id = id.into_u64();
                 if let Ok(mut spans) = self.spans.lock()
                     && let Some(span) = spans.iter_mut().find(|s| s.id == id)
                 {
                     span.field_names.extend(names);
                     span.u64_fields.extend(u64s);
+                    for (name, value) in strings {
+                        span.string_fields.entry(name).or_default().push(value);
+                    }
                 }
             }
 
@@ -3387,7 +3404,8 @@ mod migrated_tests {
             fn on_record(&self, span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
                 let mut visitor = FieldVisitor::default();
                 values.record(&mut visitor);
-                self.captured.record(span, visitor.names, visitor.u64s);
+                self.captured
+                    .record(span, visitor.names, visitor.u64s, visitor.strings);
             }
 
             fn on_follows_from(&self, span: &Id, follows: &Id, _ctx: Context<'_, S>) {
@@ -3399,6 +3417,7 @@ mod migrated_tests {
         struct FieldVisitor {
             names: HashSet<String>,
             u64s: HashMap<String, u64>,
+            strings: HashMap<String, String>,
         }
 
         impl Visit for FieldVisitor {
@@ -3407,12 +3426,16 @@ mod migrated_tests {
                 self.u64s.insert(field.name().to_string(), value);
             }
 
-            fn record_str(&mut self, field: &Field, _value: &str) {
+            fn record_str(&mut self, field: &Field, value: &str) {
                 self.names.insert(field.name().to_string());
+                self.strings
+                    .insert(field.name().to_string(), value.to_string());
             }
 
-            fn record_debug(&mut self, field: &Field, _value: &dyn std::fmt::Debug) {
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
                 self.names.insert(field.name().to_string());
+                self.strings
+                    .insert(field.name().to_string(), format!("{value:?}"));
             }
         }
 
@@ -3444,6 +3467,270 @@ mod migrated_tests {
                 .tool(MockAddTool)
                 .build();
             let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
+        }
+
+        async fn run_blocking_response_retry_with_content_telemetry() {
+            AgentBuilder::new(MockCompletionModel::from_turns([
+                MockTurn::text("rejected"),
+                MockTurn::text("accepted"),
+            ]))
+            .record_content_telemetry(true)
+            .add_hook(BoundedResponseRetry::new(
+                "rejected",
+                1,
+                TestRetryMode::Repeat,
+            ))
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("blocking retry should succeed");
+        }
+
+        async fn run_streaming_response_retry_with_content_telemetry() {
+            let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+                [
+                    MockStreamEvent::text("rejected"),
+                    MockStreamEvent::final_response_with_default_usage(),
+                ],
+                [
+                    MockStreamEvent::text("accepted"),
+                    MockStreamEvent::final_response_with_default_usage(),
+                ],
+            ]))
+            .record_content_telemetry(true)
+            .add_hook(BoundedResponseRetry::new(
+                "rejected",
+                1,
+                TestRetryMode::Repeat,
+            ))
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .stream()
+            .await;
+
+            let mut saw_final = false;
+            while let Some(item) = stream.next().await {
+                if let MultiTurnStreamItem::FinalResponse(response) =
+                    item.expect("streaming retry item")
+                {
+                    saw_final = true;
+                    assert_eq!(response.output, "accepted");
+                }
+            }
+            assert!(saw_final, "streaming retry should produce a final response");
+        }
+
+        async fn run_blocking_model_turn_stop_with_content_telemetry() {
+            let error = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text(
+                "stopped blocking response",
+            )]))
+            .record_content_telemetry(true)
+            .add_hook(StopCompletedModelTurn)
+            .build()
+            .runner("question")
+            .run()
+            .await
+            .expect_err("blocking model-turn stop should cancel the run");
+
+            assert!(matches!(
+                error,
+                PromptError::PromptCancelled { reason, .. }
+                    if reason == "stop completed model turn"
+            ));
+        }
+
+        async fn run_streaming_model_turn_stop_with_content_telemetry() {
+            let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+                MockStreamEvent::text("stopped streaming response"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ]]))
+            .record_content_telemetry(true)
+            .add_hook(StopCompletedModelTurn)
+            .build()
+            .runner("question")
+            .stream()
+            .await;
+
+            let mut provider_finals = 0;
+            let mut agent_finals = 0;
+            let mut retries = 0;
+            let mut errors = 0;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(MultiTurnStreamItem::StreamAssistantItem(
+                        StreamedAssistantContent::Final(_),
+                    )) => provider_finals += 1,
+                    Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,
+                    Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => retries += 1,
+                    Ok(_) => {}
+                    Err(error) => {
+                        errors += 1;
+                        assert!(matches!(
+                            error,
+                            super::StreamingError::Prompt(error)
+                                if matches!(
+                                    error.as_ref(),
+                                    PromptError::PromptCancelled { reason, .. }
+                                        if reason == "stop completed model turn"
+                                )
+                        ));
+                    }
+                }
+            }
+
+            assert_eq!(provider_finals, 1);
+            assert_eq!(agent_finals, 0);
+            assert_eq!(retries, 0);
+            assert_eq!(errors, 1);
+        }
+
+        #[tokio::test]
+        async fn response_retry_records_only_accepted_content_on_both_surfaces() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            // Register both transport callsites under this subscriber before
+            // inspecting field recordings.
+            run_blocking_response_retry_with_content_telemetry().await;
+            run_streaming_response_retry_with_content_telemetry().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            run_blocking_response_retry_with_content_telemetry().await;
+            let blocking = captured.snapshot();
+            let blocking_chats = blocking
+                .iter()
+                .filter(|span| span.name == "chat")
+                .collect::<Vec<_>>();
+            assert_eq!(blocking_chats.len(), 2);
+            assert!(
+                !blocking_chats[0]
+                    .field_names
+                    .contains("gen_ai.output.messages"),
+                "rejected blocking content must not be recorded as model output"
+            );
+            assert!(
+                blocking_chats[1]
+                    .field_names
+                    .contains("gen_ai.output.messages"),
+                "accepted blocking content must be recorded as model output"
+            );
+            let blocking_output = blocking_chats[1]
+                .string_fields
+                .get("gen_ai.output.messages")
+                .expect("accepted blocking output value");
+            assert!(
+                blocking_output
+                    .iter()
+                    .any(|value| value.contains("accepted"))
+            );
+            assert!(
+                blocking_output
+                    .iter()
+                    .all(|value| !value.contains("rejected"))
+            );
+            let blocking_completion = blocking
+                .iter()
+                .find(|span| span.name == "invoke_agent")
+                .and_then(|span| span.string_fields.get("gen_ai.completion"))
+                .expect("accepted blocking run-level completion");
+            assert_eq!(blocking_completion, &["accepted"]);
+
+            captured.clear();
+            run_streaming_response_retry_with_content_telemetry().await;
+            let streaming = captured.snapshot();
+            let streaming_chats = streaming
+                .iter()
+                .filter(|span| span.name == "chat_streaming")
+                .collect::<Vec<_>>();
+            assert_eq!(streaming_chats.len(), 2);
+            assert!(
+                !streaming_chats[0]
+                    .field_names
+                    .contains("gen_ai.output.messages"),
+                "rejected streaming content must not be recorded as model output"
+            );
+            assert!(
+                streaming_chats[1]
+                    .field_names
+                    .contains("gen_ai.output.messages"),
+                "accepted streaming content must be recorded as model output"
+            );
+            let streaming_output = streaming_chats[1]
+                .string_fields
+                .get("gen_ai.output.messages")
+                .expect("accepted streaming output value");
+            assert!(
+                streaming_output
+                    .iter()
+                    .any(|value| value.contains("accepted"))
+            );
+            assert!(
+                streaming_output
+                    .iter()
+                    .all(|value| !value.contains("rejected"))
+            );
+            let streaming_completion = streaming
+                .iter()
+                .find(|span| span.name == "invoke_agent")
+                .and_then(|span| span.string_fields.get("gen_ai.completion"))
+                .expect("accepted streaming run-level completion");
+            assert_eq!(streaming_completion, &["accepted"]);
+        }
+
+        #[tokio::test]
+        async fn model_turn_stop_preserves_completed_content_telemetry_on_both_surfaces() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            run_blocking_model_turn_stop_with_content_telemetry().await;
+            run_streaming_model_turn_stop_with_content_telemetry().await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            run_blocking_model_turn_stop_with_content_telemetry().await;
+            let blocking = captured.snapshot();
+            let blocking_output = blocking
+                .iter()
+                .find(|span| span.name == "chat")
+                .and_then(|span| span.string_fields.get("gen_ai.output.messages"))
+                .expect("stopped blocking turn should retain output telemetry");
+            assert!(
+                blocking_output
+                    .iter()
+                    .any(|value| value.contains("stopped blocking response"))
+            );
+
+            captured.clear();
+            run_streaming_model_turn_stop_with_content_telemetry().await;
+            let streaming = captured.snapshot();
+            let streaming_output = streaming
+                .iter()
+                .find(|span| span.name == "chat_streaming")
+                .and_then(|span| span.string_fields.get("gen_ai.output.messages"))
+                .expect("stopped streaming turn should retain output telemetry");
+            assert!(
+                streaming_output
+                    .iter()
+                    .any(|value| value.contains("stopped streaming response"))
+            );
+            let streaming_completion = streaming
+                .iter()
+                .find(|span| span.name == "invoke_agent")
+                .and_then(|span| span.string_fields.get("gen_ai.completion"))
+                .expect("stopped streaming turn should retain run-level completion telemetry");
+            assert_eq!(streaming_completion, &["stopped streaming response"]);
         }
 
         #[tokio::test]
@@ -9074,12 +9361,15 @@ mod migrated_tests {
     #[tokio::test]
     async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
         let recorder = RecordingHook::default();
+        let executions = Arc::new(AtomicU32::new(0));
         let err = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
             "tc1",
             "add",
             json!({"x": 1, "y": 2}),
         )]))
-        .tool(MockAddTool)
+        .tool(CountingAddTool {
+            calls: executions.clone(),
+        })
         .add_hook(recorder.clone())
         .add_hook(AlwaysRepeatModelTurn)
         .build()
@@ -9089,22 +9379,34 @@ mod migrated_tests {
         .await
         .expect_err("tool-bearing retry must fail closed");
 
-        assert!(matches!(err, PromptError::PromptCancelled { .. }));
-        assert!(err.to_string().contains("tool-bearing turns"));
+        let PromptError::PromptCancelled {
+            chat_history,
+            reason,
+        } = err
+        else {
+            panic!("tool-bearing retry should return PromptCancelled");
+        };
+        assert!(reason.contains("tool-bearing model turns"));
+        assert!(reason.contains("tool-call hooks"));
+        assert_eq!(chat_history, vec![Message::user("add")]);
         assert_eq!(recorder.count(StepEventKind::ToolCall), 0);
         assert_eq!(recorder.count(StepEventKind::ToolResult), 0);
+        assert_eq!(executions.load(SeqCst), 0);
     }
 
     #[tokio::test]
     async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_execution() {
         let recorder = RecordingHook::default();
+        let executions = Arc::new(AtomicU32::new(0));
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::tool_call_name_delta("tc1", "ic1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", r#"{"x":1,"y":2}"#),
             MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
             MockStreamEvent::final_response_with_default_usage(),
         ]]))
-        .tool(MockAddTool)
+        .tool(CountingAddTool {
+            calls: executions.clone(),
+        })
         .add_hook(recorder.clone())
         .add_hook(AlwaysRepeatModelTurn)
         .build()
@@ -9115,6 +9417,9 @@ mod migrated_tests {
 
         let mut execution_commits = 0;
         let mut tool_results = 0;
+        let mut provider_finals = 0;
+        let mut agent_finals = 0;
+        let mut retry_markers = 0;
         let mut error = None;
         while let Some(item) = stream.next().await {
             match item {
@@ -9122,21 +9427,37 @@ mod migrated_tests {
                 Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                     ..
                 })) => tool_results += 1,
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                ))) => provider_finals += 1,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,
+                Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => retry_markers += 1,
                 Ok(_) => {}
                 Err(err) => error = Some(err),
             }
         }
 
-        assert!(matches!(
-            error,
-            Some(StreamingError::Prompt(error))
-                if matches!(error.as_ref(), PromptError::PromptCancelled { .. })
-                    && error.to_string().contains("tool-bearing turns")
-        ));
+        let Some(StreamingError::Prompt(error)) = error else {
+            panic!("tool-bearing streaming retry should return PromptCancelled");
+        };
+        let PromptError::PromptCancelled {
+            chat_history,
+            reason,
+        } = error.as_ref()
+        else {
+            panic!("tool-bearing streaming retry should return PromptCancelled");
+        };
+        assert!(reason.contains("tool-bearing model turns"));
+        assert!(reason.contains("tool-call hooks"));
+        assert_eq!(chat_history, &[Message::user("add")]);
         assert_eq!(execution_commits, 0);
         assert_eq!(tool_results, 0);
+        assert_eq!(provider_finals, 0);
+        assert_eq!(agent_finals, 0);
+        assert_eq!(retry_markers, 0);
         assert_eq!(recorder.count(StepEventKind::ToolCall), 0);
         assert_eq!(recorder.count(StepEventKind::ToolResult), 0);
+        assert_eq!(executions.load(SeqCst), 0);
     }
 
     #[derive(Clone)]
