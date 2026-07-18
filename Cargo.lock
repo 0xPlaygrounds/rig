@@ -251,6 +251,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_with_retry_hook"
+version = "0.40.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "agent_with_tools"
 version = "0.40.0"
 dependencies = [

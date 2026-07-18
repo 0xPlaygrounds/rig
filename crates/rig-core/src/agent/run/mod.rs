@@ -71,7 +71,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OneOrMany,
-    agent::hook::{InvalidToolCallAction, InvalidToolCallContext},
+    agent::hook::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
     agent::prompt_request::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
@@ -490,6 +490,60 @@ impl AgentRun {
         };
 
         OneOrMany::from_iter_optional(turn.items.clone())
+    }
+
+    /// Reject the accepted, tool-free model turn and prepare another model call.
+    ///
+    /// [`RetryRequest::Repeat`] discards the rejected assistant response and
+    /// reuses the same prompt and preceding history with fresh request
+    /// preparation. [`RetryRequest::Feedback`] records the rejected response
+    /// followed by corrective user feedback. Canonical empty assistant turns
+    /// are omitted from history, matching normal turn advancement. Both modes
+    /// preserve completion-call and usage accounting, and the next call consumes
+    /// the existing total model-call budget.
+    ///
+    /// Tool-bearing turns cannot be retried through this operation because
+    /// preserving them without matching tool results would create invalid
+    /// provider-visible history. Use tool-call hooks to steer those turns.
+    pub fn retry_model_turn(&mut self, request: RetryRequest) -> Result<(), PromptError> {
+        let turn = match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::AwaitingAdvance(turn) => turn,
+            other => {
+                self.state = other;
+                return Err(self.protocol_violation(
+                    "retry_model_turn called without an accepted turn awaiting advancement",
+                ));
+            }
+        };
+
+        if turn.has_tool_calls {
+            return Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "model-turn retry does not support tool-bearing model turns; use tool-call hooks instead",
+            ));
+        }
+
+        match request {
+            RetryRequest::Repeat => {}
+            RetryRequest::Feedback(feedback) => {
+                let Some(content) = OneOrMany::from_iter_optional(turn.items) else {
+                    return Err(PromptError::prompt_cancelled(
+                        self.full_history(),
+                        "model-turn retry lost the rejected assistant content",
+                    ));
+                };
+                if !is_empty_assistant_turn(&content) {
+                    self.new_messages.push(Message::Assistant {
+                        id: turn.message_id,
+                        content,
+                    });
+                }
+                self.new_messages.push(Message::user(feedback));
+            }
+        }
+
+        self.state = RunState::PreparingRequest;
+        Ok(())
     }
 
     /// The full conversation: input history followed by [`Self::messages`].
@@ -1577,6 +1631,109 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
+        let first_usage = usage(10, 3);
+        let second_usage = usage(7, 2);
+        let mut run = AgentRun::new("question").max_turns(2);
+
+        let (first_prompt, first_history, first_turn) = expect_call_model(&mut run);
+        assert_eq!(first_prompt, Message::user("question"));
+        assert!(first_history.is_empty());
+        assert_eq!(first_turn, 1);
+        expect_continue(
+            run.model_response(text_turn("rejected").with_usage_for_test(first_usage))
+                .expect("first response"),
+        );
+
+        run.retry_model_turn(RetryRequest::Repeat)
+            .expect("repeat should be accepted");
+        let (second_prompt, second_history, second_turn) = expect_call_model(&mut run);
+        assert_eq!(second_prompt, Message::user("question"));
+        assert!(second_history.is_empty());
+        assert_eq!(second_turn, 2);
+        assert_eq!(run.messages(), &[Message::user("question")]);
+
+        expect_continue(
+            run.model_response(text_turn("accepted").with_usage_for_test(second_usage))
+                .expect("second response"),
+        );
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, "accepted");
+        assert_eq!(response.usage, first_usage + second_usage);
+        assert_eq!(response.completion_calls.len(), 2);
+        let messages = response.messages.expect("response history");
+        assert_eq!(messages.len(), 2);
+        assert!(!format!("{messages:?}").contains("rejected"));
+    }
+
+    #[test]
+    fn feedback_retry_records_rejected_response_and_corrective_prompt() {
+        let mut run = AgentRun::new("question").max_turns(2);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("rejected"))
+                .expect("first response"),
+        );
+        run.retry_model_turn(RetryRequest::Feedback("try another approach".to_string()))
+            .expect("feedback retry should be accepted");
+
+        let (prompt, history, turn) = expect_call_model(&mut run);
+        assert_eq!(prompt, Message::user("try another approach"));
+        assert_eq!(turn, 2);
+        assert_eq!(
+            history,
+            vec![Message::user("question"), Message::assistant("rejected")]
+        );
+    }
+
+    #[test]
+    fn repeated_model_turn_consumes_existing_max_turns_budget() {
+        let mut run = AgentRun::new("question");
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("rejected"))
+                .expect("first response"),
+        );
+        run.retry_model_turn(RetryRequest::Repeat)
+            .expect("state transition itself should succeed");
+
+        let err = run.next_step().expect_err("second call must exceed budget");
+        assert!(matches!(
+            err,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(run.completion_calls().len(), 1);
+    }
+
+    #[test]
+    fn model_turn_retry_rejects_tool_calls_without_advancing_to_execution() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("tool response"),
+        );
+        let err = run
+            .retry_model_turn(RetryRequest::Feedback("do not call tools".to_string()))
+            .expect_err("tool-bearing retries must fail closed");
+
+        let PromptError::PromptCancelled {
+            chat_history,
+            reason,
+        } = err
+        else {
+            panic!("tool-bearing retry should return PromptCancelled");
+        };
+        assert!(reason.contains("tool-bearing model turns"));
+        assert!(reason.contains("tool-call hooks"));
+        assert_eq!(chat_history, vec![Message::user("add things")]);
+        assert!(run.next_step().is_err(), "failed run cannot execute tools");
     }
 
     #[test]

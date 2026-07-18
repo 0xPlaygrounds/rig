@@ -25,8 +25,8 @@ use std::sync::Mutex;
 use futures::StreamExt;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    ModelTurnFinished, MultiTurnStreamItem, ObservationAction, RequestPatch, StreamingError,
-    ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+    ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, ObservationAction, RequestPatch,
+    StreamingError, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
 use rig::client::CompletionClient;
 use rig::completion::{Document, Prompt};
@@ -133,9 +133,9 @@ impl AgentHook for LifecycleRecorder {
         &self,
         ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
-    ) -> ObservationAction {
+    ) -> ModelTurnAction {
         self.record(ctx, "ModelTurnFinished");
-        ObservationAction::continue_run()
+        ModelTurnAction::continue_run()
     }
     async fn on_tool_call(&self, ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
         self.record(ctx, "ToolCall");
@@ -173,14 +173,14 @@ impl AgentHook for ScratchpadReader {
         &self,
         ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
-    ) -> ObservationAction {
+    ) -> ModelTurnAction {
         let tally = ctx
             .scratchpad()
             .get::<ToolCallTally>()
             .map(|t| t.0)
             .unwrap_or(0);
         self.tallies.lock().expect("tallies").push(tally);
-        ObservationAction::continue_run()
+        ModelTurnAction::continue_run()
     }
 }
 

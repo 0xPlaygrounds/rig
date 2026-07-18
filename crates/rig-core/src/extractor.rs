@@ -346,7 +346,8 @@ mod tests {
 
     use super::*;
     use crate::agent::{
-        CompletionCallAction, CompletionResponseEvent, HookContext, ObservationAction, RequestPatch,
+        CompletionCallAction, CompletionResponseEvent, HookContext, ModelTurnAction,
+        ObservationAction, RequestPatch,
     };
     use crate::message::{AssistantContent, ToolCall, ToolFunction};
     use crate::test_utils::{MockCompletionModel, MockTurn};
@@ -412,9 +413,9 @@ mod tests {
             &self,
             _ctx: &HookContext,
             _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ObservationAction {
+        ) -> ModelTurnAction {
             self.model_turns.fetch_add(1, Ordering::SeqCst);
-            ObservationAction::Continue
+            ModelTurnAction::Continue
         }
 
         async fn on_invalid_tool_call(
@@ -509,13 +510,13 @@ mod tests {
             &self,
             _ctx: &HookContext,
             _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ObservationAction {
+        ) -> ModelTurnAction {
             if matches!(self.phase, StopFirstBilledResponseAt::ModelTurnFinished)
                 && self.calls.fetch_add(1, Ordering::SeqCst) == 0
             {
-                ObservationAction::stop("stop first billed model turn")
+                ModelTurnAction::stop("stop first billed model turn")
             } else {
-                ObservationAction::continue_run()
+                ModelTurnAction::continue_run()
             }
         }
     }

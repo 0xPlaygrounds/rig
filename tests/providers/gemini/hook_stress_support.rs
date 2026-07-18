@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    InvalidToolCallAction, ModelTurnFinished, ObservationAction, RequestPatch,
+    InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
     StreamResponseFinish, TextDelta, ToolCall as ToolCallEvent, ToolCallAction, ToolCallDelta,
     ToolResultAction, ToolResultEvent,
 };
@@ -211,9 +211,9 @@ impl AgentHook for EventTap {
         &self,
         ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
-    ) -> ObservationAction {
+    ) -> ModelTurnAction {
         self.record(ctx, "ModelTurnFinished");
-        ObservationAction::continue_run()
+        ModelTurnAction::continue_run()
     }
     async fn on_invalid_tool_call(
         &self,
@@ -286,14 +286,14 @@ impl AgentHook for ScratchpadReader {
         &self,
         ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
-    ) -> ObservationAction {
+    ) -> ModelTurnAction {
         let tally = ctx
             .scratchpad()
             .get::<ToolCallTally>()
             .map(|t| t.0)
             .unwrap_or(0);
         self.tallies.lock().expect("tallies").push(tally);
-        ObservationAction::continue_run()
+        ModelTurnAction::continue_run()
     }
 }
 

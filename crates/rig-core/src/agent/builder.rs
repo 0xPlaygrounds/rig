@@ -276,8 +276,8 @@ where
     /// stack; hooks run for every prompt request (unless more are added per
     /// request) in registration order. How their results compose is
     /// event-dependent: `CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, and only observe-only/recovery
-    /// events use first-non-`Continue`-wins. See the
+    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
+    /// observe-only/recovery events use first-non-`Continue`-wins. See the
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
