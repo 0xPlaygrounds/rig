@@ -15,6 +15,7 @@ mod cassette {
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod request_hook;
+    mod response_retry;
     mod response_schema;
     mod responses_behaviors;
     mod responses_input_item;
