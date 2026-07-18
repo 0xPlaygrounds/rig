@@ -1,5 +1,12 @@
 # Implementation prompt: complete the Rig runtime split in this PR
 
+> **Implemented historical prompt.** This was the execution specification for
+> baseline `87f3f5b77a3caeffa10d60225c41e386753bf05e`. Its production migration is
+> implemented in `940483b4fb30aa77d83dab52a1599652cb9e0c2a` and published for
+> review as [PR #2187](https://github.com/0xPlaygrounds/rig/pull/2187).
+> Imperative and future-tense language below is retained as the implementation
+> contract, not as a description of the current tree.
+
 Use this document as the complete implementation prompt for turning the runtime
 split research package into production code. It is intentionally standalone:
 the implementer must still inspect the repository and linked evidence, but

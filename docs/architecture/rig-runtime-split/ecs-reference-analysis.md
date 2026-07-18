@@ -1,5 +1,10 @@
 # ECS reference PR #6 analysis
 
+> **Historical evidence.** This analysis is fixed to the revisions named below
+> and informed the migration implemented in
+> `940483b4fb30aa77d83dab52a1599652cb9e0c2a`. Baseline source links are
+> commit-pinned where applicable.
+
 Reference: `gold-silver-copper/rig-ecs` PR #6, “Implement ECS-native runtime
 migration.” The PR is an open architectural experiment and will not be merged.
 This analysis uses its exact base

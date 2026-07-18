@@ -1,8 +1,11 @@
 {
   "metadata": {
     "repository": "https://github.com/0xPlaygrounds/rig",
-    "branch": "agent/research-core-runtime-split",
+    "status": "historical research snapshot; runtime split implemented with explicitly deferred follow-ups",
+    "research_branch": "agent/research-core-runtime-split",
     "revision": "87f3f5b77a3caeffa10d60225c41e386753bf05e",
+    "implementation_revision": "940483b4fb30aa77d83dab52a1599652cb9e0c2a",
+    "implementation_pr": "https://github.com/0xPlaygrounds/rig/pull/2187",
     "intended_comparison_base": "origin/main@87f3f5b77a3caeffa10d60225c41e386753bf05e",
     "merge_base": "87f3f5b77a3caeffa10d60225c41e386753bf05e",
     "comparison_revisions": {
@@ -15,7 +18,13 @@
       "ecs_pr_6_current_merge_base": "1f1ee4d9bb58b24f9e85572c783f93f173e65dc4"
     },
     "generation_date": "2026-07-18",
-    "scope": "Research-only ownership and migration graph for splitting portable contracts, the classic runtime, and a Bevy ECS-native runtime. Production code, manifests, features, and cassettes are unchanged.",
+    "scope": "Historical ownership and migration graph for splitting portable contracts, the classic runtime, and a Bevy ECS-native runtime. Production code, manifests, and features were unchanged at the baseline revision; the runtime split was implemented at implementation_revision, while separately identified follow-ups may remain deferred.",
+    "field_semantics": "current_* fields describe the baseline revision; proposed_* fields record research targets and follow-up recommendations, not a blanket claim that every recommendation was implemented",
+    "implementation_disposition": {
+      "core_and_runtime_split": "implemented",
+      "provider_decomposition": "deferred to a separate packaging decision",
+      "bevy_support": "implemented as native-only and experimental"
+    },
     "worktree_at_start": {
       "staged_tracked": [],
       "unstaged_tracked": [],

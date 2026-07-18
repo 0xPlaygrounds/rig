@@ -1,5 +1,10 @@
 # Facade features and runtime-import inventory
 
+> **Historical inventory.** Counts and paths in this document are fixed to
+> baseline `87f3f5b77a3caeffa10d60225c41e386753bf05e`. The migration was
+> implemented in `940483b4fb30aa77d83dab52a1599652cb9e0c2a`; baseline source
+> links are commit-pinned.
+
 This inventory is fixed to source revision
 `87f3f5b77a3caeffa10d60225c41e386753bf05e`. It closes two distinct questions:
 which root-facade features forward to core or optional companions, and which
@@ -10,7 +15,7 @@ external examples/tests directly import the current classic runtime through
 
 The root package declares 41 features. Values below come from
 `cargo metadata --no-deps --format-version 1`; the declarations begin at
-[`Cargo.toml:254`](../../../Cargo.toml#L254).
+[`Cargo.toml:254`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/Cargo.toml#L254).
 
 | Feature | Exact current forwarding | Boundary class after split |
 | --- | --- | --- |

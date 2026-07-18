@@ -1,10 +1,16 @@
 # Architecture decision: narrow core with independent classic and Bevy runtimes
 
-- Status: proposed
+> **Historical decision record.** The evidence in this document is fixed to
+> baseline `87f3f5b77a3caeffa10d60225c41e386753bf05e`. The decision was
+> implemented in `940483b4fb30aa77d83dab52a1599652cb9e0c2a`; baseline source
+> links are commit-pinned so moved files remain inspectable.
+
+- Status: accepted and implemented
 - Date: 2026-07-18
 - Source revision: `87f3f5b77a3caeffa10d60225c41e386753bf05e`
+- Implementation revision: `940483b4fb30aa77d83dab52a1599652cb9e0c2a`
 - Decision owners: Rig maintainers
-- Scope: crate and public-boundary design; no production migration in this PR
+- Scope: historical crate/public-boundary decision and its implementation
 
 ## Problem
 
@@ -34,50 +40,50 @@ state shapes, extension mechanisms, or progression code.
 
 - `CompletionClient` imports `AgentBuilder` and `ExtractorBuilder` and exposes
   them directly through `agent()` and `extractor()`
-  ([`client/completion.rs:1-60`](../../../crates/rig-core/src/client/completion.rs#L1)).
+  ([`client/completion.rs:1-60`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/client/completion.rs#L1)).
 - OpenAI's inherent `GenericCompletionModel::into_agent_builder()` returns the
   same classic `AgentBuilder` directly from provider code
-  ([`openai/completion/mod.rs:1898-1901`](../../../crates/rig-core/src/providers/openai/completion/mod.rs#L1898)).
+  ([`openai/completion/mod.rs:1898-1901`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/providers/openai/completion/mod.rs#L1898)).
 - `PromptError` is defined beside provider `CompletionError`, but contains
   memory, max-turn, cancellation, and unknown-tool states
-  ([`completion/request.rs:140-184`](../../../crates/rig-core/src/completion/request.rs#L140)).
+  ([`completion/request.rs:140-184`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/completion/request.rs#L140)).
 - `Prompt`, `Chat`, and `TypedPrompt` promise tool execution and transcript
   mutation; these are runtime behaviors
-  ([`completion/request.rs:357-446`](../../../crates/rig-core/src/completion/request.rs#L357)).
+  ([`completion/request.rs:357-446`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/completion/request.rs#L357)).
 - `StreamingPrompt` and `StreamingChat` return the classic runtime's
   `StreamingPromptRequest`, while the same file also defines provider-facing raw
   streaming choices
-  ([`streaming.rs:67-261`](../../../crates/rig-core/src/streaming.rs#L67),
-  [`streaming.rs:565-626`](../../../crates/rig-core/src/streaming.rs#L565)).
+  ([`streaming.rs:67-261`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/streaming.rs#L67),
+  [`streaming.rs:565-626`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/streaming.rs#L565)).
 - `Extractor` contains an `Agent` and builds classic output-tool behavior
-  ([`extractor.rs:37-79`](../../../crates/rig-core/src/extractor.rs#L37),
-  [`extractor.rs:199-242`](../../../crates/rig-core/src/extractor.rs#L199)).
+  ([`extractor.rs:37-79`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/extractor.rs#L37),
+  [`extractor.rs:199-242`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/extractor.rs#L199)).
 - The classic `AgentRun` owns budgets, rollback state, history, usage, completion
   calls, output recovery, and tool-call resolution
-  ([`agent/run/mod.rs:277-317`](../../../crates/rig-core/src/agent/run/mod.rs#L277)).
+  ([`agent/run/mod.rs:277-317`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/run/mod.rs#L277)).
   These are not provider contracts.
 - `HookStack` composition is intentionally event-specific; it is not a generic
   observer container
-  ([`agent/hook.rs:1251-1377`](../../../crates/rig-core/src/agent/hook.rs#L1251)).
+  ([`agent/hook.rs:1251-1377`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/hook.rs#L1251)).
 - `ToolSet` and `ToolServerHandle` own registration, snapshots, mutation, and
   dispatch beyond the portable `Tool` authoring contract
-  ([`tool/mod.rs:511`](../../../crates/rig-core/src/tool/mod.rs#L511),
-  [`tool/server.rs:126-230`](../../../crates/rig-core/src/tool/server.rs#L126)).
+  ([`tool/mod.rs:511`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/mod.rs#L511),
+  [`tool/server.rs:126-230`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/server.rs#L126)).
 - All 18 companion libraries depend on `rig-core`; the facade additionally
-  re-exports them behind features ([root facade](../../../src/lib.rs#L30),
-  [root features](../../../Cargo.toml#L254)).
+  re-exports them behind features ([root facade](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/src/lib.rs#L30),
+  [root features](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/Cargo.toml#L254)).
 
 ### Classic behavior that must survive extraction
 
 PR #2182 merged at the exact source revision. It added a model-turn lifecycle
 action with `Continue`, retry, and stop behavior; retries are restricted to
 tool-free turns and consume the total model-call budget
-([`agent/hook.rs:427-478`](../../../crates/rig-core/src/agent/hook.rs#L427),
-[`agent/hook.rs:940-949`](../../../crates/rig-core/src/agent/hook.rs#L940)).
+([`agent/hook.rs:427-478`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/hook.rs#L427),
+[`agent/hook.rs:940-949`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/hook.rs#L940)).
 `drive_agent` is shared by blocking and streaming entry points, preserving
 parity while delegating genuinely medium-specific work
-([`prompt_request/streaming.rs:390-449`](../../../crates/rig-core/src/agent/prompt_request/streaming.rs#L390),
-[`prompt_request/streaming.rs:471-489`](../../../crates/rig-core/src/agent/prompt_request/streaming.rs#L471)).
+([`prompt_request/streaming.rs:390-449`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/prompt_request/streaming.rs#L390),
+[`prompt_request/streaming.rs:471-489`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/prompt_request/streaming.rs#L471)).
 
 The extraction must therefore move the current runtime without semantic change
 before Bevy work begins. PR #6 cannot be the parity oracle because its base
@@ -351,23 +357,22 @@ Govern scenario changes as observable contract changes:
 - Provider decomposition remains unfinished technical debt after the runtime
   split.
 
-## Unresolved decisions
+## Implementation resolutions
 
 Compatibility ownership is resolved: moved classic symbols may be re-exported
 temporarily by root `rig`, but not by `rig-core`. A `rig-core` compatibility
 shim would require the prohibited `rig-core -> rig-agent` dependency.
 
-1. Exact portable versus contextual `Tool` APIs and `rig_tool` macro syntax.
-2. Whether `rig-bevy` initially supports WASM/single-threaded execution or is
-   explicitly native-only.
-3. The typed raw-provider-final subscription and retention model for hosted
-   Bevy runs.
-4. Whether `rig-agent` keeps the package feature name `agent` in the root facade
-   or is always enabled by default without a public feature toggle.
-5. The eventual number and naming of built-in provider crates.
-6. Whether test conformance support is a publishable crate or an unpublished
-   workspace-only package.
-
-These questions do not invalidate the dependency direction. They must be
-resolved in the early migration PRs before public API movement or ECS runtime
-implementation.
+1. `Tool` is the portable context-free contract;
+   `rig_agent::tool::ContextualTool` owns mutable `ToolContext` behavior.
+   `#[rig_tool]` recognizes only an explicit mutable context parameter.
+2. `rig-bevy` is native-only and experimental. The portable core and classic
+   runtime retain their WASM support.
+3. Local Bevy APIs retain typed provider finals. Hosted paths publish redacted,
+   non-persisted diagnostics, and snapshots exclude provider finals.
+4. Root `rig` exposes an `agent` feature, enabled by default. `bevy` remains
+   opt-in and uses distinct construction names and namespaces.
+5. Built-in provider decomposition is deferred to a separate packaging
+   decision; providers remain runtime-neutral inside `rig-core` in this split.
+6. `rig-runtime-conformance` is an unpublished workspace-only test-support
+   crate and is not re-exported by production crates.
