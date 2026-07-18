@@ -350,6 +350,8 @@ jobs:
       # and has no direct tracing dependency. Keep it outside the workspace so
       # release tooling cannot discover it as a publishable package.
       - name: Test telemetry macro hygiene
+<<<<<<< conflict 1 of 1
++++++++ pzuuuquv 056ec271 "feat(agent): report the provider's response id to completion-response hooks" (rebase destination)
         run: cargo test --locked -p rig-core --test macro_hygiene
 
       # Same default-members problem as the telemetry step above, with two
