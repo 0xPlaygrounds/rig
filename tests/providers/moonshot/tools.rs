@@ -1,6 +1,7 @@
 //! Moonshot required-tool-choice smoke test.
+use rig::prelude::AgentClientExt;
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::moonshot;

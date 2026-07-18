@@ -62,13 +62,16 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
+- A narrow portable `rig-core`, the default classic `rig-agent` runtime, and an
+  opt-in experimental ECS runtime under `rig::bevy`
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
-- Full WASM compatibility (core library only)
+- WASM compatibility for the portable core and classic runtime; the
+  experimental Bevy runtime is native-only
 
 ## Who is using Rig?
 Below is a non-exhaustive list of companies and people who are using Rig:

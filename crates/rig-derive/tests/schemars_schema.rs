@@ -350,12 +350,9 @@ async fn test_async_tool_with_docs() {
 
     // Verify it actually works (async call)
     let result = FetchUrl
-        .call(
-            &mut rig_core::tool::ToolContext::new(),
-            FetchUrlParameters {
-                url: "https://example.com".to_string(),
-            },
-        )
+        .call(FetchUrlParameters {
+            url: "https://example.com".to_string(),
+        })
         .await
         .unwrap();
     assert_eq!(result, serde_json::json!("fetched: https://example.com"));

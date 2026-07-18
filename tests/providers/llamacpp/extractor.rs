@@ -1,4 +1,5 @@
 //! llama.cpp extractor smoke test.
+use rig::prelude::AgentClientExt;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 

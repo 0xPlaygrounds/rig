@@ -1,7 +1,7 @@
 //! Cassette-backed OpenRouter agent completion smoke test.
 
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::AgentClientExt;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 

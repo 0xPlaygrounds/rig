@@ -1,6 +1,7 @@
 //! Demonstrates `stream_chat` with prior conversation history.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see a streamed continuation of an existing exchange.
+use rig::prelude::AgentClientExt;
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;

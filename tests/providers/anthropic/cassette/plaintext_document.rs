@@ -4,6 +4,7 @@ use rig::OneOrMany;
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
+use rig::prelude::AgentClientExt;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
 use rig::streaming::StreamingPrompt;

@@ -1,7 +1,7 @@
 //! Llamafile context smoke test.
 
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::AgentClientExt;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 

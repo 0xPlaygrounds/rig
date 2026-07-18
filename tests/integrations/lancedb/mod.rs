@@ -17,7 +17,7 @@ use rig::{
     completion::{Document, Message, Prompt},
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     message::UserContent,
-    prelude::CompletionClient,
+    prelude::{AgentModelExt, CompletionClient},
     providers::openai,
     vector_store::{VectorStoreIndex, request::VectorSearchRequest},
 };

@@ -1,12 +1,13 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_core::agent::{
+use rig_agent::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
 };
-use rig_core::client::{EmbeddingsClient, ProviderClient};
-use rig_core::completion::{Document, Message, Prompt};
+use rig_agent::client_ext::AgentModelExt;
+use rig_agent::completion::Prompt;
+use rig_core::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use rig_core::completion::{Document, Message};
 use rig_core::message::UserContent;
-use rig_core::prelude::CompletionClient;
 use rig_core::providers::openai;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},

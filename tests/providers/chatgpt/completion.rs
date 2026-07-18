@@ -5,6 +5,7 @@ use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::message::Message;
+use rig::prelude::AgentClientExt;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 
 use crate::chatgpt::{LIVE_MODEL, live_builder, live_client};

@@ -19,10 +19,11 @@
 //! `MaxTurnsError`), then runs the fix.
 //!
 //! Requires `OPENAI_API_KEY`.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::{Prompt, PromptError};
 use rig::message::ToolChoice;
 use rig::providers::openai;
@@ -72,11 +73,7 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }

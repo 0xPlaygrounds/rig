@@ -2,8 +2,8 @@
 //! terminate-early, and observation of every call/result pair.
 
 use rig::agent::AgentHook;
-use rig::client::CompletionClient;
 use rig::completion::{Prompt, PromptError};
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::tool::Tool;
 

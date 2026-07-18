@@ -1,9 +1,10 @@
 //! Demonstrates prompt chaining with two agents in sequence.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see one agent produce a value that the next agent transforms.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::providers::openai::client::Client;

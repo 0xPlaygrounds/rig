@@ -1,8 +1,11 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
 use rig::client::CompletionClient;
+use rig::completion::CompletionModel;
+use rig::prelude::AgentClientExt;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
+use rig_bevy::{LocalRuntime, TenantId};
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
@@ -23,6 +26,22 @@ async fn streaming_smoke() {
             .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn bevy_local_streaming_preserves_raw_final() {
+    with_openai_cassette("streaming/streaming_smoke", |client| async move {
+        let model = client.completion_model(openai::GPT_4O);
+        let request = model
+            .completion_request(STREAMING_PROMPT)
+            .preamble(STREAMING_PREAMBLE.to_string())
+            .build();
+        let mut runtime = LocalRuntime::new(model, TenantId::new());
+        let result = runtime.stream(request, 1).await.expect("Bevy stream");
+        let _: openai::responses_api::streaming::StreamingCompletionResponse = result.raw_response;
+        assert!(!result.provisional.is_empty());
     })
     .await;
 }

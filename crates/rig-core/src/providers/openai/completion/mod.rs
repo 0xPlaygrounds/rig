@@ -1895,12 +1895,6 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
     }
 }
 
-impl GenericCompletionModel<super::OpenAICompletionsExt, reqwest::Client> {
-    pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
-        crate::agent::AgentBuilder::new(self)
-    }
-}
-
 impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:

@@ -9,8 +9,9 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
 };
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::message::ToolResultContent;
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
@@ -114,11 +115,7 @@ impl Tool for JavaScript {
         schema_for!(JavaScriptProgram).to_value()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ExecutorResponse::ok(json!({
             "id": "collection-canary-id",
             "title": "Canary Collection",

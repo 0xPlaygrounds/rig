@@ -1,6 +1,7 @@
 //! Demonstrates retrieval-augmented prompting: look up context from a vector
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
+use rig::prelude::AgentClientExt;
 
 use rig::completion::Prompt;
 use rig::prelude::*;

@@ -1,0 +1,41 @@
+[package]
+name = "rig-agent"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "The classic agent runtime for Rig"
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+async-stream = { workspace = true }
+fastrand = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+indexmap = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-futures = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+serenity = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true, features = ["client"] }
+
+[features]
+default = []
+rmcp = ["dep:rmcp"]
+wasm = ["rig-core/wasm"]
+discord-bot = ["dep:serenity"]
+test-utils = ["rig-core/test-utils"]
+
+[dev-dependencies]
+rig-runtime-conformance = { path = "../rig-runtime-conformance" }
+anyhow = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["test-utils"] }
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

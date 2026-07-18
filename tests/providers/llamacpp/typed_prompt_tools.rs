@@ -11,8 +11,8 @@ use rig::agent::{
     ObservationAction, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
     ToolResultEvent,
 };
-use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
+use rig::prelude::AgentClientExt;
 use rig::tool::Tool;
 
 use super::support;
@@ -144,7 +144,6 @@ impl Tool for WeatherTool {
 
     fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
         self.call_count.fetch_add(1, Ordering::SeqCst);

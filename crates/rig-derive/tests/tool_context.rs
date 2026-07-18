@@ -8,7 +8,8 @@
     clippy::unreachable
 )]
 
-use rig_core::tool::{Tool, ToolContext};
+use rig_agent::tool::{ContextualTool, ToolContext};
+use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 #[derive(Clone)]
@@ -44,12 +45,12 @@ async fn required_context_uses_the_standard_tool_error_path() {
         .await
         .unwrap_err();
 
-    assert!(error.is::<rig_core::tool::MissingToolContext>());
+    assert!(error.is::<rig_agent::tool::MissingToolContext>());
 }
 
 #[rig_tool(description = "Prefix text using host context")]
 async fn async_context_first(
-    context: &mut rig_core::tool::ToolContext,
+    context: &mut rig_agent::tool::ToolContext,
     value: String,
 ) -> Result<String, rig_core::tool::ToolExecutionError> {
     let prefix = context
@@ -75,7 +76,7 @@ fn domain_context_is_an_ordinary_argument(
     Ok(context.label)
 }
 
-type RuntimeContextAlias = rig_core::tool::ToolContext;
+type RuntimeContextAlias = rig_agent::tool::ToolContext;
 
 #[rig_tool(description = "An explicitly marked alias receives runtime context")]
 fn marked_context_alias(
@@ -88,7 +89,7 @@ fn marked_context_alias(
 
 #[tokio::test]
 async fn sync_context_is_excluded_from_schema_and_passed_in_argument_order() {
-    let definition = rig_core::tool::tool_definition(&SyncContextInTheMiddle);
+    let definition = rig_agent::tool::contextual_tool_definition(&SyncContextInTheMiddle);
     let properties = definition.parameters["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 2);
     assert!(properties.contains_key("left"));
@@ -116,7 +117,7 @@ async fn sync_context_is_excluded_from_schema_and_passed_in_argument_order() {
 
 #[tokio::test]
 async fn async_context_is_excluded_from_schema_and_passed_to_the_function() {
-    let definition = rig_core::tool::tool_definition(&AsyncContextFirst);
+    let definition = rig_agent::tool::contextual_tool_definition(&AsyncContextFirst);
     let properties = definition.parameters["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 1);
     assert!(properties.contains_key("value"));
@@ -149,14 +150,11 @@ async fn same_named_domain_type_remains_a_model_argument() {
     assert!(properties.contains_key("context"));
 
     let output = DomainContextIsAnOrdinaryArgument
-        .call(
-            &mut ToolContext::new(),
-            DomainContextIsAnOrdinaryArgumentParameters {
-                context: domain::ToolContext {
-                    label: "domain".to_string(),
-                },
+        .call(DomainContextIsAnOrdinaryArgumentParameters {
+            context: domain::ToolContext {
+                label: "domain".to_string(),
             },
-        )
+        })
         .await
         .unwrap();
     assert_eq!(output, "domain");
@@ -164,7 +162,7 @@ async fn same_named_domain_type_remains_a_model_argument() {
 
 #[tokio::test]
 async fn explicit_marker_supports_imported_aliases() {
-    let definition = rig_core::tool::tool_definition(&MarkedContextAlias);
+    let definition = rig_agent::tool::contextual_tool_definition(&MarkedContextAlias);
     let properties = definition.parameters["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 1);
     assert!(properties.contains_key("value"));

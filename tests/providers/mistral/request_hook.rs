@@ -1,4 +1,5 @@
 //! Mistral request-hook regression coverage.
+use rig::prelude::AgentClientExt;
 
 use anyhow::{Result, anyhow};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -8,7 +9,7 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
 use rig::providers::mistral;

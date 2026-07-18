@@ -3,6 +3,7 @@
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::message::AssistantContent;
+use rig::prelude::AgentClientExt;
 
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
 

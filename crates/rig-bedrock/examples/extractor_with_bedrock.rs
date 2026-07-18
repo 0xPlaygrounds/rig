@@ -1,6 +1,7 @@
+use rig_agent::client_ext::AgentClientExt;
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
-use rig_core::client::{CompletionClient, ProviderClient};
+use rig_core::client::ProviderClient;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;

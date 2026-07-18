@@ -3,6 +3,7 @@
 use rig::agent::AgentBuilder;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::AgentClientExt;
 
 use super::{
     BEDROCK_COMPLETION_MODEL, client,

@@ -1,9 +1,9 @@
 //! Integration tests for xAI extractor usage tracking.
 
 use anyhow::Result;
-use rig::client::CompletionClient;
 use rig::extractor::ExtractionResponse;
 use rig::message::Message;
+use rig::prelude::AgentClientExt;
 use rig::providers::xai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -16,12 +16,13 @@
 //! authorization inside the tool.
 //!
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_approval_policy`
+use rig::prelude::AgentClientExt;
 
 use std::collections::HashSet;
 
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -57,11 +58,7 @@ impl Tool for SearchWeb {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("   🔎 [search_web] -> {}", args.query);
         Ok(format!("top result for '{}': $1000 is plenty.", args.query))
     }
@@ -96,11 +93,7 @@ impl Tool for TransferFunds {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))
     }

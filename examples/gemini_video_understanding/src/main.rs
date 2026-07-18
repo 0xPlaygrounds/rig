@@ -1,9 +1,10 @@
 //! Demonstrates Gemini video understanding with provider-specific request parameters.
 //! Requires `GEMINI_API_KEY`.
 //! Run it to see a single prompt combine text instructions with a video URL input.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::message::{Message, UserContent, Video};
 use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use rig::{

@@ -1,8 +1,12 @@
+#![allow(unused_imports)]
+
+use rig_agent::tool::ToolContext;
 use rig_derive::rig_tool;
 
 #[rig_tool]
 fn owned_context(
-    context: rig_core::tool::ToolContext,
+    #[rig(context)]
+    context: ToolContext,
 ) -> Result<(), rig_core::tool::ToolExecutionError> {
     let _ = context;
     Ok(())

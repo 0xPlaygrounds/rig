@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use rig::client::ProviderClient;
+use rig::prelude::AgentClientExt;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

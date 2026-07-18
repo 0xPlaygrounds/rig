@@ -36,6 +36,24 @@ pub(crate) fn rig_core_path() -> proc_macro2::TokenStream {
     }
 }
 
+fn rig_agent_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-agent") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident)
+            }
+            Err(_) => quote!(::rig_agent),
+        },
+    }
+}
+
 //References:
 //<https://doc.rust-lang.org/book/ch19-06-macros.html#how-to-write-a-custom-derive-macro>
 //<https://doc.rust-lang.org/reference/procedural-macros.html>
@@ -302,7 +320,7 @@ fn is_tool_context_type(ty: &Type) -> bool {
     matches!(
         segments.as_slice(),
         [root, tool, context]
-            if matches!(root.as_str(), "rig" | "rig_core")
+            if matches!(root.as_str(), "rig" | "rig_core" | "rig_agent")
                 && tool == "tool"
                 && context == "ToolContext"
     )
@@ -682,28 +700,48 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
     let rig_core = rig_core_path();
+    let rig_agent = rig_agent_path();
+    let has_context = context_param_name.is_some();
 
     // Generate the call implementation based on whether the function is async
-    let call_impl = if is_async {
+    let call_impl = if is_async && has_context {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #rig_core::tool::ToolContext,
+                _context: &mut #rig_agent::tool::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*).await
             }
         }
-    } else {
+    } else if has_context {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #rig_core::tool::ToolContext,
+                _context: &mut #rig_agent::tool::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*)
             }
         }
+    } else if is_async {
+        quote! {
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+                #fn_name(#(#call_arguments),*).await
+            }
+        }
+    } else {
+        quote! {
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+                #fn_name(#(#call_arguments),*)
+            }
+        }
+    };
+
+    let tool_trait = if has_context {
+        quote!(#rig_agent::tool::ContextualTool)
+    } else {
+        quote!(#rig_core::tool::Tool)
     };
 
     let schemars_crate = format!("{}::schemars", rig_core.to_string().replace(' ', ""));
@@ -719,7 +757,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(Default)]
         #vis struct #struct_name;
 
-        impl #rig_core::tool::Tool for #struct_name {
+        impl #tool_trait for #struct_name {
             const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;

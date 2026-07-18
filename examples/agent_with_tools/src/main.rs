@@ -1,9 +1,10 @@
 //! Demonstrates registering runtime-defined tools on an agent.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::tool::{DynamicTool, ToolOutput};

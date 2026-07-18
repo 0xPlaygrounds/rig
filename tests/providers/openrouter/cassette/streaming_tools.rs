@@ -4,6 +4,7 @@ use rig::OneOrMany;
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
+use rig::prelude::AgentClientExt;
 use rig::streaming::StreamingPrompt;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;

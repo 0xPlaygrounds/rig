@@ -13,6 +13,7 @@ use rig::OneOrMany;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, GetTokenUsage, Message};
 use rig::message::{AssistantContent, ToolChoice};
+use rig::prelude::AgentClientExt;
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
@@ -154,11 +155,7 @@ impl Tool for PingEmpty {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok("EMPTY-OK".to_string())
     }
@@ -204,11 +201,7 @@ impl Tool for InspectManifest {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "MANIFEST-OK project={} steps={} retries={}",
@@ -240,11 +233,7 @@ impl Tool for JoinLabels {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
     }
@@ -272,11 +261,7 @@ impl Tool for OptionalNullableProbe {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "OPTIONAL-OK name={} note={} nullable={}",
@@ -305,11 +290,7 @@ impl Tool for EscapeEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("ESCAPE-OK {}", args.text))
     }

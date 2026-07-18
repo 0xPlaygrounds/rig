@@ -3,8 +3,8 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::AgentClientExt;
 
 use super::super::cassette_support::{CASSETTE_CHAT_MODEL, with_llamafile_cassette};
 use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_expected_number};

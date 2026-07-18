@@ -1,4 +1,5 @@
 use rig::integrations::discord_bot::DiscordExt;
+use rig::prelude::AgentClientExt;
 use rig::prelude::*;
 use rig::providers::openai;
 

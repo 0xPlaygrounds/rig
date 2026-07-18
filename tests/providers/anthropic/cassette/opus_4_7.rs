@@ -5,9 +5,10 @@ use rig::client::CompletionClient;
 use rig::completion::message::Image;
 use rig::completion::{Chat, Message, Prompt};
 use rig::message::{DocumentSourceKind, ImageMediaType};
+use rig::prelude::AgentClientExt;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
 use rig::streaming::{StreamingChat, StreamingPrompt};
-use rig::test_utils::validate_extraction_fields;
+use rig_agent::test_utils::validate_extraction_fields;
 
 use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
 use crate::support::{

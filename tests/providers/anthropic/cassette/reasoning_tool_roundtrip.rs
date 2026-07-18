@@ -7,9 +7,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Message};
-use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::completion::{Chat, CompletionModel, Message};
+use rig::prelude::AgentClientExt;
+use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
 use rig::streaming::StreamingChat;
+use rig_bevy::{LocalRuntime, PortableTool, TenantId};
 
 use super::super::support::with_anthropic_cassette;
 use crate::reasoning::{self, WeatherTool};
@@ -77,6 +79,40 @@ async fn nonstreaming() {
                 );
 
             reasoning::assert_nonstreaming_universal(&result, &call_count, "anthropic");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn bevy_local_executes_portable_tool_roundtrip() {
+    with_anthropic_cassette(
+        "reasoning_tool_roundtrip/nonstreaming",
+        |client| async move {
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let request = model
+                .completion_request(reasoning::TOOL_USER_PROMPT)
+                .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_string())
+                .max_tokens(16384)
+                .additional_params(serde_json::json!({
+                    "thinking": { "type": "adaptive" }
+                }))
+                .build();
+            let mut runtime = LocalRuntime::new(model, TenantId::new());
+            let result = runtime
+                .run_with_tools(
+                    request,
+                    2,
+                    vec![Arc::new(PortableTool::new(WeatherTool::new(
+                        call_count.clone(),
+                    )))],
+                )
+                .await
+                .expect("Bevy tool roundtrip");
+            assert_eq!(call_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+            assert!(!result.snapshot.output.is_empty());
+            let _: anthropic::completion::CompletionResponse = result.raw_response;
         },
     )
     .await;

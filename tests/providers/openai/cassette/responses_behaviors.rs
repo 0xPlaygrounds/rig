@@ -9,6 +9,7 @@
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::AssistantContent;
+use rig::prelude::AgentClientExt;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::ResponseStatus;
 use rig::tool::Tool;

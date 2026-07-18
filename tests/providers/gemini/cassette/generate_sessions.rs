@@ -11,6 +11,7 @@
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::streaming::StreamingChat;
 use rig::tool::Tool;

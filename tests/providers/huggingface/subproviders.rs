@@ -1,7 +1,7 @@
 //! Migrated from `examples/huggingface_subproviders.rs`.
 
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::AgentClientExt;
 use rig::providers::huggingface::{self, SubProvider};
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};

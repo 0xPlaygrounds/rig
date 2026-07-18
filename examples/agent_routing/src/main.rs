@@ -1,9 +1,10 @@
 //! Demonstrates routing one prompt into different follow-up prompts.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see a classifier agent choose which second prompt should run.
+use rig::prelude::AgentClientExt;
 
 use anyhow::{Result, bail};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::providers::openai::client::Client;

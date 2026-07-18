@@ -72,11 +72,7 @@ impl Tool for GetBalance {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("   💰 [get_balance] -> {}", args.account);
         Ok(format!("account {} balance: $1000", args.account))
     }
@@ -111,11 +107,7 @@ impl Tool for TransferFunds {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // A real implementation would move money here.
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))

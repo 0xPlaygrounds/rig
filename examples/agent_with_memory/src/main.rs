@@ -5,9 +5,10 @@
 //! same agent across multiple conversations by passing the id per-request.
 //!
 //! Requires `OPENAI_API_KEY`.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::memory::InMemoryConversationMemory;
 use rig::providers::openai;

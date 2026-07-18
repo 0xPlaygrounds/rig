@@ -98,6 +98,13 @@ pub struct Reasoning {
 }
 
 impl Reasoning {
+    /// Construct an assistant reasoning payload.
+    pub fn from_parts(id: Option<String>, content: Vec<ReasoningContent>) -> Self {
+        Self { id, content }
+    }
+}
+
+impl Reasoning {
     /// Create a new reasoning item from a single item
     pub fn new(input: &str) -> Self {
         Self::new_with_signature(input, None)
@@ -631,7 +638,8 @@ pub enum ImageDetail {
 impl Message {
     /// This helper method is primarily used to extract the first string prompt from a `Message`.
     /// Since `Message` might have more than just text content, we need to find the first text.
-    pub(crate) fn rag_text(&self) -> Option<String> {
+    #[doc(hidden)]
+    pub fn rag_text(&self) -> Option<String> {
         match self {
             Message::User { content } => {
                 for item in content.iter() {

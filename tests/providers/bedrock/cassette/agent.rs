@@ -4,6 +4,7 @@ use rig::agent::AgentBuilder;
 use rig::bedrock;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::AgentClientExt;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{

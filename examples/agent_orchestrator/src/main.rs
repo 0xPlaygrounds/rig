@@ -1,3 +1,4 @@
+use rig::prelude::AgentClientExt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::client::Client;

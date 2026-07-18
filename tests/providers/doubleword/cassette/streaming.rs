@@ -1,6 +1,6 @@
 //! Cassette-backed Doubleword streaming coverage.
 
-use rig::client::CompletionClient;
+use rig::prelude::AgentClientExt;
 use rig::streaming::StreamingPrompt;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};

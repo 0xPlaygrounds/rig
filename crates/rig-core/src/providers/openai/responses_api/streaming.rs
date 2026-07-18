@@ -902,9 +902,11 @@ mod tests {
         ItemChunkKind, StreamingCompletionChunk, raw_choices_from_sse_body,
         reasoning_choices_from_done_item,
     };
+    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::providers::openai;
     use crate::providers::openai::responses_api::{
         AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
         ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
@@ -913,11 +915,6 @@ mod tests {
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
     use serde_json::{self, json};
-
-    use crate::{
-        client::CompletionClient, completion::Message, providers::openai, streaming::StreamingChat,
-        test_utils::MockExampleTool,
-    };
 
     fn sample_response(status: ResponseStatus) -> CompletionResponse {
         CompletionResponse {
@@ -1680,31 +1677,5 @@ mod tests {
             !logs.contains("Couldn't deserialize SSE data as StreamingCompletionChunk"),
             "expected [DONE] to bypass the parse-failure debug path, logs were: {logs}"
         );
-    }
-
-    // requires `derive` rig-core feature due to using tool macro
-    #[tokio::test]
-    #[ignore = "requires API key"]
-    async fn test_openai_streaming_tools_reasoning() {
-        let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
-        let client = openai::Client::new(&api_key).expect("Failed to build client");
-        let agent = client
-            .agent("gpt-5.2")
-            .max_tokens(8192)
-            .tool(MockExampleTool)
-            .additional_params(serde_json::json!({
-                "reasoning": {"effort": "high"}
-            }))
-            .build();
-
-        let chat_history: Vec<Message> = Vec::new();
-        let mut stream = agent
-            .stream_chat("Call my example tool", &chat_history)
-            .max_turns(5)
-            .await;
-
-        while let Some(item) = stream.next().await {
-            println!("Got item: {item:?}");
-        }
     }
 }

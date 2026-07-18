@@ -1,0 +1,15 @@
+[package]
+name = "rig-runtime-conformance"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+publish = false
+description = "Private cross-runtime behavioral conformance support for Rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }

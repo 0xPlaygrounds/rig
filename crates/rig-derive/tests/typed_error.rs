@@ -1,4 +1,5 @@
-use rig_core::tool::{Tool, ToolContext, ToolErrorKind, ToolSet};
+use rig_agent::tool::{ToolContext, ToolSet};
+use rig_core::tool::{Tool, ToolErrorKind};
 use rig_derive::rig_tool;
 
 #[derive(Debug)]
@@ -24,9 +25,7 @@ async fn async_typed_failure() -> Result<(), DomainError> {
 
 #[tokio::test]
 async fn derive_preserves_typed_errors_until_dispatch() {
-    let direct = TypedFailure
-        .call(&mut ToolContext::new(), TypedFailureParameters {})
-        .await;
+    let direct = TypedFailure.call(TypedFailureParameters {}).await;
     assert!(direct.is_err());
     if let Err(error) = direct {
         let _: &DomainError = &error;
@@ -49,9 +48,7 @@ async fn derive_preserves_typed_errors_until_dispatch() {
 
 #[tokio::test]
 async fn async_derive_preserves_typed_errors_until_dispatch() {
-    let direct = AsyncTypedFailure
-        .call(&mut ToolContext::new(), AsyncTypedFailureParameters {})
-        .await;
+    let direct = AsyncTypedFailure.call(AsyncTypedFailureParameters {}).await;
     assert!(direct.is_err());
     if let Err(error) = direct {
         let _: &DomainError = &error;

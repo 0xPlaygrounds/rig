@@ -20,14 +20,88 @@
 //! companion integrations follow the same pattern, with feature names aligned to
 //! their facade module paths wherever Rust module naming allows it.
 //!
+//! # Runtime features
+//!
+//! The default `agent` feature supplies the supported classic runtime. Disable
+//! defaults for a portable core-only graph. The opt-in `bevy` feature exposes
+//! the experimental, native-only ECS runtime under `rig::bevy`; it does not select
+//! the classic runtime. Both features can be enabled together without method
+//! collisions because the Bevy API is namespaced.
+//!
 //! # When to use `rig-core` directly
 //!
 //! Depend on the `rig-core` package directly when you only need the core Rig
-//! implementation crate, including provider abstractions, built-in core
-//! providers, tools, memory traits, and vector-store traits, without the root
-//! facade's companion integration feature surface.
+//! contracts, including provider abstractions, built-in providers, portable
+//! tools, memory traits, and vector-store traits, without either orchestration
+//! runtime or the root facade's companion integration feature surface.
 
-pub use rig_core::*;
+pub use rig_core::{
+    Embed, EmptyListError, OneOrMany, ProviderResponseError, client, embeddings, http_client, id,
+    loaders, markers, message, model, one_or_many, providers, rerank, schemars, telemetry,
+    transcription, vector_store, wasm_compat,
+};
+
+/// Provider completion contracts and, with the classic runtime, prompting APIs.
+pub mod completion {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::completion::{
+        Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt,
+    };
+    pub use rig_core::completion::*;
+}
+#[cfg(feature = "derive")]
+pub use rig_core::tool_macro;
+
+/// Portable tool contracts and, with the classic runtime, registry/context APIs.
+pub mod tool {
+    #[cfg(all(feature = "agent", feature = "rmcp"))]
+    pub use rig_agent::tool::rmcp;
+    #[cfg(feature = "agent")]
+    pub use rig_agent::tool::{
+        ContextualTool, DynamicTool, MissingToolContext, ToolContext, ToolSet, ToolSetBuilder,
+        server,
+    };
+    pub use rig_core::tool::*;
+}
+
+#[cfg(feature = "test-utils")]
+pub mod test_utils {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::test_utils::*;
+    #[allow(unused_imports)]
+    pub use rig_core::test_utils::*;
+}
+
+#[cfg(feature = "audio")]
+pub use rig_core::audio_generation;
+#[cfg(feature = "image")]
+pub use rig_core::image_generation;
+
+/// Low-level provider streaming values plus classic streaming interfaces.
+pub mod streaming {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::streaming::{StreamingChat, StreamingPrompt};
+    pub use rig_core::streaming::*;
+}
+
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::{agent, extractor, integrations};
+
+/// Common imports for the selected default runtime.
+pub mod prelude {
+    #[cfg(feature = "agent")]
+    pub use rig_agent::prelude::*;
+    #[allow(unused_imports)]
+    pub use rig_core::prelude::*;
+}
+
+/// Experimental ECS-native runtime APIs.
+#[cfg(feature = "bevy")]
+#[cfg_attr(docsrs, doc(cfg(feature = "bevy")))]
+pub mod bevy {
+    pub use rig_bevy::*;
+}
 
 /// Conversation memory APIs and optional memory policy helpers.
 ///

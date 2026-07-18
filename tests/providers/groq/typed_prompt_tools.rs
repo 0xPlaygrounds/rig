@@ -1,4 +1,5 @@
 //! Groq live coverage for combining `prompt_typed()` with tool calling.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -6,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::TypedPrompt;
 use rig::providers::groq;
 use rig::tool::Tool;
@@ -59,7 +60,6 @@ impl Tool for WeatherTool {
 
     fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
         self.call_count.fetch_add(1, Ordering::SeqCst);

@@ -5,6 +5,7 @@
 //! - The new `extract_with_usage()` API correctly returns usage data
 //! - Usage accumulates across retry attempts
 //! - Both `extract` and `extract_with_chat_history` variants work
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::extractor::ExtractionResponse;

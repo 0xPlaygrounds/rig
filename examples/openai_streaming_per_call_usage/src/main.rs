@@ -18,11 +18,12 @@
 //!
 //! For OpenAI-compatible servers, for example llama.cpp:
 //! `OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_API_KEY=local OPENAI_MODEL=local-model cargo run --example openai_streaming_per_call_usage`
+use rig::prelude::AgentClientExt;
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Usage;
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
@@ -66,11 +67,7 @@ impl Tool for ProjectStatusTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "{} is approved for release after the final usage metrics check.",
             args.ticket

@@ -1,4 +1,4 @@
-use rig_core::completion::Prompt;
+use rig_agent::{client_ext::AgentClientExt, completion::Prompt};
 use rig_core::prelude::*;
 use rig_gemini_grpc::Client;
 

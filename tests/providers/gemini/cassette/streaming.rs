@@ -3,11 +3,13 @@
 use futures::StreamExt;
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FinishReason, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig_bevy::{LocalRuntime, TenantId};
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -41,6 +43,36 @@ async fn streaming_smoke() {
             .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn bevy_local_streaming_preserves_raw_final() {
+    super::super::support::with_gemini_cassette("streaming/streaming_smoke", |client| async move {
+        let thinking_config = GenerationConfig {
+            thinking_config: Some(ThinkingConfig {
+                thinking_budget: None,
+                thinking_level: Some(ThinkingLevel::Medium),
+                include_thoughts: Some(true),
+            }),
+            ..Default::default()
+        };
+        let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+        let request = model
+            .completion_request(STREAMING_PROMPT)
+            .preamble(STREAMING_PREAMBLE.to_string())
+            .temperature(1.0)
+            .max_tokens(4096)
+            .additional_params(
+                serde_json::to_value(AdditionalParameters::default().with_config(thinking_config))
+                    .expect("Gemini thinking config should serialize"),
+            )
+            .build();
+        let mut runtime = LocalRuntime::new(model, TenantId::new());
+        let result = runtime.stream(request, 1).await.expect("Bevy stream");
+        let _: gemini::streaming::StreamingCompletionResponse = result.raw_response;
+        assert!(!result.provisional.is_empty());
     })
     .await;
 }

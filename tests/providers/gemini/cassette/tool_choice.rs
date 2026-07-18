@@ -3,6 +3,7 @@
 use rig::client::CompletionClient;
 use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
 use rig::message::ToolChoice;
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;

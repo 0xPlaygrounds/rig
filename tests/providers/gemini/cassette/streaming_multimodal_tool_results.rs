@@ -3,10 +3,10 @@
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
-use rig::client::CompletionClient;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
 };
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -50,11 +50,7 @@ impl Tool for HybridImageTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let mut content = OneOrMany::one(ToolResultContent::json(json!({
             "instruction": "Use the image part to answer the user's question."
         })));

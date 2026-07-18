@@ -1,4 +1,5 @@
 //! Preserves the live multi-extract example as provider-local regression coverage.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};

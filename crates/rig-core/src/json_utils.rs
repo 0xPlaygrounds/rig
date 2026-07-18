@@ -33,7 +33,7 @@ pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
 ///
 /// This deliberately unwraps [`serde_json::Value::String`] and is only for
 /// provider decoding, before a value enters Rig's canonical message model. To
-/// serialize an existing [`crate::completion::ToolFunction::arguments`] value
+/// serialize an existing tool-function `arguments` value
 /// or any other already-parsed JSON, use [`serialize_json_value`] instead.
 pub fn value_to_json_string(value: &serde_json::Value) -> String {
     match value {

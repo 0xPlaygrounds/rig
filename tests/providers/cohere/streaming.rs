@@ -1,6 +1,7 @@
 //! Cohere streaming smoke test.
+use rig::prelude::AgentClientExt;
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::providers::cohere;
 use rig::streaming::StreamingPrompt;
 

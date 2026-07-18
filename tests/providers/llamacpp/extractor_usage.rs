@@ -1,4 +1,5 @@
 //! Integration tests for llama.cpp extractor usage tracking.
+use rig::prelude::AgentClientExt;
 
 use anyhow::{Result, anyhow};
 use rig::extractor::ExtractionResponse;

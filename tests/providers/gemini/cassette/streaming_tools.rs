@@ -3,6 +3,7 @@
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,

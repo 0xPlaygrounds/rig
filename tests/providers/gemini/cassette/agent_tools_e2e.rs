@@ -4,10 +4,13 @@
 //! pipeline ahead of the rmcp migration.
 
 use rig::client::CompletionClient;
-use rig::completion::Prompt;
+use rig::completion::{CompletionModel, Prompt};
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
-use rig::test_utils::{parallel_tools, tool_output_serialization, zero_argument_tool};
+use rig_agent::test_utils::{parallel_tools, tool_output_serialization, zero_argument_tool};
+use rig_bevy::{LocalRuntime, PortableTool, TenantId};
+use std::sync::Arc;
 
 use super::super::agent_run_support::is_tool_result_user_message;
 use super::super::support::with_gemini_cassette;
@@ -67,6 +70,43 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
                 messages.iter().any(is_tool_result_user_message),
                 "history should carry tool results: {messages:?}"
             );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn bevy_local_executes_portable_tool_roundtrip() {
+    let add = CountingAdd::default();
+    let subtract = CountingSubtract::default();
+    let (add_counter, subtract_counter) = (add.counter.clone(), subtract.counter.clone());
+
+    with_gemini_cassette(
+        "agent_tools/nonstreaming_multi_turn_executes_tools_and_reports_usage",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let request = model
+                .completion_request(CHAINED_PROMPT)
+                .preamble(FORCE_TOOLS_PREAMBLE.to_string())
+                .temperature(0.0)
+                .build();
+            let mut runtime = LocalRuntime::new(model, TenantId::new());
+            let result = runtime
+                .run_with_tools(
+                    request,
+                    5,
+                    vec![
+                        Arc::new(PortableTool::new(add)),
+                        Arc::new(PortableTool::new(subtract)),
+                    ],
+                )
+                .await
+                .expect("Bevy tool roundtrip");
+            assert_eq!(add_counter.count(), 1);
+            assert_eq!(subtract_counter.count(), 1);
+            assert!(!result.snapshot.output.is_empty());
+            let _: gemini::completion::gemini_api_types::GenerateContentResponse =
+                result.raw_response;
         },
     )
     .await;

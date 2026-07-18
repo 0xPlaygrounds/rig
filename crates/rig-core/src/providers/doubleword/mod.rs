@@ -8,7 +8,7 @@
 //! (`/v1/batches`); Rig support for them is not yet included.
 //!
 //! Set `DOUBLEWORD_API_KEY` (and optionally `DOUBLEWORD_BASE_URL`) to use
-//! [`Client::from_env`].
+//! `Client::from_env`.
 //!
 //! # Example
 //! ```no_run

@@ -377,13 +377,15 @@ pub struct ToolResult {
 }
 
 impl ToolResult {
-    pub(crate) fn success(output: ToolOutput) -> Self {
+    #[doc(hidden)]
+    pub fn success(output: ToolOutput) -> Self {
         Self {
             disposition: ToolDisposition::Success(output),
         }
     }
 
-    pub(crate) fn failed(error: ToolExecutionError) -> Self {
+    #[doc(hidden)]
+    pub fn failed(error: ToolExecutionError) -> Self {
         let disposition = if error.is_refusal() {
             ToolDisposition::Refused(error)
         } else {
@@ -392,7 +394,8 @@ impl ToolResult {
         Self { disposition }
     }
 
-    pub(crate) fn skipped(reason: impl Into<String>) -> Self {
+    #[doc(hidden)]
+    pub fn skipped(reason: impl Into<String>) -> Self {
         Self {
             disposition: ToolDisposition::Skipped(ToolOutput::text(reason)),
         }
@@ -461,7 +464,8 @@ impl ToolResult {
         self.error().is_some_and(|error| error.kind == kind)
     }
 
-    pub(crate) fn status_name(&self) -> &'static str {
+    #[doc(hidden)]
+    pub fn status_name(&self) -> &'static str {
         match &self.disposition {
             ToolDisposition::Success(_) => "success",
             ToolDisposition::Error(_) => "error",

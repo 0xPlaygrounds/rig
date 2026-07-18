@@ -5,8 +5,8 @@ use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     stream_to_stdout,
 };
-use rig::client::CompletionClient;
 use rig::completion::{Prompt, PromptError};
+use rig::prelude::AgentClientExt;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -65,11 +65,7 @@ impl Tool for ReadFileHead {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(TEST_FILE)
@@ -101,11 +97,7 @@ impl Tool for ReadFileTail {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(TEST_FILE)

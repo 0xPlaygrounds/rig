@@ -1,6 +1,7 @@
+use rig_agent::{agent::AgentBuilder, client_ext::AgentClientExt, completion::Prompt};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
 use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::{agent::AgentBuilder, completion::Prompt, loaders::FileLoader};
+use rig_core::loaders::FileLoader;
 use tracing::info;
 
 mod common;

@@ -1,6 +1,7 @@
 //! Demonstrates an autonomous extractor loop that keeps feeding its own output back in.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to watch the extractor keep counting upward until the stop condition is met.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::prelude::*;

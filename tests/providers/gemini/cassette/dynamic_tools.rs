@@ -6,8 +6,9 @@
 //! Each cassette records the Gemini embedding calls (toolset embedding at
 //! build time, query embedding at prompt time) alongside the completion
 //! turns.
+use rig::prelude::AgentClientExt;
 
-use rig::client::{CompletionClient, EmbeddingsClient};
+use rig::client::EmbeddingsClient;
 use rig::completion::{Chat, Message};
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::gemini;

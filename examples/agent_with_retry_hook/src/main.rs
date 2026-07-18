@@ -12,13 +12,14 @@
 //!
 //! Requires `OPENAI_API_KEY`. Run with:
 //! `cargo run -p agent_with_retry_hook`.
+use rig::prelude::AgentClientExt;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::message::AssistantContent;
 use rig::providers::openai;
 

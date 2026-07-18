@@ -1,8 +1,9 @@
 //! Mistral live coverage for batch multi-extract pipelines.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::providers::mistral;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

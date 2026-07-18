@@ -1,9 +1,10 @@
 //! Demonstrates extending the default agent loop budget for tool-heavy prompts.
 //! Requires `ANTHROPIC_API_KEY`.
 //! Run it to see a multi-step arithmetic task complete without passing `max_turns` per prompt.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -43,11 +44,7 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -73,11 +70,7 @@ impl Tool for Divide {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         if args.y == 0 {
             return Err(MathError::DivisionByZero);
         }

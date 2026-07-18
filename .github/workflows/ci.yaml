@@ -53,7 +53,8 @@ jobs:
       - name: Test WASM chat worker runtime
         run: node --test examples/candle_wasm_chat/www/worker-runtime.test.mjs
 
-  # Special check to make sure rig-core is compatible with the wasm target
+  # The portable core and classic runtime retain their WASM support. The
+  # experimental Bevy runtime is native-only and checked in isolation below.
   check-wasm:
     name: stable / check rig-core wasm target
     runs-on: ubuntu-latest
@@ -69,6 +70,27 @@ jobs:
 
       - name: Run cargo check wasm target
         run: cargo check --package rig-core --features wasm --target wasm32-unknown-unknown
+
+      - name: Run classic runtime check for wasm target
+        run: cargo check --package rig-agent --features wasm --target wasm32-unknown-unknown
+
+  runtime-boundaries:
+    name: stable / runtime dependency boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Check dependency direction and facade feature isolation
+        run: bash scripts/check-runtime-boundaries.sh
+
+      - name: Check experimental Bevy runtime in isolation
+        run: cargo check -p rig-bevy --all-features
 
   clippy:
     name: stable / clippy
@@ -122,8 +144,8 @@ jobs:
       - name: Compile default-feature root test targets
         run: cargo test -p rig --tests --no-run
 
-      - name: Test rig-core agent unit tests with all features
-        run: cargo nextest run -p rig-core --all-features -E 'test(agent::)' --retries 2
+      - name: Test classic agent unit tests with all features
+        run: cargo nextest run -p rig-agent --all-features --retries 2
 
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1

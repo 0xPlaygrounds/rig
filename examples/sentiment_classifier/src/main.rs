@@ -1,6 +1,7 @@
 //! Demonstrates the smallest typed extractor for classification.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to map a short sentence into a structured sentiment enum.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::prelude::*;

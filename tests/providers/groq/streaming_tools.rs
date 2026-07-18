@@ -1,4 +1,5 @@
 //! Groq streaming tools smoke test.
+use rig::prelude::AgentClientExt;
 
 use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};

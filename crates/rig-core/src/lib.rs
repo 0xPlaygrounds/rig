@@ -9,89 +9,39 @@
         clippy::unreachable
     )
 )]
-//! Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
+//! Portable provider contracts and canonical values for Rig.
 //!
-//! # Table of contents
-//! - [High-level features](#high-level-features)
-//! - [Simple Example](#simple-example)
-//! - [Core Concepts](#core-concepts)
-//! - [Integrations](#integrations)
+//! `rig-core` owns completion and embedding traits, provider clients, request
+//! and response types, messages, portable tools, vector-store contracts,
+//! telemetry primitives, and memory backend interfaces. It contains no agent
+//! orchestration or runtime lifecycle.
 //!
-//! # High-level features
-//! - Full support for LLM completion and embedding workflows
-//! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
-//! - Integrate LLMs in your app with minimal boilerplate
+//! # Low-level completion example
 //!
-//! # Simple example
-//! ```ignore
+//! ```no_run
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
-//!     completion::Prompt,
+//!     completion::CompletionModel,
 //!     providers::openai,
 //! };
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create OpenAI client and agent.
-//!     // This requires the `OPENAI_API_KEY` environment variable to be set.
-//!     let openai_client = openai::Client::from_env()?;
-//!
-//!     let agent = openai_client.agent(openai::GPT_5_2).build();
-//!
-//!     // Prompt the model and print its response
-//!     let response = agent
-//!         .prompt("Who are you?")
-//!         .await?;
-//!
-//!     println!("{response}");
-//!
-//!     Ok(())
-//! }
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = openai::Client::from_env()?;
+//! let model = client.completion_model(openai::GPT_5_2);
+//! let request = model.completion_request("Who are you?").build();
+//! let response = model.completion(request).await?;
+//! println!("{:?}", response.choice);
+//! # Ok(())
+//! # }
 //! ```
-//! Note: using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
-//! or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 //!
 //! # Core concepts
-//! ## Completion and embedding models
-//! Rig provides a consistent API for working with LLMs and embeddings. Specifically,
-//! each provider (e.g. OpenAI, Cohere) has a `Client` struct that can be used to initialize completion
-//! and embedding models. These models implement the [CompletionModel](crate::completion::CompletionModel)
-//! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
-//! low-level interface for creating completion and embedding requests and executing them.
 //!
-//! ## Agents
-//! Rig also provides high-level abstractions over LLMs in the form of the [Agent](crate::agent::Agent) type.
-//!
-//! The [Agent](crate::agent::Agent) type can be used to create anything from simple agents that use vanilla models to full blown
-//! RAG systems that can be used to answer questions using a knowledge base.
-//!
-//! ## Vector stores and indexes
-//! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! trait, which can be implemented to define vector stores and indices respectively.
-//! There are two complementary ways to use an index with an [Agent](crate::agent::Agent):
-//! - For passive RAG, implement an [`AgentHook`](crate::agent::AgentHook) that queries the index
-//!   in `on_completion_call` and returns a
-//!   [`RequestPatch::extra_context`](crate::agent::RequestPatch::extra_context). This keeps
-//!   query selection, document formatting, and retrieval failure policy in application code.
-//! - For active RAG, expose the index through its blanket [`Tool`](crate::tool::Tool)
-//!   implementation, or through a custom tool, so the model decides when and how to retrieve.
-//!
-//! Indexes can also serve custom architectures that use multiple LLMs or agents.
-//!
-//! ## Conversation memory
-//! Rig can transparently load and persist per-conversation history through the
-//! [ConversationMemory](crate::memory::ConversationMemory) trait. Attach a backend
-//! with [`AgentBuilder::memory`](crate::agent::AgentBuilder::memory) and identify the
-//! conversation per-request via
-//! [`PromptRequest::conversation`](crate::agent::prompt_request::PromptRequest::conversation).
-//! The default in-process backend
-//! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
-//! for tests and single-process agents; reusable history-shaping policies (sliding
-//! window, token budget) live in the [`rig-memory`](https://crates.io/crates/rig-memory)
-//! companion crate. See [`examples/agent_with_memory.rs`](https://github.com/0xPlaygrounds/rig/blob/main/examples/agent_with_memory.rs)
-//! for a runnable end-to-end example.
-//!
+//! Providers implement [`CompletionModel`](crate::completion::CompletionModel)
+//! and [`EmbeddingModel`](crate::embeddings::EmbeddingModel). Portable tools
+//! implement [`Tool`](crate::tool::Tool), and vector backends implement
+//! [`VectorStoreIndex`](crate::vector_store::VectorStoreIndex). Runtime crates
+//! compose these contracts into higher-level execution models.
 //! # Integrations
 //! ## Model Providers
 //! Rig natively supports the following completion and embedding model provider integrations:
@@ -149,21 +99,19 @@
 
 extern crate self as rig;
 
-pub mod agent;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
-pub mod extractor;
 pub mod http_client;
 pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
-pub mod integrations;
-pub(crate) mod json_utils;
+#[doc(hidden)]
+pub mod json_utils;
 pub mod loaders;
 pub mod markers;
 pub mod memory;
@@ -186,7 +134,6 @@ pub mod wasm_compat;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
-pub use extractor::ExtractionResponse;
 pub use one_or_many::{EmptyListError, OneOrMany};
 pub use provider_response::ProviderResponseError;
 pub use schemars;

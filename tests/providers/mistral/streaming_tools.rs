@@ -1,6 +1,7 @@
 //! Mistral streaming tools coverage, including the migrated example path.
+use rig::prelude::AgentClientExt;
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Message;
 use rig::providers::mistral;
 use rig::streaming::{StreamingChat, StreamingPrompt};

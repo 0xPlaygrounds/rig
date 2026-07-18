@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::prelude::AgentClientExt;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Client};
 use rig::{

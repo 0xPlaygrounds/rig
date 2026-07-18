@@ -1,6 +1,7 @@
 //! Mistral extractor smoke test.
+use rig::prelude::AgentClientExt;
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::providers::mistral;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};

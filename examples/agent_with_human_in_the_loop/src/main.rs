@@ -19,10 +19,11 @@
 //! hook works unchanged on the streaming driver (`stream_prompt`).
 //!
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -68,11 +69,7 @@ impl Tool for SendEmail {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // A real implementation would hit an email API here.
         println!(
             "   📧 [send_email] -> {} (subject: {:?}, {} chars)",
@@ -111,11 +108,7 @@ impl Tool for DeleteFile {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // A real implementation would delete the file here.
         println!("   🗑️  [delete_file] -> {}", args.path);
         Ok(format!("deleted {}", args.path))

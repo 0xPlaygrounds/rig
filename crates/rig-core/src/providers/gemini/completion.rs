@@ -1552,7 +1552,7 @@ pub mod gemini_api_types {
     /// Gemini API Configuration options for model generation and outputs. Not all parameters are
     /// configurable for every model. From [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
     /// ### Rig Note:
-    /// Can be used to construct a typesafe `additional_params` in rig_core::[AgentBuilder](crate::agent::AgentBuilder).
+    /// Can be used to construct type-safe provider `additional_params`.
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {
@@ -3546,36 +3546,6 @@ mod tests {
         } else {
             panic!("Expected user message to be text");
         }
-    }
-
-    /// E2E test that verifies Gemini can process tool results containing images.
-    /// This test creates an agent with a tool that returns an image, invokes it,
-    /// and verifies that Gemini can interpret the image in the tool result.
-    #[tokio::test]
-    #[ignore = "requires GEMINI_API_KEY environment variable"]
-    async fn test_gemini_agent_with_image_tool_result_e2e() -> anyhow::Result<()> {
-        use crate::completion::Prompt;
-        use crate::prelude::*;
-        use crate::providers::gemini;
-        use crate::test_utils::MockImageGeneratorTool;
-
-        let client = gemini::Client::from_env()?;
-
-        let agent = client
-            .agent("gemini-3-flash-preview")
-            .preamble("You are a helpful assistant. When asked about images, use the generate_test_image tool to create one, then describe what you see in the image.")
-            .tool(MockImageGeneratorTool)
-            .build();
-
-        // This prompt should trigger the tool, which returns an image that Gemini should process
-        let response_text = agent
-            .prompt("Please generate a test image and tell me what color the pixel is.")
-            .await?;
-        println!("Response: {response_text}");
-        // Gemini should have been able to see the image and potentially describe its color
-        anyhow::ensure!(!response_text.is_empty(), "Response should not be empty");
-
-        Ok(())
     }
 
     #[tokio::test]

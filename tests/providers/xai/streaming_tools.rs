@@ -5,6 +5,7 @@ use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message};
+use rig::prelude::AgentClientExt;
 use rig::providers::xai;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
@@ -54,11 +55,7 @@ impl Tool for StatusWordTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(XAI_STATUS_TOOL_OUTPUT.to_string())
     }
 }

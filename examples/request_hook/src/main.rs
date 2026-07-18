@@ -19,13 +19,14 @@
 //! short-circuits the stack.
 //!
 //! Requires `OPENAI_API_KEY`.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
     ObservationAction, RequestPatch,
 };
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::{Document, Message, Prompt};
 use rig::message::UserContent;
 use rig::providers::openai;

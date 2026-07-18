@@ -161,19 +161,20 @@ use rig::prelude::*;
 let agent = client.agent("model").preamble("...").build();
 ```
 
-The Bevy extension is distinct and namespaced:
+The Bevy surface is distinct and namespaced:
 
 ```rust,ignore
 use rig::bevy::prelude::*;
 
-let runtime = Runtime::builder().build()?;
-let agent = runtime.spawn_agent(client.bevy_agent("model").build())?;
-let run = agent.prompt("hello").await?;
+let mut runtime = Runtime::new();
+let run = runtime.spawn_run(tenant_id, completion_request, 8);
+let effect = runtime.dispatch(run)?;
+// A local or hosted executor performs the owned effect, then submits ingress.
 ```
 
-These names illustrate ownership and collision avoidance; they are not frozen
-API. What is frozen by this decision is that importing both runtime preludes
-must not produce two `agent()` methods on the same client type.
+The explicit request/effect boundary preserves ownership and avoids an
+extension-method collision. Importing both runtime preludes does not produce two
+`agent()` methods on the same client type.
 
 The root default prelude exports core contracts plus classic runtime ergonomics.
 It does not glob-export Bevy components or schedules. `rig::bevy::prelude`
@@ -351,23 +352,25 @@ Govern scenario changes as observable contract changes:
 - Provider decomposition remains unfinished technical debt after the runtime
   split.
 
-## Unresolved decisions
+## Implementation decisions recorded by the migration
 
 Compatibility ownership is resolved: moved classic symbols may be re-exported
 temporarily by root `rig`, but not by `rig-core`. A `rig-core` compatibility
 shim would require the prohibited `rig-core -> rig-agent` dependency.
 
-1. Exact portable versus contextual `Tool` APIs and `rig_tool` macro syntax.
-2. Whether `rig-bevy` initially supports WASM/single-threaded execution or is
-   explicitly native-only.
-3. The typed raw-provider-final subscription and retention model for hosted
-   Bevy runs.
-4. Whether `rig-agent` keeps the package feature name `agent` in the root facade
-   or is always enabled by default without a public feature toggle.
-5. The eventual number and naming of built-in provider crates.
-6. Whether test conformance support is a publishable crate or an unpublished
-   workspace-only package.
-
-These questions do not invalidate the dependency direction. They must be
-resolved in the early migration PRs before public API movement or ECS runtime
-implementation.
+1. `rig_core::tool::Tool` is the portable authoring trait and receives only its
+   arguments. `rig_agent::tool::ContextualTool` is the classic extension that
+   receives mutable `ToolContext`. `#[rig_tool]` chooses based on whether the
+   function declares context and resolves renamed `rig-core`/`rig-agent`
+   dependencies.
+2. `rig-bevy` uses `bevy_ecs` 0.18 so the workspace and portable crates retain
+   Rust 1.94. It is explicitly native-only; core and classic WASM checks remain
+   required.
+3. Bevy local blocking and streaming handles retain concrete typed raw finals.
+   Hosted/erased events carry a redacted, non-persisted diagnostics envelope;
+   snapshots never serialize arbitrary provider responses.
+4. Root `rig` has a public default `agent` feature and an opt-in `bevy` feature.
+   Bevy is available only under `rig::bevy` and does not select classic.
+5. Built-in provider extraction remains a separate follow-up.
+6. `rig-runtime-conformance` is unpublished, depends only on `rig-core` in its
+   production graph, and is consumed only as a dev dependency by each runtime.

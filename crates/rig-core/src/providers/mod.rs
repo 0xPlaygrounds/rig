@@ -64,32 +64,18 @@
 //! # Example
 //! ```no_run
 //! use rig_core::{
-//!     agent::AgentBuilder,
 //!     client::{CompletionClient, ProviderClient},
+//!     completion::CompletionModel,
 //!     providers::openai,
 //! };
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize the OpenAI client
-//! let openai = openai::Client::from_env()?;
-//!
-//! // Create a model and initialize an agent
-//! let model = openai.completion_model(openai::GPT_5_2);
-//!
-//! let agent = AgentBuilder::new(model)
-//!     .preamble("\
-//!         You are Gandalf the white and you will be conversing with other \
-//!         powerful beings to discuss the fate of Middle Earth.\
-//!     ")
-//!     .build();
-//!
-//! // Alternatively, you can initialize an agent directly
-//! let agent = openai.agent(openai::GPT_5_2)
-//!     .preamble("\
-//!         You are Gandalf the white and you will be conversing with other \
-//!         powerful beings to discuss the fate of Middle Earth.\
-//!     ")
-//!     .build();
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = openai::Client::from_env()?;
+//! let model = client.completion_model(openai::GPT_5_2);
+//! let response = model
+//!     .completion(model.completion_request("Hello").build())
+//!     .await?;
+//! println!("{:?}", response.choice);
 //! # Ok(())
 //! # }
 //! ```

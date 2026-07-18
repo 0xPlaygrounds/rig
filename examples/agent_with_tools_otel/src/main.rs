@@ -4,6 +4,7 @@
 //!
 //! In production, this is very unlikely to be a problem as many of the tools used may include MCP servers and other long-running
 //! operations, which may cause issues.
+use rig::prelude::AgentClientExt;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -58,11 +59,7 @@ impl Tool for Adder {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
@@ -99,11 +96,7 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         // Sleep for 1 microsecond to allow simulating a more compute-heavy tool

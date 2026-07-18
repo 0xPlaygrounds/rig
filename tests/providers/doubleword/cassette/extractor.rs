@@ -1,7 +1,7 @@
 //! Cassette-backed Doubleword structured extraction coverage.
 
-use rig::client::CompletionClient;
-use rig::test_utils::validate_extraction_fields;
+use rig::prelude::AgentClientExt;
+use rig_agent::test_utils::validate_extraction_fields;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson};

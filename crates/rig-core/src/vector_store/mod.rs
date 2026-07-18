@@ -228,11 +228,7 @@ where
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut crate::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let results = self.top_n(args).await?;
         Ok(results
             .into_iter()
@@ -266,7 +262,6 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::tool::ToolContext;
     use crate::vector_store::request::Filter;
 
     struct TestIndex {
@@ -306,7 +301,7 @@ mod tests {
             .query("answer")
             .samples(1)
             .build();
-        let output = <TestIndex as Tool>::call(&index, &mut ToolContext::new(), request)
+        let output = <TestIndex as Tool>::call(&index, request)
             .await
             .expect("vector tool call should succeed");
 

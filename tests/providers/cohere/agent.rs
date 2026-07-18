@@ -1,6 +1,7 @@
 //! Cohere agent completion smoke test.
+use rig::prelude::AgentClientExt;
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::cohere;
 

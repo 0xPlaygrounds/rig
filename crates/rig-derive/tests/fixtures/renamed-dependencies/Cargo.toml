@@ -1,0 +1,14 @@
+[package]
+name = "rig-derive-renamed-dependencies"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+macros = { package = "rig-derive", path = "../../.." }
+portable_core = { package = "rig-core", path = "../../../../rig-core" }
+runtime_agent = { package = "rig-agent", path = "../../../../rig-agent" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

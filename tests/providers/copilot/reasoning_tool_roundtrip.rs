@@ -3,8 +3,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::AgentClientExt;
 use rig::streaming::StreamingChat;
 
 use crate::copilot::{live_client, live_responses_model, with_copilot_cassette};

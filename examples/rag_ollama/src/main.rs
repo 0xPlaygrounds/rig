@@ -1,4 +1,5 @@
 use rig::client::Nothing;
+use rig::prelude::AgentClientExt;
 use rig::prelude::*;
 use rig::{
     Embed,

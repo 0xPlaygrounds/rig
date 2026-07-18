@@ -2,11 +2,11 @@
 
 use futures::FutureExt;
 use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
+use rig::prelude::AgentClientExt;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{
     ANTHROPIC_VERSION_2023_06_01, Content as AnthropicContent,

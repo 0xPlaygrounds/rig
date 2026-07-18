@@ -11,6 +11,7 @@
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::message::AssistantContent;
+use rig::prelude::AgentClientExt;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::FinishReason;
 use schemars::JsonSchema;

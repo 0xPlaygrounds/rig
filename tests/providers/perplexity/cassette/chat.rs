@@ -1,7 +1,7 @@
 //! Perplexity multi-turn chat cassette coverage.
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::AgentClientExt;
 use rig::providers::perplexity;
 
 use crate::support::assert_contains_any_case_insensitive;

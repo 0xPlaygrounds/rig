@@ -1,7 +1,7 @@
 //! Migrated from `examples/agent_with_llamafile.rs`.
 
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::AgentClientExt;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 

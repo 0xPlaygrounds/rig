@@ -3600,8 +3600,8 @@ mod tests {
     #[test]
     fn loaded_model_works_with_agent_builder()
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use rig_core::agent::AgentBuilder;
-        use rig_core::completion::Prompt;
+        use rig_agent::agent::AgentBuilder;
+        use rig_agent::completion::Prompt;
 
         let runtime = tokio::runtime::Builder::new_current_thread().build()?;
         runtime.block_on(async {

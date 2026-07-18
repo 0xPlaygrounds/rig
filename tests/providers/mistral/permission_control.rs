@@ -1,11 +1,12 @@
 //! Mistral permission-control regression coverage.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     stream_to_stdout,
 };
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::providers::mistral;
 use rig::streaming::StreamingPrompt;
@@ -65,11 +66,7 @@ impl Tool for ReadFileHead {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(TEST_FILE)
@@ -100,11 +97,7 @@ impl Tool for ReadFileTail {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(TEST_FILE)

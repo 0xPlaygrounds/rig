@@ -1,6 +1,6 @@
 //! Copilot extractor smoke test.
 
-use rig::client::CompletionClient;
+use rig::prelude::AgentClientExt;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};

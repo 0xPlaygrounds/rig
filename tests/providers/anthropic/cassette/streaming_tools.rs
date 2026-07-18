@@ -2,8 +2,8 @@
 
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
-use rig::client::CompletionClient;
 use rig::message::{Message, UserContent};
+use rig::prelude::AgentClientExt;
 use rig::providers::anthropic;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
 use rig::tool::Tool;
@@ -213,11 +213,7 @@ impl Tool for OutOfOrderAlphaSignal {
         AlphaSignal.parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
@@ -240,11 +236,7 @@ impl Tool for OutOfOrderBetaSignal {
         BetaSignal.parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }

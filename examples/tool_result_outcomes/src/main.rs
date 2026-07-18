@@ -30,17 +30,18 @@
 //!
 //! The fatal command terminates after the disk failure. The recoverable command
 //! lets the network failure return to the model. `--help` requires no credentials.
+use rig::prelude::AgentClientExt;
 
 use anyhow::{Result, bail};
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
     ToolResultAction, ToolResultEvent,
 };
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
+use rig::tool::{ContextualTool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -79,7 +80,7 @@ enum ProbeError {
 
 struct SystemProbe;
 
-impl Tool for SystemProbe {
+impl ContextualTool for SystemProbe {
     const NAME: &'static str = "system_probe";
     type Error = ProbeError;
     type Args = ProbeArgs;
@@ -331,7 +332,7 @@ async fn main() -> Result<()> {
     let agent = openai::Client::from_env()?
         .agent(openai::GPT_4O)
         .preamble("Follow the user's requested system_probe operation exactly.")
-        .tool(SystemProbe)
+        .contextual_tool(SystemProbe)
         .build();
 
     let response = agent
@@ -351,7 +352,8 @@ mod tests {
     use rig::tool::ToolSet;
 
     async fn structured_failure(operation: Operation) -> (ToolResult, ToolContext) {
-        let tools = ToolSet::from_tools(vec![SystemProbe]);
+        let mut tools = ToolSet::default();
+        tools.add_contextual_tool(SystemProbe);
         let mut context = ToolContext::new();
         let args = serde_json::json!({ "operation": operation }).to_string();
         let result = tools.execute(SystemProbe::NAME, args, &mut context).await;

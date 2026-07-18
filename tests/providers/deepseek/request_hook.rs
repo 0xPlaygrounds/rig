@@ -8,9 +8,9 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::client::CompletionClient;
 use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
+use rig::prelude::AgentClientExt;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette_result;

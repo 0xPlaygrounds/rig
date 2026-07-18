@@ -3,6 +3,7 @@
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::completion::Prompt;
+use rig::prelude::AgentModelExt;
 use rig::telemetry::ProviderResponseExt;
 
 use crate::support::{

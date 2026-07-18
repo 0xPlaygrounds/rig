@@ -2,8 +2,8 @@
 
 use crate::copilot::{LIVE_MODEL, live_client, live_responses_model, with_copilot_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::AgentClientExt;
 
 #[tokio::test]
 #[ignore = "requires Copilot credentials or existing OAuth cache"]

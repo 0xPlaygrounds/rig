@@ -4,6 +4,7 @@ use rig::OneOrMany;
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice};
+use rig::prelude::AgentClientExt;
 use rig::streaming::StreamingPrompt;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};

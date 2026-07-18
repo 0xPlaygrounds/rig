@@ -107,11 +107,7 @@ impl Tool for Add {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -132,11 +128,7 @@ impl Tool for Subtract {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -159,11 +151,7 @@ impl Tool for Sum {
         operation_definition(Self::NAME, "Add x and y together (alias of add)").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }

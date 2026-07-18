@@ -2,6 +2,7 @@
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
+use rig::prelude::AgentClientExt;
 
 use std::sync::{
     Arc,
@@ -80,11 +81,7 @@ impl Tool for Notify {
         notify_tool_definition().parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!("sent: {}", args.msg))
     }

@@ -2,16 +2,14 @@
 
 use std::{path::PathBuf, sync::OnceLock, time::Duration};
 
-use rig_candle::{CandleModel, ModelArtifacts, ModelData};
-use rig_core::{
-    completion::CompletionModel,
-    test_utils::{
-        buffered_streaming_text_parity, cancellation_and_max_turns, complex_tool_arguments,
-        hook_rewrites_and_request_patch, invalid_tool_recovery, optional_argument, parallel_tools,
-        sequential_tools, streaming_structured_after_tool, streaming_tool, structured_after_tool,
-        structured_extraction, tool_output_serialization, zero_argument_tool,
-    },
+use rig_agent::test_utils::{
+    buffered_streaming_text_parity, cancellation_and_max_turns, complex_tool_arguments,
+    hook_rewrites_and_request_patch, invalid_tool_recovery, optional_argument, parallel_tools,
+    sequential_tools, streaming_structured_after_tool, streaming_tool, structured_after_tool,
+    structured_extraction, tool_output_serialization, zero_argument_tool,
 };
+use rig_candle::{CandleModel, ModelArtifacts, ModelData};
+use rig_core::completion::CompletionModel;
 
 static MODEL: OnceLock<Result<CandleModel, String>> = OnceLock::new();
 
@@ -40,7 +38,7 @@ fn model() -> Result<CandleModel, Box<dyn std::error::Error + Send + Sync>> {
     result.clone().map_err(Into::into)
 }
 
-fn print_report(report: &rig_core::test_utils::ScenarioReport) {
+fn print_report(report: &rig_agent::test_utils::ScenarioReport) {
     let seconds = report.duration.as_secs_f64();
     let throughput = if seconds > 0.0 {
         report.generated_tokens as f64 / seconds
@@ -230,7 +228,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
 
     let choices = tokio::time::timeout(
         Duration::from_secs(900),
-        rig_core::test_utils::tool_choice_modes(model()?),
+        rig_agent::test_utils::tool_choice_modes(model()?),
     )
     .await??;
     print_report(&choices);

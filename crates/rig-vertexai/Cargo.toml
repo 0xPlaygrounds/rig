@@ -21,6 +21,7 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+rig-agent = { path = "../rig-agent", version = "0.40.0" }
 anyhow = { workspace = true }
 schemars = { workspace = true }
 tracing-subscriber = { workspace = true }

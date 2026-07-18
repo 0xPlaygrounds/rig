@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use rig::client::Nothing;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
+use rig::prelude::AgentClientExt;
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{

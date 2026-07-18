@@ -31,5 +31,6 @@ rig-core = { path = "../rig-core", version = "0.40.0", default-features = false,
 tokenizers = { workspace = true, default-features = false, features = ["unstable_wasm"] }
 
 [dev-dependencies]
+rig-agent = { path = "../rig-agent", version = "0.40.0", features = ["test-utils"] }
 rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["test-utils"] }
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

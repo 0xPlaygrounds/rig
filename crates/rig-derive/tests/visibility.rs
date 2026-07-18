@@ -35,12 +35,7 @@ mod tools {
     pub async fn use_private_tool() -> i32 {
         use rig_core::tool::Tool;
         let tool = PrivateAdder;
-        tool.call(
-            &mut rig_core::tool::ToolContext::new(),
-            PrivateAdderParameters { x: 99 },
-        )
-        .await
-        .unwrap()
+        tool.call(PrivateAdderParameters { x: 99 }).await.unwrap()
     }
 }
 
@@ -55,10 +50,7 @@ async fn test_pub_tool_accessible_from_outside_module() {
     assert_eq!(def.description, "A public tool for testing visibility");
 
     let result = tool
-        .call(
-            &mut rig_core::tool::ToolContext::new(),
-            tools::PublicAdderParameters { x: 41 },
-        )
+        .call(tools::PublicAdderParameters { x: 41 })
         .await
         .unwrap();
     assert_eq!(result, serde_json::json!(42));

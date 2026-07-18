@@ -1,6 +1,7 @@
 //! Demonstrates the smallest useful agent setup with OpenAI.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the provider/client/agent/prompt flow end to end.
+use rig::prelude::AgentClientExt;
 
 use anyhow::Result;
 use rig::prelude::*;

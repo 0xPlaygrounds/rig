@@ -7,8 +7,9 @@
 //!   `notifications/tools/list_changed`.
 use std::sync::Arc;
 
+use rig::prelude::AgentClientExt;
 use rig::{
-    client::{CompletionClient, ProviderClient},
+    client::ProviderClient,
     completion::Prompt,
     providers::openai,
     tool::{rmcp::McpClientHandler, server::ToolServer},

@@ -1,3 +1,4 @@
+use rig::prelude::AgentClientExt;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::client::Client;

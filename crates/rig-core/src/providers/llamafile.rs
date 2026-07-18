@@ -7,20 +7,16 @@
 //! # Example
 //! ```rust,ignore
 //! use rig_core::providers::llamafile;
-//! use rig_core::completion::Prompt;
+//! use rig_core::{client::CompletionClient, completion::CompletionModel};
 //!
 //! // Create a new Llamafile client (defaults to http://localhost:8080)
 //! let client = llamafile::Client::from_url("http://localhost:8080")?;
 //!
-//! // Create an agent with a preamble
-//! let agent = client
-//!     .agent(llamafile::LLAMA_CPP)
-//!     .preamble("You are a helpful assistant.")
-//!     .build();
-//!
-//! // Prompt the agent and print the response
-//! let response = agent.prompt("Hello!").await?;
-//! println!("{response}");
+//! let model = client.completion_model(llamafile::LLAMA_CPP);
+//! let response = model
+//!     .completion(model.completion_request("Hello!").build())
+//!     .await?;
+//! println!("{:?}", response.choice);
 //! ```
 
 use crate::client::{
