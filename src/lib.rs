@@ -43,6 +43,17 @@ pub mod memory {
     pub use rig_memory::*;
 }
 
+/// Agent-to-Agent (A2A) protocol client integration.
+///
+/// Enable the `a2a` feature to consume remote A2A agents as Rig tools
+/// (`rig::a2a::A2AClient`, `rig::a2a::A2ATool`, `rig::a2a::A2AAgentBuilderExt`).
+/// This integration currently supports native targets only.
+#[cfg(feature = "a2a")]
+#[cfg_attr(docsrs, doc(cfg(feature = "a2a")))]
+pub mod a2a {
+    pub use rig_a2a::*;
+}
+
 #[cfg(feature = "bedrock")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bedrock")))]
 pub mod bedrock {

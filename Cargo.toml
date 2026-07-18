@@ -116,6 +116,9 @@ reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5.2", default-features = false }
 reqwest-retry = "0.9"
 rmcp = "2.2.0"
+a2a = { package = "a2a-lf", version = "0.3.0" }
+a2a-client = { package = "a2a-client-lf", version = "0.2.1", default-features = false }
+a2a-server = { package = "a2a-server-lf", version = "0.4.1", default-features = false }
 url = "2.5"
 rusqlite = "0.32"
 scylla = "1.2.0"
@@ -183,6 +186,7 @@ rig-sqlite = { path = "crates/rig-sqlite", version = "0.40.0", optional = true, 
 rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.40.0", optional = true, default-features = false }
 rig-vectorize = { path = "crates/rig-vectorize", version = "0.40.0", optional = true, default-features = false }
 rig-vertexai = { path = "crates/rig-vertexai", version = "0.40.0", optional = true, default-features = false }
+rig-a2a = { path = "crates/rig-a2a", version = "0.40.0", optional = true, default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -254,6 +258,7 @@ url = { workspace = true }
 [features]
 default = ["rig-core/default", "rustls"]
 test-utils = ["rig-core/test-utils"]
+a2a = ["dep:rig-a2a"]
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [
@@ -294,6 +299,7 @@ websocket-rustls = ["rig-core/websocket-rustls"]
 websocket-native-tls = ["rig-core/websocket-native-tls"]
 rustls = [
   "rig-core/rustls",
+  "rig-a2a?/rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
   "rig-helixdb?/rustls",
   "rig-lancedb?/rig-rustls",
@@ -301,6 +307,7 @@ rustls = [
 ]
 native-tls = [
   "rig-core/native-tls",
+  "rig-a2a?/native-tls",
   "rig-fastembed?/hf-hub-native-tls",
   "rig-helixdb?/native-tls",
   "rig-lancedb?/rig-native-tls",
