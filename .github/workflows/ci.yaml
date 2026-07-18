@@ -248,6 +248,27 @@ jobs:
       - name: Test telemetry macro hygiene
         run: cargo test -p rig-core --test macro_hygiene
 
+      # rig-a2a must be named explicitly for the same reason as the crates
+      # above: the workspace has no `default-members`, so the root run below
+      # covers `rig` alone. Its integration tests drive a stub A2A server on
+      # loopback and need no credentials.
+      #
+      # `--all-targets` also builds the examples, which share the tests' stub
+      # agent and are the only executable check that the documented
+      # composition still typechecks.
+      - name: Test rig-a2a
+        run: |
+          cargo test -p rig-a2a --all-features --all-targets --no-run
+          cargo nextest run -p rig-a2a --all-features
+
+      # Both examples drive a stub agent on loopback, so running them end to
+      # end is a cheap check that the crate composes the way its docs claim.
+      # `a2a_client` is excluded: it needs a live server and an API key.
+      - name: Run the offline rig-a2a examples
+        run: |
+          cargo run -p rig-a2a --example a2a_tool
+          cargo run -p rig-a2a --example a2a_agent
+
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
         with:
