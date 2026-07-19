@@ -384,6 +384,34 @@ where
     }
 }
 
+/// Flatten a `Reasoning` payload's parts into a single comparable string,
+/// mirroring how consumers (e.g. `reasoning_text`) render it.
+fn reasoning_text_of(content: &[ReasoningContent]) -> String {
+    content
+        .iter()
+        .map(|c| match c {
+            ReasoningContent::Text { text, .. } => text.clone(),
+            ReasoningContent::Summary(s) => s.clone(),
+            ReasoningContent::Encrypted(s) => s.clone(),
+            ReasoningContent::Redacted { data } => data.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// True when `new` is a full replay of `existing` -- i.e. the text already
+/// accumulated from `ReasoningDelta` chunks is a prefix of (or equal to) the
+/// text carried by a later complete `Reasoning` block. In that case the
+/// complete block should *supersede* the accumulated item rather than be
+/// appended as a second copy.
+fn reasoning_is_replay_of(existing: &[ReasoningContent], new: &[ReasoningContent]) -> bool {
+    let existing_text = reasoning_text_of(existing);
+    if existing_text.is_empty() {
+        return false;
+    }
+    reasoning_text_of(new).starts_with(&existing_text)
+}
+
 fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serde_json::Value) {
     match (existing, incoming) {
         (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming_map)) => {
@@ -498,12 +526,51 @@ where
                         content: vec![content],
                     };
                     stream.text_item_index = None;
-                    // Full reasoning block supersedes any delta accumulation
-                    stream.reasoning_item_index = None;
-                    stream
-                        .assistant_items
-                        .push(AssistantContent::Reasoning(reasoning.clone()));
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
+                    // A complete reasoning block (e.g. Anthropic's thinking block
+                    // with its signature, or the OpenAI Responses API's reasoning
+                    // item) *replays* the thinking already streamed as
+                    // `ReasoningDelta` chunks. The previous code unconditionally
+                    // `push`ed a second `Reasoning` item here, which doubled the
+                    // reasoning in both the aggregated `choice` (history fed back
+                    // to the model next turn) and the consumer-visible stream.
+                    // The old comment claimed it "supersedes" but it did not.
+                    //
+                    // If we already accumulated the same reasoning from deltas,
+                    // *merge* the complete block into that existing item (so the
+                    // signature / private content is still captured) and skip
+                    // re-emitting it. If it is genuinely new content -- a
+                    // continuation such as Gemini's trailing thought chunk that
+                    // carries the signature, or a block with no preceding deltas
+                    // like `RedactedThinking` -- append and emit it as before.
+                    let emit = match stream.reasoning_item_index {
+                        Some(index) => {
+                            if let Some(AssistantContent::Reasoning(existing)) =
+                                stream.assistant_items.get_mut(index)
+                                && reasoning_is_replay_of(&existing.content, &reasoning.content)
+                            {
+                                existing.content = reasoning.content.clone();
+                                false
+                            } else {
+                                stream.reasoning_item_index = None;
+                                stream
+                                    .assistant_items
+                                    .push(AssistantContent::Reasoning(reasoning.clone()));
+                                true
+                            }
+                        }
+                        None => {
+                            stream.reasoning_item_index = None;
+                            stream
+                                .assistant_items
+                                .push(AssistantContent::Reasoning(reasoning.clone()));
+                            true
+                        }
+                    };
+                    if emit {
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
+                    } else {
+                        stream.poll_next_unpin(cx)
+                    }
                 }
                 RawStreamingChoice::ReasoningDelta { id, reasoning } => {
                     stream.text_item_index = None;
@@ -927,6 +994,107 @@ mod tests {
             choice_items.get(2),
             Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id == "tool_1"
         ));
+    }
+
+    #[tokio::test]
+    async fn complete_reasoning_block_supersedes_deltas_no_duplicate() {
+        // Providers such as Anthropic and the OpenAI Responses API stream the
+        // thinking incrementally as `ReasoningDelta` chunks and then replay the
+        // whole block once as a complete `Reasoning` item (carrying the
+        // signature / private content). The converter must *merge* that replay
+        // into the item already accumulated from the deltas -- not append a
+        // second copy.
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::ReasoningDelta {
+                id: None,
+                reasoning: "Let me ".to_string(),
+            });
+            yield Ok(RawStreamingChoice::ReasoningDelta {
+                id: None,
+                reasoning: "think step by step".to_string(),
+            });
+            yield Ok(RawStreamingChoice::Reasoning {
+                id: None,
+                content: ReasoningContent::Text {
+                    text: "Let me think step by step".to_string(),
+                    signature: Some("sig".to_string()),
+                },
+            });
+            yield Ok(RawStreamingChoice::Message("the answer".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(1)));
+        };
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream));
+
+        let mut consumer_reasoning_blocks = 0;
+        let mut consumer_reasoning_deltas = 0;
+        let mut consumer_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Reasoning(_) => consumer_reasoning_blocks += 1,
+                StreamedAssistantContent::ReasoningDelta { .. } => consumer_reasoning_deltas += 1,
+                StreamedAssistantContent::Text(text) => consumer_text.push_str(&text.text),
+                _ => {}
+            }
+        }
+
+        // The complete block must NOT be re-emitted to the consumer.
+        assert_eq!(consumer_reasoning_blocks, 0, "complete reasoning block must be suppressed");
+        assert_eq!(consumer_reasoning_deltas, 2);
+        assert_eq!(consumer_text, "the answer");
+
+        // And the aggregated history must contain the reasoning exactly once,
+        // with the signature captured from the complete block.
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_items: Vec<&AssistantContent> = choice_items
+            .iter()
+            .filter(|c| matches!(c, AssistantContent::Reasoning(_)))
+            .collect();
+        assert_eq!(reasoning_items.len(), 1, "reasoning must not be duplicated in history");
+        match reasoning_items.first() {
+            Some(AssistantContent::Reasoning(Reasoning { content, .. })) => {
+                assert!(matches!(
+                    content.as_slice(),
+                    [ReasoningContent::Text { text, signature: Some(_), .. }]
+                        if text == "Let me think step by step"
+                ));
+            }
+            _ => panic!("expected a single Reasoning item with the signature"),
+        }
+    }
+
+    #[tokio::test]
+    async fn complete_reasoning_block_without_deltas_is_emitted() {
+        // A `Reasoning` block that has no preceding deltas (e.g. Anthropic's
+        // `RedactedThinking`) must still be emitted once.
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Reasoning {
+                id: None,
+                content: ReasoningContent::Text {
+                    text: "whole thought".to_string(),
+                    signature: None,
+                },
+            });
+            yield Ok(RawStreamingChoice::Message("answer".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(1)));
+        };
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream));
+
+        let mut consumer_reasoning_blocks = 0;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Reasoning(_) => consumer_reasoning_blocks += 1,
+                _ => {}
+            }
+        }
+        assert_eq!(consumer_reasoning_blocks, 1);
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(
+            choice_items
+                .iter()
+                .filter(|c| matches!(c, AssistantContent::Reasoning(_)))
+                .count(),
+            1
+        );
     }
 
     #[tokio::test]
