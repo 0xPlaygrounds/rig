@@ -63,18 +63,57 @@ pub fn format_api_key_token(presigned_without_scheme: &str) -> String {
     format!("{AUTH_PREFIX}{encoded}")
 }
 
+/// Effective short-term token lifetime for these credentials.
+///
+/// AWS short-term Bedrock API keys last at most 12 hours ([`TOKEN_TTL`]), but
+/// never longer than the source AWS credential session (SSO, AssumeRole, ECS,
+/// EC2 instance profile, etc.). Returns `Duration::ZERO` when the session has
+/// already expired.
+pub fn effective_token_ttl(credentials: &Credentials) -> Duration {
+    match credentials.expiry() {
+        Some(exp) => exp
+            .duration_since(SystemTime::now())
+            .unwrap_or(Duration::ZERO)
+            .min(TOKEN_TTL),
+        None => TOKEN_TTL,
+    }
+}
+
+/// Wall-clock instant when a cached mint for `ttl` should be refreshed.
+///
+/// Uses a 1h buffer for long sessions; for short sessions (e.g. 1h SSO) remints
+/// when ~20% of the TTL remains (minimum 30s buffer when TTL allows).
+pub fn refresh_after_from_ttl(ttl: Duration) -> Instant {
+    let buffer = if ttl > REFRESH_BUFFER.saturating_mul(2) {
+        REFRESH_BUFFER
+    } else if ttl > Duration::from_secs(60) {
+        (ttl / 5).max(Duration::from_secs(30))
+    } else {
+        Duration::from_secs(0)
+    };
+    Instant::now() + ttl.saturating_sub(buffer)
+}
+
 /// Generate a short-term Bedrock bearer token from explicit credentials.
 ///
 /// This is the pure signing path and is suitable for unit tests with static keys.
+/// `X-Amz-Expires` is capped by [`effective_token_ttl`].
 pub fn generate_token_from_credentials(
     credentials: &Credentials,
     region: &str,
 ) -> Result<String, MantleError> {
+    let ttl = effective_token_ttl(credentials);
+    if ttl.is_zero() {
+        return Err(MantleError::Credentials(
+            "AWS credentials have expired; cannot mint a Bedrock Mantle token".into(),
+        ));
+    }
+
     let identity = credentials.clone().into();
 
     let mut settings = SigningSettings::default();
     settings.signature_location = SignatureLocation::QueryParams;
-    settings.expires_in = Some(TOKEN_TTL);
+    settings.expires_in = Some(ttl);
 
     let signing_params = v4::SigningParams::builder()
         .identity(&identity)
@@ -119,12 +158,13 @@ pub fn generate_token_from_credentials(
 /// Generate (or return a cached) short-term Bedrock API key from the default AWS
 /// credential chain.
 ///
-/// Tokens are cached process-wide keyed by `(region, access_key_id)` and refreshed
-/// one hour before the 12-hour expiry. If the cache lock is poisoned, a new token
-/// is minted.
+/// Tokens are cached process-wide keyed by `(region, access_key_id)`. Refresh
+/// timing uses [`effective_token_ttl`] (min of 12h and source credential
+/// expiry). If the cache lock is poisoned, a new token is minted.
 ///
-/// The minted token is snapshotted into the OpenAI-compatible client at build time.
-/// Long-lived processes should rebuild the client before the 12h TTL elapses.
+/// The minted token is **snapshotted** into the Mantle HTTP client at build time.
+/// Long-lived processes must rebuild the client before the effective TTL elapses
+/// (often much sooner than 12h when using SSO / AssumeRole sessions).
 pub async fn generate_short_term_token(region: &str) -> Result<String, MantleError> {
     generate_short_term_token_with_profile(region, None).await
 }
@@ -144,10 +184,9 @@ pub async fn generate_short_term_token_with_profile(
         return Ok(cached.token.clone());
     }
 
+    let ttl = effective_token_ttl(&credentials);
     let token = generate_token_from_credentials(&credentials, region)?;
-
-    // Cache for (token TTL - refresh buffer) so we mint before the 12h expiry.
-    let refresh_after = Instant::now() + TOKEN_TTL.saturating_sub(REFRESH_BUFFER);
+    let refresh_after = refresh_after_from_ttl(ttl);
 
     if let Ok(mut guard) = TOKEN_CACHE.lock() {
         *guard = Some(CachedToken {
@@ -233,14 +272,82 @@ mod tests {
         );
         assert!(s.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"), "decoded={s}");
         assert!(s.contains("X-Amz-Signature="), "decoded={s}");
+        // Static long-lived keys use full TOKEN_TTL
         assert!(s.contains("X-Amz-Expires=43200"), "decoded={s}");
         assert!(s.ends_with("&Version=1"), "decoded={s}");
+    }
+
+    #[test]
+    fn generate_token_respects_short_credential_expiry() {
+        let exp = SystemTime::now() + Duration::from_secs(1_800);
+        let creds = Credentials::new(
+            "AKIATESTACCESSKEYID",
+            "testsecretaccesskey",
+            None,
+            Some(exp),
+            "unit-test",
+        );
+        let token = generate_token_from_credentials(&creds, "us-east-1").expect("token");
+        let b64 = &token[AUTH_PREFIX.len()..];
+        let decoded = BASE64_STANDARD.decode(b64).expect("base64");
+        let s = String::from_utf8(decoded).expect("utf8");
+        // Expires should be ~1800s, not 43200
+        assert!(
+            !s.contains("X-Amz-Expires=43200"),
+            "should not use full 12h when session is shorter: {s}"
+        );
+        assert!(s.contains("X-Amz-Expires="), "decoded={s}");
     }
 
     #[test]
     fn token_ttl_is_twelve_hours() {
         assert_eq!(TOKEN_TTL, Duration::from_secs(43_200));
         assert_eq!(TOKEN_TTL_SECS, 43_200);
+    }
+
+    #[test]
+    fn effective_token_ttl_uses_credential_expiry_when_shorter() {
+        let exp = SystemTime::now() + Duration::from_secs(3_600);
+        let creds = Credentials::new(
+            "AKIATEST",
+            "secret",
+            None,
+            Some(exp),
+            "unit-test",
+        );
+        let ttl = effective_token_ttl(&creds);
+        assert!(ttl <= Duration::from_secs(3_600));
+        assert!(ttl > Duration::from_secs(3_500));
+        assert!(ttl < TOKEN_TTL);
+    }
+
+    #[test]
+    fn effective_token_ttl_caps_at_twelve_hours() {
+        let exp = SystemTime::now() + Duration::from_secs(86_400);
+        let creds = Credentials::new(
+            "AKIATEST",
+            "secret",
+            None,
+            Some(exp),
+            "unit-test",
+        );
+        assert_eq!(effective_token_ttl(&creds), TOKEN_TTL);
+    }
+
+    #[test]
+    fn effective_token_ttl_without_expiry_is_twelve_hours() {
+        let creds = Credentials::new("AKIATEST", "secret", None, None, "unit-test");
+        assert_eq!(effective_token_ttl(&creds), TOKEN_TTL);
+    }
+
+    #[test]
+    fn refresh_after_short_session_before_expiry() {
+        let ttl = Duration::from_secs(3_600);
+        let after = refresh_after_from_ttl(ttl);
+        let remaining = after.saturating_duration_since(Instant::now());
+        // 20% buffer => remint after ~2880s; allow clock skew
+        assert!(remaining < ttl);
+        assert!(remaining > Duration::from_secs(2_000));
     }
 
     #[test]

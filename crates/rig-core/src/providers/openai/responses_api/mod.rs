@@ -1122,6 +1122,13 @@ pub enum SystemInstructionsPlacement {
 /// [`GenericResponsesCompletionModel`], so a client-level configuration can
 /// control request shaping for every model created from that client.
 pub trait ResponsesProviderExt {
+    /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
+    ///
+    /// Defaults to `"openai"`. OpenAI-compatible backends on other hosts (e.g.
+    /// Amazon Bedrock Mantle) override this so metrics are not attributed to
+    /// OpenAI.
+    const PROVIDER_NAME: &'static str = "openai";
+
     /// Where Rig system instructions are placed in requests built from this
     /// provider. See [`SystemInstructionsPlacement`].
     ///
@@ -2280,9 +2287,13 @@ where
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_completion_request(completion_request)?;
-        let span = CompletionSpanBuilder::new("openai", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
+        let span = CompletionSpanBuilder::new(
+            Ext::PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::Chat,
+        )
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+        .build();
         let body = serde_json::to_vec(&request)?;
 
         if enabled!(Level::TRACE) {

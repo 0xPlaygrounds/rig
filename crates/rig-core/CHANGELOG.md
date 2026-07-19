@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(openai)* `ResponsesProviderExt::PROVIDER_NAME` for GenAI telemetry (default
+  `"openai"`). OpenAI-compatible backends can report a different provider name
+  on Responses spans (streaming and non-streaming).
+
 ### Fixed
 
 - *(openai)* Accept float `created_at` values when deserializing Responses API

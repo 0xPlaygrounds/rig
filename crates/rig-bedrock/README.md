@@ -58,7 +58,9 @@ Auth is either:
 1. **Short-term IAM token** — minted via SigV4 (`Action=CallWithBearerToken`, **12h TTL**), or
 2. **`AWS_BEARER_TOKEN_BEDROCK`** — a pre-minted `bedrock-api-key-…` value (skips minting).
 
-The token is **snapshotted when the client is built**. Rebuild the client for long-lived processes before the 12h TTL elapses (`TOKEN_TTL` / 43_200 seconds).
+The token is **snapshotted when the client is built**. Effective lifetime is the minimum of 12 hours (`TOKEN_TTL`) and the source AWS credential session (SSO / AssumeRole sessions are often much shorter). Rebuild the client before that effective TTL elapses.
+
+Mantle clients are first-class Rig types (not OpenAI aliases): defaults use Mantle base URLs, GenAI telemetry reports `aws_bedrock`, and only chat completion is advertised as capable.
 
 ```shell
 export AWS_REGION=us-east-1

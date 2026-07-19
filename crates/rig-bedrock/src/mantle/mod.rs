@@ -5,8 +5,9 @@
 //! (`bedrock-api-key-…`) minted via SigV4, or a pre-supplied
 //! [`AWS_BEARER_TOKEN_BEDROCK`] env value.
 //!
-//! This module reuses Rig's OpenAI Responses / Completions clients pointed at
-//! the Mantle base URL. It does **not** change the Converse client path.
+//! This module uses Mantle-specific Rig client types (OpenAI wire format, Bedrock
+//! defaults and telemetry). It does **not** type-alias the public OpenAI client
+//! and does **not** change the Converse path.
 //!
 //! # Base URL dual path
 //!
@@ -17,9 +18,11 @@
 //!
 //! # Token lifetime
 //!
-//! Short-term IAM tokens last **12 hours** ([`TOKEN_TTL`]). The token is
-//! **snapshotted at client build time**. Long-lived processes must rebuild the
-//! client (or supply a fresh `api_key`) before expiry.
+//! Short-term IAM tokens last at most **12 hours** ([`TOKEN_TTL`]), capped by
+//! the source AWS credential session (SSO / AssumeRole / instance role often
+//! expire much sooner). The token is **snapshotted at client build time**.
+//! Long-lived processes must rebuild the client (or supply a fresh `api_key`)
+//! before the effective TTL elapses.
 //!
 //! # `store: false` gotcha
 //!
@@ -55,11 +58,18 @@
 //! | `AWS_BEARER_TOKEN_BEDROCK` | Optional pre-minted bearer token; skips IAM mint when set |
 //! | AWS credential chain | Used to mint a short-term token when no bearer env is set |
 
+mod provider;
 mod token;
 
+pub use provider::{
+    CompletionsClient, CompletionsClientBuilder, MantleCompletionsBuilder, MantleCompletionsExt,
+    MantleResponsesBuilder, MantleResponsesExt, PROVIDER_NAME, ResponsesClient,
+    ResponsesClientBuilder, DEFAULT_MANTLE_BASE_URL,
+};
 pub use token::{
-    format_api_key_token, generate_short_term_token, generate_short_term_token_with_profile,
-    generate_token_from_credentials, TOKEN_TTL, TOKEN_TTL_SECS,
+    effective_token_ttl, format_api_key_token, generate_short_term_token,
+    generate_short_term_token_with_profile, generate_token_from_credentials, refresh_after_from_ttl,
+    TOKEN_TTL, TOKEN_TTL_SECS,
 };
 
 /// Env var for a pre-minted Bedrock Mantle bearer token (see AWS docs / #1713).
@@ -86,14 +96,6 @@ pub const OPENAI_GPT_5_6_TERRA: &str = "openai.gpt-5.6-terra";
 pub const OPENAI_GPT_OSS_20B_VERSIONED: &str = "openai.gpt-oss-20b-1:0";
 /// Versioned id used by Bedrock Runtime / Converse — **not** the Mantle OpenAI catalog id.
 pub const OPENAI_GPT_OSS_120B_VERSIONED: &str = "openai.gpt-oss-120b-1:0";
-
-/// OpenAI Responses API client pointed at Mantle.
-///
-/// Named [`ResponsesClient`] (not `Client`) to avoid colliding with the Converse
-/// [`crate::client::Client`].
-pub type ResponsesClient = rig_core::providers::openai::Client;
-/// OpenAI Chat Completions API client pointed at Mantle.
-pub type CompletionsClient = rig_core::providers::openai::CompletionsClient;
 
 const DEFAULT_REGION: &str = "us-east-1";
 
@@ -204,9 +206,10 @@ impl ClientBuilder {
         self
     }
 
-    /// Build a Responses API client (default OpenAI surface).
+    /// Build a Mantle Responses API client.
     ///
-    /// The bearer token is snapshotted into the client; see [`TOKEN_TTL`].
+    /// The bearer token is snapshotted into the client. See [`TOKEN_TTL`] and
+    /// [`effective_token_ttl`]. Defaults never point at `api.openai.com`.
     pub async fn build(self) -> Result<ResponsesClient, MantleError> {
         let (api_key, base_url) = self.resolve_auth().await?;
         ResponsesClient::builder()
@@ -216,9 +219,10 @@ impl ClientBuilder {
             .map_err(|e| MantleError::ClientBuild(e.to_string()))
     }
 
-    /// Build a Chat Completions API client.
+    /// Build a Mantle Chat Completions API client.
     ///
-    /// The bearer token is snapshotted into the client; see [`TOKEN_TTL`].
+    /// The bearer token is snapshotted into the client. See [`TOKEN_TTL`] and
+    /// [`effective_token_ttl`]. Defaults never point at `api.openai.com`.
     pub async fn build_completions(self) -> Result<CompletionsClient, MantleError> {
         let (api_key, base_url) = self.resolve_auth().await?;
         CompletionsClient::builder()
@@ -375,6 +379,34 @@ mod tests {
             client.base_url(),
             "https://bedrock-mantle.us-west-2.api.aws/v1"
         );
+    }
+
+    #[tokio::test]
+    async fn responses_client_builder_defaults_to_mantle_not_openai() {
+        let client = ResponsesClient::builder()
+            .api_key("bedrock-api-key-test")
+            .build()
+            .expect("mantle responses client");
+        assert!(
+            client.base_url().contains("bedrock-mantle"),
+            "base_url={}",
+            client.base_url()
+        );
+        assert!(
+            !client.base_url().contains("api.openai.com"),
+            "must not default to OpenAI: {}",
+            client.base_url()
+        );
+    }
+
+    #[tokio::test]
+    async fn completions_client_builder_defaults_to_mantle_not_openai() {
+        let client = CompletionsClient::builder()
+            .api_key("bedrock-api-key-test")
+            .build()
+            .expect("mantle completions client");
+        assert!(client.base_url().contains("bedrock-mantle"));
+        assert!(!client.base_url().contains("api.openai.com"));
     }
 
     #[tokio::test]

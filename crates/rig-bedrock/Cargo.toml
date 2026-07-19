@@ -11,8 +11,8 @@ workspace = true
 
 [features]
 default = ["rustls"]
-rustls = ["rig-core/rustls"]
-native-tls = ["rig-core/native-tls"]
+rustls = ["rig-core/rustls", "reqwest/rustls"]
+native-tls = ["rig-core/native-tls", "reqwest/native-tls"]
 
 [dependencies]
 async-stream = { workspace = true }
@@ -24,8 +24,12 @@ aws-sigv4 = { workspace = true }
 aws-smithy-types = { workspace = true }
 base64 = { workspace = true }
 http = { workspace = true }
+reqwest = { workspace = true, default-features = false, features = ["json", "stream"] }
+# `image` / `audio` are enabled so `Capabilities` always includes those associated
+# types (workspace `--all-features` unification); Mantle marks both as `Nothing`.
 rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = [
     "image",
+    "audio",
     "reqwest",
 ] }
 rig-derive = { path = "../rig-derive", version = "0.40.0" }
