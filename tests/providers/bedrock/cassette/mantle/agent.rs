@@ -5,12 +5,16 @@ use rig::bedrock::mantle::{
 };
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::streaming::StreamingPrompt;
 
 use super::super::super::support::{
     with_bedrock_mantle_cassette, with_bedrock_mantle_completions_cassette,
     with_bedrock_mantle_gpt5_cassette,
 };
-use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use crate::support::{
+    BASIC_PREAMBLE, BASIC_PROMPT, STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response,
+    collect_stream_final_response,
+};
 
 /// Shared agent params for GPT-5.x Mantle Responses (avoid 30-day store default).
 fn gpt5_agent_params() -> serde_json::Value {
@@ -57,6 +61,30 @@ async fn responses_smoke() {
 
         assert_nonempty_response(&response);
     })
+    .await;
+}
+
+/// Streaming Responses smoke: exercises Mantle SSE wire format and
+/// `ResponsesProviderExt::PROVIDER_NAME` telemetry on the stream path.
+#[tokio::test]
+async fn responses_streaming_smoke() {
+    with_bedrock_mantle_cassette(
+        "mantle/agent/responses_streaming_smoke",
+        |client| async move {
+            let agent = client
+                .agent(OPENAI_GPT_OSS_20B)
+                .preamble(STREAMING_PREAMBLE)
+                .additional_params(serde_json::json!({"store": false}))
+                .build();
+
+            let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("mantle responses streaming should succeed");
+
+            assert_nonempty_response(&response);
+        },
+    )
     .await;
 }
 

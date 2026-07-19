@@ -11,8 +11,9 @@
 //! 5. Prefix `bedrock-api-key-`
 //! 6. Send as `Authorization: Bearer <token>` against Mantle
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, SystemTime};
 
 use aws_config::{BehaviorVersion, Region};
 use aws_credential_types::provider::ProvideCredentials;
@@ -32,8 +33,6 @@ const AUTH_PREFIX: &str = "bedrock-api-key-";
 const TOKEN_VERSION_SUFFIX: &str = "&Version=1";
 /// Token lifetime: 12 hours (matches AWS short-term Bedrock API keys).
 pub const TOKEN_TTL: Duration = Duration::from_secs(43_200);
-/// Token lifetime in seconds (same as [`TOKEN_TTL`]).
-pub const TOKEN_TTL_SECS: u64 = 43_200;
 /// Refresh when less than this remains on the 12h token.
 const REFRESH_BUFFER: Duration = Duration::from_secs(3_600);
 const TOKEN_HOST: &str = "bedrock.amazonaws.com";
@@ -41,23 +40,26 @@ const TOKEN_URL: &str = "https://bedrock.amazonaws.com/?Action=CallWithBearerTok
 const SERVICE_NAME: &str = "bedrock";
 
 struct CachedToken {
-    region: String,
-    /// Fingerprint from `credentials.access_key_id()` so distinct IAM principals
-    /// never share a minted bearer token in the process-wide cache.
-    access_key_id: String,
     token: String,
-    /// Wall-clock instant after which we must mint a new token.
-    refresh_after: Instant,
+    /// Wall-clock time after which we must mint a new token.
+    ///
+    /// Uses [`SystemTime`] (not [`std::time::Instant`]) because the token's real
+    /// expiry is wall-clock (`X-Amz-Date` + `X-Amz-Expires`). Monotonic clocks
+    /// pause across host suspend on some platforms and would serve expired tokens.
+    refresh_after: SystemTime,
 }
 
-static TOKEN_CACHE: Mutex<Option<CachedToken>> = Mutex::new(None);
+type CacheKey = (String, String);
+
+static TOKEN_CACHE: LazyLock<Mutex<HashMap<CacheKey, CachedToken>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Format a signed (scheme-stripped) presigned URL into a Bedrock API key token.
 ///
 /// `presigned_without_scheme` is e.g. `bedrock.amazonaws.com/?Action=...&X-Amz-...`.
 /// Appends `&Version=1` (not part of the SigV4 payload), base64-encodes, and prefixes
 /// with `bedrock-api-key-`.
-pub fn format_api_key_token(presigned_without_scheme: &str) -> String {
+pub(crate) fn format_api_key_token(presigned_without_scheme: &str) -> String {
     let with_version = format!("{presigned_without_scheme}{TOKEN_VERSION_SUFFIX}");
     let encoded = BASE64_STANDARD.encode(with_version.as_bytes());
     format!("{AUTH_PREFIX}{encoded}")
@@ -79,11 +81,11 @@ pub fn effective_token_ttl(credentials: &Credentials) -> Duration {
     }
 }
 
-/// Wall-clock instant when a cached mint for `ttl` should be refreshed.
+/// Wall-clock time when a cached mint for `ttl` should be refreshed.
 ///
 /// Uses a 1h buffer for long sessions; for short sessions (e.g. 1h SSO) remints
 /// when ~20% of the TTL remains (minimum 30s buffer when TTL allows).
-pub fn refresh_after_from_ttl(ttl: Duration) -> Instant {
+pub(crate) fn refresh_after_from_ttl(ttl: Duration) -> SystemTime {
     let buffer = if ttl > REFRESH_BUFFER.saturating_mul(2) {
         REFRESH_BUFFER
     } else if ttl > Duration::from_secs(60) {
@@ -91,7 +93,13 @@ pub fn refresh_after_from_ttl(ttl: Duration) -> Instant {
     } else {
         Duration::from_secs(0)
     };
-    Instant::now() + ttl.saturating_sub(buffer)
+    SystemTime::now() + ttl.saturating_sub(buffer)
+}
+
+fn token_err(source: impl std::error::Error + Send + Sync + 'static) -> MantleError {
+    MantleError::Token {
+        source: Box::new(source),
+    }
 }
 
 /// Generate a short-term Bedrock bearer token from explicit credentials.
@@ -104,9 +112,7 @@ pub fn generate_token_from_credentials(
 ) -> Result<String, MantleError> {
     let ttl = effective_token_ttl(credentials);
     if ttl.is_zero() {
-        return Err(MantleError::Credentials(
-            "AWS credentials have expired; cannot mint a Bedrock Mantle token".into(),
-        ));
+        return Err(MantleError::CredentialsExpired);
     }
 
     let identity = credentials.clone().into();
@@ -122,7 +128,7 @@ pub fn generate_token_from_credentials(
         .time(SystemTime::now())
         .settings(settings)
         .build()
-        .map_err(|e| MantleError::Token(format!("signing params: {e}")))?
+        .map_err(token_err)?
         .into();
 
     let signable = SignableRequest::new(
@@ -131,10 +137,10 @@ pub fn generate_token_from_credentials(
         std::iter::once(("host", TOKEN_HOST)),
         SignableBody::Bytes(&[]),
     )
-    .map_err(|e| MantleError::Token(format!("signable request: {e}")))?;
+    .map_err(token_err)?;
 
     let (instructions, _signature) = sign(signable, &signing_params)
-        .map_err(|e| MantleError::Token(format!("sign: {e}")))?
+        .map_err(token_err)?
         .into_parts();
 
     let mut req = http::Request::builder()
@@ -142,7 +148,7 @@ pub fn generate_token_from_credentials(
         .uri(TOKEN_URL)
         .header("host", TOKEN_HOST)
         .body(())
-        .map_err(|e| MantleError::Token(format!("http request: {e}")))?;
+        .map_err(token_err)?;
 
     instructions.apply_to_request_http1x(&mut req);
 
@@ -158,8 +164,8 @@ pub fn generate_token_from_credentials(
 /// Generate (or return a cached) short-term Bedrock API key from the default AWS
 /// credential chain.
 ///
-/// Tokens are cached process-wide keyed by `(region, access_key_id)`. Refresh
-/// timing uses [`effective_token_ttl`] (min of 12h and source credential
+/// Tokens are cached process-wide in a map keyed by `(region, access_key_id)`.
+/// Refresh timing uses [`effective_token_ttl`] (min of 12h and source credential
 /// expiry). If the cache lock is poisoned, a new token is minted.
 ///
 /// The minted token is **snapshotted** into the Mantle HTTP client at build time.
@@ -176,10 +182,11 @@ pub async fn generate_short_term_token_with_profile(
 ) -> Result<String, MantleError> {
     let credentials = resolve_credentials(region, profile_name).await?;
     let access_key_id = credentials.access_key_id().to_string();
+    let key = (region.to_string(), access_key_id);
 
     if let Ok(guard) = TOKEN_CACHE.lock()
-        && let Some(cached) = guard.as_ref()
-        && cache_matches(cached, region, &access_key_id)
+        && let Some(cached) = guard.get(&key)
+        && cache_fresh(cached)
     {
         return Ok(cached.token.clone());
     }
@@ -189,12 +196,13 @@ pub async fn generate_short_term_token_with_profile(
     let refresh_after = refresh_after_from_ttl(ttl);
 
     if let Ok(mut guard) = TOKEN_CACHE.lock() {
-        *guard = Some(CachedToken {
-            region: region.to_string(),
-            access_key_id,
-            token: token.clone(),
-            refresh_after,
-        });
+        guard.insert(
+            key,
+            CachedToken {
+                token: token.clone(),
+                refresh_after,
+            },
+        );
     }
 
     Ok(token)
@@ -211,23 +219,20 @@ async fn resolve_credentials(
     }
     let config = loader.load().await;
 
-    let provider = config.credentials_provider().ok_or_else(|| {
-        MantleError::Credentials(
-            "no AWS credentials provider available for Bedrock Mantle token".into(),
-        )
-    })?;
+    let provider = config
+        .credentials_provider()
+        .ok_or(MantleError::NoCredentialsProvider)?;
 
-    provider.provide_credentials().await.map_err(|e| {
-        MantleError::Credentials(format!(
-            "failed to resolve AWS credentials for Bedrock Mantle token: {e}"
-        ))
-    })
+    provider
+        .provide_credentials()
+        .await
+        .map_err(|source| MantleError::Credentials {
+            source: Box::new(source),
+        })
 }
 
-fn cache_matches(cached: &CachedToken, region: &str, access_key_id: &str) -> bool {
-    cached.region == region
-        && cached.access_key_id == access_key_id
-        && Instant::now() < cached.refresh_after
+fn cache_fresh(cached: &CachedToken) -> bool {
+    SystemTime::now() < cached.refresh_after
 }
 
 #[cfg(test)]
@@ -302,7 +307,7 @@ mod tests {
     #[test]
     fn token_ttl_is_twelve_hours() {
         assert_eq!(TOKEN_TTL, Duration::from_secs(43_200));
-        assert_eq!(TOKEN_TTL_SECS, 43_200);
+        assert_eq!(TOKEN_TTL.as_secs(), 43_200);
     }
 
     #[test]
@@ -344,34 +349,56 @@ mod tests {
     fn refresh_after_short_session_before_expiry() {
         let ttl = Duration::from_secs(3_600);
         let after = refresh_after_from_ttl(ttl);
-        let remaining = after.saturating_duration_since(Instant::now());
+        let remaining = after
+            .duration_since(SystemTime::now())
+            .expect("refresh_after is in the future");
         // 20% buffer => remint after ~2880s; allow clock skew
         assert!(remaining < ttl);
         assert!(remaining > Duration::from_secs(2_000));
     }
 
     #[test]
-    fn cache_matches_requires_region_and_access_key() {
-        let cached = CachedToken {
-            region: "us-east-1".into(),
-            access_key_id: "AKIA_A".into(),
+    fn cache_fresh_rejects_expired_entry() {
+        let expired = CachedToken {
             token: "token".into(),
-            refresh_after: Instant::now() + Duration::from_secs(60),
+            refresh_after: SystemTime::now() - Duration::from_secs(1),
         };
-        assert!(cache_matches(&cached, "us-east-1", "AKIA_A"));
-        assert!(!cache_matches(&cached, "us-west-2", "AKIA_A"));
-        assert!(!cache_matches(&cached, "us-east-1", "AKIA_B"));
+        assert!(!cache_fresh(&expired));
+        let fresh = CachedToken {
+            token: "token".into(),
+            refresh_after: SystemTime::now() + Duration::from_secs(60),
+        };
+        assert!(cache_fresh(&fresh));
     }
 
     #[test]
-    fn cache_matches_rejects_expired_entry() {
-        let cached = CachedToken {
-            region: "us-east-1".into(),
-            access_key_id: "AKIA_A".into(),
-            token: "token".into(),
-            refresh_after: Instant::now() - Duration::from_secs(1),
-        };
-        assert!(!cache_matches(&cached, "us-east-1", "AKIA_A"));
+    fn cache_map_holds_multiple_keys() {
+        let mut map: HashMap<CacheKey, CachedToken> = HashMap::new();
+        map.insert(
+            ("us-east-1".to_string(), "AKIA_A".to_string()),
+            CachedToken {
+                token: "token-a".into(),
+                refresh_after: SystemTime::now() + Duration::from_secs(60),
+            },
+        );
+        map.insert(
+            ("us-west-2".to_string(), "AKIA_A".to_string()),
+            CachedToken {
+                token: "token-b".into(),
+                refresh_after: SystemTime::now() + Duration::from_secs(60),
+            },
+        );
+        assert_eq!(map.len(), 2);
+        assert_eq!(
+            map.get(&("us-east-1".to_string(), "AKIA_A".to_string()))
+                .map(|c| c.token.as_str()),
+            Some("token-a")
+        );
+        assert_eq!(
+            map.get(&("us-west-2".to_string(), "AKIA_A".to_string()))
+                .map(|c| c.token.as_str()),
+            Some("token-b")
+        );
     }
 
     #[test]
@@ -381,5 +408,13 @@ mod tests {
         let token_a = generate_token_from_credentials(&a, "us-east-1").expect("token a");
         let token_b = generate_token_from_credentials(&b, "us-east-1").expect("token b");
         assert_ne!(token_a, token_b);
+    }
+
+    #[test]
+    fn expired_credentials_error_variant() {
+        let exp = SystemTime::now() - Duration::from_secs(1);
+        let creds = Credentials::new("AKIATEST", "secret", None, Some(exp), "unit-test");
+        let err = generate_token_from_credentials(&creds, "us-east-1").unwrap_err();
+        assert!(matches!(err, MantleError::CredentialsExpired));
     }
 }

@@ -24,6 +24,13 @@
 //! Long-lived processes must rebuild the client (or supply a fresh `api_key`)
 //! before the effective TTL elapses.
 //!
+//! # TLS features
+//!
+//! Mantle uses `reqwest` over HTTPS. Enable one of this crate's TLS features
+//! (`rustls` default, or `native-tls`). With `default-features = false` and
+//! neither TLS feature, the client may build but Mantle HTTPS calls fail at
+//! runtime.
+//!
 //! # `store: false` gotcha
 //!
 //! Some Mantle Responses models reject or mis-handle default OpenAI `store: true`
@@ -67,9 +74,8 @@ pub use provider::{
     ResponsesClientBuilder, DEFAULT_MANTLE_BASE_URL,
 };
 pub use token::{
-    effective_token_ttl, format_api_key_token, generate_short_term_token,
-    generate_short_term_token_with_profile, generate_token_from_credentials, refresh_after_from_ttl,
-    TOKEN_TTL, TOKEN_TTL_SECS,
+    effective_token_ttl, generate_short_term_token, generate_short_term_token_with_profile,
+    generate_token_from_credentials, TOKEN_TTL,
 };
 
 /// Env var for a pre-minted Bedrock Mantle bearer token (see AWS docs / #1713).
@@ -90,27 +96,34 @@ pub const OPENAI_GPT_5_6_SOL: &str = "openai.gpt-5.6-sol";
 /// OpenAI GPT-5.6 Terra on Bedrock Mantle (use [`openai_gpt5_base_url`] for Responses).
 pub const OPENAI_GPT_5_6_TERRA: &str = "openai.gpt-5.6-terra";
 
-/// Versioned id used by Bedrock Runtime / Converse — **not** the Mantle OpenAI catalog id.
-///
-/// Mantle `GET /v1/models` lists unversioned ids such as [`OPENAI_GPT_OSS_20B`].
-pub const OPENAI_GPT_OSS_20B_VERSIONED: &str = "openai.gpt-oss-20b-1:0";
-/// Versioned id used by Bedrock Runtime / Converse — **not** the Mantle OpenAI catalog id.
-pub const OPENAI_GPT_OSS_120B_VERSIONED: &str = "openai.gpt-oss-120b-1:0";
-
 const DEFAULT_REGION: &str = "us-east-1";
 
 /// Errors from Mantle token minting or OpenAI-compatible client construction.
 #[derive(Debug, thiserror::Error)]
 pub enum MantleError {
     /// Failed to mint or format a short-term bearer token.
-    #[error("failed to mint Bedrock Mantle bearer token: {0}")]
-    Token(String),
+    #[error("failed to mint Bedrock Mantle bearer token")]
+    Token {
+        /// Underlying signing / HTTP construction error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     /// Failed to resolve AWS credentials for token minting.
-    #[error("failed to resolve AWS credentials for Bedrock Mantle: {0}")]
-    Credentials(String),
+    #[error("failed to resolve AWS credentials for Bedrock Mantle")]
+    Credentials {
+        /// Underlying credentials-provider error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    /// Source AWS credentials have already expired.
+    #[error("AWS credentials have expired; cannot mint a Bedrock Mantle token")]
+    CredentialsExpired,
+    /// No credentials provider available in the AWS config chain.
+    #[error("no AWS credentials provider available for Bedrock Mantle token")]
+    NoCredentialsProvider,
     /// Failed to build the OpenAI-compatible HTTP client.
-    #[error("failed to build OpenAI-compatible Mantle client: {0}")]
-    ClientBuild(String),
+    #[error("failed to build OpenAI-compatible Mantle client")]
+    ClientBuild(#[from] rig_core::http_client::Error),
 }
 
 /// Default Mantle OpenAI-compatible base (GPT-OSS and most Mantle models).
@@ -212,11 +225,10 @@ impl ClientBuilder {
     /// [`effective_token_ttl`]. Defaults never point at `api.openai.com`.
     pub async fn build(self) -> Result<ResponsesClient, MantleError> {
         let (api_key, base_url) = self.resolve_auth().await?;
-        ResponsesClient::builder()
+        Ok(ResponsesClient::builder()
             .api_key(api_key)
             .base_url(base_url)
-            .build()
-            .map_err(|e| MantleError::ClientBuild(e.to_string()))
+            .build()?)
     }
 
     /// Build a Mantle Chat Completions API client.
@@ -225,11 +237,10 @@ impl ClientBuilder {
     /// [`effective_token_ttl`]. Defaults never point at `api.openai.com`.
     pub async fn build_completions(self) -> Result<CompletionsClient, MantleError> {
         let (api_key, base_url) = self.resolve_auth().await?;
-        CompletionsClient::builder()
+        Ok(CompletionsClient::builder()
             .api_key(api_key)
             .base_url(base_url)
-            .build()
-            .map_err(|e| MantleError::ClientBuild(e.to_string()))
+            .build()?)
     }
 
     /// Create a builder from environment variables (sync; env defaults only).
@@ -325,8 +336,6 @@ mod tests {
         assert_eq!(OPENAI_GPT_5_6_LUNA, "openai.gpt-5.6-luna");
         assert_eq!(OPENAI_GPT_5_6_SOL, "openai.gpt-5.6-sol");
         assert_eq!(OPENAI_GPT_5_6_TERRA, "openai.gpt-5.6-terra");
-        assert_eq!(OPENAI_GPT_OSS_20B_VERSIONED, "openai.gpt-oss-20b-1:0");
-        assert_eq!(OPENAI_GPT_OSS_120B_VERSIONED, "openai.gpt-oss-120b-1:0");
     }
 
     #[test]

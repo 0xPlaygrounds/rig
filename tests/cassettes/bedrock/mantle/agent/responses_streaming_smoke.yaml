@@ -1,0 +1,60 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"In one short paragraph, explain what a solar eclipse is.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant. Answer directly in plain text.","model":"openai.gpt-oss-20b","store":false,"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"response":{"background":false,"created_at":0,"error":null,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"metadata":null,"model":"openai.gpt-oss-20b","object":"response","output":[],"parallel_tool_calls":true,"service_tier":"auto","status":"in_progress","temperature":1.0,"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled"},"sequence_number":0,"type":"response.created"}
+
+    data: {"response":{"background":false,"created_at":0,"error":null,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"metadata":null,"model":"openai.gpt-oss-20b","object":"response","output":[],"parallel_tool_calls":true,"service_tier":"auto","status":"in_progress","temperature":1.0,"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled"},"sequence_number":1,"type":"response.in_progress"}
+
+    data: {"item":{"id":"msg_REDACTED_1","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.reasoning_part.added"}
+
+    data: {"content_index":0,"delta":"The user requests a short paragraph explaining what a solar eclipse is. The answer should be concise, likely around 4-6 sentences? They want one short paragraph. Let's give a clear definition: when Moon passes between Sun and Earth; blocking","item_id":"msg_REDACTED_1","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" sun partially or fully; results visible from narrow path; depends on geometry.\n\nWe should keep it short, but thorough enough.\n\nThus:","item_id":"msg_REDACTED_1","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" \"A solar eclipse occurs when the Moon moves between the Earth and the Sun, blocking the light of the Sun either partially or completely...\"\n\nI should mention total, partial, annular. I've to","item_id":"msg_REDACTED_1","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" keep it one paragraph. Good.\n\nLet's produce.","item_id":"msg_REDACTED_1","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"sequence_number":8,"text":"The user requests a short paragraph explaining what a solar eclipse is. The answer should be concise, likely around 4-6 sentences? They want one short paragraph. Let's give a clear definition: when Moon passes between Sun and Earth; blocking sun partially or fully; results visible from narrow path; depends on geometry.\n\nWe should keep it short, but thorough enough.\n\nThus: \"A solar eclipse occurs when the Moon moves between the Earth and the Sun, blocking the light of the Sun either partially or completely...\"\n\nI should mention total, partial, annular. I've to keep it one paragraph. Good.\n\nLet's produce.","type":"response.reasoning_text.done"}
+
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"text":"The user requests a short paragraph explaining what a solar eclipse is. The answer should be concise, likely around 4-6 sentences? They want one short paragraph. Let's give a clear definition: when Moon passes between Sun and Earth; blocking sun partially or fully; results visible from narrow path; depends on geometry.\n\nWe should keep it short, but thorough enough.\n\nThus: \"A solar eclipse occurs when the Moon moves between the Earth and the Sun, blocking the light of the Sun either partially or completely...\"\n\nI should mention total, partial, annular. I've to keep it one paragraph. Good.\n\nLet's produce.","type":"reasoning_text"},"sequence_number":9,"type":"response.reasoning_part.done"}
+
+    data: {"item":{"content":[{"text":"The user requests a short paragraph explaining what a solar eclipse is. The answer should be concise, likely around 4-6 sentences? They want one short paragraph. Let's give a clear definition: when Moon passes between Sun and Earth; blocking sun partially or fully; results visible from narrow path; depends on geometry.\n\nWe should keep it short, but thorough enough.\n\nThus: \"A solar eclipse occurs when the Moon moves between the Earth and the Sun, blocking the light of the Sun either partially or completely...\"\n\nI should mention total, partial, annular. I've to keep it one paragraph. Good.\n\nLet's produce.","type":"reasoning_text"}],"id":"msg_REDACTED_1","status":"completed","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":10,"type":"response.output_item.done"}
+
+    data: {"item":{"content":[],"id":"msg_REDACTED_2","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":11,"type":"response.output_item.added"}
+
+    data: {"content_index":1,"item_id":"msg_REDACTED_2","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":12,"type":"response.content_part.added"}
+
+    data: {"content_index":1,"delta":"A solar eclipse happens when the Moon moves directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking the Sun’s light. Depending on the alignment, the Moon can cover the","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
+
+    data: {"content_index":1,"delta":" entire solar disc—creating a total eclipse—part of it—making a partial eclipse—or leave a bright ring of Sun visible around the Moon’s","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
+
+    data: {"content_index":1,"delta":" silhouette, an annular eclipse. The event is visible only from specific narrow regions on Earth that lie beneath the Moon’s shadow, and it can last","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
+
+    data: {"content_index":1,"delta":" from a few seconds to a few minutes for totality or for a full daylight reduction. During the brief darkness, temperatures drop, the sky darkens, and the Sun’s","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":16,"type":"response.output_text.delta"}
+
+    data: {"content_index":1,"delta":" corona may become visible in total eclipses.","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
+
+    data: {"content_index":1,"item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":18,"text":"A solar eclipse happens when the Moon moves directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking the Sun’s light. Depending on the alignment, the Moon can cover the entire solar disc—creating a total eclipse—part of it—making a partial eclipse—or leave a bright ring of Sun visible around the Moon’s silhouette, an annular eclipse. The event is visible only from specific narrow regions on Earth that lie beneath the Moon’s shadow, and it can last from a few seconds to a few minutes for totality or for a full daylight reduction. During the brief darkness, temperatures drop, the sky darkens, and the Sun’s corona may become visible in total eclipses.","type":"response.output_text.done"}
+
+    data: {"content_index":1,"item_id":"msg_REDACTED_2","output_index":1,"part":{"annotations":[],"text":"A solar eclipse happens when the Moon moves directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking the Sun’s light. Depending on the alignment, the Moon can cover the entire solar disc—creating a total eclipse—part of it—making a partial eclipse—or leave a bright ring of Sun visible around the Moon’s silhouette, an annular eclipse. The event is visible only from specific narrow regions on Earth that lie beneath the Moon’s shadow, and it can last from a few seconds to a few minutes for totality or for a full daylight reduction. During the brief darkness, temperatures drop, the sky darkens, and the Sun’s corona may become visible in total eclipses.","type":"output_text"},"sequence_number":19,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"annotations":[],"text":"A solar eclipse happens when the Moon moves directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking the Sun’s light. Depending on the alignment, the Moon can cover the entire solar disc—creating a total eclipse—part of it—making a partial eclipse—or leave a bright ring of Sun visible around the Moon’s silhouette, an annular eclipse. The event is visible only from specific narrow regions on Earth that lie beneath the Moon’s shadow, and it can last from a few seconds to a few minutes for totality or for a full daylight reduction. During the brief darkness, temperatures drop, the sky darkens, and the Sun’s corona may become visible in total eclipses.","type":"output_text"}],"id":"msg_REDACTED_2","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":20,"type":"response.output_item.done"}
+
+    data: {"response":{"background":false,"created_at":0,"error":null,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"metadata":null,"model":"openai.gpt-oss-20b","object":"response","output":[{"content":[{"text":"The user requests a short paragraph explaining what a solar eclipse is. The answer should be concise, likely around 4-6 sentences? They want one short paragraph. Let's give a clear definition: when Moon passes between Sun and Earth; blocking sun partially or fully; results visible from narrow path; depends on geometry.\n\nWe should keep it short, but thorough enough.\n\nThus: \"A solar eclipse occurs when the Moon moves between the Earth and the Sun, blocking the light of the Sun either partially or completely...\"\n\nI should mention total, partial, annular. I've to keep it one paragraph. Good.\n\nLet's produce.","type":"reasoning_text"}],"id":"msg_REDACTED_1","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"text":"A solar eclipse happens when the Moon moves directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking the Sun’s light. Depending on the alignment, the Moon can cover the entire solar disc—creating a total eclipse—part of it—making a partial eclipse—or leave a bright ring of Sun visible around the Moon’s silhouette, an annular eclipse. The event is visible only from specific narrow regions on Earth that lie beneath the Moon’s shadow, and it can last from a few seconds to a few minutes for totality or for a full daylight reduction. During the brief darkness, temperatures drop, the sky darkens, and the Sun’s corona may become visible in total eclipses.","type":"output_text"}],"id":"msg_REDACTED_2","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"service_tier":"auto","status":"completed","temperature":1.0,"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":79,"input_tokens_details":{"cached_tokens":0},"output_tokens":276,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":355}},"sequence_number":21,"type":"response.completed"}
+

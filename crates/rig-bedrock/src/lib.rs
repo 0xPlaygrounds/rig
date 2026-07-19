@@ -20,6 +20,12 @@
 //!   `AWS_BEARER_TOKEN_BEDROCK`). Reuses Rig's OpenAI Responses / Completions
 //!   clients. Converse behavior is unchanged.
 //!
+//! # TLS features
+//!
+//! Default feature `rustls` (or opt into `native-tls`). Mantle HTTPS requires
+//! one of these; with `default-features = false` and no TLS feature the crate
+//! may still compile while Mantle requests fail at runtime.
+//!
 //! The root `rig` facade re-exports this crate as `rig::bedrock` when the
 //! `bedrock` feature is enabled.
 

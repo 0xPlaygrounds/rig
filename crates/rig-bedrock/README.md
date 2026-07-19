@@ -117,7 +117,10 @@ Useful model constants:
 - `OPENAI_GPT_OSS_20B` / `OPENAI_GPT_OSS_120B` — unversioned Mantle ids
 - `OPENAI_GPT_5_4` / `OPENAI_GPT_5_5` — GPT-5.x Mantle ids (use `openai_gpt5_base_url`)
 - `OPENAI_GPT_5_6_LUNA` / `OPENAI_GPT_5_6_SOL` / `OPENAI_GPT_5_6_TERRA` — GPT-5.6 family (use `openai_gpt5_base_url`)
-- `OPENAI_GPT_OSS_20B_VERSIONED` / `OPENAI_GPT_OSS_120B_VERSIONED` — Runtime/Converse ids, not Mantle
+
+Versioned Runtime/Converse ids live on `rig_bedrock::completion` (`OPENAI_GPT_OSS_20B_VERSIONED` / `OPENAI_GPT_OSS_120B_VERSIONED`), not under Mantle.
+
+Mantle HTTPS needs a TLS feature (`rustls` default, or `native-tls`).
 
 Free-form model id strings still work for other Mantle catalog entries.
 
