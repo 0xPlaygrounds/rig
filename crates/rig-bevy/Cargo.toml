@@ -12,7 +12,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-bevy_ecs = { workspace = true, default-features = false, features = ["std", "async_executor", "bevy_reflect", "serialize"] }
+bevy_ecs = { workspace = true, default-features = false, features = ["std"] }
 futures = { workspace = true }
 http = { workspace = true }
 jsonschema = { workspace = true }

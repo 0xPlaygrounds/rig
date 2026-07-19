@@ -801,21 +801,35 @@ where
                         let deadline = *target_effect_deadline.get_or_insert_with(|| {
                             tokio::time::Instant::now() + self.runtime.config.effect_timeout
                         });
-                        match self
-                            .runtime
-                            .wait_for_effect_for(Some(self.handle.run_id), deadline)
-                            .await
-                        {
-                            Err(error) => crate::schedule::fail_effect_wait(
-                                &mut self.runtime.world,
-                                self.handle.run_id,
-                                error.to_string(),
-                            ),
-                            Ok(true) => {
-                                remaining_passes = self.runtime.config.max_schedule_passes;
-                                target_effect_deadline = None;
+                        // Same wait contract as the blocking local driver: rejected
+                        // ingress keeps the deadline, capacity release wakes the pass.
+                        tokio::select! {
+                            result = self
+                                .runtime
+                                .wait_for_effect_for(Some(self.handle.run_id), deadline) => {
+                                match result {
+                                    Err(error) => crate::schedule::fail_effect_wait(
+                                        &mut self.runtime.world,
+                                        self.handle.run_id,
+                                        error.to_string(),
+                                    ),
+                                    Ok(true) => {
+                                        remaining_passes =
+                                            self.runtime.config.max_schedule_passes;
+                                    }
+                                    Ok(false) => {}
+                                }
                             }
-                            Ok(false) => {}
+                            changed = capacity_rx.changed() => match changed {
+                                Ok(()) => {
+                                    remaining_passes = self.runtime.config.max_schedule_passes;
+                                }
+                                Err(_) => crate::schedule::fail_effect_wait(
+                                    &mut self.runtime.world,
+                                    self.handle.run_id,
+                                    RuntimeError::IngressClosed.to_string(),
+                                ),
+                            },
                         }
                     } else if self.runtime.waits_for_effect_capacity(self.handle)? {
                         target_effect_deadline = None;
@@ -1678,6 +1692,41 @@ impl LocalRuntime {
         Ok(entity)
     }
 
+    /// Reacquire the valid handle for a retained run owned by `tenant_id`.
+    ///
+    /// This is the supported way to address a run after [`LocalRuntime::restore`],
+    /// which advances every restored run's generation and thereby staleness-rejects
+    /// handles minted by the snapshotted runtime.
+    pub fn run_handle(
+        &self,
+        run_id: RunId,
+        tenant_id: TenantId,
+    ) -> Result<RunHandle, RuntimeError> {
+        let entity = self
+            .world
+            .resource::<TopologyIndex>()
+            .runs
+            .get(&run_id)
+            .copied()
+            .ok_or(RuntimeError::UnknownRun(run_id))?;
+        let run = self
+            .world
+            .get::<RunNode>(entity)
+            .ok_or(RuntimeError::UnknownRun(run_id))?;
+        if run.tenant_id != tenant_id {
+            return Err(RuntimeError::TenantMismatch {
+                expected: run.tenant_id,
+                actual: tenant_id,
+            });
+        }
+        Ok(RunHandle {
+            runtime_id: self.id(),
+            run_id,
+            generation: run.generation,
+            tenant_id,
+        })
+    }
+
     /// Request cancellation. The cancellation system wins before pending ingress.
     pub fn cancel(&mut self, handle: RunHandle) -> Result<(), RuntimeError> {
         let entity = self.validate_handle(handle)?;
@@ -2172,20 +2221,33 @@ impl LocalRuntime {
                         let deadline = *target_effect_deadline.get_or_insert_with(|| {
                             tokio::time::Instant::now() + self.config.effect_timeout
                         });
-                        match self
-                            .wait_for_effect_for(Some(handle.run_id), deadline)
-                            .await
-                        {
-                            Err(error) => crate::schedule::fail_effect_wait(
-                                &mut self.world,
-                                handle.run_id,
-                                error.to_string(),
-                            ),
-                            Ok(true) => {
-                                remaining_passes = self.config.max_schedule_passes;
-                                target_effect_deadline = None;
+                        // Only real progress (`EffectProgressed`) clears the deadline:
+                        // staged-but-rejected ingress cannot extend an effect wait.
+                        // Capacity release also wakes the driver so a semaphore-deferred
+                        // intent spawns even when its owner was aborted without ingress.
+                        tokio::select! {
+                            result = self
+                                .wait_for_effect_for(Some(handle.run_id), deadline) => {
+                                match result {
+                                    Err(error) => crate::schedule::fail_effect_wait(
+                                        &mut self.world,
+                                        handle.run_id,
+                                        error.to_string(),
+                                    ),
+                                    Ok(true) => {
+                                        remaining_passes = self.config.max_schedule_passes;
+                                    }
+                                    Ok(false) => {}
+                                }
                             }
-                            Ok(false) => {}
+                            changed = capacity_rx.changed() => match changed {
+                                Ok(()) => remaining_passes = self.config.max_schedule_passes,
+                                Err(_) => crate::schedule::fail_effect_wait(
+                                    &mut self.world,
+                                    handle.run_id,
+                                    RuntimeError::IngressClosed.to_string(),
+                                ),
+                            },
                         }
                     } else if self.waits_for_effect_capacity(handle)? {
                         target_effect_deadline = None;
@@ -2492,9 +2554,25 @@ impl HostedRuntime {
         Ok(())
     }
 
+    /// Reacquire the valid handle for a retained run owned by `tenant_id`.
+    pub async fn run_handle(
+        &self,
+        run_id: RunId,
+        tenant_id: TenantId,
+    ) -> Result<RunHandle, RuntimeError> {
+        self.inner.lock().await.run_handle(run_id, tenant_id)
+    }
+
     /// Run one short schedule pass without holding the lock across effect I/O.
     pub async fn step(&self, handle: RunHandle) -> Result<RunStepStatus, RuntimeError> {
-        self.inner.lock().await.step(handle).await
+        let mut runtime = self.inner.lock().await;
+        let result = runtime.step(handle).await;
+        // Cleaned-up runs must release their notify entries, or abandoned hosted
+        // handles would grow this map without bound.
+        let retained_runs = &runtime.world.resource::<TopologyIndex>().runs;
+        self.run_notifies()
+            .retain(|run_id, _| retained_runs.contains_key(run_id));
+        result
     }
 
     /// Observe a retained terminal result.
@@ -2677,5 +2755,143 @@ mod portable_adapter_tests {
             error.model_output(),
             &portable_fixture_output("portable dynamic failure")
         );
+    }
+}
+
+// This module panics inside a provider double to model an effect task that dies
+// without sending ingress; expectations are confined to test setup.
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
+mod driver_wait_tests {
+    use std::time::Duration;
+
+    use rig_core::{
+        completion::{CompletionError, CompletionRequest, CompletionResponse},
+        streaming::StreamingCompletionResponse,
+        test_utils::{MockCompletionModel, MockResponse},
+    };
+
+    use super::{CompletionModel, HostedRuntime, LocalRuntime};
+    use crate::{
+        AgentSpec, CorrelationId, EffectCompletion, EffectHeader, EffectIngress, ModelEffectError,
+        OperationId, RuntimeConfig, TenantId, TerminalReason,
+    };
+
+    /// A model whose spawned effect task dies without ever sending ingress.
+    #[derive(Clone)]
+    struct SilentModel;
+
+    impl CompletionModel for SilentModel {
+        type Response = MockResponse;
+        type StreamingResponse = MockResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self
+        }
+
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            panic!("silent model never completes")
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            panic!("silent model never streams")
+        }
+    }
+
+    #[tokio::test]
+    async fn rejected_target_ingress_cannot_extend_the_effect_deadline() {
+        let mut runtime = LocalRuntime::with_config(RuntimeConfig {
+            effect_timeout: Duration::from_millis(200),
+            ..RuntimeConfig::default()
+        })
+        .expect("runtime");
+        let tenant_id = TenantId::new();
+        let model_id = runtime.register_model(tenant_id, SilentModel);
+        let agent = runtime
+            .spawn_agent_spec(AgentSpec::new(model_id, tenant_id))
+            .expect("agent");
+        let handle = runtime.start_run(agent, "hang").expect("run");
+        let ingress = runtime.ingress_tx.clone();
+        let runtime_id = runtime.id();
+        let flooder = tokio::spawn(async move {
+            loop {
+                let header = EffectHeader {
+                    runtime_id,
+                    run_id: handle.run_id,
+                    operation_id: OperationId::new(),
+                    generation: handle.generation,
+                    correlation_id: CorrelationId::new(),
+                    tenant_id: handle.tenant_id,
+                    capability_id: None,
+                    grant_id: None,
+                    capability_revision: None,
+                };
+                let garbage = EffectIngress::Completion(EffectCompletion::Model {
+                    header,
+                    result: Err(ModelEffectError::TimedOut),
+                });
+                if ingress.send(garbage).await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        });
+
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), runtime.drive_to_terminal(handle))
+                .await
+                .expect("rejected target ingress must not extend the effect deadline")
+                .expect("driver result");
+        flooder.abort();
+
+        assert!(matches!(
+            result.terminal_reason,
+            TerminalReason::Failed { ref code } if code == "effect_wait"
+        ));
+    }
+
+    #[tokio::test]
+    async fn hosted_notify_entries_are_pruned_with_cleaned_runs() {
+        let mut local = LocalRuntime::with_config(RuntimeConfig {
+            terminal_retention_ticks: 1,
+            unobserved_terminal_retention_ticks: 2,
+            ..RuntimeConfig::default()
+        })
+        .expect("runtime");
+        let tenant_id = TenantId::new();
+        let abandoned_model =
+            local.register_model(tenant_id, MockCompletionModel::text("abandoned"));
+        let keeper_model = local.register_model(tenant_id, MockCompletionModel::text("keeper"));
+        let abandoned_agent = local
+            .spawn_agent_spec(AgentSpec::new(abandoned_model, tenant_id))
+            .expect("agent");
+        let keeper_agent = local
+            .spawn_agent_spec(AgentSpec::new(keeper_model, tenant_id))
+            .expect("agent");
+        let hosted = HostedRuntime::new(local);
+        let abandoned = hosted
+            .start_run(abandoned_agent, "abandoned")
+            .await
+            .expect("run");
+        hosted.cancel(abandoned).await.expect("cancel");
+        assert!(hosted.run_notifies().contains_key(&abandoned.run_id));
+        let keeper = hosted.start_run(keeper_agent, "keeper").await.expect("run");
+
+        for _ in 0..64 {
+            if !hosted.run_notifies().contains_key(&abandoned.run_id) {
+                break;
+            }
+            let _ = hosted.step(keeper).await;
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+
+        assert!(!hosted.run_notifies().contains_key(&abandoned.run_id));
     }
 }

@@ -29,7 +29,7 @@ use rig_core::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
         Message, Usage,
     },
-    message::{ToolChoice, UserContent},
+    message::{ToolCall, ToolChoice, ToolFunction, UserContent},
     streaming::StreamingCompletionResponse,
     test_utils::{CountingMemory, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
     tool::{PortableDynamicTool, PortableTool, ToolOutput},
@@ -2426,8 +2426,9 @@ async fn protected_snapshot_excludes_plaintext_and_requires_exact_rebinding() ->
 
     let snapshot = runtime
         .protected_snapshot_with_policy(&protector, SnapshotContentPolicy::CanonicalRunState)?;
-    assert!(!String::from_utf8_lossy(&snapshot.payload).contains("secret-prompt"));
-    assert!(!String::from_utf8_lossy(&snapshot.payload).contains("secret-answer"));
+    let canonical_text = String::from_utf8(protector.unprotect(&snapshot.payload)?)?;
+    assert!(canonical_text.contains("secret-prompt"));
+    assert!(canonical_text.contains("secret-answer"));
 
     let missing = LocalRuntime::restore(
         RuntimeConfig::default(),
@@ -2541,12 +2542,7 @@ async fn protected_snapshot_excludes_plaintext_and_requires_exact_rebinding() ->
     let mut restored =
         LocalRuntime::restore(RuntimeConfig::default(), &snapshot, &protector, bindings)?;
     assert_ne!(restored.id(), runtime.id());
-    let restored_handle = RunHandle {
-        runtime_id: restored.id(),
-        run_id: result.run_id,
-        generation: handle.generation.next(),
-        tenant_id,
-    };
+    let restored_handle = restored.run_handle(result.run_id, tenant_id)?;
     let restored_result = restored.finish_run(restored_handle)?;
     assert_eq!(restored_result.text.as_deref(), Some("secret-answer"));
     let redacted = restored.explain(restored_handle, ContentVisibility::Redacted)?;
@@ -2789,12 +2785,7 @@ async fn restored_runtime_tick_preserves_terminal_retention_age() -> Result<()> 
     let mut bindings = RebindRegistry::new();
     bindings.bind_model(model_id, tenant_id, model_identity, model);
     let mut restored = LocalRuntime::restore(config, &snapshot, &protector, bindings)?;
-    let restored_handle = RunHandle {
-        runtime_id: restored.id(),
-        run_id: result.run_id,
-        generation: handle.generation.next(),
-        tenant_id,
-    };
+    let restored_handle = restored.run_handle(result.run_id, tenant_id)?;
 
     assert!(matches!(
         restored.step(restored_handle).await?,
@@ -2973,5 +2964,378 @@ async fn hosted_provider_diagnostic_is_typed_only_by_name_and_contains_no_conten
     assert!(!rendered.contains("sensitive provider content"));
     assert!(!rendered.contains("sensitive prompt"));
     assert_eq!(result.text.as_deref(), Some("sensitive provider content"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn tool_mode_best_effort_commits_without_orphan_tool_calls() -> Result<()> {
+    let output_name = synthetic_output_tool_name::<StructuredAnswer>(&[]);
+    let model = MockCompletionModel::new([
+        MockTurn::tool_call(
+            "first",
+            output_name.clone(),
+            serde_json::json!({"wrong": 1}),
+        ),
+        MockTurn::from_contents([
+            AssistantContent::text("nearly"),
+            AssistantContent::ToolCall(ToolCall::new(
+                "peer".to_string(),
+                ToolFunction::new("unrelated_tool".to_string(), serde_json::json!({})),
+            )),
+            AssistantContent::ToolCall(ToolCall::new(
+                "second".to_string(),
+                ToolFunction::new(output_name.clone(), serde_json::json!({"still": 2})),
+            )),
+        ])?,
+    ]);
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec![output_name.clone()],
+            })
+            .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
+                mode: OutputMode::Tool,
+                max_retries: 1,
+                best_effort: true,
+            })
+            .build(),
+    )?;
+
+    let result = runtime.run(agent, "best effort").await?;
+
+    assert_eq!(model.request_count(), 2);
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+    assert!(result.structured_output.is_none());
+    assert_no_orphan_tool_use(&result.transcript);
+    let last_assistant = result
+        .transcript
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            Message::Assistant { content, .. } => Some(content),
+            _ => None,
+        })
+        .context("best-effort assistant turn")?;
+    assert!(
+        last_assistant
+            .iter()
+            .all(|item| !matches!(item, AssistantContent::ToolCall(_)))
+    );
+    assert_eq!(result.text.as_deref(), Some(r#"nearly{"still":2}"#));
+    Ok(())
+}
+
+#[tokio::test]
+async fn tool_mode_best_effort_snapshot_restores_and_rebinds_handles() -> Result<()> {
+    let output_name = synthetic_output_tool_name::<StructuredAnswer>(&[]);
+    let model = MockCompletionModel::new([MockTurn::tool_call(
+        "only",
+        output_name.clone(),
+        serde_json::json!({"invalid": true}),
+    )]);
+    let tenant_id = TenantId::new();
+    let binding_identity = BindingIdentity::new("test-mock-model", "best-effort/v1");
+    let mut runtime = runtime()?;
+    let model_id = runtime.register_persistable_model(tenant_id, binding_identity, model.clone());
+    let agent = runtime.spawn_agent_spec(
+        AgentSpec::new(model_id, tenant_id)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec![output_name.clone()],
+            })
+            .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
+                mode: OutputMode::Tool,
+                max_retries: 0,
+                best_effort: true,
+            }),
+    )?;
+    let result = runtime.run(agent, "persist best effort").await?;
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+
+    let protector = XorProtector(0x5A);
+    let snapshot = runtime
+        .protected_snapshot_with_policy(&protector, SnapshotContentPolicy::CanonicalRunState)?;
+    let mut bindings = RebindRegistry::new();
+    bindings.bind_model(
+        model_id,
+        tenant_id,
+        BindingIdentity::new("test-mock-model", "best-effort/v1"),
+        model,
+    );
+    let mut restored =
+        LocalRuntime::restore(RuntimeConfig::default(), &snapshot, &protector, bindings)?;
+
+    let wrong_tenant = restored
+        .run_handle(result.run_id, TenantId::new())
+        .err()
+        .context("foreign tenant must not receive a restored handle")?;
+    assert!(matches!(wrong_tenant, RuntimeError::TenantMismatch { .. }));
+    let unknown = restored
+        .run_handle(RunId::new(), tenant_id)
+        .err()
+        .context("unknown runs must not receive a handle")?;
+    assert!(matches!(unknown, RuntimeError::UnknownRun(_)));
+
+    let restored_handle = restored.run_handle(result.run_id, tenant_id)?;
+    let restored_result = restored.finish_run(restored_handle)?;
+    assert_no_orphan_tool_use(&restored_result.transcript);
+    assert_eq!(restored_result.transcript.len(), result.transcript.len());
+    assert_eq!(restored_result.text, result.text);
+    Ok(())
+}
+
+#[tokio::test]
+async fn memory_after_tool_mode_best_effort_yields_a_valid_next_run() -> Result<()> {
+    let output_name = synthetic_output_tool_name::<StructuredAnswer>(&[]);
+    let model = MockCompletionModel::new([
+        MockTurn::tool_call(
+            "first",
+            output_name.clone(),
+            serde_json::json!({"wrong": 1}),
+        ),
+        MockTurn::text(r#"{"answer":"valid"}"#),
+    ]);
+    let memory = CountingMemory::default();
+    let mut runtime = runtime()?;
+    let tenant_id = TenantId::new();
+    let memory_id = runtime.register_memory(tenant_id, memory.clone());
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .tenant(tenant_id)
+            .memory(memory_id, "best-effort")
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec![output_name.clone()],
+            })
+            .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
+                mode: OutputMode::Tool,
+                max_retries: 0,
+                best_effort: true,
+            })
+            .build(),
+    )?;
+
+    let first = runtime.run(agent, "first question").await?;
+    assert!(matches!(first.terminal_reason, TerminalReason::Completed));
+    let second = runtime.run(agent, "second question").await?;
+    assert!(matches!(second.terminal_reason, TerminalReason::Completed));
+
+    let second_request = model.requests().pop().context("second model request")?;
+    assert!(second_request.chat_history.len() > 1);
+    assert!(second_request.chat_history.iter().all(|message| {
+        match message {
+            Message::Assistant { content, .. } => content
+                .iter()
+                .all(|item| !matches!(item, AssistantContent::ToolCall(_))),
+            _ => true,
+        }
+    }));
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicate_tool_call_identities_fail_before_any_tool_executes() -> Result<()> {
+    let model = MockCompletionModel::new([MockTurn::from_contents([
+        AssistantContent::ToolCall(ToolCall::new(
+            "dup".to_string(),
+            ToolFunction::new(
+                "counting_portable_tool".to_string(),
+                serde_json::json!({"value": "a"}),
+            ),
+        )),
+        AssistantContent::ToolCall(ToolCall::new(
+            "dup".to_string(),
+            ToolFunction::new(
+                "counting_portable_tool".to_string(),
+                serde_json::json!({"value": "b"}),
+            ),
+        )),
+    ])?]);
+    let tool = CountingPortableTool::default();
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    runtime.install_tool(agent, tool.clone())?;
+
+    let error = runtime
+        .run(agent, "dup")
+        .await
+        .err()
+        .context("duplicate tool call identities must fail the run")?;
+
+    assert!(matches!(
+        error,
+        RuntimeError::RunFailed { ref code, .. } if code == "duplicate_tool_call"
+    ));
+    assert!(tool.calls().is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn recovery_feedback_clears_after_an_accepted_response() -> Result<()> {
+    let model = MockCompletionModel::new([
+        MockTurn::text(""),
+        MockTurn::tool_call(
+            "call-1",
+            "counting_portable_tool",
+            serde_json::json!({"value": "recovered"}),
+        ),
+        MockTurn::text("final answer"),
+    ]);
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
+            .build(),
+    )?;
+    runtime.install_tool(agent, CountingPortableTool::default())?;
+
+    let result = runtime.run(agent, "question").await?;
+
+    assert_eq!(result.text.as_deref(), Some("final answer"));
+    let requests = model.requests();
+    assert_eq!(requests.len(), 3);
+    let contains_feedback = |request: &CompletionRequest| {
+        request.chat_history.iter().any(|message| match message {
+            Message::User { content } => content.iter().any(|item| {
+                matches!(
+                    item,
+                    UserContent::Text(text) if text.text.contains("previous response was empty")
+                )
+            }),
+            _ => false,
+        })
+    };
+    assert!(contains_feedback(&requests[1]));
+    assert!(!contains_feedback(&requests[2]));
+    Ok(())
+}
+
+#[tokio::test]
+async fn local_deferred_effect_wakes_when_a_semaphore_owner_is_cancelled() -> Result<()> {
+    let mut runtime = LocalRuntime::with_config(RuntimeConfig {
+        max_effects: 1,
+        max_model_calls: 1,
+        effect_timeout: Duration::from_secs(5),
+        ..RuntimeConfig::default()
+    })?;
+    let blocking_agent = runtime.spawn_agent(
+        SlowMock {
+            inner: MockCompletionModel::text("blocking"),
+            delay: Duration::from_secs(30),
+        }
+        .into_bevy_agent_builder()
+        .build(),
+    )?;
+    let target_agent = runtime.spawn_agent(
+        MockCompletionModel::text("target")
+            .into_bevy_agent_builder()
+            .build(),
+    )?;
+    let blocking = runtime.start_run(blocking_agent, "blocking")?;
+    let _ = runtime.step(blocking).await?;
+    let target = runtime.start_run(target_agent, "deferred")?;
+    let _ = runtime.step(target).await?;
+    runtime.cancel(blocking)?;
+
+    let result = tokio::time::timeout(
+        Duration::from_millis(500),
+        runtime.drive_to_terminal(target),
+    )
+    .await
+    .context("deferred local run must wake when execution capacity is released")??;
+
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+    assert_eq!(result.text.as_deref(), Some("target"));
+    let blocker = runtime.finish_run(blocking)?;
+    assert!(matches!(blocker.terminal_reason, TerminalReason::Cancelled));
+    Ok(())
+}
+
+#[tokio::test]
+async fn local_streaming_deferred_effect_wakes_when_a_semaphore_owner_is_cancelled() -> Result<()> {
+    let mut runtime = LocalRuntime::with_config(RuntimeConfig {
+        max_effects: 1,
+        max_model_calls: 1,
+        effect_timeout: Duration::from_secs(5),
+        ..RuntimeConfig::default()
+    })?;
+    let blocking_agent = runtime.spawn_agent(
+        SlowMock {
+            inner: MockCompletionModel::text("blocking"),
+            delay: Duration::from_secs(30),
+        }
+        .into_bevy_agent_builder()
+        .build(),
+    )?;
+    let target_agent = runtime.spawn_agent(
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("target"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ]])
+        .into_bevy_agent_builder()
+        .streaming(StreamingMode::Streaming)
+        .build(),
+    )?;
+    let blocking = runtime.start_run(blocking_agent, "blocking")?;
+    let _ = runtime.step(blocking).await?;
+    runtime.cancel(blocking)?;
+
+    let mut stream = runtime.start_streaming::<MockResponse>(target_agent, "deferred")?;
+    tokio::time::timeout(Duration::from_millis(500), async {
+        while stream.next_event().await?.is_some() {}
+        Ok::<_, RuntimeError>(())
+    })
+    .await
+    .context("deferred streaming run must wake when execution capacity is released")??;
+    let result = stream.finish()?;
+
+    assert_eq!(result.text.as_deref(), Some("target"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn abandoned_terminal_runs_are_cleaned_after_unobserved_retention() -> Result<()> {
+    let mut runtime = LocalRuntime::with_config(RuntimeConfig {
+        terminal_retention_ticks: 2,
+        unobserved_terminal_retention_ticks: 4,
+        effect_timeout: Duration::from_secs(1),
+        ..RuntimeConfig::default()
+    })?;
+    let agent = runtime.spawn_agent(
+        MockCompletionModel::text("abandoned")
+            .into_bevy_agent_builder()
+            .build(),
+    )?;
+    let handle = runtime.start_run(agent, "abandoned")?;
+
+    let mut saw_terminal = false;
+    let mut cleaned = false;
+    for _ in 0..64 {
+        match runtime.step(handle).await {
+            Ok(RunStepStatus::Terminal) => saw_terminal = true,
+            Ok(_) => {}
+            Err(RuntimeError::UnknownRun(_)) => {
+                cleaned = true;
+                break;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+
+    assert!(saw_terminal, "run must reach terminal state while stepped");
+    assert!(
+        cleaned,
+        "unobserved terminal run must be cleaned by retention"
+    );
+    assert!(matches!(
+        runtime.finish_run(handle),
+        Err(RuntimeError::UnknownRun(_))
+    ));
     Ok(())
 }

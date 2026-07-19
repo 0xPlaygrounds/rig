@@ -86,7 +86,7 @@ pub(crate) fn build_schedule() -> Schedule {
             ApplyDeferred,
             commit_tool_batches.in_set(RigSystemSet::Observation),
             ApplyDeferred,
-            cleanup_observed_runs.in_set(RigSystemSet::Cleanup),
+            cleanup_terminal_runs.in_set(RigSystemSet::Cleanup),
             cleanup_retired_capabilities.in_set(RigSystemSet::Cleanup),
         )
             .chain(),
@@ -561,6 +561,60 @@ fn mark_call_accepted(world: &mut World, entity: Entity, operation_id: Operation
     }
 }
 
+fn clear_recovery_feedback(world: &mut World, entity: Entity) {
+    if let Some(mut feedback) = world.get_mut::<RecoveryFeedback>(entity) {
+        feedback.0.clear();
+    }
+}
+
+// Commit-time gate: the transcript must satisfy the same canonical invariants
+// `restore` enforces, so the runtime can never persist state it refuses to load.
+fn commit_assistant_turn(
+    world: &mut World,
+    entity: Entity,
+    message_id: Option<String>,
+    content: OneOrMany<AssistantContent>,
+    results: Option<OneOrMany<UserContent>>,
+) -> bool {
+    let mut candidate = world
+        .get::<CanonicalTranscript>(entity)
+        .map(|transcript| transcript.messages.clone())
+        .unwrap_or_default();
+    candidate.push(Message::Assistant {
+        id: message_id,
+        content,
+    });
+    if let Some(content) = results {
+        candidate.push(Message::User { content });
+    }
+    if let Err(error) = crate::persistence::validate_canonical_transcript(&candidate) {
+        set_terminal(
+            world,
+            entity,
+            TerminalReason::Failed {
+                code: "canonical_transcript".to_string(),
+            },
+            Some(format!(
+                "refusing to commit a non-canonical model turn: {error}"
+            )),
+        );
+        return false;
+    }
+    let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) else {
+        set_terminal(
+            world,
+            entity,
+            TerminalReason::Failed {
+                code: "canonical_transcript".to_string(),
+            },
+            Some("run has no canonical transcript to commit into".to_string()),
+        );
+        return false;
+    };
+    transcript.messages = candidate;
+    true
+}
+
 fn publish_provider_final(world: &mut World, entity: Entity, operation_id: OperationId) {
     let provider_type = world
         .get::<RawFinalRecord>(entity)
@@ -635,16 +689,33 @@ fn retry_structured_output(
         publish(world, entity, RunEvent::ResponseRetried);
         bump_progress(world, entity);
     } else if best_effort {
-        if let Some(content) = OneOrMany::from_iter_optional(choice) {
-            if let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) {
-                transcript.messages.push(Message::Assistant {
-                    id: message_id,
-                    content,
-                });
+        // A best-effort turn is final: tool calls can never be answered after it,
+        // so the schema-invalid output call is preserved as text, like the valid path.
+        let output_call = world
+            .get::<StructuredOutputState>(entity)
+            .and_then(|state| state.output_tool_name.clone())
+            .and_then(|name| {
+                choice.iter().find_map(|content| match content {
+                    AssistantContent::ToolCall(call) if call.function.name == name => {
+                        Some(call.clone())
+                    }
+                    _ => None,
+                })
+            });
+        let mut final_content = choice
+            .into_iter()
+            .filter(|content| !matches!(content, AssistantContent::ToolCall(_)))
+            .collect::<Vec<_>>();
+        if let Some(call) = output_call {
+            final_content.push(AssistantContent::text(call.function.arguments.to_string()));
+        }
+        if let Some(content) = OneOrMany::from_iter_optional(final_content) {
+            if commit_assistant_turn(world, entity, message_id, content, None) {
+                mark_call_accepted(world, entity, operation_id);
+                clear_recovery_feedback(world, entity);
+                publish_provider_final(world, entity, operation_id);
+                complete_success(world, entity);
             }
-            mark_call_accepted(world, entity, operation_id);
-            publish_provider_final(world, entity, operation_id);
-            complete_success(world, entity);
         } else {
             set_terminal(
                 world,
@@ -746,13 +817,11 @@ fn evaluate_model_outcomes(world: &mut World) {
                     );
                     continue;
                 };
-                if let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) {
-                    transcript.messages.push(Message::Assistant {
-                        id: outcome.message_id,
-                        content: final_content,
-                    });
+                if !commit_assistant_turn(world, entity, outcome.message_id, final_content, None) {
+                    continue;
                 }
                 mark_call_accepted(world, entity, outcome.operation_id);
+                clear_recovery_feedback(world, entity);
                 publish_provider_final(world, entity, outcome.operation_id);
                 complete_success(world, entity);
             } else {
@@ -864,13 +933,11 @@ fn evaluate_model_outcomes(world: &mut World) {
             );
             continue;
         };
-        if let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) {
-            transcript.messages.push(Message::Assistant {
-                id: outcome.message_id,
-                content,
-            });
+        if !commit_assistant_turn(world, entity, outcome.message_id, content, None) {
+            continue;
         }
         mark_call_accepted(world, entity, outcome.operation_id);
+        clear_recovery_feedback(world, entity);
         publish_provider_final(world, entity, outcome.operation_id);
         complete_success(world, entity);
     }
@@ -883,6 +950,26 @@ fn evaluate_tool_calls(
     outcome: PendingModelOutcome,
     tool_calls: Vec<ToolCall>,
 ) {
+    // Duplicate identities are rejected before any tool executes: the committed
+    // turn would fail the same canonical validation restore enforces.
+    let mut seen_call_ids = BTreeSet::new();
+    if let Some(duplicate) = tool_calls
+        .iter()
+        .find(|call| !seen_call_ids.insert(call.id.clone()))
+    {
+        set_terminal(
+            world,
+            entity,
+            TerminalReason::Failed {
+                code: "duplicate_tool_call".to_string(),
+            },
+            Some(format!(
+                "model emitted duplicate tool call identity `{}`",
+                duplicate.id
+            )),
+        );
+        return;
+    }
     let snapshot = world
         .get::<TurnCapabilitySnapshot>(entity)
         .cloned()
@@ -1011,6 +1098,7 @@ fn evaluate_tool_calls(
         run.phase = RunPhase::WaitingTools;
     }
     mark_call_accepted(world, entity, outcome.operation_id);
+    clear_recovery_feedback(world, entity);
     publish_provider_final(world, entity, outcome.operation_id);
     bump_progress(world, entity);
 }
@@ -1648,12 +1736,14 @@ fn commit_tool_batches(world: &mut World) {
             );
             continue;
         };
-        if let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) {
-            transcript.messages.push(Message::Assistant {
-                id: batch.message_id,
-                content: assistant_content,
-            });
-            transcript.messages.push(Message::User { content: results });
+        if !commit_assistant_turn(
+            world,
+            entity,
+            batch.message_id,
+            assistant_content,
+            Some(results),
+        ) {
+            continue;
         }
         for call in batch.calls {
             if let Some(operation_id) = call.operation_id {
@@ -1680,18 +1770,34 @@ fn commit_tool_batches(world: &mut World) {
     }
 }
 
-fn cleanup_observed_runs(world: &mut World) {
-    let retention = world
+fn cleanup_terminal_runs(world: &mut World) {
+    let (observed_retention, unobserved_retention) = world
         .get_resource::<RuntimeConfigResource>()
-        .map_or(16, |config| config.0.terminal_retention_ticks);
+        .map_or((16, 1_024), |config| {
+            (
+                config.0.terminal_retention_ticks,
+                config.0.unobserved_terminal_retention_ticks,
+            )
+        });
     let tick = world.resource::<RuntimeTick>().0;
     let entities = {
-        let mut query = world.query::<(Entity, &RunNode, &TerminalState, &TerminalObservation)>();
+        let mut query = world.query::<(
+            Entity,
+            &RunNode,
+            &TerminalState,
+            Option<&TerminalObservation>,
+        )>();
         query
             .iter(world)
             .filter(|(entity, _, terminal, observation)| {
-                tick.saturating_sub(observation.observed_tick.max(terminal.terminal_tick))
-                    >= retention
+                let (age_origin, retention) = match observation {
+                    Some(observation) => (
+                        observation.observed_tick.max(terminal.terminal_tick),
+                        observed_retention,
+                    ),
+                    None => (terminal.terminal_tick, unobserved_retention),
+                };
+                tick.saturating_sub(age_origin) >= retention
                     && world
                         .get::<ActiveOperations>(*entity)
                         .is_none_or(|operations| operations.0.values().all(|op| op.completed))
@@ -1910,7 +2016,7 @@ mod tests {
                 .0
                 .insert(capability_id, BTreeSet::from([run_id]));
 
-            cleanup_observed_runs(&mut world);
+            cleanup_terminal_runs(&mut world);
 
             assert!(world.get::<RunNode>(run_entity).is_none());
             assert!(world.resource::<TopologyIndex>().runs.is_empty());

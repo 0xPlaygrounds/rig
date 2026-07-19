@@ -55,6 +55,11 @@ pub struct RuntimeConfig {
     pub effect_timeout: Duration,
     /// Number of schedule ticks to retain an observed terminal run.
     pub terminal_retention_ticks: u64,
+    /// Number of schedule ticks to retain a terminal run that was never observed.
+    ///
+    /// This bounds state held for abandoned handles; it should be generous enough
+    /// that a caller stepping other runs can still observe a finished one.
+    pub unobserved_terminal_retention_ticks: u64,
 }
 
 impl Default for RuntimeConfig {
@@ -70,6 +75,7 @@ impl Default for RuntimeConfig {
             max_schedule_passes: 1_024,
             effect_timeout: Duration::from_secs(120),
             terminal_retention_ticks: 16,
+            unobserved_terminal_retention_ticks: 1_024,
         }
     }
 }
@@ -88,6 +94,11 @@ impl RuntimeConfig {
         ];
         if let Some((field, _)) = bounds.into_iter().find(|(_, value)| *value == 0) {
             return Err(crate::RuntimeError::InvalidConfiguration { field });
+        }
+        if self.unobserved_terminal_retention_ticks == 0 {
+            return Err(crate::RuntimeError::InvalidConfiguration {
+                field: "unobserved_terminal_retention_ticks",
+            });
         }
         Ok(())
     }

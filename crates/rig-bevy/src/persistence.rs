@@ -36,7 +36,7 @@ use crate::{
 const SNAPSHOT_VERSION: u32 = 2;
 
 #[derive(Debug, thiserror::Error)]
-enum CanonicalTranscriptError {
+pub(crate) enum CanonicalTranscriptError {
     #[error("consecutive assistant messages are not canonical")]
     ConsecutiveAssistant,
     #[error("assistant tool-call identities must be unique within a turn")]
@@ -49,7 +49,9 @@ enum CanonicalTranscriptError {
     OrphanToolCall,
 }
 
-fn validate_canonical_transcript(messages: &[Message]) -> Result<(), CanonicalTranscriptError> {
+pub(crate) fn validate_canonical_transcript(
+    messages: &[Message],
+) -> Result<(), CanonicalTranscriptError> {
     let mut previous_assistant = false;
     let mut pending_tool_calls: Option<BTreeSet<&str>> = None;
     for message in messages {
