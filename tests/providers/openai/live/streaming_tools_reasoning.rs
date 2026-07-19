@@ -1,8 +1,8 @@
 use futures::StreamExt;
 use rig::{
     client::AgentClientExt, completion::Message, providers::openai, streaming::StreamingChat,
-    test_utils::MockExampleTool,
 };
+use rig_agent::test_utils::MockExampleTool;
 
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY environment variable"]
