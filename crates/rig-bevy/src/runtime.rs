@@ -2649,19 +2649,16 @@ mod portable_adapter_tests {
         let result = binding
             .execute(serde_json::json!({"value": "ignored", "fail": true}))
             .await;
-        assert!(
-            result.is_err(),
-            "portable fixture should fail, got {result:?}"
+        assert!(result.is_err(), "portable fixture unexpectedly succeeded");
+        let Err(error) = result else {
+            return;
+        };
+        assert_eq!(error.kind(), ToolErrorKind::Provider);
+        assert_eq!(error.code(), Some("portable_fixture"));
+        assert_eq!(
+            error.model_output(),
+            &portable_fixture_output("portable failure")
         );
-
-        if let Err(error) = result {
-            assert_eq!(error.kind(), ToolErrorKind::Provider);
-            assert_eq!(error.code(), Some("portable_fixture"));
-            assert_eq!(
-                error.model_output(),
-                &portable_fixture_output("portable failure")
-            );
-        }
     }
 
     #[tokio::test]
@@ -2670,18 +2667,15 @@ mod portable_adapter_tests {
         let result = binding
             .execute(serde_json::json!({"value": "ignored", "fail": true}))
             .await;
-        assert!(
-            result.is_err(),
-            "portable fixture should fail, got {result:?}"
+        assert!(result.is_err(), "portable fixture unexpectedly succeeded");
+        let Err(error) = result else {
+            return;
+        };
+        assert_eq!(error.kind(), ToolErrorKind::Provider);
+        assert_eq!(error.code(), Some("portable_dynamic_fixture"));
+        assert_eq!(
+            error.model_output(),
+            &portable_fixture_output("portable dynamic failure")
         );
-
-        if let Err(error) = result {
-            assert_eq!(error.kind(), ToolErrorKind::Provider);
-            assert_eq!(error.code(), Some("portable_dynamic_fixture"));
-            assert_eq!(
-                error.model_output(),
-                &portable_fixture_output("portable dynamic failure")
-            );
-        }
     }
 }

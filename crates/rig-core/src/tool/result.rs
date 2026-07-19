@@ -338,13 +338,12 @@ impl std::fmt::Debug for ToolExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ToolExecutionError")
             .field("kind", &self.kind)
-            .field("message", &self.message)
-            .field("model_output", &self.model_output)
             .field("retryable", &self.retryable)
             .field("code", &self.code)
             .field("http_status", &self.http_status)
             .field("refusal", &self.refusal)
-            .field("source", &self.source.as_ref().map(|_| "<redacted>"))
+            .field("model_output", &"<redacted>")
+            .field("source_configured", &self.source.is_some())
             .finish()
     }
 }
@@ -358,7 +357,7 @@ impl Error for ToolExecutionError {
 }
 
 /// Private mutually exclusive state behind [`ToolResult`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum ToolDisposition {
     Success(ToolOutput),
     Error(ToolExecutionError),
@@ -371,9 +370,29 @@ enum ToolDisposition {
 /// Each result has exactly one disposition. The tagged state is private so tool
 /// authors keep returning ordinary `Result` values while runtime callers use
 /// the stable query methods on this type.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ToolResult {
     disposition: ToolDisposition,
+}
+
+impl std::fmt::Debug for ToolResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let error = match &self.disposition {
+            ToolDisposition::Error(error) | ToolDisposition::Refused(error) => Some(error),
+            ToolDisposition::Success(_) | ToolDisposition::Skipped(_) => None,
+        };
+        formatter
+            .debug_struct("ToolResult")
+            .field("status", &self.status_name())
+            .field("error_kind", &error.map(ToolExecutionError::kind))
+            .field("retryable", &error.and_then(ToolExecutionError::retryable))
+            .field("code", &error.and_then(ToolExecutionError::code))
+            .field(
+                "http_status",
+                &error.and_then(ToolExecutionError::http_status),
+            )
+            .finish()
+    }
 }
 
 impl ToolResult {
@@ -576,6 +595,56 @@ mod tests {
         assert!(!refused.is_error_kind(ToolErrorKind::PermissionDenied));
         assert_eq!(refused.status_name(), "denied");
         assert_eq!(permission_failure.status_name(), "error");
+    }
+
+    #[test]
+    fn execution_error_debug_redacts_operator_and_model_payloads() {
+        let error = ToolExecutionError::provider("Bearer secret-operator-message")
+            .with_model_output(ToolOutput::json(serde_json::json!({
+                "credential": "secret-model-output"
+            })))
+            .with_source(Concrete);
+
+        let debug = format!("{error:?}");
+        assert!(debug.contains("kind: Provider"));
+        assert!(debug.contains("model_output: \"<redacted>\""));
+        assert!(debug.contains("source_configured: true"));
+        for secret in [
+            "secret-operator-message",
+            "secret-model-output",
+            "secret detail",
+        ] {
+            assert!(!debug.contains(secret));
+        }
+    }
+
+    #[test]
+    fn debug_redacts_every_tool_result_disposition() {
+        let success = ToolResult::success(ToolOutput::text("secret-success"));
+        let failure = ToolResult::failed(
+            ToolExecutionError::provider("secret-operator").with_model_feedback("secret-model"),
+        );
+        let skipped = ToolResult::skipped("secret-skip");
+        let refused = ToolResult::failed(ToolExecutionError::refused("secret-refusal"));
+
+        for (result, expected_status) in [
+            (success, "success"),
+            (failure, "error"),
+            (skipped, "skipped"),
+            (refused, "denied"),
+        ] {
+            let debug = format!("{result:?}");
+            assert!(debug.contains(expected_status));
+            for secret in [
+                "secret-success",
+                "secret-operator",
+                "secret-model",
+                "secret-skip",
+                "secret-refusal",
+            ] {
+                assert!(!debug.contains(secret));
+            }
+        }
     }
 }
 
