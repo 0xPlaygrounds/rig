@@ -8,6 +8,26 @@
 //! This module reuses Rig's OpenAI Responses / Completions clients pointed at
 //! the Mantle base URL. It does **not** change the Converse client path.
 //!
+//! # Base URL dual path
+//!
+//! | Path | Helper | Models |
+//! |------|--------|--------|
+//! | `https://bedrock-mantle.{region}.api.aws/v1` | [`openai_base_url`] (default) | GPT-OSS and most Mantle models (Completions + Responses) |
+//! | `https://bedrock-mantle.{region}.api.aws/openai/v1` | [`openai_gpt5_base_url`] | GPT-5.x family Responses (e.g. `openai.gpt-5.6-luna`) |
+//!
+//! # Token lifetime
+//!
+//! Short-term IAM tokens last **12 hours** ([`TOKEN_TTL`]). The token is
+//! **snapshotted at client build time**. Long-lived processes must rebuild the
+//! client (or supply a fresh `api_key`) before expiry.
+//!
+//! # `store: false` gotcha
+//!
+//! Some Mantle Responses models reject or mis-handle default OpenAI `store: true`
+//! semantics. Prefer
+//! `.additional_params(serde_json::json!({"store": false}))` on agents that use
+//! the Responses path.
+//!
 //! # Example
 //!
 //! ```no_run
@@ -16,8 +36,11 @@
 //! use rig_core::completion::Prompt;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = ClientBuilder::from_env().await?;
-//! let agent = client.agent(OPENAI_GPT_OSS_20B).build();
+//! let client = mantle::from_env().await?;
+//! let agent = client
+//!     .agent(OPENAI_GPT_OSS_20B)
+//!     .additional_params(serde_json::json!({"store": false}))
+//!     .build();
 //! let reply = agent.prompt("Say hello").await?;
 //! println!("{reply}");
 //! # Ok(())
@@ -35,23 +58,34 @@
 mod token;
 
 pub use token::{
-    format_api_key_token, generate_short_term_token, generate_token_from_credentials,
+    format_api_key_token, generate_short_term_token, generate_short_term_token_with_profile,
+    generate_token_from_credentials, TOKEN_TTL, TOKEN_TTL_SECS,
 };
 
 /// Env var for a pre-minted Bedrock Mantle bearer token (see AWS docs / #1713).
 pub const AWS_BEARER_TOKEN_BEDROCK_ENV: &str = "AWS_BEARER_TOKEN_BEDROCK";
 
-/// OpenAI GPT-OSS 20B on Bedrock Mantle (versioned model id).
-pub const OPENAI_GPT_OSS_20B: &str = "openai.gpt-oss-20b-1:0";
-/// OpenAI GPT-OSS 120B on Bedrock Mantle (versioned model id).
-pub const OPENAI_GPT_OSS_120B: &str = "openai.gpt-oss-120b-1:0";
-/// Unversioned Mantle alias used in some AWS examples (`openai.gpt-oss-20b`).
-pub const OPENAI_GPT_OSS_20B_MANTLE: &str = "openai.gpt-oss-20b";
-/// Unversioned Mantle alias used in some AWS examples (`openai.gpt-oss-120b`).
-pub const OPENAI_GPT_OSS_120B_MANTLE: &str = "openai.gpt-oss-120b";
+/// OpenAI GPT-OSS 20B on Bedrock Mantle (unversioned catalog id).
+pub const OPENAI_GPT_OSS_20B: &str = "openai.gpt-oss-20b";
+/// OpenAI GPT-OSS 120B on Bedrock Mantle (unversioned catalog id).
+pub const OPENAI_GPT_OSS_120B: &str = "openai.gpt-oss-120b";
+/// OpenAI GPT-5.4 on Bedrock Mantle (use [`openai_gpt5_base_url`] for Responses).
+pub const OPENAI_GPT_5_4: &str = "openai.gpt-5.4";
+/// OpenAI GPT-5.5 on Bedrock Mantle (use [`openai_gpt5_base_url`] for Responses).
+pub const OPENAI_GPT_5_5: &str = "openai.gpt-5.5";
+
+/// Versioned id used by Bedrock Runtime / Converse — **not** the Mantle OpenAI catalog id.
+///
+/// Mantle `GET /v1/models` lists unversioned ids such as [`OPENAI_GPT_OSS_20B`].
+pub const OPENAI_GPT_OSS_20B_VERSIONED: &str = "openai.gpt-oss-20b-1:0";
+/// Versioned id used by Bedrock Runtime / Converse — **not** the Mantle OpenAI catalog id.
+pub const OPENAI_GPT_OSS_120B_VERSIONED: &str = "openai.gpt-oss-120b-1:0";
 
 /// OpenAI Responses API client pointed at Mantle.
-pub type Client = rig_core::providers::openai::Client;
+///
+/// Named [`ResponsesClient`] (not `Client`) to avoid colliding with the Converse
+/// [`crate::client::Client`].
+pub type ResponsesClient = rig_core::providers::openai::Client;
 /// OpenAI Chat Completions API client pointed at Mantle.
 pub type CompletionsClient = rig_core::providers::openai::CompletionsClient;
 
@@ -71,10 +105,20 @@ pub enum MantleError {
     ClientBuild(String),
 }
 
-/// Build the Mantle OpenAI-compatible base URL for a region.
+/// Default Mantle OpenAI-compatible base (GPT-OSS and most Mantle models).
+///
+/// Example: `https://bedrock-mantle.us-east-1.api.aws/v1`
+pub fn openai_base_url(region: &str) -> String {
+    format!("https://bedrock-mantle.{region}.api.aws/v1")
+}
+
+/// GPT-5.x Mantle path (Responses for the `openai.gpt-5.*` family).
 ///
 /// Example: `https://bedrock-mantle.us-east-1.api.aws/openai/v1`
-pub fn openai_base_url(region: &str) -> String {
+///
+/// Note: this path does **not** support Responses for GPT-OSS models; use
+/// [`openai_base_url`] for those.
+pub fn openai_gpt5_base_url(region: &str) -> String {
     format!("https://bedrock-mantle.{region}.api.aws/openai/v1")
 }
 
@@ -83,11 +127,30 @@ pub fn openai_base_url(region: &str) -> String {
 /// By default the builder mints a short-term IAM bearer token for the configured
 /// region. Call [`ClientBuilder::api_key`] to skip minting and use a supplied
 /// token (for example from [`AWS_BEARER_TOKEN_BEDROCK_ENV`]).
-#[derive(Debug, Clone)]
+///
+/// The bearer token is **snapshotted when [`ClientBuilder::build`] /
+/// [`ClientBuilder::build_completions`] runs**. Tokens expire after
+/// [`TOKEN_TTL`] (12 hours); rebuild the client for long-lived processes.
+#[derive(Clone)]
 pub struct ClientBuilder {
     region: String,
     api_key: Option<String>,
     base_url: Option<String>,
+    profile_name: Option<String>,
+}
+
+impl std::fmt::Debug for ClientBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientBuilder")
+            .field("region", &self.region)
+            .field(
+                "api_key",
+                &self.api_key.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("base_url", &self.base_url)
+            .field("profile_name", &self.profile_name)
+            .finish()
+    }
 }
 
 impl Default for ClientBuilder {
@@ -103,6 +166,7 @@ impl ClientBuilder {
             region: DEFAULT_REGION.to_string(),
             api_key: None,
             base_url: None,
+            profile_name: None,
         }
     }
 
@@ -119,15 +183,27 @@ impl ClientBuilder {
     }
 
     /// Override the Mantle base URL (defaults to [`openai_base_url`] for the region).
+    ///
+    /// Use [`openai_gpt5_base_url`] for GPT-5.x Responses.
     pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = Some(base_url.into());
         self
     }
 
+    /// Use a named AWS shared-config profile when minting a short-term token.
+    ///
+    /// Ignored when [`ClientBuilder::api_key`] is set.
+    pub fn profile_name(mut self, profile_name: impl Into<String>) -> Self {
+        self.profile_name = Some(profile_name.into());
+        self
+    }
+
     /// Build a Responses API client (default OpenAI surface).
-    pub async fn build(self) -> Result<Client, MantleError> {
+    ///
+    /// The bearer token is snapshotted into the client; see [`TOKEN_TTL`].
+    pub async fn build(self) -> Result<ResponsesClient, MantleError> {
         let (api_key, base_url) = self.resolve_auth().await?;
-        Client::builder()
+        ResponsesClient::builder()
             .api_key(api_key)
             .base_url(base_url)
             .build()
@@ -135,6 +211,8 @@ impl ClientBuilder {
     }
 
     /// Build a Chat Completions API client.
+    ///
+    /// The bearer token is snapshotted into the client; see [`TOKEN_TTL`].
     pub async fn build_completions(self) -> Result<CompletionsClient, MantleError> {
         let (api_key, base_url) = self.resolve_auth().await?;
         CompletionsClient::builder()
@@ -144,20 +222,15 @@ impl ClientBuilder {
             .map_err(|e| MantleError::ClientBuild(e.to_string()))
     }
 
-    /// Build a Responses client from environment variables.
+    /// Create a builder from environment variables (sync; env defaults only).
     ///
     /// - Region: `AWS_REGION`, then `AWS_DEFAULT_REGION`, else `us-east-1`
-    /// - Token: `AWS_BEARER_TOKEN_BEDROCK` if set, otherwise a short-term IAM mint
-    pub async fn from_env() -> Result<Client, MantleError> {
-        Self::from_env_builder().build().await
-    }
-
-    /// Build a Completions client from environment variables (same resolution as [`from_env`]).
-    pub async fn from_env_completions() -> Result<CompletionsClient, MantleError> {
-        Self::from_env_builder().build_completions().await
-    }
-
-    fn from_env_builder() -> Self {
+    /// - Token: `AWS_BEARER_TOKEN_BEDROCK` if set (otherwise mint on [`build`])
+    ///
+    /// This does **not** build a client. Call [`.build().await`](Self::build) or
+    /// [`.build_completions().await`](Self::build_completions), or use the free
+    /// functions [`from_env`] / [`from_env_completions`].
+    pub fn from_env() -> Self {
         let mut builder = Self::new().region(resolve_region_from_env());
         if let Ok(token) = std::env::var(AWS_BEARER_TOKEN_BEDROCK_ENV)
             && !token.is_empty()
@@ -173,10 +246,30 @@ impl ClientBuilder {
             .unwrap_or_else(|| openai_base_url(&self.region));
         let api_key = match self.api_key {
             Some(key) => key,
-            None => generate_short_term_token(&self.region).await?,
+            None => {
+                generate_short_term_token_with_profile(
+                    &self.region,
+                    self.profile_name.as_deref(),
+                )
+                .await?
+            }
         };
         Ok((api_key, base_url))
     }
+}
+
+/// Build a Mantle Responses client from environment variables.
+///
+/// Equivalent to `ClientBuilder::from_env().build().await`.
+pub async fn from_env() -> Result<ResponsesClient, MantleError> {
+    ClientBuilder::from_env().build().await
+}
+
+/// Build a Mantle Completions client from environment variables.
+///
+/// Equivalent to `ClientBuilder::from_env().build_completions().await`.
+pub async fn from_env_completions() -> Result<CompletionsClient, MantleError> {
+    ClientBuilder::from_env().build_completions().await
 }
 
 fn resolve_region_from_env() -> String {
@@ -193,20 +286,34 @@ mod tests {
     fn openai_base_url_shape() {
         assert_eq!(
             openai_base_url("us-east-1"),
-            "https://bedrock-mantle.us-east-1.api.aws/openai/v1"
+            "https://bedrock-mantle.us-east-1.api.aws/v1"
         );
         assert_eq!(
             openai_base_url("eu-west-1"),
+            "https://bedrock-mantle.eu-west-1.api.aws/v1"
+        );
+    }
+
+    #[test]
+    fn openai_gpt5_base_url_shape() {
+        assert_eq!(
+            openai_gpt5_base_url("us-east-1"),
+            "https://bedrock-mantle.us-east-1.api.aws/openai/v1"
+        );
+        assert_eq!(
+            openai_gpt5_base_url("eu-west-1"),
             "https://bedrock-mantle.eu-west-1.api.aws/openai/v1"
         );
     }
 
     #[test]
     fn model_constants() {
-        assert_eq!(OPENAI_GPT_OSS_20B, "openai.gpt-oss-20b-1:0");
-        assert_eq!(OPENAI_GPT_OSS_120B, "openai.gpt-oss-120b-1:0");
-        assert_eq!(OPENAI_GPT_OSS_20B_MANTLE, "openai.gpt-oss-20b");
-        assert_eq!(OPENAI_GPT_OSS_120B_MANTLE, "openai.gpt-oss-120b");
+        assert_eq!(OPENAI_GPT_OSS_20B, "openai.gpt-oss-20b");
+        assert_eq!(OPENAI_GPT_OSS_120B, "openai.gpt-oss-120b");
+        assert_eq!(OPENAI_GPT_5_4, "openai.gpt-5.4");
+        assert_eq!(OPENAI_GPT_5_5, "openai.gpt-5.5");
+        assert_eq!(OPENAI_GPT_OSS_20B_VERSIONED, "openai.gpt-oss-20b-1:0");
+        assert_eq!(OPENAI_GPT_OSS_120B_VERSIONED, "openai.gpt-oss-120b-1:0");
     }
 
     #[test]
@@ -220,6 +327,31 @@ mod tests {
         assert_eq!(builder.region, DEFAULT_REGION);
         assert!(builder.api_key.is_none());
         assert!(builder.base_url.is_none());
+        assert!(builder.profile_name.is_none());
+    }
+
+    #[test]
+    fn from_env_builder_is_sync() {
+        // Compiles as a pure env snapshot — does not mint or build HTTP client.
+        let builder = ClientBuilder::from_env();
+        let _ = builder.region;
+    }
+
+    #[test]
+    fn client_builder_debug_redacts_api_key() {
+        let builder = ClientBuilder::new()
+            .region("us-east-1")
+            .api_key("bedrock-api-key-super-secret-token-value");
+        let debug = format!("{builder:?}");
+        assert!(
+            debug.contains("[REDACTED]"),
+            "Debug should redact api_key: {debug}"
+        );
+        assert!(
+            !debug.contains("super-secret"),
+            "Debug must not leak api_key: {debug}"
+        );
+        assert!(debug.contains("us-east-1"));
     }
 
     #[tokio::test]
@@ -232,7 +364,7 @@ mod tests {
             .expect("client builds without AWS credentials");
         assert_eq!(
             client.base_url(),
-            "https://bedrock-mantle.us-west-2.api.aws/openai/v1"
+            "https://bedrock-mantle.us-west-2.api.aws/v1"
         );
     }
 
@@ -240,10 +372,94 @@ mod tests {
     async fn build_with_base_url_override() {
         let client = ClientBuilder::new()
             .api_key("test-key")
-            .base_url("http://127.0.0.1:9/openai/v1")
+            .base_url("http://127.0.0.1:9/v1")
             .build()
             .await
             .expect("client builds");
-        assert_eq!(client.base_url(), "http://127.0.0.1:9/openai/v1");
+        assert_eq!(client.base_url(), "http://127.0.0.1:9/v1");
+    }
+
+    #[tokio::test]
+    async fn build_completions_with_explicit_api_key() {
+        let client = ClientBuilder::new()
+            .region("us-east-1")
+            .api_key("bedrock-api-key-test")
+            .build_completions()
+            .await
+            .expect("completions client builds");
+        assert_eq!(
+            client.base_url(),
+            "https://bedrock-mantle.us-east-1.api.aws/v1"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_with_gpt5_base_url() {
+        let client = ClientBuilder::new()
+            .api_key("test-key")
+            .base_url(openai_gpt5_base_url("us-east-1"))
+            .build()
+            .await
+            .expect("client builds");
+        assert_eq!(
+            client.base_url(),
+            "https://bedrock-mantle.us-east-1.api.aws/openai/v1"
+        );
+    }
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+    use rig_core::client::CompletionClient;
+    use rig_core::completion::Prompt;
+
+    /// Live Mantle Completions smoke for GPT-OSS 20B on the default `/v1` path.
+    ///
+    /// ```shell
+    /// export AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1
+    /// eval "$(aws configure export-credentials --format env)"
+    /// cargo test -p rig-bedrock live_mantle -- --ignored --nocapture
+    /// ```
+    #[tokio::test]
+    #[ignore = "requires AWS credentials and Mantle model access in us-east-1"]
+    async fn live_mantle_completions_gpt_oss_20b() {
+        let client = from_env_completions()
+            .await
+            .expect("mantle completions client");
+        let agent = client
+            .agent(OPENAI_GPT_OSS_20B)
+            .preamble("You are a concise assistant.")
+            .build();
+        let reply = agent
+            .prompt("Reply with the single word: pong")
+            .await
+            .expect("completions prompt should succeed");
+        assert!(
+            !reply.trim().is_empty(),
+            "expected non-empty Completions reply"
+        );
+        eprintln!("live_mantle completions reply: {reply}");
+    }
+
+    /// Live Mantle Responses smoke for GPT-OSS 20B (needs float `created_at` fix).
+    #[tokio::test]
+    #[ignore = "requires AWS credentials and Mantle model access in us-east-1"]
+    async fn live_mantle_responses_gpt_oss_20b() {
+        let client = from_env().await.expect("mantle responses client");
+        let agent = client
+            .agent(OPENAI_GPT_OSS_20B)
+            .preamble("You are a concise assistant.")
+            .additional_params(serde_json::json!({"store": false}))
+            .build();
+        let reply = agent
+            .prompt("Reply with the single word: pong")
+            .await
+            .expect("responses prompt should succeed");
+        assert!(
+            !reply.trim().is_empty(),
+            "expected non-empty Responses reply"
+        );
+        eprintln!("live_mantle responses reply: {reply}");
     }
 }

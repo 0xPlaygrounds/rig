@@ -44,11 +44,21 @@ let agent = client.agent(AMAZON_NOVA_LITE).build();
 
 ### Mantle (OpenAI-compatible)
 
-Mantle serves selected models through `https://bedrock-mantle.{region}.api.aws/openai/v1`.
+Mantle serves selected models through an OpenAI-compatible HTTP API. There are **two base URL paths**:
+
+| Base URL | Helper | Use for |
+|----------|--------|---------|
+| `https://bedrock-mantle.{region}.api.aws/v1` | `openai_base_url` (**default**) | GPT-OSS and most Mantle models (Completions + Responses) |
+| `https://bedrock-mantle.{region}.api.aws/openai/v1` | `openai_gpt5_base_url` | GPT-5.x family Responses (e.g. `openai.gpt-5.6-luna`) |
+
+`GET …/v1/models` lists unversioned ids (`openai.gpt-oss-20b`, …). Versioned ids such as `openai.gpt-oss-20b-1:0` are for Bedrock Runtime/Converse, not Mantle.
+
 Auth is either:
 
-1. **Short-term IAM token** — minted via SigV4 (`Action=CallWithBearerToken`, 12h TTL), or
+1. **Short-term IAM token** — minted via SigV4 (`Action=CallWithBearerToken`, **12h TTL**), or
 2. **`AWS_BEARER_TOKEN_BEDROCK`** — a pre-minted `bedrock-api-key-…` value (skips minting).
+
+The token is **snapshotted when the client is built**. Rebuild the client for long-lived processes before the 12h TTL elapses (`TOKEN_TTL` / 43_200 seconds).
 
 ```shell
 export AWS_REGION=us-east-1
@@ -57,18 +67,55 @@ export AWS_REGION=us-east-1
 ```
 
 ```rust,ignore
-use rig_bedrock::mantle::{ClientBuilder, OPENAI_GPT_OSS_20B};
+use rig_bedrock::mantle::{self, OPENAI_GPT_OSS_20B};
 use rig_core::client::CompletionClient;
 use rig_core::completion::Prompt;
 
-let client = ClientBuilder::from_env().await?;
+// Responses API (default OpenAI surface) on /v1
+let client = mantle::from_env().await?;
+let agent = client
+    .agent(OPENAI_GPT_OSS_20B)
+    // Mantle Responses often requires store:false
+    .additional_params(serde_json::json!({"store": false}))
+    .build();
+let reply = agent.prompt("Hello").await?;
+```
+
+Chat Completions on the same default `/v1` base (works well for GPT-OSS):
+
+```rust,ignore
+use rig_bedrock::mantle::{self, ClientBuilder, OPENAI_GPT_OSS_20B};
+use rig_core::client::CompletionClient;
+use rig_core::completion::Prompt;
+
+let client = mantle::from_env_completions().await?;
+// or: ClientBuilder::from_env().build_completions().await?
 let agent = client.agent(OPENAI_GPT_OSS_20B).build();
 let reply = agent.prompt("Hello").await?;
 ```
 
+GPT-5.x Responses on the alternate `/openai/v1` path:
+
+```rust,ignore
+use rig_bedrock::mantle::{openai_gpt5_base_url, ClientBuilder, OPENAI_GPT_5_4};
+use rig_core::client::CompletionClient;
+
+let client = ClientBuilder::from_env()
+    .base_url(openai_gpt5_base_url("us-east-1"))
+    .build()
+    .await?;
+let agent = client
+    .agent(OPENAI_GPT_5_4)
+    .additional_params(serde_json::json!({"store": false}))
+    .build();
+```
+
 Useful model constants:
 
-- `OPENAI_GPT_OSS_20B` / `OPENAI_GPT_OSS_120B` — versioned ids (`openai.gpt-oss-20b-1:0`, …)
-- `OPENAI_GPT_OSS_20B_MANTLE` / `OPENAI_GPT_OSS_120B_MANTLE` — unversioned aliases used in some AWS examples
+- `OPENAI_GPT_OSS_20B` / `OPENAI_GPT_OSS_120B` — unversioned Mantle ids
+- `OPENAI_GPT_5_4` / `OPENAI_GPT_5_5` — GPT-5.x Mantle ids (use `openai_gpt5_base_url`)
+- `OPENAI_GPT_OSS_20B_VERSIONED` / `OPENAI_GPT_OSS_120B_VERSIONED` — Runtime/Converse ids, not Mantle
+
+Free-form model id strings still work for other Mantle catalog entries (e.g. `openai.gpt-5.6-luna`).
 
 Example binary: `cargo run -p rig-bedrock --example agent_with_bedrock_mantle`.

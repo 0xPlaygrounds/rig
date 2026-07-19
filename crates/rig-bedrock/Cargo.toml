@@ -9,6 +9,11 @@ description = "AWS Bedrock model provider for Rig integration."
 [lints]
 workspace = true
 
+[features]
+default = ["rustls"]
+rustls = ["rig-core/rustls"]
+native-tls = ["rig-core/native-tls"]
+
 [dependencies]
 async-stream = { workspace = true }
 aws-config = { workspace = true, features = ["behavior-version-latest"] }
@@ -22,7 +27,6 @@ http = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = [
     "image",
     "reqwest",
-    "rustls",
 ] }
 rig-derive = { path = "../rig-derive", version = "0.40.0" }
 schemars = { workspace = true }
