@@ -63,6 +63,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_bedrock_cassette",
             "with_bedrock_mantle_cassette",
             "with_bedrock_mantle_completions_cassette",
+            "with_bedrock_mantle_gpt5_cassette",
         ],
     },
     ProviderCassetteSuite {

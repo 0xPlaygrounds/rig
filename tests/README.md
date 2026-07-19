@@ -54,8 +54,13 @@ those opaque bodies are intended for replay fidelity, and safety checks also sca
 bytes for credential-shaped material.
 
 Bedrock **Mantle** (OpenAI-compatible) cassettes under `tests/cassettes/bedrock/mantle/` use the
-same HTTP `ProviderCassette` path as OpenAI (bearer auth to
-`https://bedrock-mantle.us-east-1.api.aws/v1`), not the Converse SigV4 direct recorder. Record with:
+same HTTP `ProviderCassette` path as OpenAI (bearer auth), not the Converse SigV4 direct recorder.
+Two real base URLs are used when recording:
+
+- GPT-OSS Completions/Responses: `https://bedrock-mantle.us-east-1.api.aws/v1`
+- GPT-5.x Responses (Luna / Sol / Terra): `https://bedrock-mantle.us-east-1.api.aws/openai/v1`
+
+Record with:
 
 ```bash
 export AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1

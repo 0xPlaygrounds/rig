@@ -25,6 +25,8 @@ const BEDROCK_REGION: &str = "us-east-1";
 /// Mantle OpenAI-compatible default base (GPT-OSS / Completions + Responses).
 /// Uses HTTP ProviderCassette (bearer auth), not Converse SigV4 direct recording.
 const MANTLE_REAL_BASE_URL: &str = "https://bedrock-mantle.us-east-1.api.aws/v1";
+/// Mantle GPT-5.x Responses base (Luna / Sol / Terra / gpt-5.4 / gpt-5.5).
+const MANTLE_GPT5_REAL_BASE_URL: &str = "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
 
 async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
     match CassetteMode::current() {
@@ -276,6 +278,36 @@ pub(super) async fn with_bedrock_mantle_completions_cassette<F, Fut>(
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = bedrock_mantle_completions_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
+async fn bedrock_mantle_gpt5_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, ResponsesClient) {
+    let cassette = ProviderCassette::start("bedrock", spec, MANTLE_GPT5_REAL_BASE_URL).await;
+    let api_key = match CassetteMode::current() {
+        CassetteMode::Record => mantle_record_api_key().await,
+        CassetteMode::Replay => "bedrock-api-key-cassette-replay".to_string(),
+    };
+    let client = mantle::ClientBuilder::new()
+        .api_key(api_key)
+        .base_url(cassette.base_url())
+        .build()
+        .await
+        .expect("mantle GPT-5 Responses client should build");
+    (cassette, client)
+}
+
+/// Mantle GPT-5.x Responses HTTP cassette (`/openai/v1` base: Luna / Sol / Terra / …).
+pub(super) async fn with_bedrock_mantle_gpt5_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(ResponsesClient) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = bedrock_mantle_gpt5_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

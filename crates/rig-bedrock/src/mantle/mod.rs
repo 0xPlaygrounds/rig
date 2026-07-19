@@ -73,6 +73,12 @@ pub const OPENAI_GPT_OSS_120B: &str = "openai.gpt-oss-120b";
 pub const OPENAI_GPT_5_4: &str = "openai.gpt-5.4";
 /// OpenAI GPT-5.5 on Bedrock Mantle (use [`openai_gpt5_base_url`] for Responses).
 pub const OPENAI_GPT_5_5: &str = "openai.gpt-5.5";
+/// OpenAI GPT-5.6 Luna on Bedrock Mantle (use [`openai_gpt5_base_url`] for Responses).
+pub const OPENAI_GPT_5_6_LUNA: &str = "openai.gpt-5.6-luna";
+/// OpenAI GPT-5.6 Sol on Bedrock Mantle (use [`openai_gpt5_base_url`] for Responses).
+pub const OPENAI_GPT_5_6_SOL: &str = "openai.gpt-5.6-sol";
+/// OpenAI GPT-5.6 Terra on Bedrock Mantle (use [`openai_gpt5_base_url`] for Responses).
+pub const OPENAI_GPT_5_6_TERRA: &str = "openai.gpt-5.6-terra";
 
 /// Versioned id used by Bedrock Runtime / Converse — **not** the Mantle OpenAI catalog id.
 ///
@@ -312,6 +318,9 @@ mod tests {
         assert_eq!(OPENAI_GPT_OSS_120B, "openai.gpt-oss-120b");
         assert_eq!(OPENAI_GPT_5_4, "openai.gpt-5.4");
         assert_eq!(OPENAI_GPT_5_5, "openai.gpt-5.5");
+        assert_eq!(OPENAI_GPT_5_6_LUNA, "openai.gpt-5.6-luna");
+        assert_eq!(OPENAI_GPT_5_6_SOL, "openai.gpt-5.6-sol");
+        assert_eq!(OPENAI_GPT_5_6_TERRA, "openai.gpt-5.6-terra");
         assert_eq!(OPENAI_GPT_OSS_20B_VERSIONED, "openai.gpt-oss-20b-1:0");
         assert_eq!(OPENAI_GPT_OSS_120B_VERSIONED, "openai.gpt-oss-120b-1:0");
     }
