@@ -59,7 +59,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "bedrock",
         source_dir: "tests/providers/bedrock/cassette",
-        wrapper_names: &["with_bedrock_cassette"],
+        wrapper_names: &[
+            "with_bedrock_cassette",
+            "with_bedrock_mantle_cassette",
+            "with_bedrock_mantle_completions_cassette",
+        ],
     },
     ProviderCassetteSuite {
         provider: "doubleword",

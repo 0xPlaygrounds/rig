@@ -13,6 +13,7 @@ use aws_smithy_runtime_api::http::StatusCode;
 use aws_smithy_types::body::SdkBody;
 use futures::FutureExt;
 use rig::bedrock::client::Client;
+use rig::bedrock::mantle::{self, CompletionsClient, ResponsesClient};
 
 use crate::cassettes::{
     CassetteMode, CassetteSpec, DirectHttpRequest, DirectHttpResponse, DirectRecorder,
@@ -21,6 +22,9 @@ use crate::cassettes::{
 
 const BEDROCK_REAL_BASE_URL: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
 const BEDROCK_REGION: &str = "us-east-1";
+/// Mantle OpenAI-compatible default base (GPT-OSS / Completions + Responses).
+/// Uses HTTP ProviderCassette (bearer auth), not Converse SigV4 direct recording.
+const MANTLE_REAL_BASE_URL: &str = "https://bedrock-mantle.us-east-1.api.aws/v1";
 
 async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
     match CassetteMode::current() {
@@ -199,6 +203,79 @@ where
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = bedrock_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
+/// Resolve a Mantle bearer token for cassette **record** mode.
+///
+/// Prefer `AWS_BEARER_TOKEN_BEDROCK` when set; otherwise mint a short-term IAM token.
+/// Replay mode never calls this — it uses a dummy key (auth is not matched on wire).
+async fn mantle_record_api_key() -> String {
+    match std::env::var(mantle::AWS_BEARER_TOKEN_BEDROCK_ENV) {
+        Ok(token) if !token.is_empty() => token,
+        _ => mantle::generate_short_term_token(BEDROCK_REGION)
+            .await
+            .expect("mint Mantle short-term token for cassette record mode"),
+    }
+}
+
+async fn bedrock_mantle_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, ResponsesClient) {
+    let cassette = ProviderCassette::start("bedrock", spec, MANTLE_REAL_BASE_URL).await;
+    let api_key = match CassetteMode::current() {
+        CassetteMode::Record => mantle_record_api_key().await,
+        CassetteMode::Replay => "bedrock-api-key-cassette-replay".to_string(),
+    };
+    let client = mantle::ClientBuilder::new()
+        .api_key(api_key)
+        .base_url(cassette.base_url())
+        .build()
+        .await
+        .expect("mantle responses client should build");
+    (cassette, client)
+}
+
+async fn bedrock_mantle_completions_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, CompletionsClient) {
+    let cassette = ProviderCassette::start("bedrock", spec, MANTLE_REAL_BASE_URL).await;
+    let api_key = match CassetteMode::current() {
+        CassetteMode::Record => mantle_record_api_key().await,
+        CassetteMode::Replay => "bedrock-api-key-cassette-replay".to_string(),
+    };
+    let client = mantle::ClientBuilder::new()
+        .api_key(api_key)
+        .base_url(cassette.base_url())
+        .build_completions()
+        .await
+        .expect("mantle completions client should build");
+    (cassette, client)
+}
+
+/// Mantle Responses HTTP cassette (OpenAI-compatible bearer auth, not Converse SigV4).
+pub(super) async fn with_bedrock_mantle_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(ResponsesClient) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = bedrock_mantle_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
+/// Mantle Completions HTTP cassette (OpenAI-compatible bearer auth).
+pub(super) async fn with_bedrock_mantle_completions_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(CompletionsClient) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = bedrock_mantle_completions_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

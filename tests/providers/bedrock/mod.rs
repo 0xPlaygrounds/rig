@@ -8,4 +8,8 @@ mod cassette {
     mod raw_streaming;
     mod streaming;
     mod tool_choice;
+
+    mod mantle {
+        mod agent;
+    }
 }
