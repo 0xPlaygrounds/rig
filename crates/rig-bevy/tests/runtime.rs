@@ -17,8 +17,8 @@ use anyhow::{Context, Result};
 use rig_bevy::{
     AgentSpec, BevyModelExt, BindingIdentity, CapabilityKind, CapabilityNode, ContentVisibility,
     CorrelationId, EffectCompletion, EffectHeader, EffectIngress, EffectRejectionReason,
-    Generation, GrantNode, HostedRuntime, LocalRunResult, LocalRuntime, ModelEffectError,
-    OperationId, OutputMode, ProtectedSnapshot, ProvisionalDelta, RebindRegistry,
+    Generation, GrantNode, HostedRuntime, InvalidToolPolicy, LocalRunResult, LocalRuntime,
+    ModelEffectError, OperationId, OutputMode, ProtectedSnapshot, ProvisionalDelta, RebindRegistry,
     ResponseRetryPolicy, RunEvent, RunHandle, RunId, RunPhase, RunStepStatus, RuntimeConfig,
     RuntimeError, SnapshotContentPolicy, SnapshotError, SnapshotProtector, StreamingMode,
     StreamingRunEvent, StructuredOutputPolicy, TenantId, TerminalReason, ToolEffectOutput,
@@ -29,12 +29,13 @@ use rig_core::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
         Message, Usage,
     },
+    memory::{ConversationMemory, MemoryError},
     message::{ToolCall, ToolChoice, ToolFunction, UserContent},
     streaming::StreamingCompletionResponse,
     test_utils::{CountingMemory, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
     tool::{PortableDynamicTool, PortableTool, ToolOutput},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
-    wasm_compat::WasmCompatSend,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use rig_runtime_conformance::{
     CountingPortableTool, PortableEmbeddingFixture, portable_dynamic_fixture,
@@ -2399,7 +2400,7 @@ fn unchanged_domain_snapshot_bytes_are_deterministic() -> Result<()> {
 }
 
 #[tokio::test]
-async fn protected_snapshot_excludes_plaintext_and_requires_exact_rebinding() -> Result<()> {
+async fn snapshot_policies_control_content_and_restore_requires_exact_rebinding() -> Result<()> {
     let model = MockCompletionModel::text("secret-answer");
     let mut runtime = runtime()?;
     let tenant_id = TenantId::new();
@@ -2426,7 +2427,11 @@ async fn protected_snapshot_excludes_plaintext_and_requires_exact_rebinding() ->
 
     let snapshot = runtime
         .protected_snapshot_with_policy(&protector, SnapshotContentPolicy::CanonicalRunState)?;
-    let canonical_text = String::from_utf8(protector.unprotect(&snapshot.payload)?)?;
+    let canonical_plaintext = protector.unprotect(&snapshot.payload)?;
+    // The canonical policy persists run content; the protector must still
+    // obscure it in the stored payload bytes.
+    assert_ne!(snapshot.payload, canonical_plaintext);
+    let canonical_text = String::from_utf8(canonical_plaintext)?;
     assert!(canonical_text.contains("secret-prompt"));
     assert!(canonical_text.contains("secret-answer"));
 
@@ -2772,12 +2777,12 @@ async fn restored_runtime_tick_preserves_terminal_retention_age() -> Result<()> 
             RunStepStatus::Quiescent => runtime.wait_for_effect().await?,
         }
     }
-    for _ in 0..128 {
-        assert!(matches!(
-            runtime.step(handle).await?,
-            RunStepStatus::Terminal
-        ));
-    }
+    // The first Terminal return observed the run, so it stays steppable only
+    // within the observed retention window.
+    assert!(matches!(
+        runtime.step(handle).await?,
+        RunStepStatus::Terminal
+    ));
     let result = runtime.finish_run(handle)?;
     let protector = XorProtector(0x35);
     let snapshot = runtime
@@ -3301,41 +3306,391 @@ async fn local_streaming_deferred_effect_wakes_when_a_semaphore_owner_is_cancell
 #[tokio::test]
 async fn abandoned_terminal_runs_are_cleaned_after_unobserved_retention() -> Result<()> {
     let mut runtime = LocalRuntime::with_config(RuntimeConfig {
-        terminal_retention_ticks: 2,
+        terminal_retention_ticks: 64,
         unobserved_terminal_retention_ticks: 4,
         effect_timeout: Duration::from_secs(1),
         ..RuntimeConfig::default()
     })?;
-    let agent = runtime.spawn_agent(
-        MockCompletionModel::text("abandoned")
+    let abandoned_agent = runtime.spawn_agent(
+        SlowMock {
+            inner: MockCompletionModel::text("abandoned"),
+            delay: Duration::from_secs(30),
+        }
+        .into_bevy_agent_builder()
+        .build(),
+    )?;
+    let pump_agent = runtime.spawn_agent(
+        MockCompletionModel::text("pump")
             .into_bevy_agent_builder()
             .build(),
     )?;
-    let handle = runtime.start_run(agent, "abandoned")?;
+    // The abandoned run goes terminal through cancellation processed during the
+    // pump run's schedule passes — its own handle is never stepped, so it stays
+    // unobserved and ages on the unobserved clock.
+    let abandoned = runtime.start_run(abandoned_agent, "abandoned")?;
+    runtime.cancel(abandoned)?;
+    let pump = runtime.start_run(pump_agent, "pump")?;
 
-    let mut saw_terminal = false;
     let mut cleaned = false;
-    for _ in 0..64 {
-        match runtime.step(handle).await {
-            Ok(RunStepStatus::Terminal) => saw_terminal = true,
+    for _ in 0..32 {
+        match runtime.step(pump).await {
             Ok(_) => {}
-            Err(RuntimeError::UnknownRun(_)) => {
-                cleaned = true;
-                break;
-            }
+            Err(RuntimeError::UnknownRun(_)) => break,
             Err(error) => return Err(error.into()),
+        }
+        // Existence probe only: `finish_run` would itself observe the run.
+        if matches!(
+            runtime.run_handle(abandoned.run_id, abandoned.tenant_id),
+            Err(RuntimeError::UnknownRun(_))
+        ) {
+            cleaned = true;
+            break;
         }
         tokio::time::sleep(Duration::from_millis(2)).await;
     }
 
-    assert!(saw_terminal, "run must reach terminal state while stepped");
     assert!(
         cleaned,
         "unobserved terminal run must be cleaned by retention"
     );
+    Ok(())
+}
+
+#[derive(Clone)]
+struct FixedHistoryMemory(Vec<Message>);
+
+impl ConversationMemory for FixedHistoryMemory {
+    fn load<'a>(
+        &'a self,
+        _conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+        let messages = self.0.clone();
+        Box::pin(async move { Ok(messages) })
+    }
+
+    fn append<'a>(
+        &'a self,
+        _conversation_id: &'a str,
+        _messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn clear<'a>(
+        &'a self,
+        _conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        Box::pin(async move { Ok(()) })
+    }
+}
+
+#[tokio::test]
+async fn non_canonical_memory_history_fails_before_any_model_call() -> Result<()> {
+    let bad_histories = [
+        // A sliding-window cut that orphaned a tool result.
+        vec![
+            Message::user("window start"),
+            Message::tool_result("orphan", "2"),
+        ],
+        // A summarizer that emitted consecutive assistant messages.
+        vec![
+            Message::user("question"),
+            Message::assistant("summary part one"),
+            Message::assistant("summary part two"),
+        ],
+    ];
+    for history in bad_histories {
+        let model = MockCompletionModel::text("never called");
+        let memory = FixedHistoryMemory(history);
+        let mut runtime = runtime()?;
+        let tenant_id = TenantId::new();
+        let memory_id = runtime.register_memory(tenant_id, memory);
+        let agent = runtime.spawn_agent(
+            model
+                .clone()
+                .into_bevy_agent_builder()
+                .tenant(tenant_id)
+                .memory(memory_id, "windowed")
+                .build(),
+        )?;
+
+        let error = runtime
+            .run(agent, "prompt")
+            .await
+            .err()
+            .context("non-canonical loaded history must fail the run")?;
+
+        assert!(matches!(
+            error,
+            RuntimeError::RunFailed { ref code, .. } if code == "memory_history"
+        ));
+        assert_eq!(model.request_count(), 0);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn assistant_role_prompts_are_rejected_at_start() -> Result<()> {
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(
+        MockCompletionModel::text("unused")
+            .into_bevy_agent_builder()
+            .build(),
+    )?;
+
+    let error = runtime
+        .start_run(agent, Message::assistant("prefill"))
+        .err()
+        .context("assistant prompts must be rejected before run creation")?;
+
+    assert!(matches!(error, RuntimeError::InvalidPrompt { .. }));
+    Ok(())
+}
+
+#[tokio::test]
+async fn memory_history_failure_still_snapshots_and_restores() -> Result<()> {
+    let model = MockCompletionModel::text("never called");
+    let memory = FixedHistoryMemory(vec![Message::tool_result("orphan", "2")]);
+    let tenant_id = TenantId::new();
+    let model_identity = BindingIdentity::new("test-mock-model", "memory-history/v1");
+    let memory_identity = BindingIdentity::new("fixed-history-memory", "memory-history/v1");
+    let mut runtime = runtime()?;
+    let model_id = runtime.register_persistable_model(tenant_id, model_identity, model.clone());
+    let memory_id = runtime.register_persistable_memory(tenant_id, memory_identity, memory.clone());
+    let agent = runtime
+        .spawn_agent_spec(AgentSpec::new(model_id, tenant_id).memory(memory_id, "windowed"))?;
+    let handle = runtime.start_run(agent, "prompt")?;
+    let result = runtime.drive_to_terminal(handle).await?;
     assert!(matches!(
-        runtime.finish_run(handle),
-        Err(RuntimeError::UnknownRun(_))
+        result.terminal_reason,
+        TerminalReason::Failed { ref code } if code == "memory_history"
+    ));
+    assert_eq!(model.request_count(), 0);
+
+    // The rejected history never entered the transcript, so the failed run
+    // must round-trip through snapshot and restore.
+    let protector = XorProtector(0x66);
+    let snapshot = runtime
+        .protected_snapshot_with_policy(&protector, SnapshotContentPolicy::CanonicalRunState)?;
+    let mut bindings = RebindRegistry::new();
+    bindings.bind_model(
+        model_id,
+        tenant_id,
+        BindingIdentity::new("test-mock-model", "memory-history/v1"),
+        model,
+    );
+    bindings.bind_memory(
+        memory_id,
+        tenant_id,
+        BindingIdentity::new("fixed-history-memory", "memory-history/v1"),
+        memory,
+    );
+    let mut restored =
+        LocalRuntime::restore(RuntimeConfig::default(), &snapshot, &protector, bindings)?;
+    let restored_handle = restored.run_handle(handle.run_id, tenant_id)?;
+    let restored_result = restored.finish_run(restored_handle)?;
+    assert!(matches!(
+        restored_result.terminal_reason,
+        TerminalReason::Failed { ref code } if code == "memory_history"
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn multi_turn_tool_runs_commit_under_tail_validation() -> Result<()> {
+    let model = MockCompletionModel::new([
+        MockTurn::tool_call(
+            "a",
+            "counting_portable_tool",
+            serde_json::json!({"value": "1"}),
+        ),
+        MockTurn::tool_call(
+            "b",
+            "counting_portable_tool",
+            serde_json::json!({"value": "2"}),
+        ),
+        MockTurn::text("done"),
+    ]);
+    let tool = CountingPortableTool::default();
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(model.clone().into_bevy_agent_builder().build())?;
+    runtime.install_tool(agent, tool.clone())?;
+
+    let result = runtime.run(agent, "multi turn").await?;
+
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+    assert_eq!(result.text.as_deref(), Some("done"));
+    assert_eq!(model.request_count(), 3);
+    assert_eq!(tool.calls(), ["1", "2"]);
+    assert_eq!(result.transcript.len(), 6);
+    assert_no_orphan_tool_use(&result.transcript);
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicate_tool_call_identities_recover_under_retry_policy() -> Result<()> {
+    let model = MockCompletionModel::new([
+        MockTurn::from_contents([
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(
+                    "counting_portable_tool".to_string(),
+                    serde_json::json!({"value": "a"}),
+                ),
+            )),
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(
+                    "counting_portable_tool".to_string(),
+                    serde_json::json!({"value": "b"}),
+                ),
+            )),
+        ])?,
+        MockTurn::text("clean answer"),
+    ]);
+    let tool = CountingPortableTool::default();
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .invalid_tool_policy(InvalidToolPolicy::Retry { max_retries: 1 })
+            .build(),
+    )?;
+    runtime.install_tool(agent, tool.clone())?;
+
+    let result = runtime.run(agent, "dup retry").await?;
+
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+    assert_eq!(result.text.as_deref(), Some("clean answer"));
+    assert_eq!(model.request_count(), 2);
+    assert!(tool.calls().is_empty());
+    assert!(
+        result
+            .events
+            .iter()
+            .any(|event| matches!(event, RunEvent::ResponseRetried))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicate_tool_call_identities_deduplicate_under_skip_policy() -> Result<()> {
+    let model = MockCompletionModel::new([
+        MockTurn::from_contents([
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(
+                    "counting_portable_tool".to_string(),
+                    serde_json::json!({"value": "first"}),
+                ),
+            )),
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(
+                    "counting_portable_tool".to_string(),
+                    serde_json::json!({"value": "second"}),
+                ),
+            )),
+        ])?,
+        MockTurn::text("after tools"),
+    ]);
+    let tool = CountingPortableTool::default();
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .invalid_tool_policy(InvalidToolPolicy::Skip)
+            .build(),
+    )?;
+    runtime.install_tool(agent, tool.clone())?;
+
+    let result = runtime.run(agent, "dup skip").await?;
+
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+    assert_eq!(tool.calls(), ["first"]);
+    assert_no_orphan_tool_use(&result.transcript);
+    assert!(
+        result
+            .events
+            .iter()
+            .any(|event| matches!(event, RunEvent::ToolSuppressed { .. }))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn restored_unobserved_terminal_runs_get_a_fresh_retention_lease() -> Result<()> {
+    let tenant_id = TenantId::new();
+    let abandoned_identity = BindingIdentity::new("slow-model", "lease/v1");
+    let pump_identity = BindingIdentity::new("pump-model", "lease/v1");
+    let abandoned_model = SlowMock {
+        inner: MockCompletionModel::text("abandoned"),
+        delay: Duration::from_secs(30),
+    };
+    let pump_model = MockCompletionModel::text("pump");
+    let mut runtime = LocalRuntime::with_config(RuntimeConfig {
+        terminal_retention_ticks: 1_024,
+        effect_timeout: Duration::from_secs(1),
+        ..RuntimeConfig::default()
+    })?;
+    let abandoned_model_id =
+        runtime.register_persistable_model(tenant_id, abandoned_identity, abandoned_model.clone());
+    let pump_model_id =
+        runtime.register_persistable_model(tenant_id, pump_identity, pump_model.clone());
+    let abandoned_agent =
+        runtime.spawn_agent_spec(AgentSpec::new(abandoned_model_id, tenant_id))?;
+    let pump_agent = runtime.spawn_agent_spec(AgentSpec::new(pump_model_id, tenant_id))?;
+
+    // Cancel the abandoned run and let the pump run's drive process it; the
+    // abandoned handle itself is never stepped, so the run stays unobserved.
+    let abandoned = runtime.start_run(abandoned_agent, "abandoned")?;
+    runtime.cancel(abandoned)?;
+    let pump = runtime.start_run(pump_agent, "pump")?;
+    let _ = runtime.drive_to_terminal(pump).await?;
+    // Age the unobserved run well past the restore-side window below.
+    for _ in 0..30 {
+        assert!(matches!(runtime.step(pump).await?, RunStepStatus::Terminal));
+    }
+
+    let protector = XorProtector(0x21);
+    let snapshot = runtime
+        .protected_snapshot_with_policy(&protector, SnapshotContentPolicy::CanonicalRunState)?;
+    let mut bindings = RebindRegistry::new();
+    bindings.bind_model(
+        abandoned_model_id,
+        tenant_id,
+        BindingIdentity::new("slow-model", "lease/v1"),
+        abandoned_model,
+    );
+    bindings.bind_model(
+        pump_model_id,
+        tenant_id,
+        BindingIdentity::new("pump-model", "lease/v1"),
+        pump_model,
+    );
+    // The restored window (16) is far below the preserved age (~30): without a
+    // fresh retention lease, the first restored schedule pass would clean the
+    // run this snapshot exists to preserve.
+    let mut restored = LocalRuntime::restore(
+        RuntimeConfig {
+            unobserved_terminal_retention_ticks: 16,
+            effect_timeout: Duration::from_secs(1),
+            ..RuntimeConfig::default()
+        },
+        &snapshot,
+        &protector,
+        bindings,
+    )?;
+    let restored_pump = restored.start_run(pump_agent, "restored pump")?;
+    let _ = restored.drive_to_terminal(restored_pump).await?;
+
+    let restored_handle = restored.run_handle(abandoned.run_id, tenant_id)?;
+    let restored_result = restored.finish_run(restored_handle)?;
+    assert!(matches!(
+        restored_result.terminal_reason,
+        TerminalReason::Cancelled
     ));
     Ok(())
 }

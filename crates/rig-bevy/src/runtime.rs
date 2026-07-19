@@ -1578,6 +1578,18 @@ impl LocalRuntime {
             .get::<AgentNode>(agent_entity)
             .cloned()
             .ok_or(RuntimeError::UnknownAgent(agent_id))?;
+        let prompt = prompt.into();
+        if matches!(prompt, Message::Assistant { .. }) {
+            return Err(RuntimeError::InvalidPrompt {
+                reason: "an assistant-role prompt cannot precede a model reply canonically",
+            });
+        }
+        let validation = crate::persistence::TranscriptValidator::over(std::slice::from_ref(
+            &prompt,
+        ))
+        .map_err(|_| RuntimeError::InvalidPrompt {
+            reason: "prompt content violates canonical transcript invariants",
+        })?;
         let run_id = RunId::new();
         let generation = Generation::default();
         let tick = self.world.resource::<RuntimeTick>().0;
@@ -1614,9 +1626,10 @@ impl LocalRuntime {
                 created_tick: tick,
             },
             CanonicalTranscript {
-                messages: vec![prompt.into()],
+                messages: vec![prompt],
                 new_messages_start: 0,
             },
+            crate::persistence::TranscriptValidation(validation),
             RunAccounting::default(),
             ActiveOperations::default(),
             AcceptedDeltas::default(),
@@ -1697,6 +1710,12 @@ impl LocalRuntime {
     /// This is the supported way to address a run after [`LocalRuntime::restore`],
     /// which advances every restored run's generation and thereby staleness-rejects
     /// handles minted by the snapshotted runtime.
+    ///
+    /// Note that a [`RunHandle`] is therefore not an unforgeable capability:
+    /// any code that learns `(run_id, tenant_id)` — run identities appear in
+    /// events and telemetry — can mint a live handle and, for example, cancel
+    /// the run. Isolation between untrusting callers inside one tenant must be
+    /// enforced by the embedder, not by handle possession.
     pub fn run_handle(
         &self,
         run_id: RunId,
@@ -2133,6 +2152,14 @@ impl LocalRuntime {
             .get_entity(entity)
             .is_ok_and(|entity_ref| entity_ref.contains::<TerminalState>())
         {
+            // Returning `Terminal` to the handle holder is an observation:
+            // only genuinely abandoned handles age on the unobserved clock.
+            if !self.world.entity(entity).contains::<TerminalObservation>() {
+                let tick = self.world.resource::<RuntimeTick>().0;
+                self.world.entity_mut(entity).insert(TerminalObservation {
+                    observed_tick: tick,
+                });
+            }
             return Ok(RunStepStatus::Terminal);
         }
         if !self
@@ -2860,7 +2887,7 @@ mod driver_wait_tests {
     #[tokio::test]
     async fn hosted_notify_entries_are_pruned_with_cleaned_runs() {
         let mut local = LocalRuntime::with_config(RuntimeConfig {
-            terminal_retention_ticks: 1,
+            terminal_retention_ticks: 64,
             unobserved_terminal_retention_ticks: 2,
             ..RuntimeConfig::default()
         })

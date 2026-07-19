@@ -18,6 +18,12 @@ stable domain records only and require tenant-owned bindings with explicit,
 caller-defined implementation/configuration identities before resumable state
 can be persisted or rebound.
 
+Conversation memories must return canonical histories from `load`: every
+assistant tool call paired with its results in the next message, no consecutive
+assistant messages, and no orphaned tool results. Truncating or summarizing
+memories must therefore cut on turn boundaries. A non-canonical loaded history
+fails the run immediately (code `memory_history`) before any model call.
+
 Run lifecycles, model/tool/memory effects, canonical tool commits, and rejected
 ingress emit content-redacted `tracing` spans and events. Model effects use the
 core-owned completion-parent marker so provider GenAI metadata enriches one

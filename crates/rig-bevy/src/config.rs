@@ -54,11 +54,17 @@ pub struct RuntimeConfig {
     /// Timeout applied independently to each effect.
     pub effect_timeout: Duration,
     /// Number of schedule ticks to retain an observed terminal run.
+    ///
+    /// Ticks advance once per schedule pass, so aging is schedule-load
+    /// relative: a busy runtime burns retention windows faster than an idle
+    /// one. `step` returning `Terminal` to the run's handle counts as an
+    /// observation, and restore renews the lease of unobserved terminal runs.
     pub terminal_retention_ticks: u64,
     /// Number of schedule ticks to retain a terminal run that was never observed.
     ///
-    /// This bounds state held for abandoned handles; it should be generous enough
-    /// that a caller stepping other runs can still observe a finished one.
+    /// This bounds state held for genuinely abandoned handles — runs whose
+    /// terminal state no caller ever saw via `step`, `finish_run`, or a
+    /// driver. The same schedule-load-relative tick caveat applies.
     pub unobserved_terminal_retention_ticks: u64,
 }
 
@@ -251,6 +257,13 @@ impl AgentSpec {
     }
 
     /// Configure conversation memory.
+    ///
+    /// The bound memory's `load` must return a canonical history: tool calls
+    /// paired with their results in the immediately following message, no
+    /// consecutive assistant messages, and no orphaned tool results.
+    /// Truncating or summarizing memories must cut on turn boundaries. A
+    /// non-canonical loaded history fails the run with code `memory_history`
+    /// before any model call is made.
     #[must_use]
     pub fn memory(mut self, memory_id: MemoryId, conversation_id: impl Into<String>) -> Self {
         self.memory_id = Some(memory_id);

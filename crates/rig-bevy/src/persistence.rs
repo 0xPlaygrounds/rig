@@ -49,56 +49,63 @@ pub(crate) enum CanonicalTranscriptError {
     OrphanToolCall,
 }
 
-pub(crate) fn validate_canonical_transcript(
-    messages: &[Message],
-) -> Result<(), CanonicalTranscriptError> {
-    let mut previous_assistant = false;
-    let mut pending_tool_calls: Option<BTreeSet<&str>> = None;
-    for message in messages {
-        if let Some(expected) = pending_tool_calls.take() {
+/// Resumable canonical-transcript checker.
+///
+/// One validator observes a message stream incrementally; the run's live state
+/// is kept in [`TranscriptValidation`] so commits validate only the appended
+/// tail while restore, snapshot, and memory-load acceptance scan whole slices.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TranscriptValidator {
+    previous_assistant: bool,
+    pending_tool_calls: Option<BTreeSet<String>>,
+}
+
+impl TranscriptValidator {
+    pub(crate) fn observe(&mut self, message: &Message) -> Result<(), CanonicalTranscriptError> {
+        if let Some(expected) = self.pending_tool_calls.take() {
             let Message::User { content } = message else {
                 return Err(CanonicalTranscriptError::InvalidToolPairing);
             };
             let results = content
                 .iter()
                 .filter_map(|item| match item {
-                    UserContent::ToolResult(result) => Some(result.id.as_str()),
+                    UserContent::ToolResult(result) => Some(result.id.clone()),
                     _ => None,
                 })
                 .collect::<Vec<_>>();
-            let unique_results = results.iter().copied().collect::<BTreeSet<_>>();
+            let unique_results = results.iter().cloned().collect::<BTreeSet<_>>();
             if results.len() != content.len()
                 || results.len() != unique_results.len()
                 || unique_results != expected
             {
                 return Err(CanonicalTranscriptError::InvalidToolPairing);
             }
-            previous_assistant = false;
-            continue;
+            self.previous_assistant = false;
+            return Ok(());
         }
         match message {
             Message::Assistant { content, .. } => {
-                if previous_assistant {
+                if self.previous_assistant {
                     return Err(CanonicalTranscriptError::ConsecutiveAssistant);
                 }
-                previous_assistant = true;
+                self.previous_assistant = true;
                 let calls = content
                     .iter()
                     .filter_map(|item| match item {
-                        AssistantContent::ToolCall(call) => Some(call.id.as_str()),
+                        AssistantContent::ToolCall(call) => Some(call.id.clone()),
                         _ => None,
                     })
                     .collect::<Vec<_>>();
-                let unique_calls = calls.iter().copied().collect::<BTreeSet<_>>();
+                let unique_calls = calls.iter().cloned().collect::<BTreeSet<_>>();
                 if calls.len() != unique_calls.len() {
                     return Err(CanonicalTranscriptError::DuplicateToolCall);
                 }
                 if !unique_calls.is_empty() {
-                    pending_tool_calls = Some(unique_calls);
+                    self.pending_tool_calls = Some(unique_calls);
                 }
             }
             Message::User { content } => {
-                previous_assistant = false;
+                self.previous_assistant = false;
                 if content
                     .iter()
                     .any(|item| matches!(item, UserContent::ToolResult(_)))
@@ -106,13 +113,41 @@ pub(crate) fn validate_canonical_transcript(
                     return Err(CanonicalTranscriptError::OrphanToolResult);
                 }
             }
-            Message::System { .. } => previous_assistant = false,
+            Message::System { .. } => self.previous_assistant = false,
         }
+        Ok(())
     }
-    if pending_tool_calls.is_some() {
-        return Err(CanonicalTranscriptError::OrphanToolCall);
+
+    /// Check the pairing-completeness required at every rest point (each
+    /// committed turn, snapshot, and restore).
+    pub(crate) fn finish(&self) -> Result<(), CanonicalTranscriptError> {
+        if self.pending_tool_calls.is_some() {
+            return Err(CanonicalTranscriptError::OrphanToolCall);
+        }
+        Ok(())
     }
-    Ok(())
+
+    /// Validate a whole slice and return the resulting resumable state.
+    pub(crate) fn over(
+        messages: &[Message],
+    ) -> Result<TranscriptValidator, CanonicalTranscriptError> {
+        let mut validator = TranscriptValidator::default();
+        for message in messages {
+            validator.observe(message)?;
+        }
+        Ok(validator)
+    }
+}
+
+/// Live transcript-validator state for one run; never serialized — restore
+/// reseeds it by scanning the restored transcript.
+#[derive(Component, Clone, Debug, Default)]
+pub(crate) struct TranscriptValidation(pub(crate) TranscriptValidator);
+
+pub(crate) fn validate_canonical_transcript(
+    messages: &[Message],
+) -> Result<(), CanonicalTranscriptError> {
+    TranscriptValidator::over(messages)?.finish()
 }
 
 /// Content retained in a protected snapshot.
@@ -386,6 +421,14 @@ impl LocalRuntime {
                 .ok_or_else(|| {
                     SnapshotError::InvalidRelationship("missing transcript".to_string())
                 })?;
+            // Persist-side twin of the restore-side check: a snapshot that
+            // restore would refuse must fail here, at save time.
+            if let Err(error) = validate_canonical_transcript(&transcript.messages) {
+                return Err(SnapshotError::InvalidRelationship(format!(
+                    "run `{}` has a non-canonical transcript: {error}",
+                    run.id
+                )));
+            }
             let accounting = self
                 .world
                 .get::<RunAccounting>(entity)
@@ -696,6 +739,14 @@ impl LocalRuntime {
                 run.tenant = "<redacted>",
                 restored = true,
             );
+            let validation = TranscriptValidator::over(&run.transcript.messages)
+                .map(TranscriptValidation)
+                .map_err(|error| {
+                    SnapshotError::InvalidRelationship(format!(
+                        "run `{}` has a non-canonical transcript: {error}",
+                        run.id
+                    ))
+                })?;
             let mut entity = runtime.world.spawn((
                 RunNode {
                     id: run.id,
@@ -708,6 +759,7 @@ impl LocalRuntime {
                     created_tick: run.created_tick,
                 },
                 run.transcript,
+                validation,
                 run.accounting,
                 ActiveOperations::default(),
                 AcceptedDeltas::default(),
@@ -718,7 +770,12 @@ impl LocalRuntime {
                 RunProgress::default(),
                 RunTelemetrySpan(run_span),
             ));
-            if let Some(terminal) = run.terminal {
+            if let Some(mut terminal) = run.terminal {
+                if run.observation.is_none() {
+                    // Restoring renews the retention lease for runs nobody has
+                    // observed yet — the snapshot was taken to preserve them.
+                    terminal.terminal_tick = snapshot.runtime_tick;
+                }
                 entity.insert(terminal);
             }
             if let Some(observation) = run.observation {
@@ -1204,7 +1261,13 @@ fn validate_snapshot(
                     && memory.conversation_id == *conversation_id
                     && memory_records.contains_key(&memory.memory_id) =>
             {
-                if !memory.loaded
+                // A run may legitimately fail or be cancelled before its
+                // memory load succeeds; only those terminals may be unloaded.
+                let must_have_loaded = memory.appended
+                    || run.terminal.as_ref().is_none_or(|terminal| {
+                        matches!(terminal.reason, crate::TerminalReason::Completed)
+                    });
+                if (!memory.loaded && must_have_loaded)
                     || (!matches!(run.phase, RunPhase::Terminal) && memory.appended)
                     || (memory.appended
                         && run.terminal.as_ref().is_none_or(|terminal| {

@@ -2,7 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Policy applied when a model requests a tool outside its immutable turn snapshot.
+/// Policy applied when a model requests a tool outside its immutable turn
+/// snapshot, or emits duplicate tool-call identities within one turn.
+///
+/// Duplicate identities are handled here because they can never commit to the
+/// canonical transcript; under [`InvalidToolPolicy::Skip`] each repeat is
+/// dropped and only the first occurrence executes. This deliberately diverges
+/// from the classic runtime, which executes duplicate-identity calls as-is.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub enum InvalidToolPolicy {

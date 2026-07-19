@@ -474,19 +474,57 @@ fn accept_completion(
         }
         EffectCompletion::Memory { result, .. } => match result {
             Ok(MemoryEffectOutput::Loaded(mut messages)) => {
-                if let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) {
-                    let prompt = std::mem::take(&mut transcript.messages);
-                    transcript.new_messages_start = messages.len();
-                    messages.extend(prompt);
-                    transcript.messages = messages;
+                // Loaded history is foreign content: validate it here, where
+                // failure is cheap and correctly attributed to the memory,
+                // before any model call sees it.
+                let candidate_state = {
+                    let existing = world
+                        .get::<CanonicalTranscript>(entity)
+                        .map(|transcript| transcript.messages.as_slice())
+                        .unwrap_or_default();
+                    crate::persistence::TranscriptValidator::over(&messages).and_then(
+                        |mut validator| {
+                            existing
+                                .iter()
+                                .try_for_each(|message| validator.observe(message))
+                                .map(|()| validator)
+                        },
+                    )
+                };
+                match candidate_state {
+                    Err(error) => {
+                        set_terminal(
+                            world,
+                            entity,
+                            TerminalReason::Failed {
+                                code: "memory_history".to_string(),
+                            },
+                            Some(format!(
+                                "conversation memory returned a non-canonical history: {error}"
+                            )),
+                        );
+                    }
+                    Ok(validator) => {
+                        if let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) {
+                            let prompt = std::mem::take(&mut transcript.messages);
+                            transcript.new_messages_start = messages.len();
+                            messages.extend(prompt);
+                            transcript.messages = messages;
+                        }
+                        if let Some(mut validation) =
+                            world.get_mut::<crate::persistence::TranscriptValidation>(entity)
+                        {
+                            validation.0 = validator;
+                        }
+                        if let Some(mut memory) = world.get_mut::<MemoryProgress>(entity) {
+                            memory.loaded = true;
+                        }
+                        if let Some(mut run) = world.get_mut::<RunNode>(entity) {
+                            run.phase = RunPhase::ReadyModel;
+                        }
+                        bump_progress(world, entity);
+                    }
                 }
-                if let Some(mut memory) = world.get_mut::<MemoryProgress>(entity) {
-                    memory.loaded = true;
-                }
-                if let Some(mut run) = world.get_mut::<RunNode>(entity) {
-                    run.phase = RunPhase::ReadyModel;
-                }
-                bump_progress(world, entity);
             }
             Ok(MemoryEffectOutput::Appended) => {
                 if let Some(mut memory) = world.get_mut::<MemoryProgress>(entity) {
@@ -576,27 +614,37 @@ fn commit_assistant_turn(
     content: OneOrMany<AssistantContent>,
     results: Option<OneOrMany<UserContent>>,
 ) -> bool {
-    let mut candidate = world
-        .get::<CanonicalTranscript>(entity)
-        .map(|transcript| transcript.messages.clone())
-        .unwrap_or_default();
-    candidate.push(Message::Assistant {
+    let mut staged = vec![Message::Assistant {
         id: message_id,
         content,
-    });
+    }];
     if let Some(content) = results {
-        candidate.push(Message::User { content });
+        staged.push(Message::User { content });
     }
-    if let Err(error) = crate::persistence::validate_canonical_transcript(&candidate) {
+    // Tail-only validation: loaded history and prior turns were validated at
+    // their own boundaries, so only the appended turn is checked here, against
+    // the run's live resumable validator state.
+    let mut validator = world
+        .get::<crate::persistence::TranscriptValidation>(entity)
+        .map(|validation| validation.0.clone());
+    let outcome = validator.as_mut().map_or(
+        Err("run has no transcript validation state".to_string()),
+        |validator| {
+            staged
+                .iter()
+                .try_for_each(|message| validator.observe(message))
+                .and_then(|()| validator.finish())
+                .map_err(|error| format!("refusing to commit a non-canonical model turn: {error}"))
+        },
+    );
+    if let Err(diagnostic) = outcome {
         set_terminal(
             world,
             entity,
             TerminalReason::Failed {
                 code: "canonical_transcript".to_string(),
             },
-            Some(format!(
-                "refusing to commit a non-canonical model turn: {error}"
-            )),
+            Some(diagnostic),
         );
         return false;
     }
@@ -611,7 +659,13 @@ fn commit_assistant_turn(
         );
         return false;
     };
-    transcript.messages = candidate;
+    transcript.messages.extend(staged);
+    if let (Some(mut validation), Some(validator)) = (
+        world.get_mut::<crate::persistence::TranscriptValidation>(entity),
+        validator,
+    ) {
+        validation.0 = validator;
+    }
     true
 }
 
@@ -950,25 +1004,69 @@ fn evaluate_tool_calls(
     outcome: PendingModelOutcome,
     tool_calls: Vec<ToolCall>,
 ) {
-    // Duplicate identities are rejected before any tool executes: the committed
-    // turn would fail the same canonical validation restore enforces.
-    let mut seen_call_ids = BTreeSet::new();
-    if let Some(duplicate) = tool_calls
+    // Duplicate identities can never commit canonically (the same validation
+    // restore enforces), so they join the invalid-tool recovery ladder before
+    // any tool executes; Skip drops each repeat and runs the first occurrence.
+    let mut first_occurrence = BTreeSet::new();
+    let duplicate_id = tool_calls
         .iter()
-        .find(|call| !seen_call_ids.insert(call.id.clone()))
-    {
-        set_terminal(
-            world,
-            entity,
-            TerminalReason::Failed {
-                code: "duplicate_tool_call".to_string(),
-            },
-            Some(format!(
-                "model emitted duplicate tool call identity `{}`",
-                duplicate.id
-            )),
-        );
-        return;
+        .find(|call| !first_occurrence.insert(call.id.clone()))
+        .map(|call| call.id.clone());
+    if let Some(duplicate_id) = duplicate_id {
+        match agent.spec.invalid_tool_policy {
+            InvalidToolPolicy::Skip => {}
+            InvalidToolPolicy::Fail | InvalidToolPolicy::Repair => {
+                set_terminal(
+                    world,
+                    entity,
+                    TerminalReason::Failed {
+                        code: "duplicate_tool_call".to_string(),
+                    },
+                    Some(format!(
+                        "model emitted duplicate tool call identity `{duplicate_id}`"
+                    )),
+                );
+                return;
+            }
+            InvalidToolPolicy::Retry { max_retries } => {
+                let retries = world
+                    .get::<InvalidToolRetryState>(entity)
+                    .map_or(0, |state| state.0);
+                if retries < max_retries {
+                    if let Some(mut state) = world.get_mut::<InvalidToolRetryState>(entity) {
+                        state.0 = state.0.saturating_add(1);
+                    }
+                    if let Some(mut feedback) = world.get_mut::<RecoveryFeedback>(entity) {
+                        feedback.0.push(
+                            "Tool call identities must be unique. Re-issue each tool call with a distinct id."
+                                .to_string(),
+                        );
+                    }
+                    world.entity_mut(entity).remove::<RawFinalRecord>();
+                    if let Some(mut run) = world.get_mut::<RunNode>(entity) {
+                        run.phase = RunPhase::ReadyModel;
+                    }
+                    publish(world, entity, RunEvent::ResponseRetried);
+                    bump_progress(world, entity);
+                } else {
+                    set_terminal(
+                        world,
+                        entity,
+                        TerminalReason::Failed {
+                            code: "duplicate_tool_call".to_string(),
+                        },
+                        Some(format!(
+                            "duplicate tool call retry exhausted for `{duplicate_id}`"
+                        )),
+                    );
+                }
+                return;
+            }
+            InvalidToolPolicy::Stop => {
+                set_terminal(world, entity, TerminalReason::Stopped, None);
+                return;
+            }
+        }
     }
     let snapshot = world
         .get::<TurnCapabilitySnapshot>(entity)
@@ -980,7 +1078,20 @@ fn evaluate_tool_calls(
     }
     let mut planned = Vec::new();
     let mut invalid = None;
+    let mut planned_ids = BTreeSet::new();
     for (order, mut call) in tool_calls.into_iter().enumerate() {
+        if !planned_ids.insert(call.id.clone()) {
+            // Only reachable under `Skip`: the repeat is dropped from the turn
+            // entirely so the committed pairing stays canonical.
+            publish(
+                world,
+                entity,
+                RunEvent::ToolSuppressed {
+                    tool_call_id: call.id,
+                },
+            );
+            continue;
+        }
         let mut entry = definitions.get(&call.function.name).cloned();
         if entry.is_none() && matches!(agent.spec.invalid_tool_policy, InvalidToolPolicy::Repair) {
             let matches = definitions
@@ -1076,17 +1187,25 @@ fn evaluate_tool_calls(
         return;
     }
 
+    let mut content_ids = BTreeSet::new();
     let repaired_content = outcome
         .choice
         .into_iter()
-        .map(|content| match content {
-            AssistantContent::ToolCall(original) => planned
-                .iter()
-                .find(|planned| planned.call.id == original.id)
-                .map_or(AssistantContent::ToolCall(original), |planned| {
-                    AssistantContent::ToolCall(planned.call.clone())
-                }),
-            content => content,
+        .filter_map(|content| match content {
+            AssistantContent::ToolCall(original) => {
+                if !content_ids.insert(original.id.clone()) {
+                    return None;
+                }
+                Some(
+                    planned
+                        .iter()
+                        .find(|planned| planned.call.id == original.id)
+                        .map_or(AssistantContent::ToolCall(original), |planned| {
+                            AssistantContent::ToolCall(planned.call.clone())
+                        }),
+                )
+            }
+            content => Some(content),
         })
         .collect::<Vec<_>>();
     world.entity_mut(entity).insert(PendingToolBatch {

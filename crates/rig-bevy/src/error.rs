@@ -23,6 +23,12 @@ pub enum RuntimeError {
         /// Stable diagnostic that contains no user data.
         reason: &'static str,
     },
+    /// A run prompt would make the canonical transcript invalid at insertion.
+    #[error("invalid run prompt: {reason}")]
+    InvalidPrompt {
+        /// Stable diagnostic that contains no user data.
+        reason: &'static str,
+    },
     /// A model binding was not registered.
     #[error("model binding `{0}` is not registered")]
     UnknownModel(ModelId),
@@ -169,6 +175,7 @@ impl fmt::Debug for RuntimeError {
         let kind = match self {
             Self::InvalidConfiguration { .. } => "InvalidConfiguration",
             Self::InvalidAgentSpec { .. } => "InvalidAgentSpec",
+            Self::InvalidPrompt { .. } => "InvalidPrompt",
             Self::UnknownModel(_) => "UnknownModel",
             Self::UnknownMemory(_) => "UnknownMemory",
             Self::UnknownAgent(_) => "UnknownAgent",
