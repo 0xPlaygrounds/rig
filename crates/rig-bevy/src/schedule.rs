@@ -503,24 +503,34 @@ fn accept_completion(
                         );
                     }
                     Ok(validator) => {
+                        // Transcript and validator must move together; a
+                        // missing transcript fails terminally rather than
+                        // silently desyncing the pair.
                         if let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) {
                             let prompt = std::mem::take(&mut transcript.messages);
                             transcript.new_messages_start = messages.len();
                             messages.extend(prompt);
                             transcript.messages = messages;
+                            if let Some(mut validation) =
+                                world.get_mut::<crate::persistence::TranscriptValidation>(entity)
+                            {
+                                validation.0 = validator;
+                            }
+                            if let Some(mut memory) = world.get_mut::<MemoryProgress>(entity) {
+                                memory.loaded = true;
+                            }
+                            if let Some(mut run) = world.get_mut::<RunNode>(entity) {
+                                run.phase = RunPhase::ReadyModel;
+                            }
+                            bump_progress(world, entity);
+                        } else {
+                            fail_run(
+                                world,
+                                entity,
+                                "canonical_transcript",
+                                "run has no canonical transcript to accept loaded history into",
+                            );
                         }
-                        if let Some(mut validation) =
-                            world.get_mut::<crate::persistence::TranscriptValidation>(entity)
-                        {
-                            validation.0 = validator;
-                        }
-                        if let Some(mut memory) = world.get_mut::<MemoryProgress>(entity) {
-                            memory.loaded = true;
-                        }
-                        if let Some(mut run) = world.get_mut::<RunNode>(entity) {
-                            run.phase = RunPhase::ReadyModel;
-                        }
-                        bump_progress(world, entity);
                     }
                 }
             }
@@ -608,6 +618,88 @@ fn reset_for_model_retry(world: &mut World, entity: Entity, feedback: String) {
     }
     publish(world, entity, RunEvent::ResponseRetried);
     bump_progress(world, entity);
+}
+
+trait RetryCounter: Component<Mutability = bevy_ecs::component::Mutable> {
+    fn count(&self) -> usize;
+    fn bump(&mut self);
+}
+
+impl RetryCounter for ResponseRetryState {
+    fn count(&self) -> usize {
+        self.0
+    }
+    fn bump(&mut self) {
+        self.0 = self.0.saturating_add(1);
+    }
+}
+
+impl RetryCounter for InvalidToolRetryState {
+    fn count(&self) -> usize {
+        self.0
+    }
+    fn bump(&mut self) {
+        self.0 = self.0.saturating_add(1);
+    }
+}
+
+// The one retry ladder: consume budget and re-ask the model, or fail the run.
+fn bump_retry_or_fail<C: RetryCounter>(
+    world: &mut World,
+    entity: Entity,
+    max_retries: usize,
+    feedback: &str,
+    code: &str,
+    exhausted: String,
+) {
+    let retries = world.get::<C>(entity).map_or(0, RetryCounter::count);
+    if retries < max_retries {
+        if let Some(mut state) = world.get_mut::<C>(entity) {
+            state.bump();
+        }
+        reset_for_model_retry(world, entity, feedback.to_string());
+    } else {
+        fail_run(world, entity, code, exhausted);
+    }
+}
+
+// Duplicate identities can never commit canonically (the same validation
+// restore enforces), so every model turn — structured-output turns included —
+// passes through this ladder before any handler runs. Returns whether the
+// outcome was consumed; `Skip` falls through and the handlers drop repeats.
+fn apply_duplicate_identity_policy(
+    world: &mut World,
+    entity: Entity,
+    agent: &AgentNode,
+    duplicate_id: &str,
+) -> bool {
+    match agent.spec.invalid_tool_policy {
+        InvalidToolPolicy::Skip => false,
+        InvalidToolPolicy::Fail | InvalidToolPolicy::Repair => {
+            fail_run(
+                world,
+                entity,
+                "duplicate_tool_call",
+                format!("model emitted duplicate tool call identity `{duplicate_id}`"),
+            );
+            true
+        }
+        InvalidToolPolicy::Retry { max_retries } => {
+            bump_retry_or_fail::<InvalidToolRetryState>(
+                world,
+                entity,
+                max_retries,
+                "Tool call identities must be unique. Re-issue each tool call with a distinct id.",
+                "duplicate_tool_call",
+                format!("duplicate tool call retry exhausted for `{duplicate_id}`"),
+            );
+            true
+        }
+        InvalidToolPolicy::Stop => {
+            set_terminal(world, entity, TerminalReason::Stopped, None);
+            true
+        }
+    }
 }
 
 fn finalize_accepted_turn(world: &mut World, entity: Entity, operation_id: OperationId) {
@@ -816,6 +908,21 @@ fn evaluate_model_outcomes(world: &mut World) {
             continue;
         };
 
+        let duplicate_id = {
+            let mut seen = BTreeSet::new();
+            outcome.choice.iter().find_map(|content| match content {
+                AssistantContent::ToolCall(call) if !seen.insert(call.id.clone()) => {
+                    Some(call.id.clone())
+                }
+                _ => None,
+            })
+        };
+        if let Some(duplicate_id) = duplicate_id
+            && apply_duplicate_identity_policy(world, entity, &agent, &duplicate_id)
+        {
+            continue;
+        }
+
         let output_call = world
             .get::<StructuredOutputState>(entity)
             .and_then(|state| state.output_tool_name.clone())
@@ -906,10 +1013,17 @@ fn handle_structured_output_call(
     outcome: PendingModelOutcome,
     output_call: ToolCall,
 ) {
+    // Every tool call other than the first occurrence of the output call is
+    // suppressed — including a same-id repeat surviving under `Skip`.
+    let mut saw_output_call = false;
     for peer in outcome.choice.iter().filter_map(|content| match content {
-        AssistantContent::ToolCall(call) if call.id != output_call.id => Some(call),
+        AssistantContent::ToolCall(call) => Some(call),
         _ => None,
     }) {
+        if !saw_output_call && peer.id == output_call.id {
+            saw_output_call = true;
+            continue;
+        }
         publish(
             world,
             entity,
@@ -952,26 +1066,14 @@ fn handle_structured_output_call(
 }
 
 fn handle_empty_response_retry(world: &mut World, entity: Entity, max_retries: usize) {
-    let retries = world
-        .get::<ResponseRetryState>(entity)
-        .map_or(0, |state| state.0);
-    if retries < max_retries {
-        if let Some(mut state) = world.get_mut::<ResponseRetryState>(entity) {
-            state.0 = state.0.saturating_add(1);
-        }
-        reset_for_model_retry(
-            world,
-            entity,
-            "The previous response was empty. Return a substantive answer.".to_string(),
-        );
-    } else {
-        fail_run(
-            world,
-            entity,
-            "response_retry_exhausted",
-            "empty response retry policy was exhausted",
-        );
-    }
+    bump_retry_or_fail::<ResponseRetryState>(
+        world,
+        entity,
+        max_retries,
+        "The previous response was empty. Return a substantive answer.",
+        "response_retry_exhausted",
+        "empty response retry policy was exhausted".to_string(),
+    );
 }
 
 fn evaluate_tool_calls(
@@ -981,56 +1083,9 @@ fn evaluate_tool_calls(
     outcome: PendingModelOutcome,
     tool_calls: Vec<ToolCall>,
 ) {
-    // Duplicate identities can never commit canonically (the same validation
-    // restore enforces), so they join the invalid-tool recovery ladder before
-    // any tool executes; Skip drops each repeat and runs the first occurrence.
-    let mut first_occurrence = BTreeSet::new();
-    let duplicate_id = tool_calls
-        .iter()
-        .find(|call| !first_occurrence.insert(call.id.clone()))
-        .map(|call| call.id.clone());
-    if let Some(duplicate_id) = duplicate_id {
-        match agent.spec.invalid_tool_policy {
-            InvalidToolPolicy::Skip => {}
-            InvalidToolPolicy::Fail | InvalidToolPolicy::Repair => {
-                fail_run(
-                    world,
-                    entity,
-                    "duplicate_tool_call",
-                    format!("model emitted duplicate tool call identity `{duplicate_id}`"),
-                );
-                return;
-            }
-            InvalidToolPolicy::Retry { max_retries } => {
-                let retries = world
-                    .get::<InvalidToolRetryState>(entity)
-                    .map_or(0, |state| state.0);
-                if retries < max_retries {
-                    if let Some(mut state) = world.get_mut::<InvalidToolRetryState>(entity) {
-                        state.0 = state.0.saturating_add(1);
-                    }
-                    reset_for_model_retry(
-                        world,
-                        entity,
-                        "Tool call identities must be unique. Re-issue each tool call with a distinct id."
-                            .to_string(),
-                    );
-                } else {
-                    fail_run(
-                        world,
-                        entity,
-                        "duplicate_tool_call",
-                        format!("duplicate tool call retry exhausted for `{duplicate_id}`"),
-                    );
-                }
-                return;
-            }
-            InvalidToolPolicy::Stop => {
-                set_terminal(world, entity, TerminalReason::Stopped, None);
-                return;
-            }
-        }
-    }
+    // Duplicate identities were already routed through the recovery ladder in
+    // `evaluate_model_outcomes`; reaching here under `Skip` means each repeat
+    // is dropped and only the first occurrence runs.
     let snapshot = world
         .get::<TurnCapabilitySnapshot>(entity)
         .cloned()
@@ -1113,28 +1168,16 @@ fn evaluate_tool_calls(
                 format!("model requested unadvertised tool `{name}`"),
             ),
             InvalidToolPolicy::Retry { max_retries } => {
-                let retries = world
-                    .get::<InvalidToolRetryState>(entity)
-                    .map_or(0, |state| state.0);
-                if retries < max_retries {
-                    if let Some(mut state) = world.get_mut::<InvalidToolRetryState>(entity) {
-                        state.0 = state.0.saturating_add(1);
-                    }
-                    reset_for_model_retry(
-                        world,
-                        entity,
-                        format!(
-                            "Tool `{name}` is unavailable. Use only an advertised tool or answer without it."
-                        ),
-                    );
-                } else {
-                    fail_run(
-                        world,
-                        entity,
-                        "invalid_tool_retry_exhausted",
-                        format!("invalid tool retry exhausted for `{name}`"),
-                    );
-                }
+                bump_retry_or_fail::<InvalidToolRetryState>(
+                    world,
+                    entity,
+                    max_retries,
+                    &format!(
+                        "Tool `{name}` is unavailable. Use only an advertised tool or answer without it."
+                    ),
+                    "invalid_tool_retry_exhausted",
+                    format!("invalid tool retry exhausted for `{name}`"),
+                );
             }
             InvalidToolPolicy::Stop => set_terminal(world, entity, TerminalReason::Stopped, None),
             InvalidToolPolicy::Skip => {}

@@ -30,7 +30,7 @@ use rig_core::{
         Message, Usage,
     },
     memory::{ConversationMemory, MemoryError},
-    message::{ToolCall, ToolChoice, ToolFunction, UserContent},
+    message::{ToolCall, ToolChoice, ToolFunction, ToolResult, ToolResultContent, UserContent},
     streaming::StreamingCompletionResponse,
     test_utils::{CountingMemory, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
     tool::{PortableDynamicTool, PortableTool, ToolOutput},
@@ -2777,12 +2777,14 @@ async fn restored_runtime_tick_preserves_terminal_retention_age() -> Result<()> 
             RunStepStatus::Quiescent => runtime.wait_for_effect().await?,
         }
     }
-    // The first Terminal return observed the run, so it stays steppable only
-    // within the observed retention window.
-    assert!(matches!(
-        runtime.step(handle).await?,
-        RunStepStatus::Terminal
-    ));
+    // Every Terminal return renews the observed lease, so active polling far
+    // beyond the retention window never loses the run.
+    for _ in 0..12 {
+        assert!(matches!(
+            runtime.step(handle).await?,
+            RunStepStatus::Terminal
+        ));
+    }
     let result = runtime.finish_run(handle)?;
     let protector = XorProtector(0x35);
     let snapshot = runtime
@@ -2791,13 +2793,20 @@ async fn restored_runtime_tick_preserves_terminal_retention_age() -> Result<()> 
     bindings.bind_model(model_id, tenant_id, model_identity, model);
     let mut restored = LocalRuntime::restore(config, &snapshot, &protector, bindings)?;
     let restored_handle = restored.run_handle(result.run_id, tenant_id)?;
-
     assert!(matches!(
         restored.step(restored_handle).await?,
         RunStepStatus::Terminal
     ));
+
+    // Once its own handle stops being stepped, the observed run ages from its
+    // preserved last observation while another handle pumps the schedule.
+    let pump = restored.start_run(agent, "pump")?;
+    let _ = restored.drive_to_terminal(pump).await?;
+    for _ in 0..4 {
+        let _ = restored.step(pump).await;
+    }
     assert!(matches!(
-        restored.step(restored_handle).await,
+        restored.run_handle(result.run_id, tenant_id),
         Err(RuntimeError::UnknownRun(id)) if id == result.run_id
     ));
     Ok(())
@@ -3720,5 +3729,221 @@ async fn retired_tools_stop_advertising_while_references_drain() -> Result<()> {
         runtime.capability_kind(grant.capability_id),
         Err(RuntimeError::UnknownCapability(_))
     ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn polling_terminal_steps_renew_the_observed_retention_lease() -> Result<()> {
+    let mut runtime = LocalRuntime::with_config(RuntimeConfig {
+        terminal_retention_ticks: 4,
+        effect_timeout: Duration::from_secs(1),
+        ..RuntimeConfig::default()
+    })?;
+    let polled_agent = runtime.spawn_agent(
+        MockCompletionModel::text("polled")
+            .into_bevy_agent_builder()
+            .build(),
+    )?;
+    let pump_agent = runtime.spawn_agent(
+        MockCompletionModel::text("pump")
+            .into_bevy_agent_builder()
+            .build(),
+    )?;
+    let polled = runtime.start_run(polled_agent, "polled")?;
+    let _ = runtime.drive_to_terminal(polled).await?;
+    let pump = runtime.start_run(pump_agent, "pump")?;
+
+    // Interleaved polling far past the 4-tick window: every Terminal return
+    // renews the lease, so the actively polled run is never cleaned even
+    // while the pump run's passes advance the tick.
+    for _ in 0..12 {
+        assert!(matches!(
+            runtime.step(polled).await?,
+            RunStepStatus::Terminal
+        ));
+        let _ = runtime.step(pump).await;
+    }
+    let result = runtime.finish_run(polled)?;
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+
+    // Once polling stops, the run ages out from its last observation.
+    for _ in 0..8 {
+        let _ = runtime.step(pump).await;
+    }
+    assert!(matches!(
+        runtime.finish_run(polled),
+        Err(RuntimeError::UnknownRun(_))
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn structured_output_turns_pass_through_the_duplicate_identity_ladder() -> Result<()> {
+    let output_name = synthetic_output_tool_name::<StructuredAnswer>(&[]);
+    let duplicate_turn = || {
+        MockTurn::from_contents([
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(output_name.clone(), serde_json::json!({"answer": "first"})),
+            )),
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(output_name.clone(), serde_json::json!({"answer": "second"})),
+            )),
+        ])
+    };
+
+    // Default policy: the duplicated identity fails the run even though the
+    // turn carries the structured-output call.
+    let model = MockCompletionModel::new([duplicate_turn()?]);
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec![output_name.clone()],
+            })
+            .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
+                mode: OutputMode::Tool,
+                max_retries: 0,
+                best_effort: false,
+            })
+            .build(),
+    )?;
+    let error = runtime
+        .run(agent, "dup structured")
+        .await
+        .err()
+        .context("duplicate identities in a structured turn must fail")?;
+    assert!(matches!(
+        error,
+        RuntimeError::RunFailed { ref code, .. } if code == "duplicate_tool_call"
+    ));
+
+    // Retry policy: the same defect recovers on a clean second response.
+    let retry_model = MockCompletionModel::new([
+        duplicate_turn()?,
+        MockTurn::tool_call(
+            "valid",
+            output_name.clone(),
+            serde_json::json!({"answer": "recovered"}),
+        ),
+    ]);
+    let mut retry_runtime = LocalRuntime::new()?;
+    let agent = retry_runtime.spawn_agent(
+        retry_model
+            .clone()
+            .into_bevy_agent_builder()
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec![output_name.clone()],
+            })
+            .invalid_tool_policy(InvalidToolPolicy::Retry { max_retries: 1 })
+            .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
+                mode: OutputMode::Tool,
+                max_retries: 0,
+                best_effort: false,
+            })
+            .build(),
+    )?;
+    let result = retry_runtime.run(agent, "dup structured retry").await?;
+    assert_eq!(
+        result.structured_output,
+        Some(serde_json::json!({"answer": "recovered"}))
+    );
+    assert_eq!(retry_model.request_count(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn mixed_tool_result_and_text_histories_are_accepted() -> Result<()> {
+    let history = vec![
+        Message::user("what is 1+1"),
+        Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+                "c1".to_string(),
+                ToolFunction::new("calculator".to_string(), serde_json::json!({"sum": "1+1"})),
+            ))),
+        },
+        Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::ToolResult(ToolResult {
+                    id: "c1".to_string(),
+                    call_id: None,
+                    content: OneOrMany::one(ToolResultContent::text("2")),
+                }),
+                UserContent::text("thanks, and please be brief"),
+            ])?,
+        },
+        Message::assistant("It is 2."),
+    ];
+    let model = MockCompletionModel::text("answered");
+    let memory = FixedHistoryMemory(history);
+    let mut runtime = runtime()?;
+    let tenant_id = TenantId::new();
+    let memory_id = runtime.register_memory(tenant_id, memory);
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .tenant(tenant_id)
+            .memory(memory_id, "classic-history")
+            .build(),
+    )?;
+
+    let result = runtime.run(agent, "next question").await?;
+
+    assert!(matches!(result.terminal_reason, TerminalReason::Completed));
+    assert_eq!(model.request_count(), 1);
+    let request = model.requests().pop().context("model request")?;
+    assert_eq!(request.chat_history.len(), 5);
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicate_and_invalid_name_retries_share_one_budget() -> Result<()> {
+    let model = MockCompletionModel::new([
+        MockTurn::from_contents([
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(
+                    "counting_portable_tool".to_string(),
+                    serde_json::json!({"value": "a"}),
+                ),
+            )),
+            AssistantContent::ToolCall(ToolCall::new(
+                "dup".to_string(),
+                ToolFunction::new(
+                    "counting_portable_tool".to_string(),
+                    serde_json::json!({"value": "b"}),
+                ),
+            )),
+        ])?,
+        MockTurn::tool_call("solo", "unadvertised_tool", serde_json::json!({})),
+    ]);
+    let tool = CountingPortableTool::default();
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(
+        model
+            .clone()
+            .into_bevy_agent_builder()
+            .invalid_tool_policy(InvalidToolPolicy::Retry { max_retries: 1 })
+            .build(),
+    )?;
+    runtime.install_tool(agent, tool.clone())?;
+
+    let error = runtime
+        .run(agent, "shared budget")
+        .await
+        .err()
+        .context("second defect must exhaust the shared retry budget")?;
+
+    assert!(matches!(
+        error,
+        RuntimeError::RunFailed { ref code, .. } if code == "invalid_tool_retry_exhausted"
+    ));
+    assert_eq!(model.request_count(), 2);
+    assert!(tool.calls().is_empty());
     Ok(())
 }

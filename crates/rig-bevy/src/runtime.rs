@@ -29,8 +29,9 @@ use tokio::{
 };
 use tracing::Instrument;
 
-use crate::effects::EffectIntent;
-use crate::effects::{EffectCompletion, ErasedRawFinal, MemoryEffectError, ModelEffectError};
+use crate::effects::{
+    EffectCompletion, EffectIntent, ErasedRawFinal, MemoryEffectError, ModelEffectError,
+};
 use crate::{
     AgentId, AgentNode, AgentSpec, BindingIdentity, CapabilityId, CapabilityKind, CapabilityNode,
     EffectHeader, EffectIngress, Generation, GrantId, GrantNode, HostedProviderDiagnostic,
@@ -2094,14 +2095,14 @@ impl LocalRuntime {
             .get_entity(entity)
             .is_ok_and(|entity_ref| entity_ref.contains::<TerminalState>())
         {
-            // Returning `Terminal` to the handle holder is an observation:
-            // only genuinely abandoned handles age on the unobserved clock.
-            if !self.world.entity(entity).contains::<TerminalObservation>() {
-                let tick = self.world.resource::<RuntimeTick>().0;
-                self.world.entity_mut(entity).insert(TerminalObservation {
-                    observed_tick: tick,
-                });
-            }
+            // Returning `Terminal` to the handle holder is an observation, and
+            // each one renews the retention lease: a caller actively polling a
+            // terminal run never loses its result, while a handle that stops
+            // being stepped ages out from its last observation.
+            let tick = self.world.resource::<RuntimeTick>().0;
+            self.world.entity_mut(entity).insert(TerminalObservation {
+                observed_tick: tick,
+            });
             return Ok(RunStepStatus::Terminal);
         }
         if !self

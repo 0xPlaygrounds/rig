@@ -75,10 +75,11 @@ impl TranscriptValidator {
                 })
                 .collect::<Vec<_>>();
             let unique_results = results.iter().cloned().collect::<BTreeSet<_>>();
-            if results.len() != content.len()
-                || results.len() != unique_results.len()
-                || unique_results != expected
-            {
+            // Pairing is keyed strictly on identities — each expected id
+            // exactly once, nothing unexpected — but the pairing message may
+            // also carry ordinary user content: rig's message model allows
+            // mixed content and classic-runtime histories rely on it.
+            if results.len() != unique_results.len() || unique_results != expected {
                 return Err(CanonicalTranscriptError::InvalidToolPairing);
             }
             self.previous_assistant = false;

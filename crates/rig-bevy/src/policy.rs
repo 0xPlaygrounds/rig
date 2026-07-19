@@ -16,6 +16,10 @@ pub enum InvalidToolPolicy {
     #[default]
     Fail,
     /// Re-prompt the model with corrective feedback up to the configured bound.
+    ///
+    /// Unadvertised-tool and duplicate-identity recoveries share one retry
+    /// budget per run: a turn recovered for either defect kind consumes an
+    /// attempt from the same counter.
     Retry {
         /// Maximum invalid-call recovery attempts.
         max_retries: usize,

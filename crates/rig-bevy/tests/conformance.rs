@@ -500,8 +500,17 @@ async fn stop_and_cancellation() -> Result<ScenarioReport> {
             .iter()
             .any(|event| matches!(event, RunEvent::EffectRejected(EffectRejectionReason::Late)));
     let before_cleanup = runtime.finish_run(handle).is_ok();
-    let _ = runtime.step(handle).await;
-    let _ = runtime.step(handle).await;
+    // Stepping the run's own handle would renew its observation lease, so the
+    // retention window is aged through a second run's schedule passes.
+    let pump_agent = runtime.spawn_agent(
+        MockCompletionModel::text("pump")
+            .into_bevy_agent_builder()
+            .build(),
+    )?;
+    let pump = runtime.start_run(pump_agent, "pump")?;
+    let _ = runtime.drive_to_terminal(pump).await?;
+    let _ = runtime.step(pump).await;
+    let _ = runtime.step(pump).await;
     let after_cleanup = matches!(runtime.finish_run(handle), Err(RuntimeError::UnknownRun(_)));
     let mut report = report(ScenarioId::StopAndCancellation);
     evidence(

@@ -57,8 +57,10 @@ pub struct RuntimeConfig {
     ///
     /// Ticks advance once per schedule pass, so aging is schedule-load
     /// relative: a busy runtime burns retention windows faster than an idle
-    /// one. `step` returning `Terminal` to the run's handle counts as an
-    /// observation, and restore renews the lease of unobserved terminal runs.
+    /// one. Every `step` that returns `Terminal` to the run's handle counts
+    /// as an observation and renews this lease, so the window ages from the
+    /// last observation; restore renews the lease of unobserved terminal
+    /// runs.
     pub terminal_retention_ticks: u64,
     /// Number of schedule ticks to retain a terminal run that was never observed.
     ///
@@ -259,8 +261,9 @@ impl AgentSpec {
     /// Configure conversation memory.
     ///
     /// The bound memory's `load` must return a canonical history: tool calls
-    /// paired with their results in the immediately following message, no
-    /// consecutive assistant messages, and no orphaned tool results.
+    /// paired with their results in the immediately following message (which
+    /// may also carry ordinary user content), no consecutive assistant
+    /// messages, and no orphaned tool results.
     /// Truncating or summarizing memories must cut on turn boundaries. A
     /// non-canonical loaded history fails the run with code `memory_history`
     /// before any model call is made.
