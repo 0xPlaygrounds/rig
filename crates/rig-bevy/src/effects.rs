@@ -508,6 +508,15 @@ pub enum EffectIngress {
     Completion(EffectCompletion),
 }
 
+impl EffectIngress {
+    pub(crate) fn run_id(&self) -> RunId {
+        match self {
+            Self::Delta { header, .. } => header.run_id,
+            Self::Completion(completion) => completion.header().run_id,
+        }
+    }
+}
+
 /// Stable reason an ingress message was rejected without mutating state.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
@@ -552,6 +561,4 @@ pub struct HostedProviderDiagnostic {
     pub operation_id: OperationId,
     /// Concrete type name, never serialized provider content.
     pub provider_type: &'static str,
-    /// Whether a local concrete value existed before erasure.
-    pub available: bool,
 }

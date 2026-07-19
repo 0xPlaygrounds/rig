@@ -34,9 +34,9 @@ pub use components::{
 pub use config::{AgentSpec, ResponseRetryPolicy, RuntimeConfig, StreamingMode};
 pub use debug::{ContentVisibility, RunExplanation};
 pub use effects::{
-    EffectCompletion, EffectHeader, EffectIngress, EffectIntent, EffectRejection,
-    EffectRejectionReason, HostedProviderDiagnostic, MemoryEffectError, MemoryEffectOutput,
-    ModelEffectError, ModelEffectOutput, ProvisionalDelta, ToolEffectOutput,
+    EffectCompletion, EffectHeader, EffectIngress, EffectRejection, EffectRejectionReason,
+    HostedProviderDiagnostic, MemoryEffectError, MemoryEffectOutput, ModelEffectError,
+    ModelEffectOutput, ProvisionalDelta, ToolEffectOutput,
 };
 pub use error::{RuntimeError, SnapshotError};
 pub use identity::{
@@ -52,4 +52,3 @@ pub use runtime::{
     LocalRunResult, LocalRuntime, LocalStreamingRun, RunHandle, RunStepStatus, StreamingRunEvent,
     StreamingRunResult, ToolGrant,
 };
-pub use schedule::{RigSchedule, RigSystemSet};

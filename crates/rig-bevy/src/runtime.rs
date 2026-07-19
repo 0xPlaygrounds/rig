@@ -24,18 +24,19 @@ use rig_core::{
     },
 };
 use tokio::{
-    sync::{Notify, Semaphore, broadcast, mpsc, watch},
+    sync::{Notify, OwnedSemaphorePermit, Semaphore, broadcast, mpsc, watch},
     task::{AbortHandle, JoinSet},
 };
 use tracing::Instrument;
 
+use crate::effects::EffectIntent;
 use crate::effects::{EffectCompletion, ErasedRawFinal, MemoryEffectError, ModelEffectError};
 use crate::{
     AgentId, AgentNode, AgentSpec, BindingIdentity, CapabilityId, CapabilityKind, CapabilityNode,
-    EffectHeader, EffectIngress, EffectIntent, Generation, GrantId, GrantNode,
-    HostedProviderDiagnostic, InvalidToolPolicy, MemoryId, ModelId, OperationId, ProvisionalDelta,
-    ResponseRetryPolicy, RunAccounting, RunEvent, RunId, RuntimeConfig, RuntimeError, RuntimeId,
-    StreamingMode, StructuredOutputPolicy, TenantId,
+    EffectHeader, EffectIngress, Generation, GrantId, GrantNode, HostedProviderDiagnostic,
+    InvalidToolPolicy, MemoryId, ModelId, OperationId, ProvisionalDelta, ResponseRetryPolicy,
+    RunAccounting, RunEvent, RunId, RuntimeConfig, RuntimeError, RuntimeId, StreamingMode,
+    StructuredOutputPolicy, TenantId,
     components::{
         AcceptedDeltas, ActiveOperations, CancellationRequest, CanonicalTranscript,
         CapabilitiesToDrop, CapabilityReferences, EffectQueueWait, InvalidToolRetryState,
@@ -56,6 +57,29 @@ impl Drop for EffectCapacityGuard {
     }
 }
 
+fn try_acquire_permits(
+    global: &Arc<Semaphore>,
+    secondary: Option<&Arc<Semaphore>>,
+) -> Option<(OwnedSemaphorePermit, Option<OwnedSemaphorePermit>)> {
+    let global_permit = Arc::clone(global).try_acquire_owned().ok()?;
+    match secondary {
+        None => Some((global_permit, None)),
+        // The global permit drops here when the kind-specific limit is
+        // exhausted, preserving acquire-global-then-kind ordering.
+        Some(limit) => match Arc::clone(limit).try_acquire_owned() {
+            Ok(permit) => Some((global_permit, Some(permit))),
+            Err(_) => None,
+        },
+    }
+}
+
+fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct IngressSender {
     sender: mpsc::Sender<EffectIngress>,
@@ -65,20 +89,14 @@ pub(crate) struct IngressSender {
 
 impl IngressSender {
     fn run_notifies(&self) -> MutexGuard<'_, HashMap<RunId, Arc<Notify>>> {
-        match self.run_notifies.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
+        lock_unpoisoned(&self.run_notifies)
     }
 
     async fn send(
         &self,
         ingress: EffectIngress,
     ) -> Result<(), mpsc::error::SendError<EffectIngress>> {
-        let run_id = match &ingress {
-            EffectIngress::Delta { header, .. } => header.run_id,
-            EffectIngress::Completion(completion) => completion.header().run_id,
-        };
+        let run_id = ingress.run_id();
         self.sender.send(ingress).await?;
         self.ingress_progress_tx
             .send_modify(|epoch| *epoch = epoch.saturating_add(1));
@@ -89,10 +107,7 @@ impl IngressSender {
     }
 
     fn try_send(&self, ingress: EffectIngress) -> Result<(), RuntimeError> {
-        let run_id = match &ingress {
-            EffectIngress::Delta { header, .. } => header.run_id,
-            EffectIngress::Completion(completion) => completion.header().run_id,
-        };
+        let run_id = ingress.run_id();
         self.sender.try_send(ingress).map_err(|error| match error {
             mpsc::error::TrySendError::Full(_) => RuntimeError::IngressFull,
             mpsc::error::TrySendError::Closed(_) => RuntimeError::IngressClosed,
@@ -368,35 +383,35 @@ where
     /// Set an optional diagnostic agent name.
     #[must_use]
     pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.spec.name = Some(name.into());
+        self.spec = self.spec.name(name);
         self
     }
 
     /// Set a system preamble.
     #[must_use]
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
-        self.spec.preamble = Some(preamble.into());
+        self.spec = self.spec.preamble(preamble);
         self
     }
 
     /// Set the total model-call budget.
     #[must_use]
     pub fn max_model_calls(mut self, value: usize) -> Self {
-        self.spec.max_model_calls = value;
+        self.spec = self.spec.max_model_calls(value);
         self
     }
 
     /// Set invalid-tool recovery policy.
     #[must_use]
     pub fn invalid_tool_policy(mut self, value: InvalidToolPolicy) -> Self {
-        self.spec.invalid_tool_policy = value;
+        self.spec = self.spec.invalid_tool_policy(value);
         self
     }
 
     /// Set tool-free response retry policy.
     #[must_use]
     pub fn response_retry_policy(mut self, value: ResponseRetryPolicy) -> Self {
-        self.spec.response_retry_policy = value;
+        self.spec = self.spec.response_retry_policy(value);
         self
     }
 
@@ -406,7 +421,7 @@ where
     where
         T: schemars::JsonSchema,
     {
-        self.spec.structured_output = Some((schemars::schema_for!(T), policy));
+        self.spec = self.spec.structured_output::<T>(policy);
         self
     }
 
@@ -417,57 +432,56 @@ where
         schema: schemars::Schema,
         policy: StructuredOutputPolicy,
     ) -> Self {
-        self.spec.structured_output = Some((schema, policy));
+        self.spec = self.spec.structured_output_raw(schema, policy);
         self
     }
 
     /// Configure conversation memory.
     #[must_use]
     pub fn memory(mut self, memory_id: MemoryId, conversation_id: impl Into<String>) -> Self {
-        self.spec.memory_id = Some(memory_id);
-        self.spec.conversation_id = Some(conversation_id.into());
+        self.spec = self.spec.memory(memory_id, conversation_id);
         self
     }
 
     /// Select provider tool-choice policy.
     #[must_use]
     pub fn tool_choice(mut self, value: ToolChoice) -> Self {
-        self.spec.tool_choice = Some(value);
+        self.spec = self.spec.tool_choice(value);
         self
     }
 
     /// Set the sampling temperature used for model requests.
     #[must_use]
     pub fn temperature(mut self, value: f64) -> Self {
-        self.spec.temperature = Some(value);
+        self.spec = self.spec.temperature(value);
         self
     }
 
     /// Set the maximum generated-token count used for model requests.
     #[must_use]
     pub fn max_tokens(mut self, value: u64) -> Self {
-        self.spec.max_tokens = Some(value);
+        self.spec = self.spec.max_tokens(value);
         self
     }
 
     /// Set provider-specific request parameters.
     #[must_use]
     pub fn additional_params(mut self, value: serde_json::Value) -> Self {
-        self.spec.additional_params = Some(value);
+        self.spec = self.spec.additional_params(value);
         self
     }
 
     /// Opt in to sensitive provider telemetry content.
     #[must_use]
     pub fn record_telemetry_content(mut self, value: bool) -> Self {
-        self.spec.record_telemetry_content = value;
+        self.spec = self.spec.record_telemetry_content(value);
         self
     }
 
     /// Select provider streaming for new runs.
     #[must_use]
     pub fn streaming(mut self, value: StreamingMode) -> Self {
-        self.spec.streaming = value;
+        self.spec = self.spec.streaming(value);
         self
     }
 
@@ -796,62 +810,12 @@ where
                     target_effect_deadline = None;
                 }
                 RunStepStatus::Quiescent => {
-                    let has_active = !self.runtime.active_effect_headers(self.handle)?.is_empty();
-                    if has_active {
-                        let deadline = *target_effect_deadline.get_or_insert_with(|| {
-                            tokio::time::Instant::now() + self.runtime.config.effect_timeout
-                        });
-                        // Same wait contract as the blocking local driver: rejected
-                        // ingress keeps the deadline, capacity release wakes the pass.
-                        tokio::select! {
-                            result = self
-                                .runtime
-                                .wait_for_effect_for(Some(self.handle.run_id), deadline) => {
-                                match result {
-                                    Err(error) => crate::schedule::fail_effect_wait(
-                                        &mut self.runtime.world,
-                                        self.handle.run_id,
-                                        error.to_string(),
-                                    ),
-                                    Ok(true) => {
-                                        remaining_passes =
-                                            self.runtime.config.max_schedule_passes;
-                                    }
-                                    Ok(false) => {}
-                                }
-                            }
-                            changed = capacity_rx.changed() => match changed {
-                                Ok(()) => {
-                                    remaining_passes = self.runtime.config.max_schedule_passes;
-                                }
-                                Err(_) => crate::schedule::fail_effect_wait(
-                                    &mut self.runtime.world,
-                                    self.handle.run_id,
-                                    RuntimeError::IngressClosed.to_string(),
-                                ),
-                            },
-                        }
-                    } else if self.runtime.waits_for_effect_capacity(self.handle)? {
-                        target_effect_deadline = None;
-                        if let Err(error) = self
-                            .runtime
-                            .wait_for_effect_capacity(&mut capacity_rx)
-                            .await
-                        {
-                            crate::schedule::fail_effect_wait(
-                                &mut self.runtime.world,
-                                self.handle.run_id,
-                                error.to_string(),
-                            );
-                        } else {
-                            remaining_passes = self.runtime.config.max_schedule_passes;
-                        }
-                    } else {
-                        crate::schedule::fail_effect_wait(
-                            &mut self.runtime.world,
-                            self.handle.run_id,
-                            "run became quiescent before reaching terminal state".to_string(),
-                        );
+                    if self
+                        .runtime
+                        .wait_quiescent(self.handle, &mut capacity_rx, &mut target_effect_deadline)
+                        .await?
+                    {
+                        remaining_passes = self.runtime.config.max_schedule_passes;
                     }
                 }
             }
@@ -1889,18 +1853,17 @@ impl LocalRuntime {
             };
             let ingress = self.ingress_tx.clone();
             let timeout = self.config.effect_timeout;
+            let kind_limit = match &intent {
+                EffectIntent::Model(_) => Some(&self.model_limit),
+                EffectIntent::Tool(_) => Some(&self.tool_limit),
+                EffectIntent::Memory(_) => None,
+            };
+            let Some(permits) = try_acquire_permits(&self.global_limit, kind_limit) else {
+                deferred.push(intent);
+                continue;
+            };
             let task: NativeFuture<()> = match intent {
                 EffectIntent::Model(intent) => {
-                    let Ok(global_permit) = Arc::clone(&self.global_limit).try_acquire_owned()
-                    else {
-                        deferred.push(EffectIntent::Model(intent));
-                        continue;
-                    };
-                    let Ok(model_permit) = Arc::clone(&self.model_limit).try_acquire_owned() else {
-                        drop(global_permit);
-                        deferred.push(EffectIntent::Model(intent));
-                        continue;
-                    };
                     let binding = self
                         .model_tenants
                         .get(&intent.model_id)
@@ -1908,7 +1871,7 @@ impl LocalRuntime {
                         .and_then(|_| self.models.get(&intent.model_id))
                         .cloned();
                     Box::pin(async move {
-                        let (_global_permit, _model_permit) = (global_permit, model_permit);
+                        let _permits = permits;
                         let result = match binding {
                             Some(binding) => {
                                 let future = if intent.streaming {
@@ -1934,22 +1897,12 @@ impl LocalRuntime {
                     })
                 }
                 EffectIntent::Tool(intent) => {
-                    let Ok(global_permit) = Arc::clone(&self.global_limit).try_acquire_owned()
-                    else {
-                        deferred.push(EffectIntent::Tool(intent));
-                        continue;
-                    };
-                    let Ok(tool_permit) = Arc::clone(&self.tool_limit).try_acquire_owned() else {
-                        drop(global_permit);
-                        deferred.push(EffectIntent::Tool(intent));
-                        continue;
-                    };
                     let binding = intent
                         .header
                         .capability_id
                         .and_then(|id| self.tools.get(&id).cloned());
                     Box::pin(async move {
-                        let (_global_permit, _tool_permit) = (global_permit, tool_permit);
+                        let _permits = permits;
                         let result = match binding {
                             Some(binding) if binding.definition().name == intent.name => {
                                 match tokio::time::timeout(
@@ -1991,11 +1944,6 @@ impl LocalRuntime {
                     })
                 }
                 EffectIntent::Memory(intent) => {
-                    let Ok(global_permit) = Arc::clone(&self.global_limit).try_acquire_owned()
-                    else {
-                        deferred.push(EffectIntent::Memory(intent));
-                        continue;
-                    };
                     let (header, memory_id) = match &intent {
                         crate::effects::MemoryEffectIntent::Load {
                             header, memory_id, ..
@@ -2011,7 +1959,7 @@ impl LocalRuntime {
                         .and_then(|_| self.memories.get(&memory_id))
                         .cloned();
                     Box::pin(async move {
-                        let _global_permit = global_permit;
+                        let _permits = permits;
                         let result = match (binding, intent) {
                             (
                                 Some(binding),
@@ -2103,23 +2051,17 @@ impl LocalRuntime {
             let pending = self.world.resource::<PendingIngress>();
             (
                 pending.0.len(),
-                pending.0.iter().any(|ingress| {
-                    let run_id = match ingress {
-                        EffectIngress::Delta { header, .. } => header.run_id,
-                        EffectIngress::Completion(completion) => completion.header().run_id,
-                    };
-                    target_run.is_some_and(|target| target == run_id)
-                }),
+                pending
+                    .0
+                    .iter()
+                    .any(|ingress| target_run.is_some_and(|target| target == ingress.run_id())),
             )
         };
         for _ in 0..limit.saturating_sub(already_staged) {
             let Ok(ingress) = self.ingress_rx.try_recv() else {
                 break;
             };
-            let run_id = match &ingress {
-                EffectIngress::Delta { header, .. } => header.run_id,
-                EffectIngress::Completion(completion) => completion.header().run_id,
-            };
+            let run_id = ingress.run_id();
             target_progress |= target_run.is_some_and(|target| run_id == target);
             self.world.resource_mut::<PendingIngress>().0.push(ingress);
         }
@@ -2198,10 +2140,7 @@ impl LocalRuntime {
             .await
             .map_err(|_| RuntimeError::EffectWaitTimedOut)?
             .ok_or(RuntimeError::IngressClosed)?;
-        let run_id = match &ingress {
-            EffectIngress::Delta { header, .. } => header.run_id,
-            EffectIngress::Completion(completion) => completion.header().run_id,
-        };
+        let run_id = ingress.run_id();
         self.world.resource_mut::<PendingIngress>().0.push(ingress);
         Ok(target_run.is_none_or(|target| target == run_id))
     }
@@ -2219,6 +2158,70 @@ impl LocalRuntime {
             .await
             .map_err(|_| RuntimeError::EffectWaitTimedOut)?
             .map_err(|_| RuntimeError::IngressClosed)
+    }
+
+    // The one quiescent-wait contract shared by the blocking and streaming
+    // local drivers. Only real progress (`EffectProgressed`, observed by the
+    // caller) clears the effect deadline: staged-but-rejected ingress cannot
+    // extend an effect wait. Capacity release also wakes the pass so a
+    // semaphore-deferred intent spawns even when its owner was aborted without
+    // ingress. Returns whether the caller should reset its pass budget. The
+    // hosted driver intentionally has its own wait (short world locks, notify
+    // plus two watch channels, timeout-to-finish) and must not be folded in.
+    async fn wait_quiescent(
+        &mut self,
+        handle: RunHandle,
+        capacity_rx: &mut watch::Receiver<u64>,
+        target_effect_deadline: &mut Option<tokio::time::Instant>,
+    ) -> Result<bool, RuntimeError> {
+        let has_active = !self.active_effect_headers(handle)?.is_empty();
+        if has_active {
+            let deadline = *target_effect_deadline
+                .get_or_insert_with(|| tokio::time::Instant::now() + self.config.effect_timeout);
+            tokio::select! {
+                result = self.wait_for_effect_for(Some(handle.run_id), deadline) => match result {
+                    Err(error) => {
+                        crate::schedule::fail_effect_wait(
+                            &mut self.world,
+                            handle.run_id,
+                            error.to_string(),
+                        );
+                        Ok(false)
+                    }
+                    Ok(target_staged) => Ok(target_staged),
+                },
+                changed = capacity_rx.changed() => match changed {
+                    Ok(()) => Ok(true),
+                    Err(_) => {
+                        crate::schedule::fail_effect_wait(
+                            &mut self.world,
+                            handle.run_id,
+                            RuntimeError::IngressClosed.to_string(),
+                        );
+                        Ok(false)
+                    }
+                },
+            }
+        } else if self.waits_for_effect_capacity(handle)? {
+            *target_effect_deadline = None;
+            if let Err(error) = self.wait_for_effect_capacity(capacity_rx).await {
+                crate::schedule::fail_effect_wait(
+                    &mut self.world,
+                    handle.run_id,
+                    error.to_string(),
+                );
+                Ok(false)
+            } else {
+                Ok(true)
+            }
+        } else {
+            crate::schedule::fail_effect_wait(
+                &mut self.world,
+                handle.run_id,
+                "run became quiescent before reaching terminal state".to_string(),
+            );
+            Ok(false)
+        }
     }
 
     /// Drive one run to terminal state without collapsing its terminal reason into an error.
@@ -2243,56 +2246,11 @@ impl LocalRuntime {
                     target_effect_deadline = None;
                 }
                 RunStepStatus::Quiescent => {
-                    let has_active = !self.active_effect_headers(handle)?.is_empty();
-                    if has_active {
-                        let deadline = *target_effect_deadline.get_or_insert_with(|| {
-                            tokio::time::Instant::now() + self.config.effect_timeout
-                        });
-                        // Only real progress (`EffectProgressed`) clears the deadline:
-                        // staged-but-rejected ingress cannot extend an effect wait.
-                        // Capacity release also wakes the driver so a semaphore-deferred
-                        // intent spawns even when its owner was aborted without ingress.
-                        tokio::select! {
-                            result = self
-                                .wait_for_effect_for(Some(handle.run_id), deadline) => {
-                                match result {
-                                    Err(error) => crate::schedule::fail_effect_wait(
-                                        &mut self.world,
-                                        handle.run_id,
-                                        error.to_string(),
-                                    ),
-                                    Ok(true) => {
-                                        remaining_passes = self.config.max_schedule_passes;
-                                    }
-                                    Ok(false) => {}
-                                }
-                            }
-                            changed = capacity_rx.changed() => match changed {
-                                Ok(()) => remaining_passes = self.config.max_schedule_passes,
-                                Err(_) => crate::schedule::fail_effect_wait(
-                                    &mut self.world,
-                                    handle.run_id,
-                                    RuntimeError::IngressClosed.to_string(),
-                                ),
-                            },
-                        }
-                    } else if self.waits_for_effect_capacity(handle)? {
-                        target_effect_deadline = None;
-                        if let Err(error) = self.wait_for_effect_capacity(&mut capacity_rx).await {
-                            crate::schedule::fail_effect_wait(
-                                &mut self.world,
-                                handle.run_id,
-                                error.to_string(),
-                            );
-                        } else {
-                            remaining_passes = self.config.max_schedule_passes;
-                        }
-                    } else {
-                        crate::schedule::fail_effect_wait(
-                            &mut self.world,
-                            handle.run_id,
-                            "run became quiescent before reaching terminal state".to_string(),
-                        );
+                    if self
+                        .wait_quiescent(handle, &mut capacity_rx, &mut target_effect_deadline)
+                        .await?
+                    {
+                        remaining_passes = self.config.max_schedule_passes;
                     }
                 }
             }
@@ -2311,15 +2269,7 @@ impl LocalRuntime {
         agent_id: AgentId,
         prompt: impl Into<Message>,
     ) -> Result<LocalRunResult, RuntimeError> {
-        let handle = self.start_run(agent_id, prompt)?;
-        let mut guard = LocalRunGuard {
-            runtime: self,
-            handle,
-            closed: false,
-        };
-        let result = guard.runtime.drive_to_terminal(handle).await?;
-        guard.closed = true;
-        Self::ensure_completed(result)
+        self.run_with_mode(agent_id, prompt, None).await
     }
 
     /// Start and drive a run through the provider blocking surface.
@@ -2328,10 +2278,22 @@ impl LocalRuntime {
         agent_id: AgentId,
         prompt: impl Into<Message>,
     ) -> Result<LocalRunResult, RuntimeError> {
+        self.run_with_mode(agent_id, prompt, Some(StreamingMode::Blocking))
+            .await
+    }
+
+    async fn run_with_mode(
+        &mut self,
+        agent_id: AgentId,
+        prompt: impl Into<Message>,
+        mode: Option<StreamingMode>,
+    ) -> Result<LocalRunResult, RuntimeError> {
         let handle = self.start_run(agent_id, prompt)?;
-        let entity = self.validate_handle(handle)?;
-        if let Some(mut run) = self.world.get_mut::<RunNode>(entity) {
-            run.streaming = StreamingMode::Blocking;
+        if let Some(mode) = mode {
+            let entity = self.validate_handle(handle)?;
+            if let Some(mut run) = self.world.get_mut::<RunNode>(entity) {
+                run.streaming = mode;
+            }
         }
         let mut guard = LocalRunGuard {
             runtime: self,
@@ -2521,14 +2483,7 @@ struct HostedDriveGuard {
 
 impl Drop for HostedDriveGuard {
     fn drop(&mut self) {
-        match self.driving_runs.lock() {
-            Ok(mut runs) => {
-                runs.remove(&self.run_id);
-            }
-            Err(poisoned) => {
-                poisoned.into_inner().remove(&self.run_id);
-            }
-        }
+        lock_unpoisoned(&self.driving_runs).remove(&self.run_id);
     }
 }
 
@@ -2549,10 +2504,7 @@ impl HostedRuntime {
     }
 
     fn run_notifies(&self) -> MutexGuard<'_, HashMap<RunId, Arc<Notify>>> {
-        match self.run_notifies.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
+        lock_unpoisoned(&self.run_notifies)
     }
 
     fn run_notify(&self, run_id: RunId) -> Arc<Notify> {
@@ -2621,10 +2573,7 @@ impl HostedRuntime {
         handle: RunHandle,
     ) -> Result<LocalRunResult, RuntimeError> {
         {
-            let inserted = match self.driving_runs.lock() {
-                Ok(mut runs) => runs.insert(handle.run_id),
-                Err(poisoned) => poisoned.into_inner().insert(handle.run_id),
-            };
+            let inserted = lock_unpoisoned(&self.driving_runs).insert(handle.run_id);
             if !inserted {
                 return Err(RuntimeError::RunAlreadyDriven(handle.run_id));
             }
@@ -2728,7 +2677,6 @@ impl HostedRuntime {
             .map(|record| HostedProviderDiagnostic {
                 operation_id: record.operation_id,
                 provider_type: record.raw.type_name(),
-                available: true,
             }))
     }
 }

@@ -31,6 +31,7 @@ use crate::{
         DynamicToolBinding, LocalRuntime, MemoryBinding, ModelBinding, ToolBinding,
         TypedMemoryBinding, TypedModelBinding, TypedToolBinding,
     },
+    schedule::checked_usage_sum,
 };
 
 const SNAPSHOT_VERSION: u32 = 2;
@@ -1325,25 +1326,4 @@ fn validate_snapshot(
         }
     }
     Ok(())
-}
-
-fn checked_usage_sum(
-    left: rig_core::completion::Usage,
-    right: rig_core::completion::Usage,
-) -> Option<rig_core::completion::Usage> {
-    Some(rig_core::completion::Usage {
-        input_tokens: left.input_tokens.checked_add(right.input_tokens)?,
-        output_tokens: left.output_tokens.checked_add(right.output_tokens)?,
-        total_tokens: left.total_tokens.checked_add(right.total_tokens)?,
-        cached_input_tokens: left
-            .cached_input_tokens
-            .checked_add(right.cached_input_tokens)?,
-        cache_creation_input_tokens: left
-            .cache_creation_input_tokens
-            .checked_add(right.cache_creation_input_tokens)?,
-        tool_use_prompt_tokens: left
-            .tool_use_prompt_tokens
-            .checked_add(right.tool_use_prompt_tokens)?,
-        reasoning_tokens: left.reasoning_tokens.checked_add(right.reasoning_tokens)?,
-    })
 }

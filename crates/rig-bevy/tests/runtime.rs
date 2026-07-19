@@ -2963,7 +2963,6 @@ async fn hosted_provider_diagnostic_is_typed_only_by_name_and_contains_no_conten
         .await?
         .context("hosted provider diagnostic")?;
 
-    assert!(diagnostic.available);
     assert!(diagnostic.provider_type.contains("MockResponse"));
     let rendered = format!("{diagnostic:?}");
     assert!(!rendered.contains("sensitive provider content"));
@@ -3691,6 +3690,35 @@ async fn restored_unobserved_terminal_runs_get_a_fresh_retention_lease() -> Resu
     assert!(matches!(
         restored_result.terminal_reason,
         TerminalReason::Cancelled
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn retired_tools_stop_advertising_while_references_drain() -> Result<()> {
+    let model = MockCompletionModel::new([MockTurn::text("first"), MockTurn::text("second")]);
+    let tool = CountingPortableTool::default();
+    let mut runtime = runtime()?;
+    let agent = runtime.spawn_agent(model.clone().into_bevy_agent_builder().build())?;
+    let grant = runtime.install_tool(agent, tool)?;
+
+    let _ = runtime.run(agent, "before retirement").await?;
+    let first_request = model
+        .requests()
+        .first()
+        .cloned()
+        .context("first model request")?;
+    assert_eq!(first_request.tools.len(), 1);
+
+    runtime.retire_tool(grant.grant_id)?;
+    let _ = runtime.run(agent, "after retirement").await?;
+    let second_request = model.requests().pop().context("second model request")?;
+    assert!(second_request.tools.is_empty());
+    // With no live turn referencing it, cleanup removes the retired
+    // capability entirely.
+    assert!(matches!(
+        runtime.capability_kind(grant.capability_id),
+        Err(RuntimeError::UnknownCapability(_))
     ));
     Ok(())
 }

@@ -7,7 +7,7 @@ use std::{
 
 use bevy_ecs::{
     prelude::*,
-    schedule::{ApplyDeferred, IntoScheduleConfigs, ScheduleLabel, SystemSet},
+    schedule::{IntoScheduleConfigs, ScheduleLabel, SystemSet},
 };
 use rig_core::{
     OneOrMany,
@@ -18,7 +18,7 @@ use rig_core::{
 use sha2::{Digest, Sha256};
 
 use crate::{
-    CapabilityId, CorrelationId, EffectHeader, EffectIngress, EffectIntent, EffectRejection,
+    CapabilityId, CorrelationId, EffectHeader, EffectIngress, EffectRejection,
     EffectRejectionReason, InvalidToolPolicy, OperationId, OutputMode, ResponseRetryPolicy,
     RunEvent, RunId, RuntimeConfig, StreamingMode, TerminalReason,
     components::{
@@ -32,7 +32,7 @@ use crate::{
         TerminalObservation, TerminalState, TopologyIndex, TurnCapabilitySnapshot,
     },
     effects::{
-        EffectCompletion, MemoryEffectIntent, MemoryEffectOutput, ModelEffectIntent,
+        EffectCompletion, EffectIntent, MemoryEffectIntent, MemoryEffectOutput, ModelEffectIntent,
         ToolEffectIntent,
     },
 };
@@ -71,21 +71,19 @@ pub(crate) fn build_schedule() -> Schedule {
         )
             .chain(),
     );
+    // Every system here is an exclusive `&mut World` system, so there are no
+    // deferred command queues to apply between stages; the chained tuple is
+    // the complete ordering story.
     schedule.add_systems(
         (
             advance_tick.in_set(RigSystemSet::Cancellation),
             process_cancellation.in_set(RigSystemSet::Cancellation),
-            ApplyDeferred,
             process_ingress.in_set(RigSystemSet::Ingress),
-            ApplyDeferred,
             evaluate_model_outcomes.in_set(RigSystemSet::Policy),
-            ApplyDeferred,
             dispatch_memory_effects.in_set(RigSystemSet::Dispatch),
             dispatch_model_effects.in_set(RigSystemSet::Dispatch),
             dispatch_tool_effects.in_set(RigSystemSet::Dispatch),
-            ApplyDeferred,
             commit_tool_batches.in_set(RigSystemSet::Observation),
-            ApplyDeferred,
             cleanup_terminal_runs.in_set(RigSystemSet::Cleanup),
             cleanup_retired_capabilities.in_set(RigSystemSet::Cleanup),
         )
@@ -155,6 +153,17 @@ fn set_terminal(
         "run reached terminal state"
     );
     bump_progress(world, entity);
+}
+
+fn fail_run(world: &mut World, entity: Entity, code: &str, diagnostic: impl Into<String>) {
+    set_terminal(
+        world,
+        entity,
+        TerminalReason::Failed {
+            code: code.to_string(),
+        },
+        Some(diagnostic.into()),
+    );
 }
 
 fn process_cancellation(world: &mut World) {
@@ -388,13 +397,11 @@ fn accept_completion(
                     .get::<RunAccounting>(entity)
                     .and_then(|accounting| checked_usage_sum(accounting.usage, output.usage))
                 else {
-                    set_terminal(
+                    fail_run(
                         world,
                         entity,
-                        TerminalReason::Failed {
-                            code: "usage_overflow".to_string(),
-                        },
-                        Some("provider usage exceeded the supported accounting range".to_string()),
+                        "usage_overflow",
+                        "provider usage exceeded the supported accounting range",
                     );
                     return;
                 };
@@ -430,14 +437,7 @@ fn accept_completion(
                 world
                     .entity_mut(entity)
                     .insert(TerminalCause::Model(Arc::new(error)));
-                set_terminal(
-                    world,
-                    entity,
-                    TerminalReason::Failed {
-                        code: "model_effect".to_string(),
-                    },
-                    Some(diagnostic),
-                );
+                fail_run(world, entity, "model_effect", diagnostic);
             }
         },
         EffectCompletion::Tool {
@@ -493,15 +493,13 @@ fn accept_completion(
                 };
                 match candidate_state {
                     Err(error) => {
-                        set_terminal(
+                        fail_run(
                             world,
                             entity,
-                            TerminalReason::Failed {
-                                code: "memory_history".to_string(),
-                            },
-                            Some(format!(
+                            "memory_history",
+                            format!(
                                 "conversation memory returned a non-canonical history: {error}"
-                            )),
+                            ),
                         );
                     }
                     Ok(validator) => {
@@ -545,20 +543,13 @@ fn accept_completion(
                 world
                     .entity_mut(entity)
                     .insert(TerminalCause::Memory(Arc::new(error)));
-                set_terminal(
-                    world,
-                    entity,
-                    TerminalReason::Failed {
-                        code: "memory_effect".to_string(),
-                    },
-                    Some(diagnostic),
-                );
+                fail_run(world, entity, "memory_effect", diagnostic);
             }
         },
     }
 }
 
-fn checked_usage_sum(
+pub(crate) fn checked_usage_sum(
     left: rig_core::completion::Usage,
     right: rig_core::completion::Usage,
 ) -> Option<rig_core::completion::Usage> {
@@ -605,6 +596,49 @@ fn clear_recovery_feedback(world: &mut World, entity: Entity) {
     }
 }
 
+// The one rollback contract for every model-response retry: corrective
+// feedback in, provisional raw final out, run back to ReadyModel.
+fn reset_for_model_retry(world: &mut World, entity: Entity, feedback: String) {
+    if let Some(mut messages) = world.get_mut::<RecoveryFeedback>(entity) {
+        messages.0.push(feedback);
+    }
+    world.entity_mut(entity).remove::<RawFinalRecord>();
+    if let Some(mut run) = world.get_mut::<RunNode>(entity) {
+        run.phase = RunPhase::ReadyModel;
+    }
+    publish(world, entity, RunEvent::ResponseRetried);
+    bump_progress(world, entity);
+}
+
+fn finalize_accepted_turn(world: &mut World, entity: Entity, operation_id: OperationId) {
+    mark_call_accepted(world, entity, operation_id);
+    clear_recovery_feedback(world, entity);
+    publish_provider_final(world, entity, operation_id);
+    complete_success(world, entity);
+}
+
+fn find_output_call(choice: &[AssistantContent], output_name: &str) -> Option<ToolCall> {
+    choice.iter().find_map(|content| match content {
+        AssistantContent::ToolCall(call) if call.function.name == output_name => Some(call.clone()),
+        _ => None,
+    })
+}
+
+// Structured finals never carry tool calls; the output call survives as text.
+fn structured_final_content(
+    choice: Vec<AssistantContent>,
+    output_call: Option<&ToolCall>,
+) -> Vec<AssistantContent> {
+    let mut content = choice
+        .into_iter()
+        .filter(|content| !matches!(content, AssistantContent::ToolCall(_)))
+        .collect::<Vec<_>>();
+    if let Some(call) = output_call {
+        content.push(AssistantContent::text(call.function.arguments.to_string()));
+    }
+    content
+}
+
 // Commit-time gate: the transcript must satisfy the same canonical invariants
 // `restore` enforces, so the runtime can never persist state it refuses to load.
 fn commit_assistant_turn(
@@ -638,24 +672,15 @@ fn commit_assistant_turn(
         },
     );
     if let Err(diagnostic) = outcome {
-        set_terminal(
-            world,
-            entity,
-            TerminalReason::Failed {
-                code: "canonical_transcript".to_string(),
-            },
-            Some(diagnostic),
-        );
+        fail_run(world, entity, "canonical_transcript", diagnostic);
         return false;
     }
     let Some(mut transcript) = world.get_mut::<CanonicalTranscript>(entity) else {
-        set_terminal(
+        fail_run(
             world,
             entity,
-            TerminalReason::Failed {
-                code: "canonical_transcript".to_string(),
-            },
-            Some("run has no canonical transcript to commit into".to_string()),
+            "canonical_transcript",
+            "run has no canonical transcript to commit into",
         );
         return false;
     };
@@ -730,64 +755,38 @@ fn retry_structured_output(
         if let Some(mut state) = world.get_mut::<StructuredOutputState>(entity) {
             state.retries = state.retries.saturating_add(1);
         }
-        if let Some(mut feedback) = world.get_mut::<RecoveryFeedback>(entity) {
-            feedback.0.push(
-                "The previous response did not satisfy the required JSON schema. Return a valid structured response."
-                    .to_string(),
-            );
-        }
-        world.entity_mut(entity).remove::<RawFinalRecord>();
-        if let Some(mut run) = world.get_mut::<RunNode>(entity) {
-            run.phase = RunPhase::ReadyModel;
-        }
-        publish(world, entity, RunEvent::ResponseRetried);
-        bump_progress(world, entity);
+        reset_for_model_retry(
+            world,
+            entity,
+            "The previous response did not satisfy the required JSON schema. Return a valid structured response."
+                .to_string(),
+        );
     } else if best_effort {
         // A best-effort turn is final: tool calls can never be answered after it,
         // so the schema-invalid output call is preserved as text, like the valid path.
         let output_call = world
             .get::<StructuredOutputState>(entity)
             .and_then(|state| state.output_tool_name.clone())
-            .and_then(|name| {
-                choice.iter().find_map(|content| match content {
-                    AssistantContent::ToolCall(call) if call.function.name == name => {
-                        Some(call.clone())
-                    }
-                    _ => None,
-                })
-            });
-        let mut final_content = choice
-            .into_iter()
-            .filter(|content| !matches!(content, AssistantContent::ToolCall(_)))
-            .collect::<Vec<_>>();
-        if let Some(call) = output_call {
-            final_content.push(AssistantContent::text(call.function.arguments.to_string()));
-        }
+            .and_then(|name| find_output_call(&choice, &name));
+        let final_content = structured_final_content(choice, output_call.as_ref());
         if let Some(content) = OneOrMany::from_iter_optional(final_content) {
             if commit_assistant_turn(world, entity, message_id, content, None) {
-                mark_call_accepted(world, entity, operation_id);
-                clear_recovery_feedback(world, entity);
-                publish_provider_final(world, entity, operation_id);
-                complete_success(world, entity);
+                finalize_accepted_turn(world, entity, operation_id);
             }
         } else {
-            set_terminal(
+            fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "structured_output".to_string(),
-                },
-                Some("best-effort structured output was empty".to_string()),
+                "structured_output",
+                "best-effort structured output was empty",
             );
         }
     } else {
-        set_terminal(
+        fail_run(
             world,
             entity,
-            TerminalReason::Failed {
-                code: "structured_output".to_string(),
-            },
-            Some("structured output recovery was exhausted".to_string()),
+            "structured_output",
+            "structured output recovery was exhausted",
         );
     }
 }
@@ -808,85 +807,21 @@ fn evaluate_model_outcomes(world: &mut World) {
             continue;
         };
         let Some(agent) = agent_for_run(world, &run) else {
-            set_terminal(
+            fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "unknown_agent".to_string(),
-                },
-                Some("run agent topology disappeared".to_string()),
+                "unknown_agent",
+                "run agent topology disappeared",
             );
             continue;
         };
 
-        let output_tool_name = world
+        let output_call = world
             .get::<StructuredOutputState>(entity)
-            .and_then(|state| state.output_tool_name.clone());
-        let output_call = output_tool_name.as_ref().and_then(|name| {
-            outcome.choice.iter().find_map(|content| match content {
-                AssistantContent::ToolCall(call) if &call.function.name == name => {
-                    Some(call.clone())
-                }
-                _ => None,
-            })
-        });
+            .and_then(|state| state.output_tool_name.clone())
+            .and_then(|name| find_output_call(&outcome.choice, &name));
         if let Some(output_call) = output_call {
-            for peer in outcome.choice.iter().filter_map(|content| match content {
-                AssistantContent::ToolCall(call) if call.id != output_call.id => Some(call),
-                _ => None,
-            }) {
-                publish(
-                    world,
-                    entity,
-                    RunEvent::ToolSuppressed {
-                        tool_call_id: peer.id.clone(),
-                    },
-                );
-            }
-            let valid = world
-                .get::<StructuredOutputState>(entity)
-                .is_some_and(|state| {
-                    validate_schema(&output_call.function.arguments, state.schema.as_value())
-                });
-            if valid {
-                if let Some(mut state) = world.get_mut::<StructuredOutputState>(entity) {
-                    state.value = Some(output_call.function.arguments.clone());
-                }
-                let mut final_content = outcome
-                    .choice
-                    .into_iter()
-                    .filter(|content| !matches!(content, AssistantContent::ToolCall(_)))
-                    .collect::<Vec<_>>();
-                final_content.push(AssistantContent::text(
-                    output_call.function.arguments.to_string(),
-                ));
-                let Some(final_content) = OneOrMany::from_iter_optional(final_content) else {
-                    set_terminal(
-                        world,
-                        entity,
-                        TerminalReason::Failed {
-                            code: "empty_structured_final".to_string(),
-                        },
-                        Some("structured finalization produced no canonical content".to_string()),
-                    );
-                    continue;
-                };
-                if !commit_assistant_turn(world, entity, outcome.message_id, final_content, None) {
-                    continue;
-                }
-                mark_call_accepted(world, entity, outcome.operation_id);
-                clear_recovery_feedback(world, entity);
-                publish_provider_final(world, entity, outcome.operation_id);
-                complete_success(world, entity);
-            } else {
-                retry_structured_output(
-                    world,
-                    entity,
-                    outcome.choice,
-                    outcome.message_id,
-                    outcome.operation_id,
-                );
-            }
+            handle_structured_output_call(world, entity, outcome, output_call);
             continue;
         }
 
@@ -945,55 +880,97 @@ fn evaluate_model_outcomes(world: &mut World) {
             && let ResponseRetryPolicy::RejectEmpty { max_retries } =
                 agent.spec.response_retry_policy
         {
-            let retries = world
-                .get::<ResponseRetryState>(entity)
-                .map_or(0, |state| state.0);
-            if retries < max_retries {
-                if let Some(mut state) = world.get_mut::<ResponseRetryState>(entity) {
-                    state.0 = state.0.saturating_add(1);
-                }
-                if let Some(mut feedback) = world.get_mut::<RecoveryFeedback>(entity) {
-                    feedback.0.push(
-                        "The previous response was empty. Return a substantive answer.".to_string(),
-                    );
-                }
-                world.entity_mut(entity).remove::<RawFinalRecord>();
-                if let Some(mut run) = world.get_mut::<RunNode>(entity) {
-                    run.phase = RunPhase::ReadyModel;
-                }
-                publish(world, entity, RunEvent::ResponseRetried);
-                bump_progress(world, entity);
-                continue;
-            }
-            set_terminal(
-                world,
-                entity,
-                TerminalReason::Failed {
-                    code: "response_retry_exhausted".to_string(),
-                },
-                Some("empty response retry policy was exhausted".to_string()),
-            );
+            handle_empty_response_retry(world, entity, max_retries);
             continue;
         }
 
         let Some(content) = OneOrMany::from_iter_optional(outcome.choice) else {
-            set_terminal(
+            fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "empty_choice".to_string(),
-                },
-                Some("provider returned an empty assistant choice".to_string()),
+                "empty_choice",
+                "provider returned an empty assistant choice",
             );
             continue;
         };
         if !commit_assistant_turn(world, entity, outcome.message_id, content, None) {
             continue;
         }
-        mark_call_accepted(world, entity, outcome.operation_id);
-        clear_recovery_feedback(world, entity);
-        publish_provider_final(world, entity, outcome.operation_id);
-        complete_success(world, entity);
+        finalize_accepted_turn(world, entity, outcome.operation_id);
+    }
+}
+
+fn handle_structured_output_call(
+    world: &mut World,
+    entity: Entity,
+    outcome: PendingModelOutcome,
+    output_call: ToolCall,
+) {
+    for peer in outcome.choice.iter().filter_map(|content| match content {
+        AssistantContent::ToolCall(call) if call.id != output_call.id => Some(call),
+        _ => None,
+    }) {
+        publish(
+            world,
+            entity,
+            RunEvent::ToolSuppressed {
+                tool_call_id: peer.id.clone(),
+            },
+        );
+    }
+    let valid = world
+        .get::<StructuredOutputState>(entity)
+        .is_some_and(|state| {
+            validate_schema(&output_call.function.arguments, state.schema.as_value())
+        });
+    if valid {
+        if let Some(mut state) = world.get_mut::<StructuredOutputState>(entity) {
+            state.value = Some(output_call.function.arguments.clone());
+        }
+        let final_content = structured_final_content(outcome.choice, Some(&output_call));
+        let Some(final_content) = OneOrMany::from_iter_optional(final_content) else {
+            fail_run(
+                world,
+                entity,
+                "empty_structured_final",
+                "structured finalization produced no canonical content",
+            );
+            return;
+        };
+        if commit_assistant_turn(world, entity, outcome.message_id, final_content, None) {
+            finalize_accepted_turn(world, entity, outcome.operation_id);
+        }
+    } else {
+        retry_structured_output(
+            world,
+            entity,
+            outcome.choice,
+            outcome.message_id,
+            outcome.operation_id,
+        );
+    }
+}
+
+fn handle_empty_response_retry(world: &mut World, entity: Entity, max_retries: usize) {
+    let retries = world
+        .get::<ResponseRetryState>(entity)
+        .map_or(0, |state| state.0);
+    if retries < max_retries {
+        if let Some(mut state) = world.get_mut::<ResponseRetryState>(entity) {
+            state.0 = state.0.saturating_add(1);
+        }
+        reset_for_model_retry(
+            world,
+            entity,
+            "The previous response was empty. Return a substantive answer.".to_string(),
+        );
+    } else {
+        fail_run(
+            world,
+            entity,
+            "response_retry_exhausted",
+            "empty response retry policy was exhausted",
+        );
     }
 }
 
@@ -1016,15 +993,11 @@ fn evaluate_tool_calls(
         match agent.spec.invalid_tool_policy {
             InvalidToolPolicy::Skip => {}
             InvalidToolPolicy::Fail | InvalidToolPolicy::Repair => {
-                set_terminal(
+                fail_run(
                     world,
                     entity,
-                    TerminalReason::Failed {
-                        code: "duplicate_tool_call".to_string(),
-                    },
-                    Some(format!(
-                        "model emitted duplicate tool call identity `{duplicate_id}`"
-                    )),
+                    "duplicate_tool_call",
+                    format!("model emitted duplicate tool call identity `{duplicate_id}`"),
                 );
                 return;
             }
@@ -1036,28 +1009,18 @@ fn evaluate_tool_calls(
                     if let Some(mut state) = world.get_mut::<InvalidToolRetryState>(entity) {
                         state.0 = state.0.saturating_add(1);
                     }
-                    if let Some(mut feedback) = world.get_mut::<RecoveryFeedback>(entity) {
-                        feedback.0.push(
-                            "Tool call identities must be unique. Re-issue each tool call with a distinct id."
-                                .to_string(),
-                        );
-                    }
-                    world.entity_mut(entity).remove::<RawFinalRecord>();
-                    if let Some(mut run) = world.get_mut::<RunNode>(entity) {
-                        run.phase = RunPhase::ReadyModel;
-                    }
-                    publish(world, entity, RunEvent::ResponseRetried);
-                    bump_progress(world, entity);
-                } else {
-                    set_terminal(
+                    reset_for_model_retry(
                         world,
                         entity,
-                        TerminalReason::Failed {
-                            code: "duplicate_tool_call".to_string(),
-                        },
-                        Some(format!(
-                            "duplicate tool call retry exhausted for `{duplicate_id}`"
-                        )),
+                        "Tool call identities must be unique. Re-issue each tool call with a distinct id."
+                            .to_string(),
+                    );
+                } else {
+                    fail_run(
+                        world,
+                        entity,
+                        "duplicate_tool_call",
+                        format!("duplicate tool call retry exhausted for `{duplicate_id}`"),
                     );
                 }
                 return;
@@ -1143,13 +1106,11 @@ fn evaluate_tool_calls(
     }
     if let Some(name) = invalid {
         match agent.spec.invalid_tool_policy {
-            InvalidToolPolicy::Fail | InvalidToolPolicy::Repair => set_terminal(
+            InvalidToolPolicy::Fail | InvalidToolPolicy::Repair => fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "invalid_tool".to_string(),
-                },
-                Some(format!("model requested unadvertised tool `{name}`")),
+                "invalid_tool",
+                format!("model requested unadvertised tool `{name}`"),
             ),
             InvalidToolPolicy::Retry { max_retries } => {
                 let retries = world
@@ -1159,25 +1120,19 @@ fn evaluate_tool_calls(
                     if let Some(mut state) = world.get_mut::<InvalidToolRetryState>(entity) {
                         state.0 = state.0.saturating_add(1);
                     }
-                    if let Some(mut feedback) = world.get_mut::<RecoveryFeedback>(entity) {
-                        feedback.0.push(format!(
-                            "Tool `{name}` is unavailable. Use only an advertised tool or answer without it."
-                        ));
-                    }
-                    world.entity_mut(entity).remove::<RawFinalRecord>();
-                    if let Some(mut run) = world.get_mut::<RunNode>(entity) {
-                        run.phase = RunPhase::ReadyModel;
-                    }
-                    publish(world, entity, RunEvent::ResponseRetried);
-                    bump_progress(world, entity);
-                } else {
-                    set_terminal(
+                    reset_for_model_retry(
                         world,
                         entity,
-                        TerminalReason::Failed {
-                            code: "invalid_tool_retry_exhausted".to_string(),
-                        },
-                        Some(format!("invalid tool retry exhausted for `{name}`")),
+                        format!(
+                            "Tool `{name}` is unavailable. Use only an advertised tool or answer without it."
+                        ),
+                    );
+                } else {
+                    fail_run(
+                        world,
+                        entity,
+                        "invalid_tool_retry_exhausted",
+                        format!("invalid tool retry exhausted for `{name}`"),
                     );
                 }
             }
@@ -1514,13 +1469,11 @@ fn dispatch_model_effects(world: &mut World) {
     entities.sort_by_key(|(_, run)| run.id);
     for (entity, run) in entities {
         let Some(agent) = agent_for_run(world, &run) else {
-            set_terminal(
+            fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "unknown_agent".to_string(),
-                },
-                Some("run agent topology disappeared".to_string()),
+                "unknown_agent",
+                "run agent topology disappeared",
             );
             continue;
         };
@@ -1571,13 +1524,11 @@ fn dispatch_model_effects(world: &mut World) {
             if matches!(resolved, OutputMode::Tool)
                 && (!callable || executable_tool_names.contains(&candidate))
             {
-                set_terminal(
+                fail_run(
                     world,
                     entity,
-                    TerminalReason::Failed {
-                        code: "invalid_tool_choice".to_string(),
-                    },
-                    Some(if !callable {
+                    "invalid_tool_choice",
+                    if !callable {
                         format!(
                             "the active tool choice cannot call structured-output tool `{candidate}`"
                         )
@@ -1585,7 +1536,7 @@ fn dispatch_model_effects(world: &mut World) {
                         format!(
                             "real tool `{candidate}` conflicts with the structured-output tool reserved for this run"
                         )
-                    }),
+                    },
                 );
                 continue;
             }
@@ -1628,14 +1579,7 @@ fn dispatch_model_effects(world: &mut World) {
         ) {
             Ok(allowed) => allowed,
             Err(error) => {
-                set_terminal(
-                    world,
-                    entity,
-                    TerminalReason::Failed {
-                        code: "invalid_tool_choice".to_string(),
-                    },
-                    Some(error.to_string()),
-                );
+                fail_run(world, entity, "invalid_tool_choice", error.to_string());
                 continue;
             }
         };
@@ -1661,13 +1605,11 @@ fn dispatch_model_effects(world: &mut World) {
             history.extend(feedback.0.iter().cloned().map(Message::user));
         }
         let Some(chat_history) = OneOrMany::from_iter_optional(history) else {
-            set_terminal(
+            fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "empty_history".to_string(),
-                },
-                Some("model request had no canonical messages".to_string()),
+                "empty_history",
+                "model request had no canonical messages",
             );
             continue;
         };
@@ -1822,13 +1764,11 @@ fn commit_tool_batches(world: &mut World) {
         let tool_count = batch.calls.len();
         batch.calls.sort_by_key(|call| call.order);
         let Some(assistant_content) = OneOrMany::from_iter_optional(batch.assistant_content) else {
-            set_terminal(
+            fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "empty_tool_turn".to_string(),
-                },
-                Some("tool batch had no assistant content".to_string()),
+                "empty_tool_turn",
+                "tool batch had no assistant content",
             );
             continue;
         };
@@ -1845,13 +1785,11 @@ fn commit_tool_batches(world: &mut World) {
             })
             .collect::<Vec<_>>();
         let Some(results) = OneOrMany::from_iter_optional(results) else {
-            set_terminal(
+            fail_run(
                 world,
                 entity,
-                TerminalReason::Failed {
-                    code: "missing_tool_result".to_string(),
-                },
-                Some("tool batch completed without paired results".to_string()),
+                "missing_tool_result",
+                "tool batch completed without paired results",
             );
             continue;
         };
@@ -2005,14 +1943,7 @@ pub(crate) struct RuntimeConfigResource(pub(crate) RuntimeConfig);
 pub(crate) fn fail_effect_wait(world: &mut World, run_id: RunId, error: String) {
     let entity = world.resource::<TopologyIndex>().runs.get(&run_id).copied();
     if let Some(entity) = entity {
-        set_terminal(
-            world,
-            entity,
-            TerminalReason::Failed {
-                code: "effect_wait".to_string(),
-            },
-            Some(error),
-        );
+        fail_run(world, entity, "effect_wait", error);
     }
 }
 

@@ -39,6 +39,20 @@ impl ScenarioReport {
         }
     }
 
+    fn definition_for(
+        &self,
+        observation: &'static str,
+    ) -> Result<&'static crate::scenarios::ObservationDefinition, ReportBuildError> {
+        scenario(self.scenario_id)
+            .and_then(|definition| {
+                definition
+                    .observations
+                    .iter()
+                    .find(|candidate| candidate.description == observation)
+            })
+            .ok_or(ReportBuildError::UnknownObservation { observation })
+    }
+
     /// Record one actual observation against the shared ledger expectation.
     pub fn observe<A>(
         &mut self,
@@ -48,15 +62,7 @@ impl ScenarioReport {
     where
         A: Serialize,
     {
-        let expected_json = scenario(self.scenario_id)
-            .and_then(|definition| {
-                definition
-                    .observations
-                    .iter()
-                    .find(|candidate| candidate.description == observation)
-            })
-            .ok_or(ReportBuildError::UnknownObservation { observation })?
-            .expected_json;
+        let expected_json = self.definition_for(observation)?.expected_json;
         self.assertions.push(ObservationAssertion {
             observation,
             actual: serde_json::to_value(actual).map_err(ReportBuildError::Serialization)?,
@@ -73,14 +79,7 @@ impl ScenarioReport {
         observation: &'static str,
         reason: &'static str,
     ) -> Result<(), ReportBuildError> {
-        let definition = scenario(self.scenario_id)
-            .and_then(|scenario| {
-                scenario
-                    .observations
-                    .iter()
-                    .find(|candidate| candidate.description == observation)
-            })
-            .ok_or(ReportBuildError::UnknownObservation { observation })?;
+        let definition = self.definition_for(observation)?;
         if !definition.allows_not_applicable || reason.trim().is_empty() {
             return Err(ReportBuildError::NotApplicableForbidden { observation });
         }

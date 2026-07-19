@@ -132,8 +132,6 @@ async fn hosted_surface_exposes_only_redacted_provider_diagnostics() {
             .await
             .expect("diagnostic lookup should succeed")
             .expect("provider diagnostic should exist");
-
-        assert!(diagnostic.available);
         let final_text = result.text.as_deref().expect("hosted final text");
         assert!(!format!("{diagnostic:?}").contains(final_text));
     })

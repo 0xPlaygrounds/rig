@@ -14,9 +14,10 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::effects::EffectIntent;
 use crate::{
-    AgentId, AgentSpec, CapabilityId, EffectHeader, EffectIntent, EffectRejection, Generation,
-    GrantId, MemoryId, ModelId, OperationId, RunId, RuntimeId, StreamingMode, TenantId,
+    AgentId, AgentSpec, CapabilityId, EffectHeader, EffectRejection, Generation, GrantId, MemoryId,
+    ModelId, OperationId, RunId, RuntimeId, StreamingMode, TenantId,
 };
 
 /// Agent specification entity stored in the authoritative world.
