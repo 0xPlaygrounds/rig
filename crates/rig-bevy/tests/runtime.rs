@@ -29,14 +29,17 @@ use rig_core::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
         Message, Usage,
     },
-    message::ToolChoice,
+    message::{ToolChoice, UserContent},
     streaming::StreamingCompletionResponse,
     test_utils::{CountingMemory, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
     tool::{PortableDynamicTool, PortableTool, ToolOutput},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
 };
-use rig_runtime_conformance::CountingPortableTool;
+use rig_runtime_conformance::{
+    CountingPortableTool, PortableEmbeddingFixture, portable_dynamic_fixture,
+    portable_fixture_output,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
@@ -362,6 +365,120 @@ async fn portable_tool_effect_commits_call_and_result_before_continuation() -> R
         result.transcript.get(2),
         Some(Message::User { .. })
     ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn portable_embedding_and_dynamic_tools_preserve_rich_outputs_in_bevy() -> Result<()> {
+    let embedding_name = <PortableEmbeddingFixture as PortableTool>::NAME;
+    let embedding_model = MockCompletionModel::new([
+        MockTurn::tool_call(
+            "embedding-success",
+            embedding_name,
+            serde_json::json!({"value": "ok"}),
+        ),
+        MockTurn::tool_call(
+            "embedding-failure",
+            embedding_name,
+            serde_json::json!({"value": "ignored", "fail": true}),
+        ),
+        MockTurn::text("embedding done"),
+    ]);
+    let embedding_tool = PortableEmbeddingFixture::new("shared");
+    let portable_schema = rig_core::embeddings::ToolSchema::try_from(&embedding_tool)?;
+    let mut embedding_runtime = runtime()?;
+    let embedding_agent =
+        embedding_runtime.spawn_agent(embedding_model.clone().into_bevy_agent_builder().build())?;
+    embedding_runtime.install_tool(embedding_agent, embedding_tool)?;
+
+    let embedding_result = embedding_runtime
+        .run(embedding_agent, "use portable embedding tool twice")
+        .await?;
+    let first_request = embedding_model
+        .requests()
+        .into_iter()
+        .next()
+        .context("embedding model request")?;
+    let definition = first_request
+        .tools
+        .iter()
+        .find(|definition| definition.name == portable_schema.name)
+        .context("portable embedding definition")?;
+    assert_eq!(definition.description, "shared portable embedding fixture");
+    assert_eq!(
+        definition.parameters,
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "value": {"type": "string"},
+                "fail": {"type": "boolean"}
+            },
+            "required": ["value"]
+        })
+    );
+
+    let embedding_outputs = embedding_result
+        .transcript
+        .iter()
+        .filter_map(|message| match message {
+            Message::User { content } => content.iter().find_map(|content| match content {
+                UserContent::ToolResult(result) => {
+                    Some(ToolOutput::content(result.content.clone()))
+                }
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        embedding_outputs,
+        [
+            portable_fixture_output("shared:ok"),
+            portable_fixture_output("portable failure")
+        ]
+    );
+
+    let dynamic = portable_dynamic_fixture();
+    let dynamic_model = MockCompletionModel::new([
+        MockTurn::tool_call(
+            "dynamic-success",
+            "portable_runtime_name",
+            serde_json::json!({"value": "ok"}),
+        ),
+        MockTurn::tool_call(
+            "dynamic-failure",
+            "portable_runtime_name",
+            serde_json::json!({"value": "ignored", "fail": true}),
+        ),
+        MockTurn::text("dynamic done"),
+    ]);
+    let mut dynamic_runtime = runtime()?;
+    let dynamic_agent =
+        dynamic_runtime.spawn_agent(dynamic_model.into_bevy_agent_builder().build())?;
+    dynamic_runtime.install_dynamic_tool(dynamic_agent, dynamic)?;
+    let dynamic_result = dynamic_runtime
+        .run(dynamic_agent, "use dynamic tool")
+        .await?;
+    let dynamic_outputs = dynamic_result
+        .transcript
+        .iter()
+        .filter_map(|message| match message {
+            Message::User { content } => content.iter().find_map(|content| match content {
+                UserContent::ToolResult(result) => {
+                    Some(ToolOutput::content(result.content.clone()))
+                }
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        dynamic_outputs,
+        [
+            portable_fixture_output("dynamic:ok"),
+            portable_fixture_output("portable dynamic failure")
+        ]
+    );
     Ok(())
 }
 

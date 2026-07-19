@@ -27,8 +27,10 @@ rig = { version = "0.40", default-features = false, features = ["agent", "rustls
 rig = { version = "0.40", default-features = false, features = ["bevy", "rustls"] }
 ```
 
-The default `rig::prelude` is portable core plus classic runtime. Bevy is never
-added to it; use `rig::bevy::prelude::*` deliberately.
+The default `rig::prelude` keeps the portable core names and adds non-colliding
+classic conveniences. In particular, `rig::prelude::Tool` is always the
+portable trait. Bevy is never added to this prelude; use
+`rig::bevy::prelude::*` deliberately.
 
 ## Owner changes
 
@@ -42,9 +44,11 @@ added to it; use `rig::bevy::prelude::*` deliberately.
 | Canonical messages, completion/provider contracts, raw provider responses, portable tools, memory/store traits | `rig-core` |
 | ECS entities, schedules, policies, effects, local/hosted handles and protected domain snapshots | `rig-bevy` |
 
-The root facade preserves common classic paths when its `agent` feature is
-enabled. Direct `rig-core` users must import only portable contracts; core no
-longer re-exports agent progression.
+The root facade keeps portable contracts at stable paths regardless of feature
+unification. `rig::tool` is always portable; enabling `agent` adds the classic
+runtime under `rig::agent`, including contextual tools at
+`rig::agent::tool`. Direct `rig-core` users import only portable contracts;
+core no longer re-exports agent progression.
 
 ## Runtime construction
 
@@ -77,11 +81,14 @@ let result = runtime.run(agent, "Hello").await?;
 
 Portable tools implement `rig_core::tool::Tool` (also named `PortableTool`).
 They receive owned typed arguments and have no access to classic mutable
-context or an ECS world. Both runtimes can execute them.
+context or an ECS world. The root facade exposes the same trait as
+`rig::tool::Tool` and `rig::prelude::Tool` in every feature combination. Both
+runtimes can execute it.
 
 Classic contextual tools implement `rig_agent::tool::Tool` and receive
 `&mut rig_agent::tool::ToolContext`. They can use the classic per-run type map
-and host-only result metadata, but cannot be installed in `rig-bevy`.
+and host-only result metadata, but cannot be installed in `rig-bevy`. Through
+the root facade, use `rig::agent::tool::{Tool, ToolContext}`.
 
 `#[rig_tool]` chooses the boundary from the function signature:
 

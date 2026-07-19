@@ -63,14 +63,18 @@ impl CompletionOperation {
     }
 }
 
-/// Core-owned marker target for a runtime span that may absorb provider completion fields.
-pub const COMPLETION_PARENT_SPAN_TARGET: &str = "rig::completion_parent";
+/// Core-owned marker field for a runtime span that may absorb provider completion fields.
+///
+/// Runtimes declare this field on their completion-parent spans without having
+/// to share a tracing target. The field's presence is the marker; its value is
+/// intentionally ignored by [`CompletionSpanBuilder`].
+pub const COMPLETION_PARENT_MARKER_FIELD: &str = "rig.completion_parent";
 
 /// Builder for a canonical GenAI completion span.
 ///
-/// Runtime spans using [`COMPLETION_PARENT_SPAN_TARGET`] are enriched and reused
-/// so one model turn has exactly one model span. Other ambient spans remain
-/// parents of a newly created `rig::completions` span.
+/// Runtime spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] are enriched and
+/// reused so one model turn has exactly one model span. Other ambient spans
+/// remain parents of a newly created `rig::completions` span.
 pub struct CompletionSpanBuilder<'a> {
     provider: &'a str,
     request_model: &'a str,
@@ -103,10 +107,12 @@ impl<'a> CompletionSpanBuilder<'a> {
     /// Build a canonical completion span or enrich Rig's current completion-parent span.
     pub fn build(self) -> tracing::Span {
         let current = tracing::Span::current();
-        if current
-            .metadata()
-            .is_some_and(|metadata| metadata.target() == COMPLETION_PARENT_SPAN_TARGET)
-        {
+        if current.metadata().is_some_and(|metadata| {
+            metadata
+                .fields()
+                .field(COMPLETION_PARENT_MARKER_FIELD)
+                .is_some()
+        }) {
             current.record("gen_ai.operation.name", self.operation.as_str());
             current.record("gen_ai.provider.name", self.provider);
             current.record("gen_ai.request.model", self.request_model);
@@ -838,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_parent_span_is_adopted_and_enriched() {
+    fn agent_chat_span_is_adopted_and_enriched() {
         let captured = CapturedSpan::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
             span: captured.clone(),
@@ -846,8 +852,9 @@ mod tests {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
             let completion_parent = tracing::info_span!(
-                target: "rig::completion_parent",
+                target: "rig::agent_chat",
                 "chat_streaming",
+                rig.completion_parent = true,
                 gen_ai.operation.name = tracing::field::Empty,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
@@ -870,6 +877,7 @@ mod tests {
         let Some(span) = captured.as_ref() else {
             panic!("completion-parent span was not captured");
         };
+        assert_eq!(span.target, "rig::agent_chat");
         for (field, value) in [
             ("gen_ai.operation.name", "chat_streaming"),
             ("gen_ai.provider.name", "anthropic"),
@@ -884,6 +892,48 @@ mod tests {
     }
 
     #[test]
+    fn neutral_completion_parent_span_is_adopted_and_enriched() {
+        let captured = CapturedSpan::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            span: captured.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(subscriber, || {
+            let completion_parent = tracing::info_span!(
+                target: "test_runtime",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+                gen_ai.provider.name = tracing::field::Empty,
+                gen_ai.request.model = tracing::field::Empty,
+            );
+            let _guard = completion_parent.enter();
+            let span = CompletionSpanBuilder::new(
+                "neutral-provider",
+                "neutral-model",
+                CompletionOperation::Chat,
+            )
+            .build();
+            assert_eq!(span.id(), completion_parent.id());
+        });
+
+        let Ok(captured) = captured.0.lock() else {
+            panic!("captured span lock poisoned");
+        };
+        let Some(span) = captured.as_ref() else {
+            panic!("neutral completion-parent span was not captured");
+        };
+        assert_eq!(span.target, "test_runtime");
+        for (field, value) in [
+            ("gen_ai.operation.name", "chat"),
+            ("gen_ai.provider.name", "neutral-provider"),
+            ("gen_ai.request.model", "neutral-model"),
+        ] {
+            assert!(contains_string(&span.recorded_values, field, value));
+        }
+    }
+
+    #[test]
     fn absent_provider_system_does_not_overwrite_agent_instructions() {
         let captured = CapturedSpan::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
@@ -892,8 +942,9 @@ mod tests {
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
             let completion_parent = tracing::info_span!(
-                target: "rig::completion_parent",
+                target: "test_runtime",
                 "chat",
+                rig.completion_parent = true,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.system_instructions = "effective agent instructions",

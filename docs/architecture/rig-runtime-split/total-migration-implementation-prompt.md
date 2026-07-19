@@ -334,7 +334,9 @@ candidates.
 - Keep classic behavior in the root default feature set.
 - Keep Bevy opt-in, namespaced under `rig::bevy`, and absent from the default
   prelude.
-- `rig::prelude` combines the portable core prelude with the classic prelude.
+- `rig::prelude` keeps the portable core identities and deliberately adds only
+  non-colliding classic conveniences; contextual tools remain explicit under
+  `rig::agent::tool`.
 - `rig::bevy::prelude` exposes Bevy construction and common ECS runtime types.
 - Prefer deliberate re-exports over the current undifferentiated core glob.
 - Root `rig` may temporarily preserve useful classic paths. `rig-core` may not

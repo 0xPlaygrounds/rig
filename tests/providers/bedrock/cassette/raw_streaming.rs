@@ -72,7 +72,7 @@ async fn raw_stream_emits_tool_call_before_text() {
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["lookup_harbor_label".to_string()],
                 })

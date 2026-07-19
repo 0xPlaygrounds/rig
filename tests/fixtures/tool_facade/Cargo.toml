@@ -1,0 +1,64 @@
+[package]
+name = "rig-tool-facade-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+rig = { path = "../../..", default-features = false }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.150"
+
+[features]
+default = ["agent", "derive", "reqwest", "rustls"]
+agent = ["rig/agent"]
+bevy = ["rig/bevy"]
+derive = ["rig/derive"]
+reqwest = ["rig/reqwest"]
+rustls = ["rig/rustls"]
+all_root = [
+    "rig/agent",
+    "rig/bevy",
+    "rig/test-utils",
+    "rig/bedrock",
+    "rig/candle",
+    "rig/fastembed",
+    "rig/fastembed-hf-hub",
+    "rig/fastembed-ort-download-binaries",
+    "rig/gemini-grpc",
+    "rig/helixdb",
+    "rig/lancedb",
+    "rig/memory",
+    "rig/milvus",
+    "rig/mongodb",
+    "rig/neo4j",
+    "rig/postgres",
+    "rig/qdrant",
+    "rig/s3vectors",
+    "rig/scylladb",
+    "rig/sqlite",
+    "rig/surrealdb",
+    "rig/vectorize",
+    "rig/vertexai",
+    "rig/audio",
+    "rig/image",
+    "rig/derive",
+    "rig/discord-bot",
+    "rig/pdf",
+    "rig/epub",
+    "rig/rayon",
+    "rig/wasm",
+    "rig/rmcp",
+    "rig/socks",
+    "rig/reqwest",
+    "rig/websocket",
+    "rig/websocket-rustls",
+    "rig/websocket-native-tls",
+    "rig/rustls",
+    "rig/native-tls",
+    "rig/reqwest-middleware",
+    "rig/reqwest-middleware-rustls",
+    "rig/reqwest-middleware-native-tls",
+]

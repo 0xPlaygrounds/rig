@@ -3,10 +3,10 @@ use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
+    agent::tool::Tool,
     agent::{Agent, AgentBuilder},
     completion::{Chat, CompletionModel, Message},
     providers::openai::Client as OpenAIClient,
-    tool::Tool,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -51,7 +51,7 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let mut empty_history = Vec::<Message>::new();

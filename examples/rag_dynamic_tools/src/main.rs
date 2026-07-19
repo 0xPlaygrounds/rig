@@ -2,10 +2,10 @@ use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
+    agent::tool::{Tool, ToolEmbedding, ToolSet},
     completion::Prompt,
     embeddings::EmbeddingsBuilder,
     providers::openai::Client,
-    tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,7 @@ impl Tool for Add {
     }
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
@@ -103,7 +103,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;

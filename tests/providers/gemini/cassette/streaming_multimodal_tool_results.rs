@@ -3,6 +3,7 @@
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
+use rig::agent::tool::{Tool, ToolOutput};
 use rig::client::AgentClientExt;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
@@ -12,7 +13,6 @@ use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
 use rig::streaming::StreamingPrompt;
-use rig::tool::{Tool, ToolOutput};
 use serde_json::json;
 
 use crate::support::assert_nonempty_response;
@@ -52,7 +52,7 @@ impl Tool for HybridImageTool {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let mut content = OneOrMany::one(ToolResultContent::json(json!({

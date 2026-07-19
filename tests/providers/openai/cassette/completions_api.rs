@@ -158,8 +158,8 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
+                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+                .tool(rig::agent::tool::tool_definition(&BetaSignal))
                 .build();
 
             let observation = collect_raw_stream_observation(
@@ -215,7 +215,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let first_turn = collect_raw_stream_observation(

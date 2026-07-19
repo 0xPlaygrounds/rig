@@ -30,11 +30,11 @@
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+use rig::agent::tool::{Tool, ToolSet};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -74,7 +74,7 @@ impl Tool for GetBalance {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         println!("   💰 [get_balance] -> {}", args.account);
@@ -113,7 +113,7 @@ impl Tool for TransferFunds {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         // A real implementation would move money here.
@@ -232,7 +232,7 @@ async fn main() -> Result<()> {
                     {
                         Some("a") | Some("approve") => {
                             let execution = tools
-                                .execute(&name, args, &mut rig::tool::ToolContext::new())
+                                .execute(&name, args, &mut rig::agent::tool::ToolContext::new())
                                 .await;
                             results.push(UserContent::tool_result(
                                 id,
@@ -250,7 +250,7 @@ async fn main() -> Result<()> {
                                         .execute(
                                             &name,
                                             value.to_string(),
-                                            &mut rig::tool::ToolContext::new(),
+                                            &mut rig::agent::tool::ToolContext::new(),
                                         )
                                         .await;
                                     results.push(UserContent::tool_result(

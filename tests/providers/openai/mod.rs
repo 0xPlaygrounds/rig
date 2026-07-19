@@ -38,6 +38,7 @@ mod live {
     mod gpt_5_5;
     #[cfg(feature = "image")]
     mod image_generation;
+    mod streaming_tools_reasoning;
     mod transcription;
     #[cfg(feature = "websocket")]
     mod websocket;

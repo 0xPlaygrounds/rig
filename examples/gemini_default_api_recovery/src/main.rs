@@ -5,6 +5,7 @@
 //! seeing the recoverable legacy tool-name emission.
 
 use futures::StreamExt;
+use rig::agent::tool::Tool;
 use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
@@ -16,7 +17,6 @@ use rig::providers::gemini::{
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
-use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -116,7 +116,7 @@ impl Tool for JavaScript {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(ExecutorResponse::ok(json!({

@@ -15,8 +15,9 @@ layer plus two independent runtimes:
   orchestration, extraction, and agent telemetry;
 - `rig-bevy` owns a Bevy ECS-native runtime: components, relationships,
   schedules, systems, effects, policies, persistence, and runtime handles;
-- `rig` remains the facade. Its default prelude selects the classic runtime;
-  Bevy APIs live under `rig::bevy` and `rig::bevy::prelude`.
+- `rig` remains the facade. Its default prelude adds classic runtime
+  conveniences without replacing portable contract identities; Bevy APIs live
+  under `rig::bevy` and `rig::bevy::prelude`.
 
 The topology alone is insufficient. The two runtimes must share behavioral
 specifications and conformance fixtures, not a common orchestration state

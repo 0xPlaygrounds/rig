@@ -22,11 +22,11 @@
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
+use rig::agent::tool::Tool;
 use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Usage;
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
-use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::{self, Write};
@@ -68,7 +68,7 @@ impl Tool for ProjectStatusTool {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(format!(

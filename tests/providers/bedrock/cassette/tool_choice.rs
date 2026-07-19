@@ -1,11 +1,11 @@
 //! AWS Bedrock tool-choice cassette coverage ported from Gemini tests.
 
+use rig::agent::tool::Tool;
 use rig::bedrock;
 use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
 use rig::message::ToolChoice;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -57,7 +57,7 @@ async fn required_forces_function_call() {
             let request = model
                 .completion_request("Use the add tool to calculate 20 + 22.")
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::agent::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -98,8 +98,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::agent::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .send()
                 .await
@@ -150,8 +150,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::agent::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .build();
             let stream = model.stream(request).await.expect("stream should start");

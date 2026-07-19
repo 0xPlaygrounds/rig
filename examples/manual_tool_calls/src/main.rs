@@ -11,11 +11,11 @@
 
 use anyhow::{Result, bail};
 use rig::OneOrMany;
+use rig::agent::tool::{Tool, ToolOutput, ToolSet};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::providers::openai;
-use rig::tool::{Tool, ToolOutput, ToolSet};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -55,7 +55,7 @@ impl Tool for Add {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
@@ -88,7 +88,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
@@ -188,7 +188,7 @@ async fn main() -> Result<()> {
                 .execute(
                     &tool_call.function.name,
                     args.clone(),
-                    &mut rig::tool::ToolContext::new(),
+                    &mut rig::agent::tool::ToolContext::new(),
                 )
                 .await;
             let output = result.output().clone();

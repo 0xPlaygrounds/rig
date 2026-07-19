@@ -1,12 +1,12 @@
 //! Anthropic streaming tools smoke test.
 
 use futures::StreamExt;
+use rig::agent::tool::Tool;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::client::AgentClientExt;
 use rig::message::{Message, UserContent};
 use rig::providers::anthropic;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
-use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -215,7 +215,7 @@ impl Tool for OutOfOrderAlphaSignal {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
@@ -242,7 +242,7 @@ impl Tool for OutOfOrderBetaSignal {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;

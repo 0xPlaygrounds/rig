@@ -12,8 +12,8 @@ use crate::tool::ErasedTool;
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{
-        DynamicTool, RegisteredTool, Tool, ToolContext, ToolDispatch, ToolResult, ToolSet,
-        dispatch_tool,
+        DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolContext, ToolDispatch,
+        ToolResult, ToolSet, dispatch_tool,
     },
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
@@ -169,6 +169,12 @@ impl ToolServer {
         self
     }
 
+    /// Add a context-free dynamic tool through the classic registry adapter.
+    pub fn portable_dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
+        self.toolset.add_portable_dynamic_tool(tool);
+        self
+    }
+
     /// Add an MCP tool (from `rmcp`) to the agent, bounded by
     /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
@@ -246,6 +252,14 @@ impl ToolServerHandle {
     pub async fn add_dynamic_tool(&self, tool: DynamicTool) {
         let mut state = self.0.write().await;
         let _name = state.toolset.add_dynamic_tool(tool);
+        #[cfg(feature = "rmcp")]
+        state.managed_generations.remove(&_name);
+    }
+
+    /// Register a context-free dynamic tool through the classic adapter.
+    pub async fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
+        let mut state = self.0.write().await;
+        let _name = state.toolset.add_portable_dynamic_tool(tool);
         #[cfg(feature = "rmcp")]
         state.managed_generations.remove(&_name);
     }

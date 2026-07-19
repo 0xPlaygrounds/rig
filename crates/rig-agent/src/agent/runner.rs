@@ -88,11 +88,12 @@ macro_rules! build_chat_span {
             $runner.record_telemetry_content,
         );
         ::tracing::info_span!(
-            // This literal mirrors rig-core's portable
-            // `telemetry::COMPLETION_PARENT_SPAN_TARGET` marker.
-            target: "rig::completion_parent",
+            target: "rig::agent_chat",
             parent: ::tracing::Span::current(),
             $name,
+            // This literal mirrors rig-core's portable
+            // `telemetry::COMPLETION_PARENT_MARKER_FIELD` contract.
+            rig.completion_parent = true,
             gen_ai.operation.name = $operation,
             gen_ai.agent.name = $runner.agent_name_or_default(),
             gen_ai.system_instructions = system_instructions.as_deref(),
@@ -3317,9 +3318,16 @@ mod migrated_tests {
         use crate::agent::{
             AgentBuilder, HookContext, MultiTurnStreamItem, ToolResultAction, ToolResultEvent,
         };
-        use crate::completion::{PromptError, Usage};
+        use crate::completion::{
+            CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Prompt,
+            PromptError, Usage,
+        };
         use crate::streaming::StreamedAssistantContent;
-        use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
+        use crate::streaming::StreamingCompletionResponse;
+        use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+        use crate::test_utils::{
+            MockAddTool, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn,
+        };
         use crate::tool::{ToolContext, ToolExecutionError};
 
         use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
@@ -3328,6 +3336,7 @@ mod migrated_tests {
         struct CapturedSpan {
             id: u64,
             name: String,
+            target: String,
             field_names: HashSet<String>,
             u64_fields: HashMap<String, u64>,
             string_fields: HashMap<String, Vec<String>>,
@@ -3341,10 +3350,11 @@ mod migrated_tests {
         }
 
         impl Captured {
-            fn insert(&self, id: &Id, name: &str) {
+            fn insert(&self, id: &Id, name: &str, target: &str) {
                 self.spans.lock().expect("spans").push(CapturedSpan {
                     id: id.into_u64(),
                     name: name.to_string(),
+                    target: target.to_string(),
                     field_names: HashSet::new(),
                     u64_fields: HashMap::new(),
                     string_fields: HashMap::new(),
@@ -3400,7 +3410,8 @@ mod migrated_tests {
             S: Subscriber + for<'l> LookupSpan<'l>,
         {
             fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
-                self.captured.insert(id, attrs.metadata().name());
+                self.captured
+                    .insert(id, attrs.metadata().name(), attrs.metadata().target());
             }
 
             fn on_record(&self, span: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
@@ -3457,6 +3468,50 @@ mod migrated_tests {
                     .with_usage(usage(7, 11)),
                 MockTurn::text("the answer is 5").with_usage(usage(13, 17)),
             ])
+        }
+
+        #[derive(Clone)]
+        struct CompletionTelemetryModel {
+            inner: MockCompletionModel,
+        }
+
+        impl CompletionModel for CompletionTelemetryModel {
+            type Response = MockResponse;
+            type StreamingResponse = MockResponse;
+            type Client = ();
+
+            fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
+                Self {
+                    inner: MockCompletionModel::default(),
+                }
+            }
+
+            async fn completion(
+                &self,
+                request: CompletionRequest,
+            ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+                let span = CompletionSpanBuilder::new(
+                    "fixture-provider",
+                    "fixture-model",
+                    CompletionOperation::Chat,
+                )
+                .build();
+                self.inner.completion(request).instrument(span).await
+            }
+
+            async fn stream(
+                &self,
+                request: CompletionRequest,
+            ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+            {
+                let span = CompletionSpanBuilder::new(
+                    "fixture-provider",
+                    "fixture-model",
+                    CompletionOperation::ChatStreaming,
+                )
+                .build();
+                self.inner.stream(request).instrument(span).await
+            }
         }
 
         /// Register the blocking driver's span callsites against the scoped
@@ -3613,6 +3668,11 @@ mod migrated_tests {
                 .collect::<Vec<_>>();
             assert_eq!(blocking_chats.len(), 2);
             assert!(
+                blocking_chats
+                    .iter()
+                    .all(|span| span.target == "rig::agent_chat")
+            );
+            assert!(
                 !blocking_chats[0]
                     .field_names
                     .contains("gen_ai.output.messages"),
@@ -3653,6 +3713,11 @@ mod migrated_tests {
                 .filter(|span| span.name == "chat_streaming")
                 .collect::<Vec<_>>();
             assert_eq!(streaming_chats.len(), 2);
+            assert!(
+                streaming_chats
+                    .iter()
+                    .all(|span| span.target == "rig::agent_chat")
+            );
             assert!(
                 !streaming_chats[0]
                     .field_names
@@ -3807,6 +3872,59 @@ mod migrated_tests {
             assert!(
                 edges.contains(&(chat_spans[1].id, tool_span.id)),
                 "the second chat span should follow_from execute_tool; edges={edges:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn classic_completion_parent_is_enriched_without_duplicate_provider_span() {
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+            let captured = Captured::default();
+            let subscriber = Registry::default().with(CaptureLayer {
+                captured: captured.clone(),
+            });
+            let _default = tracing::subscriber::set_default(subscriber);
+
+            let warm = AgentBuilder::new(CompletionTelemetryModel {
+                inner: MockCompletionModel::text("warm"),
+            })
+            .build();
+            let _ = warm.prompt("warm").await;
+            tracing::callsite::rebuild_interest_cache();
+            captured.clear();
+
+            let agent = AgentBuilder::new(CompletionTelemetryModel {
+                inner: MockCompletionModel::text("done"),
+            })
+            .build();
+            let response = agent.prompt("hello").await.expect("prompt should succeed");
+            assert_eq!(response, "done");
+
+            let spans = captured.snapshot();
+            let chat_spans = spans
+                .iter()
+                .filter(|span| span.name == "chat")
+                .collect::<Vec<_>>();
+            assert_eq!(chat_spans.len(), 1, "provider telemetry must reuse chat");
+            assert_eq!(chat_spans[0].target, "rig::agent_chat");
+            assert!(
+                spans.iter().all(|span| span.target != "rig::completions"),
+                "an adopted classic completion parent must not gain a provider child"
+            );
+            assert_eq!(
+                chat_spans[0]
+                    .string_fields
+                    .get("gen_ai.provider.name")
+                    .and_then(|values| values.first())
+                    .map(String::as_str),
+                Some("fixture-provider")
+            );
+            assert_eq!(
+                chat_spans[0]
+                    .string_fields
+                    .get("gen_ai.request.model")
+                    .and_then(|values| values.first())
+                    .map(String::as_str),
+                Some("fixture-model")
             );
         }
 

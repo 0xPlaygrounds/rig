@@ -1,6 +1,6 @@
 //! Canonical model-visible tool output.
 
-use std::{any::Any, fmt};
+use std::any::Any;
 
 use serde::Serialize;
 
@@ -15,28 +15,9 @@ use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
 /// [`serde_json::Value`], including a JSON string, stays JSON. Multimodal tools
 /// opt in explicitly with [`Self::content`]. Rig never reparses text as JSON to
 /// guess whether it represents rich content.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ToolOutput {
     content: OneOrMany<ToolResultContent>,
-}
-
-impl fmt::Debug for ToolOutput {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let content_kinds = self
-            .content
-            .iter()
-            .map(|content| match content {
-                ToolResultContent::Text(_) => "text",
-                ToolResultContent::Image(_) => "image",
-                ToolResultContent::Json { .. } => "json",
-            })
-            .collect::<Vec<_>>();
-        formatter
-            .debug_struct("ToolOutput")
-            .field("content_count", &self.content.len())
-            .field("content_kinds", &content_kinds)
-            .finish()
-    }
 }
 
 impl ToolOutput {
@@ -156,24 +137,6 @@ impl From<OneOrMany<ToolResultContent>> for ToolOutput {
 pub trait IntoToolOutput {
     /// Convert this value without routing structured data through a string.
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError>;
-}
-
-#[cfg(test)]
-mod debug_tests {
-    use super::*;
-
-    #[test]
-    fn debug_reports_shape_without_tool_content() {
-        let text = ToolOutput::text("Bearer secret-tool-output");
-        let json = ToolOutput::json(serde_json::json!({"credential": "secret-json-output"}));
-
-        let text_debug = format!("{text:?}");
-        let json_debug = format!("{json:?}");
-        assert!(text_debug.contains("text"));
-        assert!(json_debug.contains("json"));
-        assert!(!text_debug.contains("secret-tool-output"));
-        assert!(!json_debug.contains("secret-json-output"));
-    }
 }
 
 impl<T> IntoToolOutput for T

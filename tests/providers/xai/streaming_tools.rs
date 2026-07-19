@@ -1,13 +1,13 @@
 //! xAI streaming tools smoke test.
 
 use rig::OneOrMany;
+use rig::agent::tool::Tool;
 use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message};
 use rig::providers::xai;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -56,7 +56,7 @@ impl Tool for StatusWordTool {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(XAI_STATUS_TOOL_OUTPUT.to_string())
@@ -118,7 +118,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let request = model
                 .completion_request(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&StatusWordTool))
+                .tool(rig::agent::tool::tool_definition(&StatusWordTool))
                 .build();
 
             let first_turn = collect_raw_stream_observation(

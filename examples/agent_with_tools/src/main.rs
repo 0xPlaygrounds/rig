@@ -3,10 +3,10 @@
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
 use anyhow::Result;
+use rig::agent::tool::{DynamicTool, ToolOutput};
 use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
-use rig::tool::{DynamicTool, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
 

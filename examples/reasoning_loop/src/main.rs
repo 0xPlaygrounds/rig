@@ -1,11 +1,11 @@
 use rig::prelude::*;
 use rig::{
     agent::Agent,
+    agent::tool::Tool,
     completion::{CompletionError, CompletionModel, Prompt, PromptError},
     extractor::Extractor,
     message::Message,
     providers::anthropic,
-    tool::Tool,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -148,7 +148,7 @@ impl Tool for Add {
     }
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
@@ -184,7 +184,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
@@ -222,7 +222,7 @@ impl Tool for Multiply {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
@@ -260,7 +260,7 @@ impl Tool for Divide {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;

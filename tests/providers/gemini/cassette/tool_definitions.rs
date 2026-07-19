@@ -5,10 +5,10 @@
 //! changes (e.g. swapping the handrolled definitions for rmcp-derived ones),
 //! replay fails with a body mismatch.
 
+use rig::agent::tool::Tool;
 use rig::client::AgentClientExt;
 use rig::completion::{Chat, Message};
 use rig::providers::gemini;
-use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -74,7 +74,7 @@ impl Tool for PlanTrip {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(format!(
@@ -119,7 +119,7 @@ impl Tool for LegacyEcho {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(format!("legacy:{}", args.text))
@@ -151,7 +151,7 @@ impl Tool for ModernEcho {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(format!("modern:{}", args.text))

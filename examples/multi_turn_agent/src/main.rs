@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::{completion::Prompt, providers::anthropic, tool::Tool};
+use rig::{agent::tool::Tool, completion::Prompt, providers::anthropic};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -90,7 +90,7 @@ impl Tool for Add {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
@@ -129,7 +129,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
@@ -168,7 +168,7 @@ impl Tool for Multiply {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
@@ -207,7 +207,7 @@ impl Tool for Divide {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;

@@ -42,6 +42,11 @@ pub mod core {
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod agent {
     pub use rig_agent::agent::*;
+
+    /// Contextual tools for the classic agent runtime.
+    pub mod tool {
+        pub use rig_agent::tool::*;
+    }
 }
 
 /// Experimental native-only ECS runtime.
@@ -81,13 +86,16 @@ pub mod integrations {
     pub use rig_agent::integrations::*;
 }
 
-/// Common classic-runtime imports.
+/// Common portable imports plus additive classic-runtime conveniences.
 pub mod prelude {
     #[cfg(feature = "derive")]
     pub use crate::Embed;
     #[cfg(feature = "agent")]
-    pub use rig_agent::prelude::*;
-    #[cfg(not(feature = "agent"))]
+    pub use rig_agent::prelude::{
+        Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
+        StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
+        TypedPrompt,
+    };
     pub use rig_core::prelude::*;
 }
 
@@ -98,16 +106,13 @@ pub mod streaming {
     pub use rig_core::streaming::*;
 }
 
-/// Contextual classic tools and explicitly named portable tool contracts.
+/// Portable, context-free tool contracts.
+///
+/// This module has the same public identities in every feature combination.
+/// Contextual classic tools are available from [`crate::agent::tool`] when the
+/// `agent` feature is enabled.
 pub mod tool {
-    #[cfg(feature = "agent")]
-    pub use rig_agent::tool::*;
-    #[cfg(not(feature = "agent"))]
     pub use rig_core::tool::*;
-    #[cfg(feature = "agent")]
-    pub use rig_core::tool::{
-        PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
-    };
 }
 
 #[cfg(all(feature = "agent", any(test, feature = "test-utils")))]

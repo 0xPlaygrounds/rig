@@ -44,4 +44,6 @@ mod cassette {
     mod transcription;
 }
 
-mod live {}
+mod live {
+    mod image_tool_result;
+}

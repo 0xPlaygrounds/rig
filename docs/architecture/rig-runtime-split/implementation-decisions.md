@@ -75,9 +75,11 @@ WASM bounds or their 1.94.0 baseline.
 
 The root facade adds optional `agent` and `bevy` dependencies/features. Default
 features select `agent`; `bevy` is opt-in and namespaced. The default prelude
-combines core contracts with classic extensions. `rig::bevy::prelude` exposes
-the ECS runtime. Classic clients use `AgentClientExt::agent`; Bevy clients use
-the deliberately distinct `BevyClientExt::bevy_agent` spelling.
+keeps core contract identities and adds non-colliding classic extensions.
+`rig::tool` and `rig::prelude::Tool` therefore remain portable when `agent` is
+enabled; contextual tools live at `rig::agent::tool`. `rig::bevy::prelude`
+exposes the ECS runtime. Classic clients use `AgentClientExt::agent`; Bevy
+clients use the deliberately distinct `BevyClientExt::bevy_agent` spelling.
 
 ### Provider finals
 

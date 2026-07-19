@@ -8,11 +8,11 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::agent::tool::Tool;
 use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{Chat, CompletionModel, Message, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::providers::gemini;
-use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -71,7 +71,7 @@ impl Tool for PlanTrip {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(format!(
@@ -206,7 +206,7 @@ async fn nested_arguments_streaming() {
                 .completion_request(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&PlanTrip))
+                .tool(rig::agent::tool::tool_definition(&PlanTrip))
                 .build();
 
             let observation = collect_raw_stream_observation(

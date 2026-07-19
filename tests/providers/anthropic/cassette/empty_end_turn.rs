@@ -9,11 +9,11 @@ use std::sync::{
 };
 
 use rig::{
+    agent::tool::Tool,
     client::{AgentClientExt, CompletionClient},
     completion::{CompletionModel, Prompt, ToolDefinition},
     message::{AssistantContent, Message, UserContent},
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
-    tool::Tool,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -82,7 +82,7 @@ impl Tool for Notify {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);

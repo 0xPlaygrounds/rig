@@ -166,3 +166,111 @@ pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
     where
         T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
+
+#[cfg(test)]
+mod provider_response_tests {
+    use rig_core::{ProviderResponseError, http_client};
+
+    use super::*;
+
+    #[test]
+    fn prompt_error_forwards_provider_response_to_completion_error() {
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let inner =
+            CompletionError::from_http_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let error = PromptError::CompletionError(inner);
+
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE),
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("valid json")
+                .expect("present json")["error"]["message"],
+            "boom",
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
+        let body = r#"{"error":{"message":"unauthorized"}}"#;
+        let error = PromptError::CompletionError(CompletionError::HttpError(
+            http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::UNAUTHORIZED,
+                body.to_string(),
+            ),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": { "message": "unauthorized" }
+            }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
+        let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
+        let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+            ProviderResponseError {
+                status: None,
+                body: body.to_string(),
+            },
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "code": "invalid_request",
+                    "message": "bad input"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
+        let error = PromptError::PromptCancelled {
+            chat_history: vec![Message::user("hi")],
+            reason: "cancelled".to_string(),
+        };
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
+    }
+
+    #[test]
+    fn structured_output_error_provider_response_helpers_forward_prompt_error() {
+        let body = r#"{"error":{"message":"bad input"}}"#;
+        let error = StructuredOutputError::PromptError(Box::new(PromptError::CompletionError(
+            CompletionError::ProviderResponse(ProviderResponseError {
+                status: Some(http::StatusCode::BAD_REQUEST),
+                body: body.to_string(),
+            }),
+        )));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+    }
+}

@@ -1778,6 +1778,7 @@ impl LocalRuntime {
                     target: "rig::completion_parent",
                     parent: &parent,
                     "chat",
+                    rig.completion_parent = true,
                     gen_ai.operation.name = tracing::field::Empty,
                     gen_ai.provider.name = tracing::field::Empty,
                     gen_ai.request.model = tracing::field::Empty,
@@ -2624,5 +2625,63 @@ impl HostedRuntime {
                 provider_type: record.raw.type_name(),
                 available: true,
             }))
+    }
+}
+
+#[cfg(test)]
+mod portable_adapter_tests {
+    use rig_core::tool::{PortableTool, ToolErrorKind};
+    use rig_runtime_conformance::{
+        PortableEmbeddingFixture, portable_dynamic_fixture, portable_fixture_output,
+    };
+
+    use super::{DynamicToolBinding, ToolBinding, TypedToolBinding};
+
+    #[tokio::test]
+    async fn portable_embedding_binding_preserves_classification_and_rich_error() {
+        let binding =
+            TypedToolBinding(std::sync::Arc::new(PortableEmbeddingFixture::new("shared")));
+
+        assert_eq!(
+            binding.definition().name,
+            <PortableEmbeddingFixture as PortableTool>::NAME
+        );
+        let result = binding
+            .execute(serde_json::json!({"value": "ignored", "fail": true}))
+            .await;
+        assert!(
+            result.is_err(),
+            "portable fixture should fail, got {result:?}"
+        );
+
+        if let Err(error) = result {
+            assert_eq!(error.kind(), ToolErrorKind::Provider);
+            assert_eq!(error.code(), Some("portable_fixture"));
+            assert_eq!(
+                error.model_output(),
+                &portable_fixture_output("portable failure")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn portable_dynamic_binding_preserves_classification_and_rich_error() {
+        let binding = DynamicToolBinding(portable_dynamic_fixture());
+        let result = binding
+            .execute(serde_json::json!({"value": "ignored", "fail": true}))
+            .await;
+        assert!(
+            result.is_err(),
+            "portable fixture should fail, got {result:?}"
+        );
+
+        if let Err(error) = result {
+            assert_eq!(error.kind(), ToolErrorKind::Provider);
+            assert_eq!(error.code(), Some("portable_dynamic_fixture"));
+            assert_eq!(
+                error.model_output(),
+                &portable_fixture_output("portable dynamic failure")
+            );
+        }
     }
 }

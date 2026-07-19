@@ -32,6 +32,7 @@
 //! lets the network failure return to the model. `--help` requires no credentials.
 
 use anyhow::{Result, bail};
+use rig::agent::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
     ToolResultAction, ToolResultEvent,
@@ -40,7 +41,6 @@ use rig::client::{AgentClientExt, ProviderClient};
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -348,7 +348,7 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig::tool::ToolSet;
+    use rig::agent::tool::ToolSet;
 
     async fn structured_failure(operation: Operation) -> (ToolResult, ToolContext) {
         let tools = ToolSet::from_tools(vec![SystemProbe]);

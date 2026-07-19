@@ -2,9 +2,9 @@ use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
+    agent::tool::Tool,
     integrations::cli_chatbot::ChatBotBuilder,
     providers::openai::{self, Client},
-    tool::Tool,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -86,7 +86,7 @@ impl Tool for SendMessage {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
@@ -163,7 +163,7 @@ impl Tool for GetHistory {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
@@ -212,7 +212,7 @@ impl Tool for GetRoomMetrics {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
@@ -256,7 +256,7 @@ impl Tool for GetAgentMetrics {
     }
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
@@ -300,7 +300,7 @@ impl Tool for GetMetricsHistory {
     }
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();

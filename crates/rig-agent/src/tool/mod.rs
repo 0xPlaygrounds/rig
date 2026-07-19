@@ -130,7 +130,7 @@ pub mod server;
 
 pub use extensions::{MissingToolContext, ToolContext};
 pub use rig_core::tool::{
-    IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
+    IntoToolOutput, PortableDynamicTool, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
 };
 
 /// A typed LLM tool.
@@ -228,6 +228,27 @@ pub trait ToolEmbedding: Tool {
     fn context(&self) -> Self::Context;
     /// Reconstruct the tool.
     fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
+}
+
+impl<T> ToolEmbedding for T
+where
+    T: rig_core::tool::PortableToolEmbedding,
+{
+    type InitError = <T as rig_core::tool::PortableToolEmbedding>::InitError;
+    type Context = <T as rig_core::tool::PortableToolEmbedding>::Context;
+    type State = <T as rig_core::tool::PortableToolEmbedding>::State;
+
+    fn embedding_docs(&self) -> Vec<String> {
+        rig_core::tool::PortableToolEmbedding::embedding_docs(self)
+    }
+
+    fn context(&self) -> Self::Context {
+        rig_core::tool::PortableToolEmbedding::context(self)
+    }
+
+    fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError> {
+        rig_core::tool::PortableToolEmbedding::init(state, context)
+    }
 }
 
 fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
@@ -361,6 +382,23 @@ impl DynamicTool {
         }
     }
 
+    /// Adapt a context-free dynamic tool for the classic contextual registry.
+    ///
+    /// The portable callback receives the same parsed JSON value and its
+    /// [`ToolOutput`] or [`ToolExecutionError`] is forwarded unchanged.
+    pub fn from_portable(tool: PortableDynamicTool) -> Self {
+        let definition = tool.definition();
+        Self::new(
+            definition.name,
+            definition.description,
+            definition.parameters,
+            move |_context, arguments| {
+                let tool = tool.clone();
+                Box::pin(async move { tool.execute(arguments).await })
+            },
+        )
+    }
+
     /// Runtime name.
     pub fn name(&self) -> &str {
         &self.name
@@ -373,6 +411,12 @@ impl DynamicTool {
             description: self.description.clone(),
             parameters: self.parameters.clone(),
         }
+    }
+}
+
+impl From<PortableDynamicTool> for DynamicTool {
+    fn from(tool: PortableDynamicTool) -> Self {
+        Self::from_portable(tool)
     }
 }
 
@@ -586,6 +630,11 @@ impl ToolSet {
         self.insert(RegisteredTool::Static(Arc::new(tool)))
     }
 
+    /// Register a context-free dynamic tool without rewriting its callback.
+    pub fn add_portable_dynamic_tool(&mut self, tool: PortableDynamicTool) -> String {
+        self.add_dynamic_tool(DynamicTool::from_portable(tool))
+    }
+
     #[cfg(feature = "rmcp")]
     pub(crate) fn add_erased(&mut self, tool: Arc<dyn ErasedTool>) -> String {
         self.insert(RegisteredTool::Static(tool))
@@ -732,6 +781,14 @@ impl ToolSetBuilder {
         self
     }
 
+    /// Add a context-free dynamic tool through the classic adapter.
+    pub fn portable_dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
+        self.tools.push(RegisteredTool::Static(Arc::new(
+            DynamicTool::from_portable(tool),
+        )));
+        self
+    }
+
     /// Add a tool that is retrieved from an embedding index at prompt time.
     pub fn retrieved_tool<T>(mut self, tool: T) -> Self
     where
@@ -763,12 +820,11 @@ mod tests {
         time::Duration,
     };
 
+    use super::*;
     use crate::{
         OneOrMany,
         message::{ImageMediaType, ToolResultContent},
     };
-
-    use super::*;
 
     fn rich_error_output(label: &str) -> ToolOutput {
         ToolOutput::content(
@@ -1174,6 +1230,9 @@ mod migrated_tests {
         MockExampleTool, MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool,
         MockToolError, mock_math_toolset,
     };
+    use rig_runtime_conformance::{
+        PortableEmbeddingFixture, portable_dynamic_fixture, portable_fixture_output,
+    };
     use serde_json::json;
 
     use super::*;
@@ -1369,6 +1428,125 @@ mod migrated_tests {
         assert_eq!(schemas.len(), 1);
         assert_eq!(schemas[0].name, RetrievedTool::NAME);
         assert_eq!(schemas[0].embedding_docs, vec!["dynamic tool docs"]);
+    }
+
+    #[tokio::test]
+    async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
+        let tool = PortableEmbeddingFixture::new("shared");
+        let portable_schema = ToolSchema::try_from(&tool).unwrap();
+        let toolset = ToolSet::builder().retrieved_tool(tool).build();
+
+        let schemas = toolset.schemas().unwrap();
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].name, portable_schema.name);
+        assert_eq!(schemas[0].context, portable_schema.context);
+        assert_eq!(schemas[0].embedding_docs, portable_schema.embedding_docs);
+
+        let handle = server::ToolServer::new()
+            .retrieved_tools(
+                1,
+                crate::test_utils::MockToolIndex::new([portable_schema.name.as_str()]),
+                toolset,
+            )
+            .run();
+        let definitions = handle
+            .get_tool_defs(Some("find the shared portable tool".to_string()))
+            .await
+            .unwrap();
+
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, portable_schema.name);
+        assert_eq!(
+            definitions[0].description,
+            "shared portable embedding fixture"
+        );
+        assert_eq!(
+            definitions[0].parameters,
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string"},
+                    "fail": {"type": "boolean"}
+                },
+                "required": ["value"]
+            })
+        );
+
+        let success = handle
+            .execute(
+                &definitions[0].name,
+                r#"{"value":"ok"}"#,
+                &mut ToolContext::new(),
+            )
+            .await;
+        assert!(success.is_success());
+        assert_eq!(success.output(), &portable_fixture_output("shared:ok"));
+
+        let failure = handle
+            .execute(
+                &definitions[0].name,
+                r#"{"value":"ignored","fail":true}"#,
+                &mut ToolContext::new(),
+            )
+            .await;
+        let error = failure
+            .error()
+            .expect("portable failure should be retained");
+        assert_eq!(error.kind(), ToolErrorKind::Provider);
+        assert_eq!(error.code(), Some("portable_fixture"));
+        assert_eq!(
+            error.model_output(),
+            &portable_fixture_output("portable failure")
+        );
+        assert_eq!(failure.output(), error.model_output());
+    }
+
+    #[tokio::test]
+    async fn portable_dynamic_tool_executes_in_classic_registry_without_callback_rewrite() {
+        let portable = portable_dynamic_fixture();
+        let mut toolset = ToolSet::default();
+        toolset.add_dynamic_tool(named_tool("before", "before"));
+        let registered_name = toolset.add_portable_dynamic_tool(portable);
+        toolset.add_dynamic_tool(named_tool("after", "after"));
+
+        assert_eq!(registered_name, "portable_runtime_name");
+        assert_eq!(
+            toolset
+                .get_tool_definitions()
+                .iter()
+                .map(|definition| definition.name.as_str())
+                .collect::<Vec<_>>(),
+            ["before", "portable_runtime_name", "after"]
+        );
+
+        let result = toolset
+            .execute(
+                "portable_runtime_name",
+                r#"{"value":"ok"}"#,
+                &mut ToolContext::new(),
+            )
+            .await;
+        assert!(result.is_success());
+        assert_eq!(result.output(), &portable_fixture_output("dynamic:ok"));
+
+        let failure = toolset
+            .execute(
+                "portable_runtime_name",
+                r#"{"value":"ignored","fail":true}"#,
+                &mut ToolContext::new(),
+            )
+            .await;
+        assert!(failure.is_error());
+        let error = failure
+            .error()
+            .expect("portable failure should be retained");
+        assert_eq!(error.kind(), ToolErrorKind::Provider);
+        assert_eq!(error.code(), Some("portable_dynamic_fixture"));
+        assert_eq!(
+            error.model_output(),
+            &portable_fixture_output("portable dynamic failure")
+        );
+        assert_eq!(failure.output(), error.model_output());
     }
 
     #[tokio::test]

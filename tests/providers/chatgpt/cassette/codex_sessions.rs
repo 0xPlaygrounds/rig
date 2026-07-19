@@ -13,12 +13,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
+use rig::agent::tool::Tool;
 use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::chatgpt;
 use rig::streaming::{StreamingChat, StreamingPrompt};
-use rig::tool::Tool;
 
 use super::super::support::with_chatgpt_cassette;
 use crate::reasoning::{self, WeatherTool};
@@ -314,7 +314,7 @@ async fn long_history_replay_nonstreaming() {
             let first_request = model
                 .completion_request("Look up the harbor label with the tool.")
                 .preamble(preamble.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                 .build();
             let first_response = model
                 .completion(first_request)
@@ -363,7 +363,7 @@ async fn long_history_replay_nonstreaming() {
                     ALPHA_SIGNAL_OUTPUT,
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let response = model

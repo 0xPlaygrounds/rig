@@ -213,15 +213,17 @@ pub mod bevy {
 
 pub mod prelude {
     pub use rig_core::prelude::*;
-    pub use rig_agent::prelude::*;
+    // Re-export only non-colliding classic conveniences deliberately.
+    pub use rig_agent::prelude::{Agent, AgentClientExt, Prompt, StreamingPrompt};
 }
 ```
 
 The actual facade should prefer deliberate re-exports over the current
-`pub use rig_core::*` glob once modules split. `rig::prelude` selects classic
-ergonomics. `rig::bevy::prelude` selects Bevy ergonomics. Applications that
-import both traits see `agent()` and `bevy_agent()`, not two competing
-`agent()` methods.
+`pub use rig_core::*` glob once modules split. `rig::prelude` keeps portable
+contract identities and adds classic ergonomics. Contextual classic tools are
+explicit at `rig::agent::tool`; `rig::tool` remains portable.
+`rig::bevy::prelude` selects Bevy ergonomics. Applications that import both
+traits see `agent()` and `bevy_agent()`, not two competing `agent()` methods.
 
 ## Raw provider response policy
 

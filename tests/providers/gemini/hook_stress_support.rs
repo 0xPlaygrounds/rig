@@ -12,6 +12,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
+use rig::agent::tool::Tool;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
     InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
@@ -19,7 +20,6 @@ use rig::agent::{
     ToolResultAction, ToolResultEvent,
 };
 use rig::completion::Document;
-use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -89,7 +89,7 @@ impl Tool for CountingMultiply {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();

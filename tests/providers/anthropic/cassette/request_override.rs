@@ -12,13 +12,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
 use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -70,7 +70,7 @@ impl Tool for GetWeather {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
@@ -106,7 +106,7 @@ impl Tool for GetTime {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok("12:00".to_string())

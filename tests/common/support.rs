@@ -3,11 +3,12 @@
 
 use futures::StreamExt;
 use rig::{
+    agent::tool::Tool,
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
     completion::{AssistantContent, GetTokenUsage, ToolDefinition},
     embeddings::Embedding,
     streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
-    tool::{PortableTool, Tool},
+    tool::PortableTool,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -169,7 +170,7 @@ impl Tool for Adder {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
@@ -198,7 +199,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
@@ -286,7 +287,7 @@ impl Tool for AlphaSignal {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
@@ -316,7 +317,7 @@ impl Tool for BetaSignal {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(BETA_SIGNAL_OUTPUT.to_string())

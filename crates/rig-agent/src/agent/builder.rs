@@ -8,7 +8,7 @@ use crate::{
     memory::ConversationMemory,
     message::ToolChoice,
     tool::{
-        DynamicTool, Tool, ToolSet,
+        DynamicTool, PortableDynamicTool, Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
@@ -390,6 +390,14 @@ where
         self.dynamic_tools(vec![tool])
     }
 
+    /// Add one context-free dynamic tool through the classic registry adapter.
+    pub fn portable_dynamic_tool(
+        self,
+        tool: PortableDynamicTool,
+    ) -> AgentBuilder<M, WithBuilderTools> {
+        self.dynamic_tool(DynamicTool::from_portable(tool))
+    }
+
     /// Add runtime-defined tools to the agent.
     ///
     /// This is useful when tool definitions and callbacks are constructed at runtime.
@@ -632,6 +640,12 @@ where
     /// Add one runtime-defined tool to the agent.
     pub fn dynamic_tool(mut self, tool: DynamicTool) -> Self {
         self.tool_state.tools.add_dynamic_tool(tool);
+        self
+    }
+
+    /// Add one context-free dynamic tool through the classic registry adapter.
+    pub fn portable_dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
+        self.tool_state.tools.add_portable_dynamic_tool(tool);
         self
     }
 

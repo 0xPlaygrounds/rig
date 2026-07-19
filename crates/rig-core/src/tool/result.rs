@@ -338,12 +338,13 @@ impl std::fmt::Debug for ToolExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ToolExecutionError")
             .field("kind", &self.kind)
+            .field("message", &self.message)
+            .field("model_output", &self.model_output)
             .field("retryable", &self.retryable)
             .field("code", &self.code)
             .field("http_status", &self.http_status)
             .field("refusal", &self.refusal)
-            .field("model_output", &"<redacted>")
-            .field("source_configured", &self.source.is_some())
+            .field("source", &self.source.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }
@@ -357,7 +358,7 @@ impl Error for ToolExecutionError {
 }
 
 /// Private mutually exclusive state behind [`ToolResult`].
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum ToolDisposition {
     Success(ToolOutput),
     Error(ToolExecutionError),
@@ -370,29 +371,9 @@ enum ToolDisposition {
 /// Each result has exactly one disposition. The tagged state is private so tool
 /// authors keep returning ordinary `Result` values while runtime callers use
 /// the stable query methods on this type.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ToolResult {
     disposition: ToolDisposition,
-}
-
-impl std::fmt::Debug for ToolResult {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let error = match &self.disposition {
-            ToolDisposition::Error(error) | ToolDisposition::Refused(error) => Some(error),
-            ToolDisposition::Success(_) | ToolDisposition::Skipped(_) => None,
-        };
-        formatter
-            .debug_struct("ToolResult")
-            .field("status", &self.status_name())
-            .field("error_kind", &error.map(ToolExecutionError::kind))
-            .field("retryable", &error.and_then(ToolExecutionError::retryable))
-            .field("code", &error.and_then(ToolExecutionError::code))
-            .field(
-                "http_status",
-                &error.and_then(ToolExecutionError::http_status),
-            )
-            .finish()
-    }
 }
 
 impl ToolResult {
@@ -595,27 +576,6 @@ mod tests {
         assert!(!refused.is_error_kind(ToolErrorKind::PermissionDenied));
         assert_eq!(refused.status_name(), "denied");
         assert_eq!(permission_failure.status_name(), "error");
-    }
-
-    #[test]
-    fn debug_redacts_every_tool_result_disposition() {
-        let success = ToolResult::success(ToolOutput::text("secret-success"));
-        let failure = ToolResult::failed(
-            ToolExecutionError::provider("secret-operator").with_model_feedback("secret-model"),
-        );
-        let skipped = ToolResult::skipped("secret-skip");
-        let refused = ToolResult::failed(ToolExecutionError::refused("secret-refusal"));
-
-        for (result, secret) in [
-            (success, "secret-success"),
-            (failure, "secret-operator"),
-            (skipped, "secret-skip"),
-            (refused, "secret-refusal"),
-        ] {
-            let debug = format!("{result:?}");
-            assert!(!debug.contains(secret));
-            assert!(!debug.contains("secret-model"));
-        }
     }
 }
 

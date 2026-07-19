@@ -10,8 +10,10 @@ mod report;
 mod scenarios;
 
 pub use fixtures::{
-    CountingPortableTool, CountingPortableToolArgs, ScriptedCompletionModel,
-    ScriptedCompletionTurn, ScriptedRawResponse, ScriptedStreamEvent, scripted_text_model,
+    CountingPortableTool, CountingPortableToolArgs, PORTABLE_FIXTURE_IMAGE, PortableEmbeddingArgs,
+    PortableEmbeddingContext, PortableEmbeddingFixture, PortableFixtureError,
+    ScriptedCompletionModel, ScriptedCompletionTurn, ScriptedRawResponse, ScriptedStreamEvent,
+    portable_dynamic_fixture, portable_fixture_output, scripted_text_model,
 };
 pub use report::{
     ConformanceFailure, ObservationAssertion, ReportBuildError, ScenarioReport, verify_report,

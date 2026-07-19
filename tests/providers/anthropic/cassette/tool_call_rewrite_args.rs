@@ -10,12 +10,12 @@
 
 use std::sync::{Arc, Mutex};
 
+use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
 use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 use rig_agent::test_utils::validate_rewritten_arguments;
 use serde::Deserialize;
 use serde_json::json;
@@ -84,7 +84,7 @@ impl Tool for GetWeather {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.calls.lock().expect("calls lock").push(ObservedCall {

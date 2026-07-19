@@ -61,6 +61,24 @@ fn rig_agent_path() -> proc_macro2::TokenStream {
     }
 }
 
+fn rig_agent_tool_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-agent") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::tool),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident::tool)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::agent::tool),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident::agent::tool)
+            }
+            Err(_) => quote!(::rig_agent::tool),
+        },
+    }
+}
+
 fn rig_portable_path() -> proc_macro2::TokenStream {
     match proc_macro_crate::crate_name("rig-core") {
         Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
@@ -352,7 +370,14 @@ fn is_tool_context_type(ty: &Type) -> bool {
     matches!(
         segments.as_slice(),
         [root, tool, context]
-            if matches!(root.as_str(), "rig" | "rig_agent")
+            if root == "rig_agent"
+                && tool == "tool"
+                && context == "ToolContext"
+    ) || matches!(
+        segments.as_slice(),
+        [root, agent, tool, context]
+            if root == "rig"
+                && agent == "agent"
                 && tool == "tool"
                 && context == "ToolContext"
     )
@@ -490,7 +515,9 @@ fn result_type_tokens(
     Ok((quote!(#output), quote!(#error)))
 }
 
-/// A procedural macro that transforms a function into a `rig::tool::Tool` that can be used with a `rig::agent::Agent`.
+/// A procedural macro that transforms a function into a portable
+/// `rig::tool::Tool`, or into `rig::agent::tool::Tool` when the function accepts
+/// classic runtime context.
 ///
 /// # Examples
 ///
@@ -556,13 +583,13 @@ fn result_type_tokens(
 ///
 /// With execution context:
 /// ```text
-/// use rig::tool::ToolContext;
+/// use rig::agent::tool::ToolContext;
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool]
 /// fn current_user(
 ///     // The marker is required for imported names and type aliases. A fully
-///     // qualified `&mut rig::tool::ToolContext` is also recognized directly.
+///     // qualified `&mut rig::agent::tool::ToolContext` is also recognized directly.
 ///     #[rig(context)] context: &mut ToolContext,
 ///     greeting: String,
 /// ) -> Result<String, rig::tool::ToolExecutionError> {
@@ -737,13 +764,18 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     } else {
         rig_portable_path()
     };
+    let tool_module = if has_context {
+        rig_agent_tool_path()
+    } else {
+        quote!(#tool_owner::tool)
+    };
 
     // Generate the call implementation based on whether the function is async
     let call_impl = if has_context && is_async {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #tool_owner::tool::ToolContext,
+                _context: &mut #tool_module::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*).await
@@ -753,7 +785,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #tool_owner::tool::ToolContext,
+                _context: &mut #tool_module::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*)
@@ -792,7 +824,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(Default)]
         #vis struct #struct_name;
 
-        impl #tool_owner::tool::Tool for #struct_name {
+        impl #tool_module::Tool for #struct_name {
             const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;

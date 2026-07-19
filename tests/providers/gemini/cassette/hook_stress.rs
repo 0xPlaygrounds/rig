@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures::StreamExt;
+use rig::agent::tool::Tool;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
     ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, ObservationAction, RequestPatch,
@@ -32,7 +33,6 @@ use rig::client::AgentClientExt;
 use rig::completion::{Document, Prompt};
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
-use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract, SkipToolHook, ToolEventRecorder};

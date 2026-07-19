@@ -1,11 +1,11 @@
 //! Gemini tool-choice cassette coverage.
 
+use rig::agent::tool::Tool;
 use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
 use rig::message::ToolChoice;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 
 use crate::support::{
     Adder, Subtract, assert_mentions_expected_number, collect_raw_stream_observation,
@@ -58,8 +58,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::agent::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .build();
             let stream = model.stream(request).await.expect("stream should start");
@@ -111,8 +111,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::agent::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
                 .send()
                 .await

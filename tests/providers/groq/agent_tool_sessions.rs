@@ -10,12 +10,12 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use futures::StreamExt;
 use rig::OneOrMany;
+use rig::agent::tool::Tool;
 use rig::client::{AgentClientExt, CompletionClient};
 use rig::completion::{Chat, CompletionModel, GetTokenUsage, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingChat, StreamingPrompt};
-use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -156,7 +156,7 @@ impl Tool for PingEmpty {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -206,7 +206,7 @@ impl Tool for InspectManifest {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -242,7 +242,7 @@ impl Tool for JoinLabels {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -274,7 +274,7 @@ impl Tool for OptionalNullableProbe {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -307,7 +307,7 @@ impl Tool for EscapeEcho {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig::agent::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -697,7 +697,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                      Do not write normal text before the tool call.",
                 )
                 .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(rig::tool::tool_definition(&tool))
+                .tool(rig::agent::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -760,7 +760,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                     ALPHA_SIGNAL_OUTPUT,
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
                 .build();
 
@@ -788,7 +788,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object.")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
+                        .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Auto)
                         .build(),
                 )
@@ -807,7 +807,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
+                        .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
                         .build(),
                 )
@@ -826,8 +826,8 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool(rig::tool::tool_definition(&BetaSignal))
+                        .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+                        .tool(rig::agent::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
@@ -852,7 +852,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .completion(
                     model
                         .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
+                        .tool(rig::agent::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
                         .build(),
                 )

@@ -1,4 +1,7 @@
-use rig_facade::tool::{PortableTool, Tool, ToolContext, ToolExecutionError};
+use rig_facade::{
+    agent::tool::{Tool, ToolContext},
+    tool::{PortableTool, ToolExecutionError},
+};
 use rig_macros::rig_tool;
 
 #[rig_tool]

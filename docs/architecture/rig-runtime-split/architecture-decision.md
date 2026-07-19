@@ -175,8 +175,10 @@ These names illustrate ownership and collision avoidance; they are not frozen
 API. What is frozen by this decision is that importing both runtime preludes
 must not produce two `agent()` methods on the same client type.
 
-The root default prelude exports core contracts plus classic runtime ergonomics.
-It does not glob-export Bevy components or schedules. `rig::bevy::prelude`
+The root default prelude exports core contracts plus non-colliding classic
+runtime ergonomics. Portable names such as `Tool` retain their core identity;
+contextual tools are explicit under `rig::agent::tool`. It does not glob-export
+Bevy components or schedules. `rig::bevy::prelude`
 exports the Bevy-specific common path. Direct `rig-bevy` consumption remains
 supported for advanced ECS users.
 
