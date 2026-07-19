@@ -2,8 +2,15 @@
 //! Public facade for Rig.
 //!
 //! The `rig` crate is the user-facing entry point for Rig. It re-exports the
-//! portable contracts from `rig_core` and the classic runtime from `rig_agent`,
-//! preserving the familiar `rig::...` paths.
+//! portable contracts from `rig_core` at their familiar `rig::...` paths and the
+//! classic runtime from `rig_agent` under `rig::agent`.
+//!
+//! Two classic paths intentionally changed with the runtime split: `rig::tool`
+//! now holds only the portable, context-free tool contracts (classic contextual
+//! tools live at [`crate::agent::tool`]), and classic construction methods such
+//! as `client.agent(...)` require importing [`crate::client::AgentClientExt`].
+//! See the migration guide in `docs/architecture/rig-runtime-split/` for the
+//! complete mapping.
 //!
 //! # Companion integrations
 //!

@@ -4,6 +4,21 @@ Rig now separates portable model/backend contracts from two independent agent
 runtimes. The classic runtime remains the default. The Bevy ECS runtime is an
 experimental, native-only opt-in.
 
+**This split is a breaking (semver-major) release.** Every existing consumer
+should expect two mechanical source changes even with default features:
+
+- `rig::tool::Tool` (with `ToolEmbedding` and `DynamicTool`) now names the
+  portable, context-free trait. Classic contextual tool implementations must
+  import `rig::agent::tool::Tool` (and `ToolSet`, `ToolContext`, server and
+  rmcp items) instead.
+- `client.agent(...)` and `client.extractor(...)` are extension-trait methods:
+  add `use rig::client::AgentClientExt;` (or import the prelude). Model-side
+  construction uses `rig::client::AgentModelExt` the same way.
+
+Direct `rig-core` dependents: the `rmcp` and `discord-bot` features and the
+`tool_macro` re-export moved to `rig-agent`; portable tools and the derive's
+context-free output continue to work against `rig-core` alone.
+
 ## Choose a dependency surface
 
 | Need | Dependency and imports |
