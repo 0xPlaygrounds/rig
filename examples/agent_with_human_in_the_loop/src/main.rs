@@ -23,7 +23,7 @@
 use anyhow::Result;
 use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
 use serde::Deserialize;

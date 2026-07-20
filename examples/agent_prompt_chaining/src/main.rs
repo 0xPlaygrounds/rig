@@ -3,7 +3,7 @@
 //! Run it to see one agent produce a value that the next agent transforms.
 
 use anyhow::Result;
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
 use rig::providers::openai::client::Client;

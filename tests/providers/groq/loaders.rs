@@ -1,6 +1,6 @@
 //! Groq loaders smoke test.
 
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::loaders::FileLoader;
 use rig::providers::groq;

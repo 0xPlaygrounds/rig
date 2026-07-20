@@ -1,12 +1,12 @@
 //! Anthropic Messages acceptance through the experimental ECS runtime.
 
 use rig::{
-    bevy::{
-        BevyModelExt, HostedRuntime, LocalRuntime, OutputMode, StreamingRunEvent,
-        StructuredOutputPolicy,
-    },
     client::CompletionClient,
     completion::CompletionModel,
+    ecs::{
+        EcsModelExt, HostedRuntime, LocalRuntime, OutputMode, StreamingRunEvent,
+        StructuredOutputPolicy,
+    },
     providers::anthropic,
     test_utils::RecordingHttpClient,
 };
@@ -16,13 +16,13 @@ use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, PortableAdder, PortableSubtract, STREAMING_PREAMBLE,
     STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, STRUCTURED_OUTPUT_PROMPT,
     SmokeStructuredOutput, assert_mentions_expected_number, assert_smoke_structured_output,
-    bevy_synthetic_output_tool_name, smoke_structured_output_value,
+    ecs_synthetic_output_tool_name, smoke_structured_output_value,
 };
 
 fn text_response(text: &str) -> String {
     serde_json::json!({
         "content": [{"type": "text", "text": text}],
-        "id": "msg_bevy_runtime_acceptance",
+        "id": "msg_ecs_runtime_acceptance",
         "model": anthropic::completion::CLAUDE_SONNET_4_6,
         "role": "assistant",
         "type": "message",
@@ -42,11 +42,11 @@ fn output_tool_response(name: &str) -> String {
     serde_json::json!({
         "content": [{
             "type": "tool_use",
-            "id": "toolu_bevy_runtime_acceptance",
+            "id": "toolu_ecs_runtime_acceptance",
             "name": name,
             "input": smoke_structured_output_value()
         }],
-        "id": "msg_bevy_runtime_acceptance",
+        "id": "msg_ecs_runtime_acceptance",
         "model": anthropic::completion::CLAUDE_SONNET_4_6,
         "role": "assistant",
         "type": "message",
@@ -62,7 +62,7 @@ fn output_tool_response(name: &str) -> String {
     .to_string()
 }
 
-fn has_typed_blocking_final<M>(model: &M, result: &rig::bevy::LocalRunResult) -> bool
+fn has_typed_blocking_final<M>(model: &M, result: &rig::ecs::LocalRunResult) -> bool
 where
     M: CompletionModel,
     M::Response: std::any::Any + Send + Sync,
@@ -74,9 +74,9 @@ where
 async fn run_typed_stream<M>(
     model: &M,
     runtime: &mut LocalRuntime,
-    agent: rig::bevy::AgentId,
+    agent: rig::ecs::AgentId,
     prompt: &str,
-) -> rig::bevy::StreamingRunResult<M::StreamingResponse>
+) -> rig::ecs::StreamingRunResult<M::StreamingResponse>
 where
     M: CompletionModel + Send + Sync + 'static,
     M::Response: std::any::Any + Send + Sync,
@@ -90,7 +90,7 @@ where
         matches!(
             event,
             StreamingRunEvent::Runtime(runtime)
-                if matches!(runtime.as_ref(), rig::bevy::RunEvent::Provisional { .. })
+                if matches!(runtime.as_ref(), rig::ecs::RunEvent::Provisional { .. })
         )
     });
     let provider_final = result
@@ -111,7 +111,7 @@ async fn blocking_exposes_concrete_provider_final() {
             .spawn_agent(
                 model
                     .clone()
-                    .into_bevy_agent_builder()
+                    .into_ecs_agent_builder()
                     .preamble(BASIC_PREAMBLE)
                     .build(),
             )
@@ -130,7 +130,7 @@ async fn blocking_exposes_concrete_provider_final() {
 
 #[tokio::test]
 async fn tool_mode_maps_through_anthropic_messages() {
-    let output_tool = bevy_synthetic_output_tool_name::<SmokeStructuredOutput>();
+    let output_tool = ecs_synthetic_output_tool_name::<SmokeStructuredOutput>();
     let http = RecordingHttpClient::new(output_tool_response(&output_tool));
     let client = anthropic::Client::builder()
         .api_key("test-key")
@@ -143,7 +143,7 @@ async fn tool_mode_maps_through_anthropic_messages() {
         .spawn_agent(
             model
                 .clone()
-                .into_bevy_agent_builder()
+                .into_ecs_agent_builder()
                 .structured_output::<SmokeStructuredOutput>(StructuredOutputPolicy {
                     mode: OutputMode::Tool,
                     max_retries: 0,
@@ -156,7 +156,7 @@ async fn tool_mode_maps_through_anthropic_messages() {
     let result = runtime
         .run_blocking(agent, STRUCTURED_OUTPUT_PROMPT)
         .await
-        .expect("Bevy Anthropic Tool-mode run should succeed");
+        .expect("ECS Anthropic Tool-mode run should succeed");
     let structured: SmokeStructuredOutput = serde_json::from_value(
         result
             .structured_output
@@ -190,7 +190,7 @@ async fn prompted_mode_maps_through_anthropic_messages() {
         .spawn_agent(
             model
                 .clone()
-                .into_bevy_agent_builder()
+                .into_ecs_agent_builder()
                 .structured_output::<SmokeStructuredOutput>(StructuredOutputPolicy {
                     mode: OutputMode::Prompted,
                     max_retries: 0,
@@ -203,7 +203,7 @@ async fn prompted_mode_maps_through_anthropic_messages() {
     let result = runtime
         .run_blocking(agent, STRUCTURED_OUTPUT_PROMPT)
         .await
-        .expect("Bevy Anthropic Prompted-mode run should succeed");
+        .expect("ECS Anthropic Prompted-mode run should succeed");
     let structured: SmokeStructuredOutput = serde_json::from_value(
         result
             .structured_output
@@ -235,7 +235,7 @@ async fn hosted_surface_exposes_only_redacted_provider_diagnostics() {
         let agent = local
             .spawn_agent(
                 model
-                    .into_bevy_agent_builder()
+                    .into_ecs_agent_builder()
                     .preamble(BASIC_PREAMBLE)
                     .build(),
             )
@@ -269,7 +269,7 @@ async fn streaming_exposes_deltas_and_concrete_provider_final() {
             .spawn_agent(
                 model
                     .clone()
-                    .into_bevy_agent_builder()
+                    .into_ecs_agent_builder()
                     .preamble(STREAMING_PREAMBLE)
                     .build(),
             )
@@ -299,7 +299,7 @@ async fn streaming_tools_roundtrip_through_owned_effects() {
                 .spawn_agent(
                     model
                         .clone()
-                        .into_bevy_agent_builder()
+                        .into_ecs_agent_builder()
                         .preamble(STREAMING_TOOLS_PREAMBLE)
                         .max_model_calls(2)
                         .build(),
@@ -332,7 +332,7 @@ async fn structured_output_validates_in_the_ecs_runtime() {
                 .spawn_agent(
                     model
                         .clone()
-                        .into_bevy_agent_builder()
+                        .into_ecs_agent_builder()
                         .structured_output::<SmokeStructuredOutput>(
                             StructuredOutputPolicy::default(),
                         )

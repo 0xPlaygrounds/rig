@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::tool::Tool;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
 
 use crate::copilot::{live_responses_model, with_copilot_cassette_result};

@@ -613,7 +613,7 @@
       "source_path": "crates/rig-core/src/client/completion.rs",
       "symbol": "CompletionClient::{completion_model, agent, extractor}",
       "current_owner": "rig-core",
-      "proposed_owner": "completion_model in rig-core; agent/extractor in rig-agent::AgentClientExt",
+      "proposed_owner": "completion_model in rig-core; agent/extractor in rig-agent::CompletionClient",
       "portability_classification": "mixed client contract and facade convenience",
       "rationale": "Direct current boundary crossing from core client to classic builders."
     },
@@ -1843,7 +1843,7 @@
       "source": "module.client",
       "target": "crate.rig-agent",
       "relationship_kind": "proposed-split",
-      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "AgentClientExt", "anchor": "Proposed public namespaces"},
+      "evidence": {"source_path": "docs/architecture/rig-runtime-split/ownership-and-migration.md", "symbol": "CompletionClient", "anchor": "Proposed public namespaces"},
       "graph": "target",
       "migration_implication": "Only agent/extractor constructor extension moves."
     },

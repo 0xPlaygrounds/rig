@@ -530,7 +530,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
 ///
 /// # Example
 /// ```no_run
-/// use rig_agent::{client::AgentClientExt, completion::Prompt};
+/// use rig_agent::{client::CompletionClient, completion::Prompt};
 /// use rig_core::{client::ProviderClient, providers::openai};
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {

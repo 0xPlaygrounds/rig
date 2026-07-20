@@ -1,7 +1,7 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
 use rig::agent::OutputMode;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::{Prompt, TypedPrompt};
 use rig::providers::openai;
 use rig::test_utils::RecordingHttpClient;

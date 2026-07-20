@@ -1,4 +1,4 @@
-use rig_agent::{agent::stream_to_stdout, client::AgentClientExt, streaming::StreamingPrompt};
+use rig_agent::{agent::stream_to_stdout, client::CompletionClient, streaming::StreamingPrompt};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
 use rig_core::client::ProviderClient;
 

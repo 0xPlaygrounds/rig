@@ -1,6 +1,6 @@
 //! xAI extractor smoke test.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;

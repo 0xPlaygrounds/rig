@@ -1,7 +1,7 @@
 //! AWS Bedrock completion smoke tests inspired by the OpenAI and Anthropic provider tests.
 
 use rig::agent::AgentBuilder;
-use rig::client::{AgentClientExt, CompletionClient};
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 
 use super::{

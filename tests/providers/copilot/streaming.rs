@@ -1,6 +1,6 @@
 //! Copilot streaming coverage, including the migrated example path.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::streaming::StreamingPrompt;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};

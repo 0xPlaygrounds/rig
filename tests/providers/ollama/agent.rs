@@ -1,6 +1,6 @@
 //! Migrated from `examples/agent_with_ollama.rs`.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::client::Nothing;
 use rig::completion::Prompt;
 use rig::providers::ollama;

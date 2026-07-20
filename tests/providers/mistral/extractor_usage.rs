@@ -1,7 +1,7 @@
 //! Integration tests for Mistral extractor usage tracking.
 
 use anyhow::Result;
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::extractor::ExtractionResponse;
 use rig::message::Message;
 use rig::providers::mistral;

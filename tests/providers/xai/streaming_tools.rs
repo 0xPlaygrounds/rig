@@ -2,7 +2,7 @@
 
 use rig::OneOrMany;
 use rig::agent::tool::Tool;
-use rig::client::{AgentClientExt, CompletionClient};
+use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message};

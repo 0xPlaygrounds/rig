@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::tool::Tool;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
 
 use super::super::support::with_openai_completions_cassette_result;

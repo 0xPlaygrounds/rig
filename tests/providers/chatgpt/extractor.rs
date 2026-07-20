@@ -1,6 +1,6 @@
 //! ChatGPT extractor smoke test.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};

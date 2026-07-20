@@ -3,8 +3,8 @@
 
 use anyhow::Result;
 use rig::{
-    bevy::{BevyClientExt, LocalRuntime},
     client::ProviderClient,
+    ecs::{EcsClientExt, LocalRuntime},
     providers::openai,
 };
 
@@ -12,7 +12,7 @@ use rig::{
 async fn main() -> Result<()> {
     let client = openai::Client::from_env()?;
     let definition = client
-        .bevy_agent(openai::GPT_5_2)
+        .ecs_agent(openai::GPT_5_2)
         .preamble("Answer directly in one short paragraph.")
         .build();
     let mut runtime = LocalRuntime::new()?;

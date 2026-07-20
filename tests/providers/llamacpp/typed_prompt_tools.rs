@@ -12,7 +12,7 @@ use rig::agent::{
     ObservationAction, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
     ToolResultEvent,
 };
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
 
 use super::support;

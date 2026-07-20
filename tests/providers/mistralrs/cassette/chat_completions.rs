@@ -1,6 +1,6 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
-use rig::client::{AgentClientExt, CompletionClient};
+use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use serde_json::Value;
 

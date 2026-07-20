@@ -89,7 +89,7 @@ experiment.
 
 ### Inherently ECS-specific changes
 
-These concepts belong in a future `rig-bevy` and can be ported in design, often
+These concepts belong in a future `rig-ecs` and can be ported in design, often
 with code adaptation:
 
 - ECS components and relationships for agents, models, runs, operations,
@@ -155,7 +155,7 @@ PR #6 changes portable APIs to satisfy its chosen native multi-threaded executor
 
 Some of these may be independently good redesigns, but none is proven universal
 by the ECS runtime. The target split applies stricter native `Send + Sync`
-bounds at `rig-bevy` adapters while preserving core's target-appropriate
+bounds at `rig-ecs` adapters while preserving core's target-appropriate
 contracts.
 
 ### Tool API: required versus independent redesign
@@ -182,7 +182,7 @@ Not required by ECS itself:
 
 Recommendation: core exposes the smallest authoring/canonical tool contract.
 `rig-agent` owns its mutable type-map context, registry, server, and dispatch.
-`rig-bevy` adapts portable tools through owned effects and offers ECS-native
+`rig-ecs` adapts portable tools through owned effects and offers ECS-native
 capability installation. Whether core `Tool` is context-free or accompanied by
 a narrow portable invocation context remains a maintainer decision; PR #6's
 choice should not be copied without a downstream tool migration study.
@@ -204,7 +204,7 @@ to the workspace/core path and publicly re-exports `bevy_ecs`. That couples:
 - public component derives and entity types to one Bevy version;
 - low-level users to a multi-threaded runtime they did not select.
 
-This is precisely what `rig-bevy -> rig-core` prevents.
+This is precisely what `rig-ecs -> rig-core` prevents.
 
 ### WASM leakage
 
@@ -214,8 +214,8 @@ with an error stating that exchange requires an external ECS effect. The latter
 is an observable provider regression caused by runtime architecture, not a
 Copilot protocol change.
 
-The future design may choose an initially native-only `rig-bevy`. That choice
-must be localized to `rig-bevy`; `rig-core` and `rig-agent` keep their existing
+The future design may choose an initially native-only `rig-ecs`. That choice
+must be localized to `rig-ecs`; `rig-core` and `rig-agent` keep their existing
 WASM contracts unless a separate decision changes them.
 
 ### Persistence and effect boundaries
@@ -230,7 +230,7 @@ concerns:
   reconstructed rather than persisted;
 - cancellation and cleanup are separate transitions.
 
-These concepts should move to `rig-bevy` intact as invariants. Exact record
+These concepts should move to `rig-ecs` intact as invariants. Exact record
 schemas, public handles, queue types, and installer APIs should be redesigned in
 reviewable vertical slices.
 
@@ -286,12 +286,12 @@ facades exist inside `rig-core` only because the original APIs also live there.
 With sibling crates:
 
 - classic `Agent`/builder/prompt APIs move directly to `rig-agent`;
-- Bevy handles/specs live directly in `rig-bevy`;
+- Bevy handles/specs live directly in `rig-ecs`;
 - `rig` re-exports/namespaces either surface;
 - client extension traits construct the selected runtime without provider
   changes.
 
-The future `rig-bevy` should not spend thousands of lines pretending to be the
+The future `rig-ecs` should not spend thousands of lines pretending to be the
 classic runtime before its native surface is available. Thin conveniences are
 appropriate only after the authoritative ECS API is coherent.
 
@@ -300,7 +300,7 @@ appropriate only after the authoritative ECS API is coherent.
 | Disposition | Concepts |
 | --- | --- |
 | Port as invariants | authoritative ECS topology; typed components/relationships; deterministic schedules; owned effect boundary; stable IDs/generations; immutable turn snapshots; stale/late/duplicate rejection; explicit policy ordering; value stream deltas; local/hosted shared schedules; explicit snapshots/rebinding; retirement/cancellation/cleanup separation; debugging from facts |
-| Redesign in `rig-bevy` | public handles/builders; installer/plugin boundary; queue/backpressure; typed raw provider-final side channel; persistence schemas; exact policy component API; tool/store/model erasure; tenant/secrets boundary; output-mode state; response-retry policy |
+| Redesign in `rig-ecs` | public handles/builders; installer/plugin boundary; queue/backpressure; typed raw provider-final side channel; persistence schemas; exact policy component API; tool/store/model erasure; tenant/secrets boundary; output-mode state; response-retry policy |
 | Keep in `rig-agent` | current `AgentRun`; `drive_agent`; `AgentHook`/`HookStack`; `RequestPatch`; classic prompt requests; `ToolContext`/registry/server; classic extractor; classic agent telemetry |
 | Keep in `rig-core` | canonical messages/content/request/response/usage; completion/embedding/vector/memory contracts; raw streaming primitives; tool output/errors/portable authoring; provider response helpers; WASM compatibility |
 | Reject | mandatory Bevy in core; public Bevy re-export from core; wholesale classic replacement; raw Send/Sync leakage; core MSRV forced by Bevy; shared HookStack/ECS callback adapter; raw World serialization; provider/cassette churn; Copilot WASM regression |

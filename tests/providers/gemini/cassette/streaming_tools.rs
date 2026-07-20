@@ -1,6 +1,6 @@
 //! Gemini streaming tools coverage, including the migrated example path.
 
-use rig::client::{AgentClientExt, CompletionClient};
+use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::providers::gemini;

@@ -1,6 +1,6 @@
 //! Cassette-backed OpenRouter provider selection scenarios.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::openrouter::{MaxPrice, ProviderPreferences, ProviderSortStrategy};
 

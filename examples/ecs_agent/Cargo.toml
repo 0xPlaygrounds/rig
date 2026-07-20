@@ -1,5 +1,5 @@
 [package]
-name = "bevy_agent"
+name = "ecs_agent"
 version.workspace = true
 edition.workspace = true
 publish = false
@@ -8,6 +8,6 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { workspace = true, features = ["bevy"] }
+rig = { workspace = true, features = ["ecs"] }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -14,15 +14,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use rig_bevy::{
-    AgentSpec, BevyModelExt, BindingIdentity, CapabilityKind, CapabilityNode, ContentVisibility,
-    CorrelationId, EffectCompletion, EffectHeader, EffectIngress, EffectRejectionReason,
-    Generation, GrantNode, HostedRuntime, InvalidToolPolicy, LocalRunResult, LocalRuntime,
-    ModelEffectError, OperationId, OutputMode, ProtectedSnapshot, ProvisionalDelta, RebindRegistry,
-    ResponseRetryPolicy, RunEvent, RunHandle, RunId, RunPhase, RunStepStatus, RuntimeConfig,
-    RuntimeError, SnapshotContentPolicy, SnapshotError, SnapshotProtector, StreamingMode,
-    StreamingRunEvent, StructuredOutputPolicy, TenantId, TerminalReason, ToolEffectOutput,
-};
 use rig_core::{
     OneOrMany,
     completion::{
@@ -36,6 +27,15 @@ use rig_core::{
     tool::{PortableDynamicTool, PortableTool, ToolOutput},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+};
+use rig_ecs::{
+    AgentSpec, BindingIdentity, CapabilityKind, CapabilityNode, ContentVisibility, CorrelationId,
+    EcsModelExt, EffectCompletion, EffectHeader, EffectIngress, EffectRejectionReason, Generation,
+    GrantNode, HostedRuntime, InvalidToolPolicy, LocalRunResult, LocalRuntime, ModelEffectError,
+    OperationId, OutputMode, ProtectedSnapshot, ProvisionalDelta, RebindRegistry,
+    ResponseRetryPolicy, RunEvent, RunHandle, RunId, RunPhase, RunStepStatus, RuntimeConfig,
+    RuntimeError, SnapshotContentPolicy, SnapshotError, SnapshotProtector, StreamingMode,
+    StreamingRunEvent, StructuredOutputPolicy, TenantId, TerminalReason, ToolEffectOutput,
 };
 use rig_runtime_conformance::{
     CountingPortableTool, PortableEmbeddingFixture, portable_dynamic_fixture,
@@ -257,7 +257,7 @@ async fn local_blocking_returns_canonical_text_and_concrete_raw_final() -> Resul
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(TenantId::new())
             .build(),
     )?;
@@ -272,14 +272,14 @@ async fn local_blocking_returns_canonical_text_and_concrete_raw_final() -> Resul
 }
 
 #[tokio::test]
-async fn bevy_requests_preserve_effective_preamble_for_opt_in_telemetry() -> Result<()> {
+async fn ecs_requests_preserve_effective_preamble_for_opt_in_telemetry() -> Result<()> {
     for record_content in [false, true] {
         let model = MockCompletionModel::text("done");
         let mut runtime = runtime()?;
         let agent = runtime.spawn_agent(
             model
                 .clone()
-                .into_bevy_agent_builder()
+                .into_ecs_agent_builder()
                 .preamble("effective system policy")
                 .record_telemetry_content(record_content)
                 .build(),
@@ -294,13 +294,13 @@ async fn bevy_requests_preserve_effective_preamble_for_opt_in_telemetry() -> Res
 }
 
 #[tokio::test]
-async fn bevy_agent_request_controls_reach_the_provider_request() -> Result<()> {
+async fn ecs_agent_request_controls_reach_the_provider_request() -> Result<()> {
     let model = MockCompletionModel::text("done");
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .temperature(0.35)
             .max_tokens(321)
             .build(),
@@ -321,7 +321,7 @@ async fn zero_model_budget_rejects_before_provider_dispatch() -> Result<()> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .max_model_calls(0)
             .build(),
     )?;
@@ -349,7 +349,7 @@ async fn portable_tool_effect_commits_call_and_result_before_continuation() -> R
     ]);
     let tool = CountingPortableTool::default();
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     runtime.install_tool(agent, tool.clone())?;
 
     let result = runtime.run(agent, "use tool").await?;
@@ -370,7 +370,7 @@ async fn portable_tool_effect_commits_call_and_result_before_continuation() -> R
 }
 
 #[tokio::test]
-async fn portable_embedding_and_dynamic_tools_preserve_rich_outputs_in_bevy() -> Result<()> {
+async fn portable_embedding_and_dynamic_tools_preserve_rich_outputs_in_ecs() -> Result<()> {
     let embedding_name = <PortableEmbeddingFixture as PortableTool>::NAME;
     let embedding_model = MockCompletionModel::new([
         MockTurn::tool_call(
@@ -389,7 +389,7 @@ async fn portable_embedding_and_dynamic_tools_preserve_rich_outputs_in_bevy() ->
     let portable_schema = rig_core::embeddings::ToolSchema::try_from(&embedding_tool)?;
     let mut embedding_runtime = runtime()?;
     let embedding_agent =
-        embedding_runtime.spawn_agent(embedding_model.clone().into_bevy_agent_builder().build())?;
+        embedding_runtime.spawn_agent(embedding_model.clone().into_ecs_agent_builder().build())?;
     embedding_runtime.install_tool(embedding_agent, embedding_tool)?;
 
     let embedding_result = embedding_runtime
@@ -455,7 +455,7 @@ async fn portable_embedding_and_dynamic_tools_preserve_rich_outputs_in_bevy() ->
     ]);
     let mut dynamic_runtime = runtime()?;
     let dynamic_agent =
-        dynamic_runtime.spawn_agent(dynamic_model.into_bevy_agent_builder().build())?;
+        dynamic_runtime.spawn_agent(dynamic_model.into_ecs_agent_builder().build())?;
     dynamic_runtime.install_dynamic_tool(dynamic_agent, dynamic)?;
     let dynamic_result = dynamic_runtime
         .run(dynamic_agent, "use dynamic tool")
@@ -565,10 +565,10 @@ async fn run_with_agent_and_run_insertion_order(
     })?;
 
     let (tool_agent, plain_agent) = if reverse {
-        let plain = runtime.spawn_agent(plain_model.into_bevy_agent_builder().build())?;
+        let plain = runtime.spawn_agent(plain_model.into_ecs_agent_builder().build())?;
         let tool = runtime.spawn_agent(
             tool_model
-                .into_bevy_agent_builder()
+                .into_ecs_agent_builder()
                 .max_model_calls(2)
                 .build(),
         )?;
@@ -576,11 +576,11 @@ async fn run_with_agent_and_run_insertion_order(
     } else {
         let tool = runtime.spawn_agent(
             tool_model
-                .into_bevy_agent_builder()
+                .into_ecs_agent_builder()
                 .max_model_calls(2)
                 .build(),
         )?;
-        let plain = runtime.spawn_agent(plain_model.into_bevy_agent_builder().build())?;
+        let plain = runtime.spawn_agent(plain_model.into_ecs_agent_builder().build())?;
         (tool, plain)
     };
     runtime.install_tool(tool_agent, OrderedDelayTool)?;
@@ -632,7 +632,7 @@ async fn vector_store_adapter_uses_store_topology_and_correlated_effects() -> Re
     ]);
     let store = FixtureVectorStore::default();
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let grant = runtime.install_vector_store(agent, store.clone())?;
 
     let result = runtime.run(agent, "retrieve context").await?;
@@ -660,7 +660,7 @@ async fn memory_loads_before_model_and_appends_only_successful_commits() -> Resu
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(tenant_id)
             .memory(memory_id, "conversation")
             .build(),
@@ -690,7 +690,7 @@ async fn later_stream_error_keeps_deltas_provisional_and_suppresses_raw_final() 
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
@@ -707,7 +707,7 @@ async fn later_stream_error_keeps_deltas_provisional_and_suppresses_raw_final() 
         outcome
             .events
             .iter()
-            .any(|event| matches!(event, rig_bevy::RunEvent::Provisional { .. }))
+            .any(|event| matches!(event, rig_ecs::RunEvent::Provisional { .. }))
     );
     assert_eq!(outcome.transcript, [Message::user("stream")]);
     Ok(())
@@ -721,7 +721,7 @@ async fn live_stream_preserves_identical_chunks_before_typed_final() -> Result<(
         MockStreamEvent::final_response_with_total_tokens(2),
     ]]);
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let mut stream = runtime.start_streaming::<MockResponse>(agent, "stream")?;
     let mut sequence = Vec::new();
 
@@ -751,7 +751,7 @@ async fn live_stream_preserves_identical_chunks_before_typed_final() -> Result<(
 async fn legal_stream_without_provider_final_omits_typed_final_event() -> Result<()> {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::text("text only")]]);
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
 
     let streamed = runtime
         .run_streaming::<MockResponse>(agent, "no raw final")
@@ -783,7 +783,7 @@ async fn streaming_convenience_collector_enforces_event_capacity() -> Result<()>
         effect_timeout: Duration::from_secs(1),
         ..RuntimeConfig::default()
     })?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
 
     let error = runtime
         .run_streaming::<MockResponse>(agent, "bounded collection")
@@ -821,7 +821,7 @@ async fn long_stream_resets_consecutive_pass_bound_for_local_and_hosted_drivers(
     let mut local = LocalRuntime::with_config(config.clone())?;
     let local_agent = local.spawn_agent(
         stream_model()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
@@ -831,7 +831,7 @@ async fn long_stream_resets_consecutive_pass_bound_for_local_and_hosted_drivers(
     let mut hosted_local = LocalRuntime::with_config(config)?;
     let hosted_agent = hosted_local.spawn_agent(
         stream_model()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
@@ -850,7 +850,7 @@ async fn dropping_live_stream_cancels_before_provider_dispatch() -> Result<()> {
         delay: Duration::from_secs(1),
     };
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let stream = runtime.start_streaming::<MockResponse>(agent, "drop immediately")?;
     let handle = stream.handle();
 
@@ -875,7 +875,7 @@ async fn dropping_live_stream_after_provisional_delta_prevents_commit() -> Resul
         effect_timeout: Duration::from_secs(1),
         ..RuntimeConfig::default()
     })?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let mut stream = runtime.start_streaming::<MockResponse>(agent, "drop after delta")?;
     let handle = stream.handle();
 
@@ -909,7 +909,7 @@ async fn typed_stream_reports_provider_final_type_mismatch() -> Result<()> {
         MockStreamEvent::final_response_with_total_tokens(1),
     ]]);
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
 
     let error = runtime
         .run_streaming::<String>(agent, "stream")
@@ -936,7 +936,7 @@ async fn provider_usage_overflow_fails_without_panicking_or_wrapping() -> Result
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .build(),
     )?;
@@ -970,7 +970,7 @@ async fn wrong_tool_payload_does_not_consume_the_legitimate_completion() -> Resu
         calls: Arc::clone(&calls),
     };
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     runtime.install_tool(agent, tool)?;
     let handle = runtime.start_run(agent, "tool")?;
 
@@ -1064,7 +1064,7 @@ async fn tool_choice_none_degrades_tool_output_mode_to_native() -> Result<()> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tool_choice(ToolChoice::None)
             .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
                 mode: OutputMode::Tool,
@@ -1094,7 +1094,7 @@ async fn specific_real_tool_degrades_tool_output_mode_to_native() -> Result<()> 
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["counting_portable_tool".to_string()],
             })
@@ -1132,7 +1132,7 @@ async fn invalid_specific_and_unsatisfied_required_choices_fail_before_io() -> R
         let agent = runtime.spawn_agent(
             model
                 .clone()
-                .into_bevy_agent_builder()
+                .into_ecs_agent_builder()
                 .tool_choice(choice)
                 .build(),
         )?;
@@ -1165,7 +1165,7 @@ async fn specific_synthetic_output_tool_stays_pinned_across_retry() -> Result<()
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tool_choice(ToolChoice::Specific {
                 function_names: vec![output_name.clone()],
             })
@@ -1207,7 +1207,7 @@ async fn required_choice_is_satisfied_by_the_synthetic_output_tool() -> Result<(
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tool_choice(ToolChoice::Required)
             .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
                 mode: OutputMode::Tool,
@@ -1242,7 +1242,7 @@ async fn structured_output_validates_and_best_effort_commits_last_response() -> 
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<StructuredAnswer>(policy)
             .build(),
     )?;
@@ -1286,7 +1286,7 @@ async fn structured_output_honors_refs_combinators_and_constraints() -> Result<(
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output_raw(
                 schema,
                 StructuredOutputPolicy {
@@ -1318,7 +1318,7 @@ async fn tool_structured_mode_rejects_textual_json() -> Result<()> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<StructuredAnswer>(StructuredOutputPolicy {
                 mode: OutputMode::Tool,
                 max_retries: 1,
@@ -1351,7 +1351,7 @@ async fn exact_inflight_tool_version_survives_replacement() -> Result<()> {
     let old = CountingPortableTool::default();
     let new = CountingPortableTool::default();
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let grant = runtime.install_tool(agent, old.clone())?;
     let handle = runtime.start_run(agent, "go")?;
 
@@ -1371,7 +1371,7 @@ fn revoked_grants_cannot_fork_the_immutable_replacement_chain() -> Result<()> {
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         MockCompletionModel::text("unused")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let original = runtime.install_tool(agent, CountingPortableTool::default())?;
@@ -1407,7 +1407,7 @@ fn duplicate_active_tool_names_are_rejected_atomically() -> Result<()> {
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         MockCompletionModel::text("unused")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     runtime.install_tool(agent, CountingPortableTool::default())?;
@@ -1434,7 +1434,7 @@ async fn memory_bindings_cannot_cross_tenants() -> Result<()> {
     let memory_id = runtime.register_memory(owner, memory.clone());
 
     let definition = MockCompletionModel::text("unused")
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .tenant(attacker)
         .memory(memory_id, "cross-tenant")
         .build();
@@ -1471,7 +1471,7 @@ async fn ingress_events_rejections_and_cancellation_are_bounded() -> Result<()> 
         effect_timeout: Duration::from_secs(2),
         ..RuntimeConfig::default()
     })?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let handle = runtime.start_run(agent, "bounds")?;
     let mut events = runtime.subscribe(handle)?;
     let _ = runtime.step(handle).await?;
@@ -1502,7 +1502,7 @@ async fn ingress_events_rejections_and_cancellation_are_bounded() -> Result<()> 
 
     for sequence in 1..=3 {
         let mut hostile = header;
-        hostile.runtime_id = rig_bevy::RuntimeId::new();
+        hostile.runtime_id = rig_ecs::RuntimeId::new();
         runtime.ingest(EffectIngress::Delta {
             header: hostile,
             sequence,
@@ -1528,7 +1528,7 @@ async fn tenant_validation_precedes_run_lifecycle_validation() -> Result<()> {
         delay: Duration::from_secs(1),
     };
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().tenant(owner).build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().tenant(owner).build())?;
     let handle = runtime.start_run(agent, "tenant boundary")?;
     let _ = runtime.step(handle).await?;
     let header = runtime
@@ -1595,7 +1595,7 @@ async fn hosted_driver_waits_for_slow_effect_without_burning_schedule_passes() -
         effect_timeout: Duration::from_secs(1),
         ..RuntimeConfig::default()
     })?;
-    let agent = local.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = local.spawn_agent(model.into_ecs_agent_builder().build())?;
     let hosted = HostedRuntime::new(local);
     let handle = hosted.start_run(agent, "slow").await?;
 
@@ -1621,17 +1621,17 @@ async fn effect_queue_backpressure_waits_across_three_runs_without_livelock() ->
             inner: MockCompletionModel::text("first"),
             delay: Duration::from_millis(80),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let middle_agent = runtime.spawn_agent(
         MockCompletionModel::text("second")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let target_agent = runtime.spawn_agent(
         MockCompletionModel::text("third")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let slow = runtime.start_run(slow_agent, "slow")?;
@@ -1660,7 +1660,7 @@ async fn panicking_model_cannot_hang_local_driver() -> Result<()> {
         effect_timeout: Duration::from_millis(25),
         ..RuntimeConfig::default()
     })?;
-    let agent = runtime.spawn_agent(PanicModel.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(PanicModel.into_ecs_agent_builder().build())?;
 
     let outcome = tokio::time::timeout(Duration::from_millis(250), runtime.run(agent, "panic"))
         .await
@@ -1691,11 +1691,11 @@ async fn foreign_ingress_cannot_extend_a_missing_target_effect_deadline() -> Res
     })?;
     let foreign_agent = runtime.spawn_agent(
         MockCompletionModel::from_stream_turns([foreign_events])
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
-    let target_agent = runtime.spawn_agent(PanicModel.into_bevy_agent_builder().build())?;
+    let target_agent = runtime.spawn_agent(PanicModel.into_ecs_agent_builder().build())?;
     let _foreign = runtime.start_run(foreign_agent, "foreign stream")?;
     let target = runtime.start_run(target_agent, "missing completion")?;
 
@@ -1779,7 +1779,7 @@ async fn hosted_runs_use_run_scoped_progress_and_wakeups() -> Result<()> {
             inner: MockCompletionModel::text("slow"),
             delay: Duration::from_millis(80),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let fast_agent = local.spawn_agent(
@@ -1787,7 +1787,7 @@ async fn hosted_runs_use_run_scoped_progress_and_wakeups() -> Result<()> {
             inner: MockCompletionModel::text("fast"),
             delay: Duration::from_millis(10),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let hosted = HostedRuntime::new(local);
@@ -1822,7 +1822,7 @@ async fn hosted_driver_drains_foreign_ingress_that_blocks_its_own_completion() -
             inner: MockCompletionModel::text("early"),
             delay: Duration::from_millis(5),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let target_agent = local.spawn_agent(
@@ -1830,7 +1830,7 @@ async fn hosted_driver_drains_foreign_ingress_that_blocks_its_own_completion() -
             inner: MockCompletionModel::text("target"),
             delay: Duration::from_millis(40),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let hosted = HostedRuntime::new(local);
@@ -1864,12 +1864,12 @@ async fn hosted_cancellation_wakes_a_run_waiting_for_effect_queue_capacity() -> 
             inner: MockCompletionModel::text("blocking"),
             delay: Duration::from_millis(500),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let waiting_agent = local.spawn_agent(
         MockCompletionModel::text("must not dispatch")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let hosted = HostedRuntime::new(local);
@@ -1907,12 +1907,12 @@ async fn hosted_deferred_effect_wakes_when_a_semaphore_owner_is_cancelled() -> R
             inner: MockCompletionModel::text("blocking"),
             delay: Duration::from_millis(500),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let target_agent = local.spawn_agent(
         MockCompletionModel::text("target")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let hosted = HostedRuntime::new(local);
@@ -1955,7 +1955,7 @@ async fn dropping_hosted_driver_future_leaves_the_run_resumable() -> Result<()> 
             inner: MockCompletionModel::text("resumed"),
             delay: Duration::from_millis(80),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let hosted = HostedRuntime::new(local);
@@ -1983,7 +1983,7 @@ async fn hosted_runtime_rejects_a_second_driver_for_the_same_handle() -> Result<
             inner: MockCompletionModel::text("single owner"),
             delay: Duration::from_millis(40),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let hosted = HostedRuntime::new(local);
@@ -2188,7 +2188,7 @@ fn canonical_snapshot_validation_binds_run_policy_state_to_its_agent() -> Result
         AgentSpec::new(model_id, tenant_id)
             .structured_output::<StructuredAnswer>(policy)
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
-            .invalid_tool_policy(rig_bevy::InvalidToolPolicy::Retry { max_retries: 1 }),
+            .invalid_tool_policy(rig_ecs::InvalidToolPolicy::Retry { max_retries: 1 }),
     )?;
     let _ = runtime.start_run(agent, "snapshot policy")?;
     let protector = XorProtector(0x64);
@@ -2357,7 +2357,7 @@ fn snapshot_validation_rejects_duplicate_active_tool_names() -> Result<()> {
         .and_then(serde_json::Value::as_array_mut)
         .context("snapshot grants")?;
     let mut duplicate = grants.first().cloned().context("installed grant")?;
-    duplicate["id"] = serde_json::to_value(rig_bevy::GrantId::new())?;
+    duplicate["id"] = serde_json::to_value(rig_ecs::GrantId::new())?;
     grants.push(duplicate);
     let tampered = reprotect_domain(&snapshot, &protector, &domain)?;
     let mut bindings = RebindRegistry::new();
@@ -2817,7 +2817,7 @@ fn snapshots_reject_ephemeral_binding_claims() -> Result<()> {
     let mut runtime = runtime()?;
     let _agent = runtime.spawn_agent(
         MockCompletionModel::text("unused")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
 
@@ -2840,7 +2840,7 @@ async fn debug_surfaces_are_redacted_while_typed_provider_details_remain_inspect
     let secret_output = "output-secret-536563";
     let secret_provider_body = r#"{"error":"provider-secret-50726f"}"#;
     let tenant_id = TenantId::new();
-    let spec = AgentSpec::new(rig_bevy::ModelId::new(), tenant_id)
+    let spec = AgentSpec::new(rig_ecs::ModelId::new(), tenant_id)
         .preamble(secret_prompt)
         .additional_params(serde_json::json!({"api_key": secret_provider_body}));
     let rendered_spec = format!("{spec:?}");
@@ -2850,7 +2850,7 @@ async fn debug_surfaces_are_redacted_while_typed_provider_details_remain_inspect
 
     let correlation_id = CorrelationId::new();
     let header = EffectHeader {
-        runtime_id: rig_bevy::RuntimeId::new(),
+        runtime_id: rig_ecs::RuntimeId::new(),
         run_id: RunId::new(),
         operation_id: OperationId::new(),
         generation: Generation::default(),
@@ -2864,9 +2864,9 @@ async fn debug_surfaces_are_redacted_while_typed_provider_details_remain_inspect
     assert!(!rendered_header.contains(&tenant_id.to_string()));
     assert!(!rendered_header.contains(&correlation_id.to_string()));
 
-    let capability_id = rig_bevy::CapabilityId::new();
-    let grant_id = rig_bevy::GrantId::new();
-    let agent_id = rig_bevy::AgentId::new();
+    let capability_id = rig_ecs::CapabilityId::new();
+    let grant_id = rig_ecs::GrantId::new();
+    let agent_id = rig_ecs::AgentId::new();
     let run_id = RunId::new();
     let nodes = [
         format!(
@@ -2893,7 +2893,7 @@ async fn debug_surfaces_are_redacted_while_typed_provider_details_remain_inspect
         format!(
             "{:?}",
             RunHandle {
-                runtime_id: rig_bevy::RuntimeId::new(),
+                runtime_id: rig_ecs::RuntimeId::new(),
                 run_id,
                 generation: Generation::default(),
                 tenant_id,
@@ -2930,7 +2930,7 @@ async fn debug_surfaces_are_redacted_while_typed_provider_details_remain_inspect
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         MockCompletionModel::text(secret_output)
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .preamble(secret_prompt)
             .build(),
     )?;
@@ -2945,7 +2945,7 @@ async fn debug_surfaces_are_redacted_while_typed_provider_details_remain_inspect
 async fn hosted_driver_allows_cancellation_between_schedule_passes() -> Result<()> {
     let model = MockCompletionModel::text("must not commit");
     let mut local = runtime()?;
-    let agent = local.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = local.spawn_agent(model.into_ecs_agent_builder().build())?;
     let hosted = HostedRuntime::new(local);
     let handle = hosted.start_run(agent, "cancel hosted").await?;
 
@@ -2963,7 +2963,7 @@ async fn hosted_driver_allows_cancellation_between_schedule_passes() -> Result<(
 async fn hosted_provider_diagnostic_is_typed_only_by_name_and_contains_no_content() -> Result<()> {
     let model = MockCompletionModel::text("sensitive provider content");
     let mut local = runtime()?;
-    let agent = local.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = local.spawn_agent(model.into_ecs_agent_builder().build())?;
     let hosted = HostedRuntime::new(local);
     let handle = hosted.start_run(agent, "sensitive prompt").await?;
     let result = hosted.drive_to_terminal(handle).await?;
@@ -3005,7 +3005,7 @@ async fn tool_mode_best_effort_commits_without_orphan_tool_calls() -> Result<()>
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tool_choice(ToolChoice::Specific {
                 function_names: vec![output_name.clone()],
             })
@@ -3117,7 +3117,7 @@ async fn memory_after_tool_mode_best_effort_yields_a_valid_next_run() -> Result<
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(tenant_id)
             .memory(memory_id, "best-effort")
             .tool_choice(ToolChoice::Specific {
@@ -3169,7 +3169,7 @@ async fn duplicate_tool_call_identities_fail_before_any_tool_executes() -> Resul
     ])?]);
     let tool = CountingPortableTool::default();
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     runtime.install_tool(agent, tool.clone())?;
 
     let error = runtime
@@ -3201,7 +3201,7 @@ async fn recovery_feedback_clears_after_an_accepted_response() -> Result<()> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .build(),
     )?;
@@ -3241,12 +3241,12 @@ async fn local_deferred_effect_wakes_when_a_semaphore_owner_is_cancelled() -> Re
             inner: MockCompletionModel::text("blocking"),
             delay: Duration::from_secs(30),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let target_agent = runtime.spawn_agent(
         MockCompletionModel::text("target")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let blocking = runtime.start_run(blocking_agent, "blocking")?;
@@ -3282,7 +3282,7 @@ async fn local_streaming_deferred_effect_wakes_when_a_semaphore_owner_is_cancell
             inner: MockCompletionModel::text("blocking"),
             delay: Duration::from_secs(30),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let target_agent = runtime.spawn_agent(
@@ -3290,7 +3290,7 @@ async fn local_streaming_deferred_effect_wakes_when_a_semaphore_owner_is_cancell
             MockStreamEvent::text("target"),
             MockStreamEvent::final_response_with_total_tokens(1),
         ]])
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .streaming(StreamingMode::Streaming)
         .build(),
     )?;
@@ -3324,12 +3324,12 @@ async fn abandoned_terminal_runs_are_cleaned_after_unobserved_retention() -> Res
             inner: MockCompletionModel::text("abandoned"),
             delay: Duration::from_secs(30),
         }
-        .into_bevy_agent_builder()
+        .into_ecs_agent_builder()
         .build(),
     )?;
     let pump_agent = runtime.spawn_agent(
         MockCompletionModel::text("pump")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     // The abandoned run goes terminal through cancellation processed during the
@@ -3416,7 +3416,7 @@ async fn non_canonical_memory_history_fails_before_any_model_call() -> Result<()
         let agent = runtime.spawn_agent(
             model
                 .clone()
-                .into_bevy_agent_builder()
+                .into_ecs_agent_builder()
                 .tenant(tenant_id)
                 .memory(memory_id, "windowed")
                 .build(),
@@ -3442,7 +3442,7 @@ async fn assistant_role_prompts_are_rejected_at_start() -> Result<()> {
     let mut runtime = runtime()?;
     let agent = runtime.spawn_agent(
         MockCompletionModel::text("unused")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
 
@@ -3521,7 +3521,7 @@ async fn multi_turn_tool_runs_commit_under_tail_validation() -> Result<()> {
     ]);
     let tool = CountingPortableTool::default();
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.clone().into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.clone().into_ecs_agent_builder().build())?;
     runtime.install_tool(agent, tool.clone())?;
 
     let result = runtime.run(agent, "multi turn").await?;
@@ -3561,7 +3561,7 @@ async fn duplicate_tool_call_identities_recover_under_retry_policy() -> Result<(
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .invalid_tool_policy(InvalidToolPolicy::Retry { max_retries: 1 })
             .build(),
     )?;
@@ -3608,7 +3608,7 @@ async fn duplicate_tool_call_identities_deduplicate_under_skip_policy() -> Resul
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .invalid_tool_policy(InvalidToolPolicy::Skip)
             .build(),
     )?;
@@ -3708,7 +3708,7 @@ async fn retired_tools_stop_advertising_while_references_drain() -> Result<()> {
     let model = MockCompletionModel::new([MockTurn::text("first"), MockTurn::text("second")]);
     let tool = CountingPortableTool::default();
     let mut runtime = runtime()?;
-    let agent = runtime.spawn_agent(model.clone().into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.clone().into_ecs_agent_builder().build())?;
     let grant = runtime.install_tool(agent, tool)?;
 
     let _ = runtime.run(agent, "before retirement").await?;
@@ -3741,12 +3741,12 @@ async fn polling_terminal_steps_renew_the_observed_retention_lease() -> Result<(
     })?;
     let polled_agent = runtime.spawn_agent(
         MockCompletionModel::text("polled")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let pump_agent = runtime.spawn_agent(
         MockCompletionModel::text("pump")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let polled = runtime.start_run(polled_agent, "polled")?;
@@ -3800,7 +3800,7 @@ async fn structured_output_turns_pass_through_the_duplicate_identity_ladder() ->
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tool_choice(ToolChoice::Specific {
                 function_names: vec![output_name.clone()],
             })
@@ -3834,7 +3834,7 @@ async fn structured_output_turns_pass_through_the_duplicate_identity_ladder() ->
     let agent = retry_runtime.spawn_agent(
         retry_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tool_choice(ToolChoice::Specific {
                 function_names: vec![output_name.clone()],
             })
@@ -3886,7 +3886,7 @@ async fn mixed_tool_result_and_text_histories_are_accepted() -> Result<()> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(tenant_id)
             .memory(memory_id, "classic-history")
             .build(),
@@ -3927,7 +3927,7 @@ async fn duplicate_and_invalid_name_retries_share_one_budget() -> Result<()> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .invalid_tool_policy(InvalidToolPolicy::Retry { max_retries: 1 })
             .build(),
     )?;

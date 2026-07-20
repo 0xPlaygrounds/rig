@@ -1,6 +1,6 @@
 //! Hyperbolic agent completion smoke test.
 
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::hyperbolic;
 

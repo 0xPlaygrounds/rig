@@ -29,8 +29,8 @@ fn portable_tool_facade_is_feature_additive() -> Result<(), Box<dyn std::error::
             &["--no-default-features", "--features", "agent"][..],
         ),
         (
-            "agent-bevy",
-            &["--no-default-features", "--features", "agent,bevy"][..],
+            "agent-ecs",
+            &["--no-default-features", "--features", "agent,ecs"][..],
         ),
         ("default", &[][..]),
         ("all-features", &["--all-features"][..]),
@@ -50,14 +50,17 @@ fn portable_tool_facade_is_feature_additive() -> Result<(), Box<dyn std::error::
 }
 
 #[test]
-fn contextual_classic_tool_is_rejected_by_bevy() -> Result<(), Box<dyn std::error::Error>> {
+fn contextual_classic_tool_is_rejected_by_ecs() -> Result<(), Box<dyn std::error::Error>> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = root.join("tests/fixtures/tool_facade/contextual_bevy/Cargo.toml");
+    let fixture = root.join("tests/fixtures/tool_facade/contextual_ecs/Cargo.toml");
     let target_dir = root.join("target/tool-facade-contextual-rejection");
     let output = cargo_check(&fixture, &target_dir, &[])?;
 
     if output.status.success() {
-        return Err("contextual classic tool unexpectedly satisfied Bevy's portable bound".into());
+        return Err(
+            "contextual classic tool unexpectedly satisfied the ECS runtime.s portable bound"
+                .into(),
+        );
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);

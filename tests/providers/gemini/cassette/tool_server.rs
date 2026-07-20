@@ -5,7 +5,7 @@
 //! the rmcp migration unchanged.
 
 use rig::agent::tool::server::ToolServer;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::gemini;
 

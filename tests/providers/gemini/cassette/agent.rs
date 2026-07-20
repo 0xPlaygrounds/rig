@@ -1,6 +1,6 @@
 //! Gemini agent completion smoke test.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::gemini;
 

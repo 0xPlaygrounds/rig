@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::agent::tool::Tool;
-use rig::client::{AgentClientExt, CompletionClient};
+use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::chatgpt;

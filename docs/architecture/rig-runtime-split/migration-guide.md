@@ -4,16 +4,27 @@ Rig now separates portable model/backend contracts from two independent agent
 runtimes. The classic runtime remains the default. The Bevy ECS runtime is an
 experimental, native-only opt-in.
 
-**This split is a breaking (semver-major) release.** Every existing consumer
-should expect two mechanical source changes even with default features:
+**This split is a breaking (semver-major) release.** With default features, the
+main mechanical source change is:
 
 - `rig::tool::Tool` (with `ToolEmbedding` and `DynamicTool`) now names the
   portable, context-free trait. Classic contextual tool implementations must
   import `rig::agent::tool::Tool` (and `ToolSet`, `ToolContext`, server and
   rmcp items) instead.
-- `client.agent(...)` and `client.extractor(...)` are extension-trait methods:
-  add `use rig::client::AgentClientExt;` (or import the prelude). Model-side
-  construction uses `rig::client::AgentModelExt` the same way.
+
+Client construction is **not** a source change through the facade:
+`use rig::client::CompletionClient; client.agent(model)` (and
+`client.extractor(model)` / `client.completion_model(model)`) work exactly as
+before. `rig::client::CompletionClient` is now the classic runtime's client
+trait; it forwards `completion_model` to the portable provider trait and adds
+`agent`/`extractor`, so the single import keeps its full pre-split surface.
+Model-side construction uses `rig::client::AgentModelExt` the same way.
+
+Direct `rig-core` dependents are the exception: `rig-core`'s
+`CompletionClient` no longer provides `agent()`/`extractor()` — those moved to
+`rig-agent`. Code depending on `rig-core` alone that constructed agents must
+depend on `rig-agent` (or the facade) and import
+`rig_agent::client::CompletionClient`.
 
 Direct `rig-core` dependents: the `rmcp` and `discord-bot` features and the
 `tool_macro` re-export moved to `rig-agent`; portable tools and the derive's
@@ -25,8 +36,8 @@ context-free output continue to work against `rig-core` alone.
 | --- | --- |
 | Provider calls, messages, embeddings, stores, memory, or portable tools only | Depend directly on `rig-core` |
 | Existing agents, prompting, streaming, extraction, hooks, or contextual tools | Use root `rig` defaults or depend on `rig-agent` + `rig-core` |
-| ECS-owned topology, effects, policy, persistence, and hosted/local driving | Enable root `bevy` and import `rig::bevy`, or depend on `rig-bevy` + `rig-core` |
-| Both runtimes | Enable `agent,bevy`; use their distinct namespaces and construction extensions |
+| ECS-owned topology, effects, policy, persistence, and hosted/local driving | Enable root `ecs` and import `rig::ecs`, or depend on `rig-ecs` + `rig-core` |
+| Both runtimes | Enable `agent,ecs`; use their distinct namespaces and construction extensions |
 
 Disabling root defaults selects neither runtime:
 
@@ -39,13 +50,13 @@ Classic-only and ECS-only selections are explicit:
 ```toml
 rig = { version = "0.40", default-features = false, features = ["agent", "rustls"] }
 # or
-rig = { version = "0.40", default-features = false, features = ["bevy", "rustls"] }
+rig = { version = "0.40", default-features = false, features = ["ecs", "rustls"] }
 ```
 
 The default `rig::prelude` keeps the portable core names and adds non-colliding
 classic conveniences. In particular, `rig::prelude::Tool` is always the
 portable trait. Bevy is never added to this prelude; use
-`rig::bevy::prelude::*` deliberately.
+`rig::ecs::prelude::*` deliberately.
 
 ## Owner changes
 
@@ -57,7 +68,7 @@ portable trait. Bevy is never added to this prelude; use
 | Extractors and classic runtime integrations | `rig-agent` |
 | Mutable `ToolContext`, contextual tools, registries, tool servers and snapshots | `rig-agent::tool` |
 | Canonical messages, completion/provider contracts, raw provider responses, portable tools, memory/store traits | `rig-core` |
-| ECS entities, schedules, policies, effects, local/hosted handles and protected domain snapshots | `rig-bevy` |
+| ECS entities, schedules, policies, effects, local/hosted handles and protected domain snapshots | `rig-ecs` |
 
 The root facade keeps portable contracts at stable paths regardless of feature
 unification. `rig::tool` is always portable; enabling `agent` adds the classic
@@ -103,7 +114,7 @@ rest of the runtime surface are not affected.
 Classic client and model construction moved to extension traits:
 
 ```rust,ignore
-use rig_agent::{client::{AgentClientExt, AgentModelExt}, completion::Prompt};
+use rig_agent::{client::{CompletionClient, AgentModelExt}, completion::Prompt};
 use rig_core::{client::ProviderClient, providers::openai};
 
 let client = openai::Client::from_env()?;
@@ -115,11 +126,11 @@ The Bevy spelling is intentionally distinct, so both extensions can be in
 scope without two `agent()` candidates:
 
 ```rust,ignore
-use rig_bevy::{BevyClientExt, LocalRuntime};
+use rig_ecs::{EcsClientExt, LocalRuntime};
 use rig_core::{client::ProviderClient, providers::openai};
 
 let client = openai::Client::from_env()?;
-let definition = client.bevy_agent(openai::GPT_5_2).build();
+let definition = client.ecs_agent(openai::GPT_5_2).build();
 let mut runtime = LocalRuntime::new()?;
 let agent = runtime.spawn_agent(definition)?;
 let result = runtime.run(agent, "Hello").await?;
@@ -135,7 +146,7 @@ runtimes can execute it.
 
 Classic contextual tools implement `rig_agent::tool::Tool` and receive
 `&mut rig_agent::tool::ToolContext`. They can use the classic per-run type map
-and host-only result metadata, but cannot be installed in `rig-bevy`. Through
+and host-only result metadata, but cannot be installed in `rig-ecs`. Through
 the root facade, use `rig::agent::tool::{Tool, ToolContext}`.
 
 `#[rig_tool]` chooses the boundary from the function signature:
@@ -150,7 +161,7 @@ dependencies and emits a migration error for invalid context signatures.
 
 ## Bevy runtime behavior
 
-`rig-bevy` does not wrap `AgentRun` and has no hooks. ECS components and ordered
+`rig-ecs` does not wrap `AgentRun` and has no hooks. ECS components and ordered
 systems own topology and progression. Model, portable-tool, and memory futures
 receive owned effect inputs; only validated ingress can mutate authoritative
 state. Every effect carries stable runtime/run/operation identity, generation,

@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use rig::agent::tool::{DynamicTool, ToolOutput};
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
 use serde::Deserialize;

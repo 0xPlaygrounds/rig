@@ -6,7 +6,7 @@
 //! Gemini.
 
 use rig::agent::RequestPatch;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;

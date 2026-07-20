@@ -1,7 +1,7 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
 
 use rig::OneOrMany;
-use rig::client::{AgentClientExt, AgentModelExt, CompletionClient};
+use rig::client::{AgentModelExt, CompletionClient};
 use rig::completion::CompletionModel;
 use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message, ToolChoice};

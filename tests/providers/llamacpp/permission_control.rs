@@ -3,7 +3,7 @@ use rig::agent::tool::Tool;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::streaming::StreamingPrompt;
 use serde::{Deserialize, Serialize};

@@ -7,8 +7,9 @@
 //!
 //! Two classic paths intentionally changed with the runtime split: `rig::tool`
 //! now holds only the portable, context-free tool contracts (classic contextual
-//! tools live at [`crate::agent::tool`]), and classic construction methods such
-//! as `client.agent(...)` require importing [`crate::client::AgentClientExt`].
+//! tools live at [`crate::agent::tool`]). Classic construction methods such as
+//! `client.agent(...)` come from [`crate::client::CompletionClient`], the same
+//! import as before the runtime split.
 //! See the migration guide in `docs/architecture/rig-runtime-split/` for the
 //! complete mapping.
 //!
@@ -57,16 +58,20 @@ pub mod agent {
 }
 
 /// Experimental native-only ECS runtime.
-#[cfg(feature = "bevy")]
-#[cfg_attr(docsrs, doc(cfg(feature = "bevy")))]
-pub mod bevy {
-    pub use rig_bevy::*;
+#[cfg(feature = "ecs")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ecs")))]
+pub mod ecs {
+    pub use rig_ecs::*;
 }
 
 /// Provider clients plus classic agent/extractor constructors.
 pub mod client {
+    // The classic runtime's `CompletionClient` extension (adding `agent()` /
+    // `extractor()`) owns this path; it shadows the portable provider trait of
+    // the same name from the glob below. Provider authors implement the
+    // portable trait via `rig_core::client::completion::CompletionClient`.
     #[cfg(feature = "agent")]
-    pub use rig_agent::client::{AgentClientExt, AgentModelExt, CompletionClient};
+    pub use rig_agent::client::{AgentModelExt, CompletionClient};
     pub use rig_core::client::*;
 }
 
@@ -99,7 +104,7 @@ pub mod prelude {
     pub use crate::Embed;
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
+        Agent, AgentModelExt, Chat, CompletionClient, MultiTurnStreamItem, Prompt, PromptError,
         StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
         TypedPrompt,
     };

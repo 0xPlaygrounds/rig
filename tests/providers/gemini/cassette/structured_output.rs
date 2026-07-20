@@ -1,7 +1,7 @@
 //! Gemini structured output smoke test.
 
 use rig::agent::OutputMode;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};

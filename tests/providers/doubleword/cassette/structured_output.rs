@@ -1,6 +1,6 @@
 //! Cassette-backed Doubleword structured output coverage.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};

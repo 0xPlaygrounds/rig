@@ -339,13 +339,13 @@ where
 }
 
 /// Built agent definition that keeps the concrete model until runtime registration.
-pub struct BevyAgentDefinition<M> {
+pub struct EcsAgentDefinition<M> {
     pub(crate) model: M,
     pub(crate) spec: AgentSpec,
     pub(crate) binding_identity: Option<BindingIdentity>,
 }
 
-impl<M> BevyAgentDefinition<M> {
+impl<M> EcsAgentDefinition<M> {
     /// Stable model identity that will be registered with this definition.
     #[must_use]
     pub const fn model_id(&self) -> ModelId {
@@ -354,13 +354,13 @@ impl<M> BevyAgentDefinition<M> {
 }
 
 /// Builder for an ECS-native agent specification.
-pub struct BevyAgentBuilder<M> {
+pub struct EcsAgentBuilder<M> {
     model: M,
     spec: AgentSpec,
     binding_identity: Option<BindingIdentity>,
 }
 
-impl<M> BevyAgentBuilder<M>
+impl<M> EcsAgentBuilder<M>
 where
     M: CompletionModel,
 {
@@ -495,8 +495,8 @@ where
 
     /// Finish the immutable agent definition.
     #[must_use]
-    pub fn build(self) -> BevyAgentDefinition<M> {
-        BevyAgentDefinition {
+    pub fn build(self) -> EcsAgentDefinition<M> {
+        EcsAgentDefinition {
             model: self.model,
             spec: self.spec,
             binding_identity: self.binding_identity,
@@ -505,24 +505,24 @@ where
 }
 
 /// Distinct construction extension for completion provider clients.
-pub trait BevyClientExt: CompletionClient {
+pub trait EcsClientExt: CompletionClient {
     /// Construct an ECS agent builder without colliding with classic `.agent()`.
-    fn bevy_agent(&self, model: impl Into<String>) -> BevyAgentBuilder<Self::CompletionModel> {
-        BevyAgentBuilder::new(self.completion_model(model))
+    fn ecs_agent(&self, model: impl Into<String>) -> EcsAgentBuilder<Self::CompletionModel> {
+        EcsAgentBuilder::new(self.completion_model(model))
     }
 }
 
-impl<C> BevyClientExt for C where C: CompletionClient {}
+impl<C> EcsClientExt for C where C: CompletionClient {}
 
 /// Distinct construction extension for concrete completion models.
-pub trait BevyModelExt: CompletionModel + Sized {
+pub trait EcsModelExt: CompletionModel + Sized {
     /// Convert this model into an ECS agent builder.
-    fn into_bevy_agent_builder(self) -> BevyAgentBuilder<Self> {
-        BevyAgentBuilder::new(self)
+    fn into_ecs_agent_builder(self) -> EcsAgentBuilder<Self> {
+        EcsAgentBuilder::new(self)
     }
 }
 
-impl<M> BevyModelExt for M where M: CompletionModel {}
+impl<M> EcsModelExt for M where M: CompletionModel {}
 
 /// Stable handle to one run in one runtime generation.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -1035,7 +1035,7 @@ impl LocalRuntime {
     /// Spawn a built ECS agent and register its concrete model implementation.
     pub fn spawn_agent<M>(
         &mut self,
-        definition: BevyAgentDefinition<M>,
+        definition: EcsAgentDefinition<M>,
     ) -> Result<AgentId, RuntimeError>
     where
         M: CompletionModel + Send + Sync + 'static,
@@ -1567,8 +1567,8 @@ impl LocalRuntime {
             (_, None) => "",
         };
         let run_span = tracing::info_span!(
-            target: "rig::bevy",
-            "rig.bevy.run",
+            target: "rig::ecs",
+            "rig.ecs.run",
             run.id = %run_id,
             run.generation = generation.0,
             run.streaming = ?agent.spec.streaming,
@@ -1830,9 +1830,9 @@ impl LocalRuntime {
                     rig.operation.id = %operation_id,
                 ),
                 EffectIntent::Tool(intent) => tracing::info_span!(
-                    target: "rig::bevy",
+                    target: "rig::ecs",
                     parent: &parent,
-                    "rig.bevy.tool_effect",
+                    "rig.ecs.tool_effect",
                     rig.run.id = %run_id,
                     rig.operation.id = %operation_id,
                     tool.name = %intent.name,
@@ -1843,9 +1843,9 @@ impl LocalRuntime {
                         crate::effects::MemoryEffectIntent::Append { .. } => "append",
                     };
                     tracing::info_span!(
-                        target: "rig::bevy",
+                        target: "rig::ecs",
                         parent: &parent,
-                        "rig.bevy.memory_effect",
+                        "rig.ecs.memory_effect",
                         rig.run.id = %run_id,
                         rig.operation.id = %operation_id,
                         memory.operation = kind,

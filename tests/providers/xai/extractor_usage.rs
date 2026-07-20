@@ -1,7 +1,7 @@
 //! Integration tests for xAI extractor usage tracking.
 
 use anyhow::Result;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::extractor::ExtractionResponse;
 use rig::message::Message;
 use rig::providers::xai;

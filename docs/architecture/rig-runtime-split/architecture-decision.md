@@ -115,7 +115,7 @@ Adopt this production dependency topology:
                          rig
                   facade / namespaces
                   /        |        \
-          rig-agent     rig-bevy    integrations/providers
+          rig-agent     rig-ecs    integrations/providers
                   \        |        /
                    \       |       /
                         rig-core
@@ -123,9 +123,9 @@ Adopt this production dependency topology:
 
 Apply the following dependency rules:
 
-1. `rig-core` may not depend on `rig-agent`, `rig-bevy`, `bevy_ecs`, or any
+1. `rig-core` may not depend on `rig-agent`, `rig-ecs`, `bevy_ecs`, or any
    runtime-specific extension type.
-2. `rig-agent` and `rig-bevy` are siblings that depend on `rig-core` and never
+2. `rig-agent` and `rig-ecs` are siblings that depend on `rig-core` and never
    on each other.
 3. `rig` may depend on and re-export both runtimes. The classic runtime remains
    default; Bevy is feature-gated and namespaced.
@@ -135,7 +135,7 @@ Apply the following dependency rules:
 5. `AgentHook`, `HookStack`, hook events/actions, `RequestPatch`, and the entire
    current agent state machine move to `rig-agent`.
 6. Bevy components, bundles, relationships, schedules, systems, policies,
-   effects, handles, snapshots, and debug/explanation state live in `rig-bevy`.
+   effects, handles, snapshots, and debug/explanation state live in `rig-ecs`.
 7. Shared production code is limited to canonical values and stable contracts.
    Shared runtime behavior is specified by test fixtures and conformance
    scenarios, not by a production orchestration engine.
@@ -152,7 +152,7 @@ Apply the following dependency rules:
 ## Public-surface consequences
 
 The core client trait retains only `completion_model()`. Classic conveniences
-move to a `rig_agent::client::AgentClientExt` trait, re-exported by the default
+move to a `rig_agent::client::CompletionClient` trait, re-exported by the default
 `rig::prelude`, so the ordinary API remains:
 
 ```rust,ignore
@@ -164,10 +164,10 @@ let agent = client.agent("model").preamble("...").build();
 The Bevy extension is distinct and namespaced:
 
 ```rust,ignore
-use rig::bevy::prelude::*;
+use rig::ecs::prelude::*;
 
 let runtime = Runtime::builder().build()?;
-let agent = runtime.spawn_agent(client.bevy_agent("model").build())?;
+let agent = runtime.spawn_agent(client.ecs_agent("model").build())?;
 let run = agent.prompt("hello").await?;
 ```
 
@@ -178,8 +178,8 @@ must not produce two `agent()` methods on the same client type.
 The root default prelude exports core contracts plus non-colliding classic
 runtime ergonomics. Portable names such as `Tool` retain their core identity;
 contextual tools are explicit under `rig::agent::tool`. It does not glob-export
-Bevy components or schedules. `rig::bevy::prelude`
-exports the Bevy-specific common path. Direct `rig-bevy` consumption remains
+Bevy components or schedules. `rig::ecs::prelude`
+exports the Bevy-specific common path. Direct `rig-ecs` consumption remains
 supported for advanced ECS users.
 
 ## Architectural option evaluation
@@ -191,8 +191,8 @@ comparative recommendations, not measured facts.
 | Option | Isolation | Compile/deps | WASM | MSRV | ECS-native | Classic hooks | Provider portability | Facade ergonomics | Testing cost | Drift | Migration | Maintenance | Total / 60 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1. Mandatory Bevy inside `rig-core` | 1 | 1 | 1 | 1 | 5 | 2 | 1 | 3 | 2 | 3 | 1 | 2 | 23 |
-| 2. Classic runtime stays in `rig-core`; add `rig-bevy` | 2 | 2 | 3 | 3 | 5 | 5 | 2 | 3 | 3 | 2 | 4 | 3 | 37 |
-| 3. `rig-core` + `rig-agent` + `rig-bevy` | 5 | 5 | 4 | 4 | 5 | 5 | 5 | 4 | 3 | 3 | 3 | 3 | 49 |
+| 2. Classic runtime stays in `rig-core`; add `rig-ecs` | 2 | 2 | 3 | 3 | 5 | 5 | 2 | 3 | 3 | 2 | 4 | 3 | 37 |
+| 3. `rig-core` + `rig-agent` + `rig-ecs` | 5 | 5 | 4 | 4 | 5 | 5 | 5 | 4 | 3 | 3 | 3 | 3 | 49 |
 | 4. Shared state machine with hook/ECS adapters | 4 | 4 | 4 | 4 | 2 | 3 | 5 | 4 | 4 | 5 | 2 | 3 | 44 |
 | 5. Narrow contracts + independent runtimes + shared conformance | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 4 | 4 | 3 | 3 | 3 | 52 |
 
@@ -232,7 +232,7 @@ reduce systems to I/O adapters. ECS could not independently model call entities,
 parallel effects, grants, policies, generations, retirement, or schedule stages
 without duplicating authority. A shared engine improves drift scores by
 preventing difference, but it prevents the deliberate runtime difference that
-motivates `rig-bevy`.
+motivates `rig-ecs`.
 
 ### Option 5: narrow contracts and conformance
 
@@ -328,7 +328,7 @@ Govern scenario changes as observable contract changes:
    mappings; runtime acceptance uses a small representative provider matrix.
 4. Release notes state each runtime's support level and known intentional
    divergences.
-5. `rig-bevy` cannot become supported/default based only on API completeness;
+5. `rig-ecs` cannot become supported/default based only on API completeness;
    it must pass the readiness gate in the migration plan.
 
 ## Consequences
@@ -360,7 +360,7 @@ temporarily by root `rig`, but not by `rig-core`. A `rig-core` compatibility
 shim would require the prohibited `rig-core -> rig-agent` dependency.
 
 1. Exact portable versus contextual `Tool` APIs and `rig_tool` macro syntax.
-2. Whether `rig-bevy` initially supports WASM/single-threaded execution or is
+2. Whether `rig-ecs` initially supports WASM/single-threaded execution or is
    explicitly native-only.
 3. The typed raw-provider-final subscription and retention model for hosted
    Bevy runs.

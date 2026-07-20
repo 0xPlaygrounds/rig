@@ -32,8 +32,8 @@ impl Tool for ContextualClassicTool {
 }
 
 fn must_not_compile(
-    runtime: &mut rig::bevy::LocalRuntime,
-    agent: rig::bevy::AgentId,
+    runtime: &mut rig::ecs::LocalRuntime,
+    agent: rig::ecs::AgentId,
 ) {
     let _ = runtime.install_tool(agent, ContextualClassicTool);
 }

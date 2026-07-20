@@ -147,7 +147,7 @@ fn set_terminal(
     }
     publish(world, entity, RunEvent::Terminal(reason));
     tracing::info!(
-        target: "rig::bevy",
+        target: "rig::ecs",
         run_id = ?run_id,
         terminal_reason = ?world.get::<TerminalState>(entity).map(|state| &state.reason),
         "run reached terminal state"
@@ -184,7 +184,7 @@ fn reject_ingress(
     reason: EffectRejectionReason,
 ) {
     tracing::warn!(
-        target: "rig::bevy",
+        target: "rig::ecs",
         run_id = %header.run_id,
         operation_id = %header.operation_id,
         rejection_reason = ?reason,
@@ -1861,7 +1861,7 @@ fn commit_tool_batches(world: &mut World) {
             run.phase = RunPhase::ReadyModel;
         }
         tracing::info!(
-            target: "rig::bevy",
+            target: "rig::ecs",
             run_id = ?run_id,
             tool_count,
             "tool batch committed to canonical transcript"

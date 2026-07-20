@@ -733,8 +733,8 @@ impl LocalRuntime {
             }
             let generation = run.generation.next();
             let run_span = tracing::info_span!(
-                target: "rig::bevy",
-                "rig.bevy.run",
+                target: "rig::ecs",
+                "rig.ecs.run",
                 run.id = %run.id,
                 run.generation = generation.0,
                 run.streaming = ?run.streaming,

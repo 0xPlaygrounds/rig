@@ -14,7 +14,7 @@ request:
 - narrow `rig-core` to portable contracts, canonical values, and low-level
   provider/backend integration boundaries;
 - move the complete current classic agent runtime to a new `rig-agent` crate;
-- build a new, genuinely ECS-native `rig-bevy` runtime as a sibling of
+- build a new, genuinely ECS-native `rig-ecs` runtime as a sibling of
   `rig-agent`;
 - update the root `rig` facade, feature graph, preludes, derive macros,
   companion crates, examples, tests, and documentation;
@@ -96,7 +96,7 @@ Implement this production dependency graph:
                          rig
                   facade / namespaces
                   /        |        \
-          rig-agent     rig-bevy    integrations/providers
+          rig-agent     rig-ecs    integrations/providers
                   \        |        /
                    \       |       /
                         rig-core
@@ -104,9 +104,9 @@ Implement this production dependency graph:
 
 The graph rules are non-negotiable:
 
-1. `rig-core` does not depend on `rig-agent`, `rig-bevy`, `bevy_ecs`, or a
+1. `rig-core` does not depend on `rig-agent`, `rig-ecs`, `bevy_ecs`, or a
    runtime-specific public type.
-2. `rig-agent` and `rig-bevy` are siblings. Each depends on `rig-core`; neither
+2. `rig-agent` and `rig-ecs` are siblings. Each depends on `rig-core`; neither
    depends on the other.
 3. Root `rig` may compose and re-export core, either runtime, and optional
    integrations.
@@ -132,7 +132,7 @@ all relevant feature combinations. A diagram or intended manifest is not proof.
 
 Do not reopen these rejected approaches during implementation:
 
-- keeping the classic runtime in `rig-core` and merely adding `rig-bevy` beside
+- keeping the classic runtime in `rig-core` and merely adding `rig-ecs` beside
   it leaves providers and stores coupled to classic behavior;
 - putting Bevy behind a `rig-core` feature still permits feature unification,
   conditional public APIs, target/MSRV leakage, and private reverse imports;
@@ -225,7 +225,7 @@ Move these responsibilities intact to `rig-agent` before refactoring them:
 - all classic-specific unit, serialization, parity, concurrency, and hook
   tests.
 
-Build these responsibilities in `rig-bevy`:
+Build these responsibilities in `rig-ecs`:
 
 - agent/model/run/operation/capability/grant/store entities and relationships;
 - stable identity, generation, tenancy, ownership, and retirement state;
@@ -276,7 +276,7 @@ Use two explicit authoring layers:
    the current `&mut ToolContext` behavior. The classic runtime adapts both
    portable and contextual tools into its registry.
 
-`rig-bevy` adapts only portable tools through owned effect inputs. ECS-native
+`rig-ecs` adapts only portable tools through owned effect inputs. ECS-native
 context comes from explicit capability/grant entities and policy facts, not an
 arbitrary mutable type map passed into an async future.
 
@@ -298,7 +298,7 @@ The core client trait retains model construction only. Implement blanket
 classic extensions in `rig-agent`:
 
 ```rust,ignore
-pub trait AgentClientExt: rig_core::client::CompletionClient {
+pub trait CompletionClient: rig_core::client::CompletionClient {
     fn agent(&self, model: impl Into<String>) -> AgentBuilder<Self::CompletionModel>;
     fn extractor<T>(
         &self,
@@ -324,20 +324,20 @@ provide the same spelling through `AgentModelExt`. Verify every provider client
 and model receives classic construction without provider-specific runtime code.
 
 Give Bevy an intentionally distinct extension such as
-`BevyCompletionClientExt::bevy_agent()`, or require explicit runtime/spec
+`EcsCompletionClientExt::ecs_agent()`, or require explicit runtime/spec
 construction. Importing both runtime preludes must never produce two `agent()`
 candidates.
 
 ### Facade and feature policy
 
-- Add root `agent` and `bevy` features backed by optional runtime dependencies.
+- Add root `agent` and `ecs` features backed by optional runtime dependencies.
 - Keep classic behavior in the root default feature set.
-- Keep Bevy opt-in, namespaced under `rig::bevy`, and absent from the default
+- Keep Bevy opt-in, namespaced under `rig::ecs`, and absent from the default
   prelude.
 - `rig::prelude` keeps the portable core identities and deliberately adds only
   non-colliding classic conveniences; contextual tools remain explicit under
   `rig::agent::tool`.
-- `rig::bevy::prelude` exposes Bevy construction and common ECS runtime types.
+- `rig::ecs::prelude` exposes Bevy construction and common ECS runtime types.
 - Prefer deliberate re-exports over the current undifferentiated core glob.
 - Root `rig` may temporarily preserve useful classic paths. `rig-core` may not
   re-export moved classic symbols.
@@ -354,9 +354,9 @@ constructs that runtime.
 Preserve current `rig-core` and classic-runtime WASM behavior and MSRV unless a
 separate, evidence-backed compatibility decision is included in this PR.
 
-Treat `rig-bevy` as native-only and experimental initially. Select a
+Treat `rig-ecs` as native-only and experimental initially. Select a
 `bevy_ecs` version deliberately. If it requires a newer compiler, set and test
-that requirement on `rig-bevy` only and add an appropriate isolated CI lane;
+that requirement on `rig-ecs` only and add an appropriate isolated CI lane;
 do not raise the workspace, `rig-core`, `rig-agent`, provider, or companion MSRV
 solely for Bevy. Do not leak raw native `Send + Sync` bounds into portable APIs;
 apply stricter executor bounds in Bevy adapters.
@@ -395,7 +395,7 @@ re-export it from `rig-core`, either runtime's production API, root `rig`, or a
 published prelude, and do not turn it into a production runtime abstraction.
 
 Complete the functional runtime migration in this PR, including the required
-Bevy vertical slices and provider acceptance. Mark `rig-bevy` experimental.
+Bevy vertical slices and provider acceptance. Mark `rig-ecs` experimental.
 Do not claim supported/default status because the researched readiness gate
 requires operational history beyond one PR. Classic remains the default. The
 absence of a support declaration is not permission to leave required code,
@@ -626,7 +626,7 @@ hook suites remain behavior-identical; derive trybuild and WASM checks pass.
 3. Move `AgentRun` and `drive_agent` together; move hooks, prompt/streaming
    requests, output recovery, extractor, classic tools, integrations, memory
    orchestration, and telemetry.
-4. Publish `AgentClientExt` and `AgentModelExt`; remove core/provider runtime
+4. Publish `CompletionClient` and `AgentModelExt`; remove core/provider runtime
    constructors, including OpenAI's inherent builder method.
 5. Move classic tests and add the conformance adapter.
 6. In the same commit group, add the minimal root manifest dependencies,
@@ -651,9 +651,9 @@ workspace and default root facade compile at the phase boundary.
 Gate: every generated path and import names its actual owner; the root feature
 powerset compiles; core-only graphs select no runtime; examples and docs build.
 
-### Phase 4 — minimal `rig-bevy` boundary and topology
+### Phase 4 — minimal `rig-ecs` boundary and topology
 
-1. Add `crates/rig-bevy` with Bevy isolated to that crate.
+1. Add `crates/rig-ecs` with Bevy isolated to that crate.
 2. Implement focused components, relationships, stable IDs, bundles only where
    useful, schedule labels/system sets, progress/quiescence, and local driver.
 3. Add runtime/spec/handle construction without pretending to be classic
@@ -766,11 +766,11 @@ cargo check -p rig-core --no-default-features
 cargo check -p rig-core --features wasm --target wasm32-unknown-unknown
 cargo check -p rig-agent --all-features
 cargo check -p rig-agent --target wasm32-unknown-unknown
-cargo check -p rig-bevy --all-features
+cargo check -p rig-ecs --all-features
 cargo check -p rig --no-default-features
 cargo check -p rig --no-default-features --features agent
-cargo check -p rig --no-default-features --features bevy
-cargo check -p rig --no-default-features --features agent,bevy
+cargo check -p rig --no-default-features --features ecs
+cargo check -p rig --no-default-features --features agent,ecs
 cargo check -p rig --all-features
 ```
 
@@ -786,13 +786,13 @@ Use `cargo metadata`, `cargo tree`, and a small automated assertion to prove:
 
 ```text
 rig-core !-> rig-agent
-rig-core !-> rig-bevy
+rig-core !-> rig-ecs
 rig-core !-> bevy_ecs
-rig-agent !-> rig-bevy
-rig-bevy !-> rig-agent
+rig-agent !-> rig-ecs
+rig-ecs !-> rig-agent
 provider/store/memory integration production dependencies !-> either runtime
 rig-agent -> rig-core
-rig-bevy -> rig-core
+rig-ecs -> rig-core
 rig -> selected runtimes + core + selected integrations
 ```
 
@@ -865,7 +865,7 @@ All of the following must be true:
    error progression, prelude export, or dependency.
 3. `rig-agent` contains the full classic runtime with PR #2182 hook/retry
    behavior and existing WASM semantics preserved.
-4. `rig-bevy` contains complete ECS-native model, streaming, tool/policy,
+4. `rig-ecs` contains complete ECS-native model, streaming, tool/policy,
    memory/store, persistence, debugging, cancellation, and cleanup vertical
    slices—no classic engine wrapper and no placeholder surface.
 5. The root facade and all 41 feature intents compose core/classic/Bevy and
@@ -885,7 +885,7 @@ All of the following must be true:
 13. The unique implementation PR contains the entire implementation, is
     mergeable, has no pending or failing required checks, and has no unresolved
     actionable review thread.
-14. `rig-bevy` is honestly documented as experimental; classic remains default
+14. `rig-ecs` is honestly documented as experimental; classic remains default
     until separate operational evidence justifies another status.
 
 ## Final handoff

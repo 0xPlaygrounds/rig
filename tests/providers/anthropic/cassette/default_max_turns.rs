@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use rig::agent::tool::Tool;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use serde::{Deserialize, Serialize};

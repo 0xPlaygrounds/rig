@@ -1,7 +1,7 @@
 //! AWS Bedrock streaming replay smoke tests.
 
 use rig::bedrock;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_bedrock_cassette;

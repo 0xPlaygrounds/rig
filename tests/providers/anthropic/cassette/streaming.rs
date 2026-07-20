@@ -1,6 +1,6 @@
 //! Anthropic streaming smoke test.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::GetTokenUsage;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;

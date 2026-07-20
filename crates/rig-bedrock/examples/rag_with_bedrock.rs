@@ -3,7 +3,7 @@ use std::vec;
 use rig_agent::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
 };
-use rig_agent::{client::AgentClientExt, completion::Prompt};
+use rig_agent::{client::CompletionClient, completion::Prompt};
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;

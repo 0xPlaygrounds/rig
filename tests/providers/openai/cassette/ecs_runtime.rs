@@ -1,67 +1,45 @@
-//! Gemini Generate Content acceptance through the experimental ECS runtime.
+//! OpenAI Responses acceptance through the experimental ECS runtime.
 
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
-};
 use rig::{
-    bevy::{
-        BevyModelExt, HostedRuntime, LocalRuntime, OutputMode, StreamingRunEvent,
-        StructuredOutputPolicy,
-    },
     client::CompletionClient,
     completion::CompletionModel,
-    providers::gemini,
-    test_utils::{MockHttpResponse, SequencedHttpClient},
+    ecs::{
+        EcsModelExt, HostedRuntime, LocalRuntime, OutputMode, StreamingRunEvent,
+        StructuredOutputPolicy,
+    },
+    providers::openai,
+    test_utils::RecordingHttpClient,
 };
 
-use super::super::support::with_gemini_cassette;
+use super::super::support::with_openai_cassette;
 use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, PortableAdder, PortableSubtract, STREAMING_PREAMBLE,
     STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, STRUCTURED_OUTPUT_PROMPT,
     SmokeStructuredOutput, assert_mentions_expected_number, assert_smoke_structured_output,
-    smoke_structured_output_value,
+    ecs_synthetic_output_tool_name, smoke_structured_output_value,
 };
 
-fn text_response(text: &str, response_id: &str) -> String {
+fn output_tool_response(name: &str) -> String {
     serde_json::json!({
-        "candidates": [{
-            "content": {
-                "parts": [{"text": text}],
-                "role": "model"
-            },
-            "finishReason": "STOP",
-            "index": 0
+        "id": "resp_ecs_runtime_acceptance",
+        "object": "response",
+        "created_at": 0,
+        "status": "completed",
+        "model": "gpt-4o",
+        "output": [{
+            "type": "function_call",
+            "id": "fc_ecs_runtime_acceptance",
+            "arguments": smoke_structured_output_value().to_string(),
+            "call_id": "call_ecs_runtime_acceptance",
+            "name": name,
+            "status": "completed"
         }],
-        "modelVersion": gemini::completion::GEMINI_2_5_FLASH,
-        "responseId": response_id,
-        "usageMetadata": {
-            "promptTokenCount": 1,
-            "candidatesTokenCount": 1,
-            "totalTokenCount": 2
-        }
+        "tools": []
     })
     .to_string()
 }
 
-fn streaming_tool_params() -> serde_json::Value {
-    serde_json::to_value(AdditionalParameters::default().with_config(GenerationConfig::default()))
-        .expect("Gemini additional params should serialize")
-}
-
-fn streaming_params() -> serde_json::Value {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::Medium),
-            include_thoughts: Some(true),
-        }),
-        ..GenerationConfig::default()
-    };
-    serde_json::to_value(AdditionalParameters::default().with_config(config))
-        .expect("Gemini streaming params should serialize")
-}
-
-fn has_typed_blocking_final<M>(model: &M, result: &rig::bevy::LocalRunResult) -> bool
+fn has_typed_blocking_final<M>(model: &M, result: &rig::ecs::LocalRunResult) -> bool
 where
     M: CompletionModel,
     M::Response: std::any::Any + Send + Sync,
@@ -73,9 +51,9 @@ where
 async fn run_typed_stream<M>(
     model: &M,
     runtime: &mut LocalRuntime,
-    agent: rig::bevy::AgentId,
+    agent: rig::ecs::AgentId,
     prompt: &str,
-) -> rig::bevy::StreamingRunResult<M::StreamingResponse>
+) -> rig::ecs::StreamingRunResult<M::StreamingResponse>
 where
     M: CompletionModel + Send + Sync + 'static,
     M::Response: std::any::Any + Send + Sync,
@@ -89,7 +67,7 @@ where
         matches!(
             event,
             StreamingRunEvent::Runtime(runtime)
-                if matches!(runtime.as_ref(), rig::bevy::RunEvent::Provisional { .. })
+                if matches!(runtime.as_ref(), rig::ecs::RunEvent::Provisional { .. })
         )
     });
     let provider_final = result
@@ -103,14 +81,14 @@ where
 
 #[tokio::test]
 async fn blocking_exposes_concrete_provider_final() {
-    with_gemini_cassette("agent/completion_smoke", |client| async move {
-        let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+    with_openai_cassette("agent/completion_smoke", |client| async move {
+        let model = client.completion_model(openai::GPT_4O);
         let mut runtime = LocalRuntime::new().expect("runtime should build");
         let agent = runtime
             .spawn_agent(
                 model
                     .clone()
-                    .into_bevy_agent_builder()
+                    .into_ecs_agent_builder()
                     .preamble(BASIC_PREAMBLE)
                     .build(),
             )
@@ -129,13 +107,13 @@ async fn blocking_exposes_concrete_provider_final() {
 
 #[tokio::test]
 async fn hosted_surface_exposes_only_redacted_provider_diagnostics() {
-    with_gemini_cassette("agent/completion_smoke", |client| async move {
-        let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+    with_openai_cassette("agent/completion_smoke", |client| async move {
+        let model = client.completion_model(openai::GPT_4O);
         let mut local = LocalRuntime::new().expect("runtime should build");
         let agent = local
             .spawn_agent(
                 model
-                    .into_bevy_agent_builder()
+                    .into_ecs_agent_builder()
                     .preamble(BASIC_PREAMBLE)
                     .build(),
             )
@@ -162,16 +140,15 @@ async fn hosted_surface_exposes_only_redacted_provider_diagnostics() {
 
 #[tokio::test]
 async fn streaming_exposes_deltas_and_concrete_provider_final() {
-    with_gemini_cassette("streaming/streaming_smoke", |client| async move {
-        let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+    with_openai_cassette("streaming/streaming_smoke", |client| async move {
+        let model = client.completion_model(openai::GPT_4O);
         let mut runtime = LocalRuntime::new().expect("runtime should build");
         let agent = runtime
             .spawn_agent(
                 model
                     .clone()
-                    .into_bevy_agent_builder()
+                    .into_ecs_agent_builder()
                     .preamble(STREAMING_PREAMBLE)
-                    .additional_params(streaming_params())
                     .build(),
             )
             .expect("agent should spawn");
@@ -191,19 +168,18 @@ async fn streaming_exposes_deltas_and_concrete_provider_final() {
 
 #[tokio::test]
 async fn streaming_tools_roundtrip_through_owned_effects() {
-    with_gemini_cassette(
+    with_openai_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion_model(openai::GPT_4O);
             let mut runtime = LocalRuntime::new().expect("runtime should build");
             let agent = runtime
                 .spawn_agent(
                     model
                         .clone()
-                        .into_bevy_agent_builder()
+                        .into_ecs_agent_builder()
                         .preamble(STREAMING_TOOLS_PREAMBLE)
-                        .additional_params(streaming_tool_params())
-                        .max_model_calls(3)
+                        .max_model_calls(2)
                         .build(),
                 )
                 .expect("agent should spawn");
@@ -225,16 +201,16 @@ async fn streaming_tools_roundtrip_through_owned_effects() {
 
 #[tokio::test]
 async fn native_structured_output_validates_in_the_ecs_runtime() {
-    with_gemini_cassette(
+    with_openai_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let model = client.completion_model("gemini-3-flash-preview");
+            let model = client.completion_model(openai::GPT_4O);
             let mut runtime = LocalRuntime::new().expect("runtime should build");
             let agent = runtime
                 .spawn_agent(
                     model
                         .clone()
-                        .into_bevy_agent_builder()
+                        .into_ecs_agent_builder()
                         .structured_output::<SmokeStructuredOutput>(StructuredOutputPolicy {
                             mode: OutputMode::Native,
                             ..StructuredOutputPolicy::default()
@@ -263,28 +239,24 @@ async fn native_structured_output_validates_in_the_ecs_runtime() {
 }
 
 #[tokio::test]
-async fn invalid_native_output_recovers_through_gemini_generate_content() {
-    let valid = smoke_structured_output_value();
-    let http = SequencedHttpClient::new([
-        MockHttpResponse::success(text_response("not valid JSON", "gemini-bevy-invalid")),
-        MockHttpResponse::success(text_response(&valid.to_string(), "gemini-bevy-valid")),
-    ]);
-    let client = gemini::Client::builder()
+async fn tool_mode_maps_through_openai_responses() {
+    let output_tool = ecs_synthetic_output_tool_name::<SmokeStructuredOutput>();
+    let http = RecordingHttpClient::new(output_tool_response(&output_tool));
+    let client = openai::Client::builder()
         .api_key("test-key")
         .http_client(http.clone())
         .build()
-        .expect("Gemini test client should build");
-    let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+        .expect("OpenAI test client should build");
+    let model = client.completion_model(openai::GPT_4O);
     let mut runtime = LocalRuntime::new().expect("runtime should build");
     let agent = runtime
         .spawn_agent(
             model
                 .clone()
-                .into_bevy_agent_builder()
-                .max_model_calls(2)
+                .into_ecs_agent_builder()
                 .structured_output::<SmokeStructuredOutput>(StructuredOutputPolicy {
-                    mode: OutputMode::Native,
-                    max_retries: 1,
+                    mode: OutputMode::Tool,
+                    max_retries: 0,
                     best_effort: false,
                 })
                 .build(),
@@ -294,7 +266,7 @@ async fn invalid_native_output_recovers_through_gemini_generate_content() {
     let result = runtime
         .run_blocking(agent, STRUCTURED_OUTPUT_PROMPT)
         .await
-        .expect("Bevy Gemini structured-output recovery should succeed");
+        .expect("ECS OpenAI Tool-mode run should succeed");
     let structured: SmokeStructuredOutput = serde_json::from_value(
         result
             .structured_output
@@ -306,21 +278,12 @@ async fn invalid_native_output_recovers_through_gemini_generate_content() {
     assert!(has_typed_blocking_final(&model, &result));
 
     let requests = http.requests();
-    assert_eq!(requests.len(), 2);
-    assert_eq!(http.remaining_responses(), 0);
-    for request in &requests {
-        let body: serde_json::Value =
-            serde_json::from_slice(&request.body).expect("request should be JSON");
-        assert!(
-            body.pointer("/generationConfig/responseJsonSchema")
-                .is_some()
-        );
-    }
-    let second: serde_json::Value =
-        serde_json::from_slice(&requests[1].body).expect("request should be JSON");
-    assert!(
-        second
-            .to_string()
-            .contains("previous response did not satisfy the required JSON schema")
+    assert_eq!(requests.len(), 1);
+    let body: serde_json::Value =
+        serde_json::from_slice(&requests[0].body).expect("request should be JSON");
+    assert_eq!(body["tools"][0]["name"], output_tool);
+    assert_ne!(
+        body.pointer("/text/format/type").and_then(|v| v.as_str()),
+        Some("json_schema")
     );
 }

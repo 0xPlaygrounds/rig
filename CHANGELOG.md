@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(ecs)* [**breaking**] The `rig-bevy` crate is renamed to `rig-ecs`. The
+  facade module `rig::bevy` is now `rig::ecs` (and `rig::ecs::prelude`), the
+  root `bevy` feature is now `ecs`, and the runtime extension traits are
+  renamed: `BevyClientExt` → `EcsClientExt`, `BevyModelExt` → `EcsModelExt`,
+  `BevyAgentBuilder` → `EcsAgentBuilder`, `BevyAgentDefinition` →
+  `EcsAgentDefinition`, and `bevy_agent()` → `ecs_agent()`. The crate is still
+  implemented on the third-party `bevy_ecs` engine, which is unchanged.
+
+  ```toml
+  # Before
+  rig = { version = "0.40", features = ["bevy"] }
+  # After
+  rig = { version = "0.40", features = ["ecs"] }
+  ```
+
+  ```rust
+  // Before
+  use rig::bevy::{BevyClientExt, LocalRuntime};
+  // After
+  use rig::ecs::{EcsClientExt, LocalRuntime};
+  ```
+
 - *(agent)* [**breaking**] `rig-agent` no longer re-exports all of `rig-core`
   at its crate root. The previous `pub use rig_core::*;` made `rig-agent` an
   implicit second facade; the root now exports only runtime-owned items (plus

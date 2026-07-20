@@ -1,6 +1,6 @@
 //! Cassette-backed OpenRouter extractor smoke test.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 

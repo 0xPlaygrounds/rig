@@ -11,12 +11,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use rig_bevy::{
-    AgentSpec, BevyModelExt, EffectCompletion, EffectIngress, EffectRejectionReason,
-    InvalidToolPolicy, LocalRuntime, MemoryEffectOutput, ModelEffectOutput, OutputMode,
-    ProvisionalDelta, ResponseRetryPolicy, RunEvent, RuntimeConfig, RuntimeError, StreamingMode,
-    StructuredOutputPolicy, TenantId, TerminalReason,
-};
 use rig_core::{
     completion::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
@@ -30,6 +24,12 @@ use rig_core::{
     },
     tool::{PortableDynamicTool, PortableTool, ToolOutput},
     wasm_compat::WasmBoxedFuture,
+};
+use rig_ecs::{
+    AgentSpec, EcsModelExt, EffectCompletion, EffectIngress, EffectRejectionReason,
+    InvalidToolPolicy, LocalRuntime, MemoryEffectOutput, ModelEffectOutput, OutputMode,
+    ProvisionalDelta, ResponseRetryPolicy, RunEvent, RuntimeConfig, RuntimeError, StreamingMode,
+    StructuredOutputPolicy, TenantId, TerminalReason,
 };
 use rig_runtime_conformance::{
     ALL_SCENARIOS, CountingPortableTool, ScenarioId, ScenarioReport, scenario, verify_report,
@@ -83,7 +83,7 @@ fn test_runtime() -> Result<LocalRuntime> {
 }
 
 fn report(id: ScenarioId) -> ScenarioReport {
-    ScenarioReport::new("rig-bevy", id)
+    ScenarioReport::new("rig-ecs", id)
 }
 
 fn evidence<T>(report: &mut ScenarioReport, index: usize, actual: T) -> Result<()>
@@ -149,7 +149,7 @@ async fn model_call_budgets() -> Result<ScenarioReport> {
     let zero_agent = zero_runtime.spawn_agent(
         zero_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .max_model_calls(0)
             .build(),
     )?;
@@ -164,7 +164,7 @@ async fn model_call_budgets() -> Result<ScenarioReport> {
     let retry_agent = retry_runtime.spawn_agent(
         retry_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .max_model_calls(2)
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .build(),
@@ -191,7 +191,7 @@ async fn canonical_transcript() -> Result<ScenarioReport> {
     let mut runtime = test_runtime()?;
     let agent = runtime.spawn_agent(
         model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .build(),
     )?;
@@ -225,7 +225,7 @@ async fn tool_pairing() -> Result<ScenarioReport> {
     ]);
     let tool = CountingPortableTool::default();
     let mut runtime = test_runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     runtime.install_tool(agent, tool)?;
     let result = runtime.run(agent, "pair").await?;
     let result_ids = match result.transcript.get(2) {
@@ -254,7 +254,7 @@ async fn usage_accounting() -> Result<ScenarioReport> {
         delay: Duration::from_millis(50),
     };
     let mut runtime = test_runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let handle = runtime.start_run(agent, "usage")?;
     let _ = runtime.step(handle).await?;
     let header = runtime
@@ -287,7 +287,7 @@ async fn usage_accounting() -> Result<ScenarioReport> {
     let mut billed_runtime = test_runtime()?;
     let billed_agent = billed_runtime.spawn_agent(
         billed_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .max_model_calls(2)
             .build(),
@@ -340,7 +340,7 @@ async fn run_invalid_policy(
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .invalid_tool_policy(policy)
             .build(),
     )?;
@@ -388,7 +388,7 @@ async fn response_retry_rollback() -> Result<ScenarioReport> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .max_model_calls(2)
             .build(),
@@ -413,7 +413,7 @@ async fn response_retry_rollback() -> Result<ScenarioReport> {
     let tool_agent = tool_runtime.spawn_agent(
         tool_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .max_model_calls(2)
             .build(),
@@ -426,7 +426,7 @@ async fn response_retry_rollback() -> Result<ScenarioReport> {
     let repeated_agent = repeated_runtime.spawn_agent(
         repeated_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .max_model_calls(2)
             .build(),
@@ -478,7 +478,7 @@ async fn stop_and_cancellation() -> Result<ScenarioReport> {
     let stopped = run_invalid_policy(InvalidToolPolicy::Stop, "missing", false).await?;
     let model = MockCompletionModel::text("late");
     let mut runtime = test_runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let handle = runtime.start_run(agent, "cancel")?;
     let _ = runtime.step(handle).await?;
     let header = runtime
@@ -504,7 +504,7 @@ async fn stop_and_cancellation() -> Result<ScenarioReport> {
     // retention window is aged through a second run's schedule passes.
     let pump_agent = runtime.spawn_agent(
         MockCompletionModel::text("pump")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let pump = runtime.start_run(pump_agent, "pump")?;
@@ -559,7 +559,7 @@ async fn structured_output() -> Result<ScenarioReport> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<Answer>(StructuredOutputPolicy {
                 mode: OutputMode::Tool,
                 max_retries: 1,
@@ -584,7 +584,7 @@ async fn structured_output() -> Result<ScenarioReport> {
     let prompted_agent = prompted_runtime.spawn_agent(
         prompted_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<Answer>(StructuredOutputPolicy {
                 mode: OutputMode::Prompted,
                 max_retries: 0,
@@ -600,7 +600,7 @@ async fn structured_output() -> Result<ScenarioReport> {
     let native_agent = native_runtime.spawn_agent(
         native_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<Answer>(StructuredOutputPolicy {
                 mode: OutputMode::Native,
                 max_retries: 0,
@@ -615,7 +615,7 @@ async fn structured_output() -> Result<ScenarioReport> {
     let auto_native_agent = auto_native_runtime.spawn_agent(
         auto_native_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<Answer>(StructuredOutputPolicy::default())
             .build(),
     )?;
@@ -632,7 +632,7 @@ async fn structured_output() -> Result<ScenarioReport> {
     let auto_tool_agent = auto_tool_runtime.spawn_agent(
         auto_tool_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<Answer>(StructuredOutputPolicy::default())
             .build(),
     )?;
@@ -645,7 +645,7 @@ async fn structured_output() -> Result<ScenarioReport> {
     let recovery_agent = recovery_runtime.spawn_agent(
         recovery_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .max_model_calls(2)
             .structured_output::<Answer>(StructuredOutputPolicy {
                 mode: OutputMode::Native,
@@ -709,7 +709,7 @@ async fn memory() -> Result<ScenarioReport> {
     let agent = runtime.spawn_agent(
         model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(tenant_id)
             .memory(memory_id, "thread")
             .build(),
@@ -730,7 +730,7 @@ async fn memory() -> Result<ScenarioReport> {
     let multi_memory_id = multi_runtime.register_memory(multi_tenant, multi_memory.clone());
     let multi_agent = multi_runtime.spawn_agent(
         multi_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(multi_tenant)
             .memory(multi_memory_id, "multi-step")
             .max_model_calls(2)
@@ -748,7 +748,7 @@ async fn memory() -> Result<ScenarioReport> {
         stopped_runtime.register_memory(stopped_tenant_id, stopped_memory.clone());
     let stopped_agent = stopped_runtime.spawn_agent(
         stopped_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(stopped_tenant_id)
             .memory(stopped_memory_id, "thread")
             .invalid_tool_policy(InvalidToolPolicy::Stop)
@@ -766,7 +766,7 @@ async fn memory() -> Result<ScenarioReport> {
     let failing_agent = failing_runtime.spawn_agent(
         failing_model
             .clone()
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(failing_tenant_id)
             .memory(failing_memory_id, "thread")
             .build(),
@@ -781,7 +781,7 @@ async fn memory() -> Result<ScenarioReport> {
     );
     let append_agent = append_runtime.spawn_agent(
         MockCompletionModel::text("append survives")
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .tenant(append_tenant_id)
             .memory(append_memory, "thread")
             .build(),
@@ -844,13 +844,13 @@ async fn blocking_streaming_parity() -> Result<ScenarioReport> {
     ]]);
     let mut blocking_runtime = test_runtime()?;
     let blocking_agent =
-        blocking_runtime.spawn_agent(blocking_model.into_bevy_agent_builder().build())?;
+        blocking_runtime.spawn_agent(blocking_model.into_ecs_agent_builder().build())?;
     let blocking = blocking_runtime
         .run_blocking(blocking_agent, "prompt")
         .await?;
     let mut streaming_runtime = test_runtime()?;
     let streaming_agent =
-        streaming_runtime.spawn_agent(streaming_model.into_bevy_agent_builder().build())?;
+        streaming_runtime.spawn_agent(streaming_model.into_ecs_agent_builder().build())?;
     let streaming = streaming_runtime
         .run_streaming::<MockResponse>(streaming_agent, "prompt")
         .await?
@@ -862,7 +862,7 @@ async fn blocking_streaming_parity() -> Result<ScenarioReport> {
     let mut blocking_error_runtime = test_runtime()?;
     let blocking_error_agent = blocking_error_runtime.spawn_agent(
         MockCompletionModel::new([MockTurn::error("parity failure")])
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .build(),
     )?;
     let blocking_error = blocking_error_runtime
@@ -871,7 +871,7 @@ async fn blocking_streaming_parity() -> Result<ScenarioReport> {
     let mut streaming_error_runtime = test_runtime()?;
     let streaming_error_agent = streaming_error_runtime.spawn_agent(
         MockCompletionModel::from_stream_turns([[MockStreamEvent::error("parity failure")]])
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
@@ -895,14 +895,14 @@ async fn provider_final_exposure() -> Result<ScenarioReport> {
         MockStreamEvent::final_response_with_total_tokens(1),
     ]]);
     let mut runtime = test_runtime()?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     let result = runtime
         .run_streaming::<MockResponse>(agent, "stream")
         .await?;
     let typed = result
         .events
         .iter()
-        .any(|event| matches!(event, rig_bevy::StreamingRunEvent::ProviderFinal { .. }));
+        .any(|event| matches!(event, rig_ecs::StreamingRunEvent::ProviderFinal { .. }));
 
     let failing = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("early"),
@@ -912,7 +912,7 @@ async fn provider_final_exposure() -> Result<ScenarioReport> {
     let mut failing_runtime = test_runtime()?;
     let failing_agent = failing_runtime.spawn_agent(
         failing
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
@@ -937,7 +937,7 @@ async fn provisional_streaming() -> Result<ScenarioReport> {
     let mut runtime = test_runtime()?;
     let agent = runtime.spawn_agent(
         model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
@@ -963,7 +963,7 @@ async fn provisional_streaming() -> Result<ScenarioReport> {
     let mut retry_runtime = test_runtime()?;
     let retry_agent = retry_runtime.spawn_agent(
         retry_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .max_model_calls(2)
             .structured_output::<Answer>(StructuredOutputPolicy {
@@ -993,7 +993,7 @@ async fn provisional_streaming() -> Result<ScenarioReport> {
     let mut stop_runtime = test_runtime()?;
     let stop_agent = stop_runtime.spawn_agent(
         stop_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .invalid_tool_policy(InvalidToolPolicy::Stop)
             .build(),
@@ -1015,7 +1015,7 @@ async fn provisional_streaming() -> Result<ScenarioReport> {
     let mut cancel_runtime = test_runtime()?;
     let cancel_agent = cancel_runtime.spawn_agent(
         cancel_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .streaming(StreamingMode::Streaming)
             .build(),
     )?;
@@ -1025,7 +1025,7 @@ async fn provisional_streaming() -> Result<ScenarioReport> {
     while let Some(event) = cancel_stream.next_event().await? {
         if matches!(
             event,
-            rig_bevy::StreamingRunEvent::Runtime(event)
+            rig_ecs::StreamingRunEvent::Runtime(event)
                 if matches!(*event, RunEvent::Provisional { .. })
         ) {
             cancel_observed = true;
@@ -1081,7 +1081,7 @@ async fn tool_suppression() -> Result<ScenarioReport> {
     let mut invalid_peer_runtime = test_runtime()?;
     let invalid_peer_agent = invalid_peer_runtime.spawn_agent(
         invalid_peer_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .invalid_tool_policy(InvalidToolPolicy::Skip)
             .max_model_calls(2)
             .build(),
@@ -1105,7 +1105,7 @@ async fn tool_suppression() -> Result<ScenarioReport> {
     let mut runtime = test_runtime()?;
     let agent = runtime.spawn_agent(
         model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .structured_output::<Answer>(StructuredOutputPolicy {
                 mode: OutputMode::Tool,
                 max_retries: 0,
@@ -1128,7 +1128,7 @@ async fn tool_suppression() -> Result<ScenarioReport> {
     };
     let mut cancellation_runtime = test_runtime()?;
     let cancellation_agent =
-        cancellation_runtime.spawn_agent(cancellation_model.into_bevy_agent_builder().build())?;
+        cancellation_runtime.spawn_agent(cancellation_model.into_ecs_agent_builder().build())?;
     cancellation_runtime.install_tool(cancellation_agent, cancellation_tool.clone())?;
     let cancellation_handle = cancellation_runtime.start_run(cancellation_agent, "cancel tool")?;
     let _ = cancellation_runtime.step(cancellation_handle).await?;
@@ -1233,7 +1233,7 @@ async fn concurrency() -> Result<ScenarioReport> {
         effect_timeout: Duration::from_secs(2),
         ..RuntimeConfig::default()
     })?;
-    let agent = runtime.spawn_agent(model.into_bevy_agent_builder().build())?;
+    let agent = runtime.spawn_agent(model.into_ecs_agent_builder().build())?;
     runtime.install_tool(agent, probe.clone())?;
     let result = runtime.run(agent, "parallel").await?;
     let ids = match result.transcript.get(2) {
@@ -1275,15 +1275,15 @@ async fn stale_result_handling() -> Result<ScenarioReport> {
         .copied()
         .context("active header")?;
     let mut wrong_runtime = header;
-    wrong_runtime.runtime_id = rig_bevy::RuntimeId::new();
+    wrong_runtime.runtime_id = rig_ecs::RuntimeId::new();
     let mut wrong_tenant = header;
     wrong_tenant.tenant_id = TenantId::new();
     let mut wrong_generation = header;
     wrong_generation.generation = header.generation.next();
     let mut wrong_correlation = header;
-    wrong_correlation.correlation_id = rig_bevy::CorrelationId::new();
+    wrong_correlation.correlation_id = rig_ecs::CorrelationId::new();
     let mut wrong_authorization = header;
-    wrong_authorization.capability_id = Some(rig_bevy::CapabilityId::new());
+    wrong_authorization.capability_id = Some(rig_ecs::CapabilityId::new());
     for hostile in [
         wrong_runtime,
         wrong_tenant,
@@ -1330,8 +1330,7 @@ async fn stale_result_handling() -> Result<ScenarioReport> {
 
     let cancel_model = MockCompletionModel::text("late");
     let mut cancel_runtime = test_runtime()?;
-    let cancel_agent =
-        cancel_runtime.spawn_agent(cancel_model.into_bevy_agent_builder().build())?;
+    let cancel_agent = cancel_runtime.spawn_agent(cancel_model.into_ecs_agent_builder().build())?;
     let cancel_handle = cancel_runtime.start_run(cancel_agent, "cancel")?;
     let _ = cancel_runtime.step(cancel_handle).await?;
     let cancel_header = cancel_runtime
@@ -1354,7 +1353,7 @@ async fn stale_result_handling() -> Result<ScenarioReport> {
     let mut superseded_runtime = test_runtime()?;
     let superseded_agent = superseded_runtime.spawn_agent(
         superseded_model
-            .into_bevy_agent_builder()
+            .into_ecs_agent_builder()
             .response_retry_policy(ResponseRetryPolicy::RejectEmpty { max_retries: 1 })
             .max_model_calls(2)
             .build(),

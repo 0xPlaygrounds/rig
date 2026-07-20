@@ -6,12 +6,12 @@ tools, extraction, and runtime integrations.
 
 Most applications should use the root `rig` facade, where this runtime remains
 enabled by default. Low-level provider and backend contracts live in
-`rig-core`; the experimental ECS-native sibling runtime lives in `rig-bevy`.
+`rig-core`; the experimental ECS-native sibling runtime lives in `rig-ecs`.
 
 Direct users import construction and prompting explicitly:
 
 ```rust,ignore
-use rig_agent::{client::AgentClientExt, completion::Prompt};
+use rig_agent::{client::CompletionClient, completion::Prompt};
 use rig_core::{client::ProviderClient, providers::openai};
 
 let client = openai::Client::from_env()?;

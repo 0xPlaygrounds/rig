@@ -1,6 +1,6 @@
 //! Cassette-backed OpenRouter streaming coverage.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::streaming::StreamingPrompt;
 
 use crate::support::{

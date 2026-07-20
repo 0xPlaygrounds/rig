@@ -1,13 +1,13 @@
-# rig-bevy
+# rig-ecs
 
-`rig-bevy` is Rig's experimental, native-only Bevy ECS agent runtime. It uses
+`rig-ecs` is Rig's experimental, native-only Bevy ECS agent runtime. It uses
 the portable model, message, memory, and tool contracts from `rig-core`, while
 keeping topology, policy, progression, effects, cancellation, and persistence
 inside an authoritative ECS world.
 
 The classic `rig-agent` runtime remains Rig's default. Select this crate
-directly or enable the root `rig` crate's `bevy` feature and import
-`rig::bevy::prelude::*`.
+directly or enable the root `rig` crate's `ecs` feature and import
+`rig::ecs::prelude::*`.
 
 This runtime does not wrap `rig-agent`, `AgentRun`, or hooks. Async providers,
 tools, vector-store retrieval adapters, and memories receive owned requests and
@@ -34,12 +34,12 @@ WebAssembly is intentionally unsupported by this experimental crate. That
 native target policy does not change `rig-core` or `rig-agent` WASM support.
 
 ```rust,ignore
-use rig_bevy::{BevyClientExt, LocalRuntime};
+use rig_ecs::{EcsClientExt, LocalRuntime};
 use rig_core::{client::ProviderClient, providers::openai};
 
 let client = openai::Client::from_env()?;
 let definition = client
-    .bevy_agent(openai::GPT_5_2)
+    .ecs_agent(openai::GPT_5_2)
     .preamble("Answer concisely.")
     .build();
 let mut runtime = LocalRuntime::new()?;

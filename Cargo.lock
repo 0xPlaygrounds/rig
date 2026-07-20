@@ -1493,15 +1493,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_agent"
-version = "0.40.0"
-dependencies = [
- "anyhow",
- "rig",
- "tokio",
-]
-
-[[package]]
 name = "bevy_ecs"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3889,6 +3880,15 @@ dependencies = [
  "rfc6979",
  "signature",
  "spki",
+]
+
+[[package]]
+name = "ecs_agent"
+version = "0.40.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
 ]
 
 [[package]]
@@ -10144,10 +10144,10 @@ dependencies = [
  "reqwest-retry",
  "rig-agent",
  "rig-bedrock",
- "rig-bevy",
  "rig-candle",
  "rig-core",
  "rig-derive",
+ "rig-ecs",
  "rig-fastembed",
  "rig-gemini-grpc",
  "rig-helixdb",
@@ -10238,27 +10238,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-bevy"
-version = "0.40.0"
-dependencies = [
- "anyhow",
- "bevy_ecs",
- "futures",
- "http 1.4.2",
- "jsonschema",
- "rig-core",
- "rig-runtime-conformance",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "rig-candle"
 version = "0.40.0"
 dependencies = [
@@ -10345,6 +10324,27 @@ dependencies = [
  "tokio",
  "tracing-subscriber",
  "trybuild",
+]
+
+[[package]]
+name = "rig-ecs"
+version = "0.40.0"
+dependencies = [
+ "anyhow",
+ "bevy_ecs",
+ "futures",
+ "http 1.4.2",
+ "jsonschema",
+ "rig-core",
+ "rig-runtime-conformance",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

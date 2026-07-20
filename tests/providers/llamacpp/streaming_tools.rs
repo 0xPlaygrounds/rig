@@ -1,6 +1,6 @@
 //! llama.cpp streaming tools coverage, including the migrated example path.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::streaming::StreamingPrompt;
 
 use crate::support::{

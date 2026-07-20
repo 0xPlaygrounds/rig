@@ -7,7 +7,7 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::memory::InMemoryConversationMemory;
 use rig::providers::openai;

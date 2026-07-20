@@ -6,7 +6,7 @@
 //! replay fails with a body mismatch.
 
 use rig::agent::tool::Tool;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::gemini;
 use serde::{Deserialize, Serialize};
@@ -239,7 +239,7 @@ mod derive_macro {
 
     use super::super::super::agent_run_support::tool_result_texts;
     use super::super::super::support::with_gemini_cassette;
-    use rig::client::AgentClientExt;
+    use rig::client::CompletionClient;
     use rig::providers::gemini;
 
     #[rig_tool(

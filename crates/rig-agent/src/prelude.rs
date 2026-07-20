@@ -12,7 +12,7 @@ pub use rig_core::client::audio_generation::AudioGenerationClient;
 pub use rig_core::client::image_generation::ImageGenerationClient;
 
 pub use crate::agent::{Agent, MultiTurnStreamItem, StreamingResult};
-pub use crate::client::{AgentClientExt, AgentModelExt, CompletionClient};
+pub use crate::client::{AgentModelExt, CompletionClient};
 pub use crate::completion::{
     Chat, CompletionError, CompletionModel, Message, Prompt, PromptError, StructuredOutputError,
     TypedPrompt,

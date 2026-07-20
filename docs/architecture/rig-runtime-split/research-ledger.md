@@ -37,7 +37,7 @@ revisions. Inferences explain evidence without claiming implementation intent.
 | F-26 | PR #6 deletes `wasm_compat` and replaces its marker bounds with raw `Send + Sync` across many core/provider APIs. | exact PR source diff |
 | F-27 | PR #6 changes 36 provider source files by +92/-205; most inspected changes are bound/import propagation. It disables Copilot's WASM token exchange with a runtime-architecture error. | exact PR provider diff |
 | F-28 | PR #6 changes 315 cassette files (+8,688/-9,745); 254 have equal additions/deletions and 187 are at most +2/-2. Representative smoke requests are identical while response text/usage changes. | exact PR cassette numstat and representative diffs |
-| F-29 | The target dependency graph documented in this package is acyclic when only `rig`, `rig-agent`, `rig-bevy`, integrations, `rig-core`, derive, and the test-only conformance package are considered. | graph edge set and acyclicity validator |
+| F-29 | The target dependency graph documented in this package is acyclic when only `rig`, `rig-agent`, `rig-ecs`, integrations, `rig-core`, derive, and the test-only conformance package are considered. | graph edge set and acyclicity validator |
 | F-30 | The root facade declares 41 features. Twenty feature names select 18 optional companion crates (`rig-fastembed` has three entry features); the remainder provide core forwarding and cross-package TLS composition. | `cargo metadata` and the [complete feature map](runtime-import-inventory.md#complete-root-facade-feature-map) |
 | F-31 | A conservative public-reference scan finds 326 external Rust files that directly import or fully qualify a current runtime-bearing surface: 70 examples, 234 provider tests, 12 other root tests/fixtures, and 10 derive tests. | [runtime-import inventory](runtime-import-inventory.md#runtime-import-scan) and source scan at the exact revision |
 | F-32 | OpenAI defines an inherent `GenericCompletionModel::into_agent_builder()` that returns classic `AgentBuilder` directly from provider code. | [`openai/completion/mod.rs:1898-1901`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/providers/openai/completion/mod.rs#L1898) |
@@ -61,7 +61,7 @@ revisions. Inferences explain evidence without claiming implementation intent.
 | ID | Recommendation | Reason |
 | --- | --- | --- |
 | R-01 | Combine three-crate topology with narrow-contract/independent-runtime discipline. | Best isolation without sacrificing native extension models. |
-| R-02 | Keep `rig-core` free of `rig-agent`, `rig-bevy`, and `bevy_ecs`. | Enforces direction mechanically. |
+| R-02 | Keep `rig-core` free of `rig-agent`, `rig-ecs`, and `bevy_ecs`. | Enforces direction mechanically. |
 | R-03 | Move current classic runtime without semantic refactors before beginning Bevy implementation. | Preserves current PR #2182 and parity behavior. |
 | R-04 | Put client `agent()`/`extractor()` and model `into_agent_builder()` on classic extension traits re-exported by the default facade prelude. | Retains client and OpenAI-model ergonomics without provider/runtime coupling. |
 | R-05 | Give Bevy a distinct constructor method/namespace and no default-prelude glob. | Avoids extension-trait collisions and hides no ECS semantics. |
@@ -78,11 +78,11 @@ revisions. Inferences explain evidence without claiming implementation intent.
 | Q-01 | Is core `Tool` context-free, given a narrow portable invocation context, or paired with a classic contextual trait? | Inventory downstream `ToolContext` use and prototype macro/adapters. |
 | Q-02 | How does `#[rig_tool]` select portable versus classic contextual expansion? | Proc-macro API proposal and trybuild migration cases. |
 | Q-03 | Which legacy classic module paths, if any, does root `rig` re-export temporarily? | Maintainer migration policy; `rig-core` is not an eligible shim location. |
-| Q-04 | Is `rig-bevy` native-only initially? | Bevy/executor WASM feasibility, target CI, and explicit support statement. |
+| Q-04 | Is `rig-ecs` native-only initially? | Bevy/executor WASM feasibility, target CI, and explicit support statement. |
 | Q-05 | How are provider-native finals retained/exposed by hosted Bevy runs? | Prototype typed local subscription and erased hosted diagnostics policy. |
 | Q-06 | When do built-in providers leave `rig-core`, and into how many crates? | Separate provider packaging ADR. |
 | Q-07 | Is conformance support unpublished workspace code or a public helper crate? | External runtime implementer demand and API stability assessment. |
-| Q-08 | What exact evidence moves `rig-bevy` from experimental to supported/default-eligible? | Maintainer-approved quantitative readiness gate. |
+| Q-08 | What exact evidence moves `rig-ecs` from experimental to supported/default-eligible? | Maintainer-approved quantitative readiness gate. |
 
 ## Rejected approaches
 

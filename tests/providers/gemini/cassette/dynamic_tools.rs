@@ -8,7 +8,7 @@
 //! turns.
 
 use rig::agent::tool::ToolSet;
-use rig::client::{AgentClientExt, EmbeddingsClient};
+use rig::client::{CompletionClient, EmbeddingsClient};
 use rig::completion::{Chat, Message};
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::gemini;

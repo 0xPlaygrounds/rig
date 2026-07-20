@@ -14,7 +14,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::openai;
 use serde::Deserialize;

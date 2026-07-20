@@ -1,6 +1,6 @@
 //! Perplexity multi-turn chat cassette coverage.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::perplexity;
 

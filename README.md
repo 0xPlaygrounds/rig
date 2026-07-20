@@ -81,19 +81,19 @@ Rig separates portable provider/backend contracts from agent orchestration:
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
   contextual tools, extraction, and the serializable `AgentRun` state machine. It
   remains enabled by default.
-- `rig-bevy` contains the experimental native-only ECS runtime. Enable the root
-  `bevy` feature and use `rig::bevy`; it is intentionally absent from the default
+- `rig-ecs` contains the experimental native-only ECS runtime. Enable the root
+  `ecs` feature and use `rig::ecs`; it is intentionally absent from the default
   prelude.
 
 ```toml
 [dependencies]
-rig = { version = "0.40", features = ["bevy"] }
+rig = { version = "0.40", features = ["ecs"] }
 ```
 
-Classic construction uses `AgentClientExt::agent`; ECS construction uses the
-distinct `BevyClientExt::bevy_agent`, so importing both runtime extensions is
+Classic construction uses `CompletionClient::agent`; ECS construction uses the
+distinct `EcsClientExt::ecs_agent`, so importing both runtime extensions is
 unambiguous. See the [runtime migration guide](docs/architecture/rig-runtime-split/migration-guide.md)
-and the [`bevy_agent` example](examples/bevy_agent/src/main.rs).
+and the [`ecs_agent` example](examples/ecs_agent/src/main.rs).
 
 ## Who is using Rig?
 Below is a non-exhaustive list of companies and people who are using Rig:
@@ -128,7 +128,7 @@ cargo add rig
 
 ### Simple example
 ```rust
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
 

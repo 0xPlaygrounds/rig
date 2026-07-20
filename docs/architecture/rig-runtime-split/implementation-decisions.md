@@ -45,7 +45,7 @@ exported under the explicit `PortableTool` name).
 The complete mutable `ToolContext`, registry, server, snapshot, dispatch, and
 concurrency implementation moves to `rig-agent`. `rig-agent` exposes a separate
 contextual authoring trait and adapts both portable and contextual tools into
-the classic registry. `rig-bevy` executes only portable tools through owned
+the classic registry. `rig-ecs` executes only portable tools through owned
 effects and ECS capability/grant facts.
 
 The derive macro selects portable expansion for functions without an explicitly
@@ -55,7 +55,7 @@ with one. Dependency resolution and diagnostics must cover renamed `rig`,
 
 ### Bevy version, MSRV, and targets
 
-`rig-bevy` uses `bevy_ecs 0.18.1` with default features disabled and only the
+`rig-ecs` uses `bevy_ecs 0.18.1` with default features disabled and only the
 features required by the implementation. Crates.io package metadata reports
 Rust 1.89.0 for 0.18.1, which fits Rig's Rust 1.94.0 workspace baseline. The
 newer `bevy_ecs 0.19.0` reports Rust 1.95.0 and is therefore rejected for this
@@ -67,19 +67,19 @@ Sources:
 - <https://crates.io/crates/bevy_ecs/0.18.1>
 - <https://crates.io/crates/bevy_ecs/0.19.0>
 
-`rig-bevy` is initially experimental and native-only. That policy is enforced
+`rig-ecs` is initially experimental and native-only. That policy is enforced
 inside its crate and facade feature; it does not alter `rig-core` or `rig-agent`
 WASM bounds or their 1.94.0 baseline.
 
 ### Facade and construction
 
-The root facade adds optional `agent` and `bevy` dependencies/features. Default
-features select `agent`; `bevy` is opt-in and namespaced. The default prelude
+The root facade adds optional `agent` and `ecs` dependencies/features. Default
+features select `agent`; `ecs` is opt-in and namespaced. The default prelude
 keeps core contract identities and adds non-colliding classic extensions.
 `rig::tool` and `rig::prelude::Tool` therefore remain portable when `agent` is
-enabled; contextual tools live at `rig::agent::tool`. `rig::bevy::prelude`
-exposes the ECS runtime. Classic clients use `AgentClientExt::agent`; Bevy
-clients use the deliberately distinct `BevyClientExt::bevy_agent` spelling.
+enabled; contextual tools live at `rig::agent::tool`. `rig::ecs::prelude`
+exposes the ECS runtime. Classic clients use `CompletionClient::agent`; Bevy
+clients use the deliberately distinct `EcsClientExt::ecs_agent` spelling.
 
 ### Provider finals
 

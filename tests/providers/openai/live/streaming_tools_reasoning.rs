@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use rig::{
-    client::AgentClientExt, completion::Message, providers::openai, streaming::StreamingChat,
+    client::CompletionClient, completion::Message, providers::openai, streaming::StreamingChat,
 };
 use rig_agent::test_utils::MockExampleTool;
 

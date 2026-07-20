@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;

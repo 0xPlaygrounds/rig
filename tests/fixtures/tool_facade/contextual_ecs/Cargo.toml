@@ -1,5 +1,5 @@
 [package]
-name = "rig-contextual-bevy-rejection-fixture"
+name = "rig-contextual-ecs-rejection-fixture"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -7,6 +7,6 @@ publish = false
 [workspace]
 
 [dependencies]
-rig = { path = "../../../..", default-features = false, features = ["agent", "bevy"] }
+rig = { path = "../../../..", default-features = false, features = ["agent", "ecs"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.150"

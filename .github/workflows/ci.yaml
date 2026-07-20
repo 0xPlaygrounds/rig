@@ -92,26 +92,26 @@ jobs:
         run: |
           cargo check -p rig-core --no-default-features
           cargo check -p rig-agent --all-features
-          cargo check -p rig-bevy --all-features
+          cargo check -p rig-ecs --all-features
           cargo check -p rig --no-default-features
           cargo check -p rig --no-default-features --features agent
-          cargo check -p rig --no-default-features --features bevy
-          cargo check -p rig --no-default-features --features agent,bevy
+          cargo check -p rig --no-default-features --features ecs
+          cargo check -p rig --no-default-features --features agent,ecs
 
-  bevy-msrv:
-    name: Rust 1.89 / isolated rig-bevy
+  ecs-msrv:
+    name: Rust 1.89 / isolated rig-ecs
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install rig-bevy MSRV
+      - name: Install rig-ecs MSRV
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 1.89.0
 
-      - name: Check rig-bevy at its isolated MSRV
-        run: cargo check -p rig-bevy --all-features
+      - name: Check rig-ecs at its isolated MSRV
+        run: cargo check -p rig-ecs --all-features
 
   clippy:
     name: stable / clippy
@@ -225,6 +225,6 @@ jobs:
       - name: Run cargo doc
         run: >-
           cargo doc --no-deps --all-features
-          -p rig -p rig-core -p rig-agent -p rig-bevy -p rig-runtime-conformance
+          -p rig -p rig-core -p rig-agent -p rig-ecs -p rig-runtime-conformance
         env:
           RUSTDOCFLAGS: -D warnings

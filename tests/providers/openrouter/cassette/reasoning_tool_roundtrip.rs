@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::streaming::StreamingChat;
 

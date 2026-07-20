@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 use rig::agent::tool::Tool;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

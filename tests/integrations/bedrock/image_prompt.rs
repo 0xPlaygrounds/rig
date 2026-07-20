@@ -2,7 +2,7 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::message::{ImageMediaType, Message, UserContent};
 use tokio::fs;

@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;

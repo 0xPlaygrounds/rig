@@ -1,6 +1,6 @@
 //! Llamafile tools smoke test.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};

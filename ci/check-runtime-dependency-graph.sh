@@ -17,18 +17,18 @@ check_declared_graph() {
     all($forbidden[]; . as $name | ($dependencies | index($name) | not));
 
   (dependency_names("rig-core")) as $core |
-  (excludes($core; ["rig-agent", "rig-bevy", "bevy_ecs"])) and
+  (excludes($core; ["rig-agent", "rig-ecs", "bevy_ecs"])) and
 
   (if has_package("rig-agent") then
      (dependency_names("rig-agent")) as $agent |
      ($agent | index("rig-core") != null) and
-     excludes($agent; ["rig-bevy"])
+     excludes($agent; ["rig-ecs"])
    else true end) and
 
-  (if has_package("rig-bevy") then
-     (dependency_names("rig-bevy")) as $bevy |
-     ($bevy | index("rig-core") != null) and
-     excludes($bevy; ["rig-agent"])
+  (if has_package("rig-ecs") then
+     (dependency_names("rig-ecs")) as $ecs |
+     ($ecs | index("rig-core") != null) and
+     excludes($ecs; ["rig-agent"])
    else true end) and
 
   all([
@@ -39,7 +39,7 @@ check_declared_graph() {
     "rig-vectorize", "rig-vertexai"
   ][]; . as $name |
     production_dependency_names($name) as $dependencies |
-    excludes($dependencies; ["rig-agent", "rig-bevy"])
+    excludes($dependencies; ["rig-agent", "rig-ecs"])
   )
 ' "$metadata" >/dev/null
   rm -f "$metadata"
@@ -90,9 +90,9 @@ check_declared_graph
 check_declared_graph --all-features
 check_declared_graph --no-default-features
 
-check_resolved_tree_excludes rig-core rig-agent rig-bevy bevy_ecs
-check_resolved_tree_excludes rig-agent rig-bevy bevy_ecs
-check_resolved_tree_excludes rig-bevy rig-agent
+check_resolved_tree_excludes rig-core rig-agent rig-ecs bevy_ecs
+check_resolved_tree_excludes rig-agent rig-ecs bevy_ecs
+check_resolved_tree_excludes rig-ecs rig-agent
 
 check_rig_agent_root_surface
 

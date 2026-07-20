@@ -13,7 +13,7 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig_agent::{client::AgentClientExt, completion::Prompt};
+use rig_agent::{client::CompletionClient, completion::Prompt};
 use rig_core::client::ProviderClient;
 use rig_core::completion::Message;
 use rig_core::providers::openai;

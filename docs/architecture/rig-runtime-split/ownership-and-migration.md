@@ -39,12 +39,12 @@ Feature gates shown in the table are current facts.
 | `memory` | backend contract, errors, filters, demotion/compaction contracts, in-memory backend; docs describe agent timing | mixed | Keep backend/policy contracts and in-memory backend in core; move load-before-run/append-after-commit orchestration and agent-facing docs to each runtime | core messages + WASM compatibility | Backends are portable; commit timing is runtime behavior. | [`memory.rs:85-117`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/memory.rs#L85), [`memory.rs:188-348`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/memory.rs#L188) |
 | `model` | model listing values | contract/value | Remain in core | none/runtime-neutral | Provider capability contract. | [`model/mod.rs`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/model/mod.rs) |
 | `one_or_many` | non-empty canonical collection | canonical value | Remain in core | serde/schemars only | Used throughout provider message contracts. | [`one_or_many.rs:15`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/one_or_many.rs#L15) |
-| `prelude` | client, classic agent, prompt/streaming traits, tools, vectors | facade/mixed | Core gets a contracts prelude; `rig-agent` and `rig-bevy` get runtime preludes; root composes namespaced preludes | each prelude only exports its owner/dependencies | Current glob path hides ownership and would cause runtime collisions. | [`prelude.rs:14-57`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/prelude.rs#L14) |
+| `prelude` | client, classic agent, prompt/streaming traits, tools, vectors | facade/mixed | Core gets a contracts prelude; `rig-agent` and `rig-ecs` get runtime preludes; root composes namespaced preludes | each prelude only exports its owner/dependencies | Current glob path hides ownership and would cause runtime collisions. | [`prelude.rs:14-57`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/prelude.rs#L14) |
 | `providers` | 25 built-in public provider modules | provider integration | Temporarily remain while runtime extraction lands; ideal follow-up moves them to provider integration crates | core contracts/HTTP only | Provider-neutral ideal conflicts with current packaging, but moving 25 providers with runtimes destroys reviewability. | [`providers/mod.rs:96-121`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/providers/mod.rs#L96) |
 | `rerank` | rerank model/request/response contracts | contract/value | Remain in core | WASM-compatible portable dependencies | No runtime progression dependency. | [`rerank.rs:20-75`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/rerank.rs#L20) |
 | `streaming` | provider raw stream accumulation plus classic prompt/chat streaming traits | mixed | Keep raw choices, deltas, pause/control, final provider response accumulator in core; move runtime traits/items/requests to `rig-agent` | core side only completion/HTTP | `StreamingPrompt`/`StreamingChat` return classic request types; raw provider streams are shared. | [`streaming.rs:28-261`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/streaming.rs#L28), [`streaming.rs:565-626`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/streaming.rs#L565) |
 | `test_utils` (`test-utils`) | mock models/HTTP/streaming/embeddings plus model and runtime conformance | testing/mixed | Keep core provider/model mocks in core test support; move classic driver tests to `rig-agent`; add test-only cross-runtime conformance package | dev-only dependencies | Existing model conformance mixes provider and agent behavior and must split by test level. | [`test_utils/mod.rs`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/test_utils/mod.rs), [`model_conformance.rs`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/test_utils/model_conformance.rs) |
-| `tool` | authoring trait/canonical outputs plus context, registry, server, dispatch | mixed | Keep portable authoring/canonical values in core; move current context/registry/server/dispatch to `rig-agent`; add ECS adapters/grants/effects in `rig-bevy` | core contract must not depend on runtimes | Highest-risk internal split; derive macro and vector-tool blanket impls depend on it. | [`tool/mod.rs:111-180`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/mod.rs#L111), [`tool/mod.rs:511-680`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/mod.rs#L511) |
+| `tool` | authoring trait/canonical outputs plus context, registry, server, dispatch | mixed | Keep portable authoring/canonical values in core; move current context/registry/server/dispatch to `rig-agent`; add ECS adapters/grants/effects in `rig-ecs` | core contract must not depend on runtimes | Highest-risk internal split; derive macro and vector-tool blanket impls depend on it. | [`tool/mod.rs:111-180`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/mod.rs#L111), [`tool/mod.rs:511-680`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/tool/mod.rs#L511) |
 | `transcription` | transcription model/request/response contracts | contract/value | Remain in core | WASM-compatible portable dependencies | Independent provider capability. | [`transcription.rs:18-149`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/transcription.rs#L18) |
 | `vector_store` | vector index/search/filter contracts, in-memory store, automatic Tool impl | mixed | Keep store contracts/filters/in-memory store in core; move runtime tool registration/convenience to adapters | core embeddings + tool authoring contract only | Search is portable; tool execution/registration is runtime-specific. | [`vector_store/mod.rs:34-182`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/vector_store/mod.rs#L34) |
 | `wasm_compat` | target-dependent Send/Sync/future/stream and timeout | contract/target | Remain in core; runtime crates reuse it where portable and may add stricter native adapters | no Bevy | Prevents ECS/native requirements from weakening WASM provider contracts. | [`wasm_compat.rs`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/wasm_compat.rs) |
@@ -68,8 +68,8 @@ need it. Private `provider_response` and the public root re-export
 | Older `Completion` facade trait | absent at source revision; present in PR #6 base | none unless a concrete use returns | Do not recreate | n/a | Current main uses `CompletionModel::completion_request`; research prompt's named item is historically relevant but not current public API. |
 | `PromptError`, `StructuredOutputError` | `rig-core::completion` | `rig-agent` | Move/split provider forwarding | core errors + memory + classic diagnostics | Variants are max-turn/cancel/tool/runtime states ([`request.rs:140-279`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/completion/request.rs#L140)). |
 | `CompletionClient::completion_model` | `rig-core::client` | `rig-core` | Remain | core completion | Low-level capability construction. |
-| `CompletionClient::agent`, `CompletionClient::extractor` | `rig-core::client` | `rig-agent::client::AgentClientExt` | Move | core client + classic builders | Removes core-to-agent imports while preserving facade ergonomics. |
-| OpenAI `GenericCompletionModel::into_agent_builder` and other provider/model agent conveniences | OpenAI defines an inherent method returning `crate::agent::AgentBuilder`; client conveniences also come from `CompletionClient` | blanket `rig-agent::model::AgentModelExt` for `CompletionModel` plus `AgentClientExt` for clients | Remove the core inherent method and redesign as runtime extensions | provider code depends on core only; extension implementation depends on core + classic builder | The exact OpenAI method is a hidden provider-to-runtime edge ([`openai/completion/mod.rs:1898-1901`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/providers/openai/completion/mod.rs#L1898)). A blanket model extension preserves `model.into_agent_builder()` without editing each provider or making providers depend on a runtime. |
+| `CompletionClient::agent`, `CompletionClient::extractor` | `rig-core::client` | `rig-agent::client::CompletionClient` | Move | core client + classic builders | Removes core-to-agent imports while preserving facade ergonomics. |
+| OpenAI `GenericCompletionModel::into_agent_builder` and other provider/model agent conveniences | OpenAI defines an inherent method returning `crate::agent::AgentBuilder`; client conveniences also come from `CompletionClient` | blanket `rig-agent::model::AgentModelExt` for `CompletionModel` plus `CompletionClient` for clients | Remove the core inherent method and redesign as runtime extensions | provider code depends on core only; extension implementation depends on core + classic builder | The exact OpenAI method is a hidden provider-to-runtime edge ([`openai/completion/mod.rs:1898-1901`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/providers/openai/completion/mod.rs#L1898)). A blanket model extension preserves `model.into_agent_builder()` without editing each provider or making providers depend on a runtime. |
 | `Agent`, `AgentBuilder`, `AgentRunner` | `rig-core::agent` | `rig-agent` | Move without semantic changes | core contracts + tool/memory runtime infrastructure | Primary classic API ([`builder.rs:97`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/builder.rs#L97), [`completion.rs:555`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/completion.rs#L555), [`runner.rs:205`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/runner.rs#L205)). |
 | `AgentRun`, `AgentRunStep`, `ModelTurn`, `ModelTurnOutcome`, pending tool calls | `rig-core::agent::run` | `rig-agent` | Move intact | core canonical values | Classic sans-I/O state machine; not a shared runtime engine ([`run/mod.rs:114-280`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-core/src/agent/run/mod.rs#L114)). |
 | `PromptRequest`, typed/streaming request and response types | `rig-core::agent::prompt_request` | `rig-agent` | Move | classic runner + core values | Runtime builders and final transcript/accounting surface. |
@@ -82,27 +82,27 @@ need it. Private `provider_response` and the public root re-export
 | `ToolContext`, `TypeMap`, result metadata | `rig-core::tool::extensions` | `rig-agent::tool` | Move | classic dispatch only | Mutable type-map is current classic inbound/result context; ECS should use owned effect input and components. |
 | `ToolSet`, erased dispatch, `ToolSetBuilder` | `rig-core::tool` | `rig-agent::tool` | Move | core authoring contract | Registry order, execution, parsing, and snapshots are runtime behavior. |
 | `ToolServer`, `ToolServerHandle`, live registration/snapshots | `rig-core::tool::server` | `rig-agent::tool::server` | Move | classic tool runtime | Bevy models capability/grant entities and retirement instead. |
-| ECS tool entities, grants, policies, effect calls, generations | absent/current PR #6 experiment | `rig-bevy` | New vertical slices | core tool contracts + Bevy | ECS-specific; never core. |
+| ECS tool entities, grants, policies, effect calls, generations | absent/current PR #6 experiment | `rig-ecs` | New vertical slices | core tool contracts + Bevy | ECS-specific; never core. |
 | `VectorStoreIndex`, dyn adapter, filters, top-N values | `rig-core::vector_store` | `rig-core` | Remain | embeddings/canonical values/WASM | Portable backend contract. |
 | blanket vector-store `Tool` and dynamic-context automatic integrations | vector/agent modules | runtime adapters | Split | runtime + core index | Advertising and invoking retrieval is runtime behavior. |
 | `ConversationMemory`, `MemoryError`, demotion/compaction contracts, in-memory backend | `rig-core::memory` | `rig-core` | Remain | core messages/WASM | Portable storage and policy contracts. |
 | memory load/append, conversation IDs on requests, commit timing | agent builder/driver | each runtime | Duplicate behavior under conformance | runtime + core memory | Must append only committed canonical messages and handle errors consistently. |
 | `Extractor`, `ExtractorBuilder`, extraction retry loop | `rig-core::extractor` | `rig-agent::extractor` | Move | classic runtime | Current implementation is explicitly agent-based and hook-aware. |
-| future Bevy extraction | absent | `rig-bevy` if demanded | Defer | Bevy + core schemas | Do not force a shared extractor abstraction before its semantics exist. |
+| future Bevy extraction | absent | `rig-ecs` if demanded | Defer | Bevy + core schemas | Do not force a shared extractor abstraction before its semantics exist. |
 | `CompletionSpanBuilder`, `ProviderResponseExt`, `SpanCombinator` | `rig-core::telemetry` | provider helpers remain core | Split | core values/tracing | Provider semantic conventions are portable. Remove awareness of classic span target from core. |
 | agent run/tool spans and content telemetry | runner + telemetry helper | `rig-agent` | Move | classic events | Runtime-specific lifecycle and accepted/rejected content semantics. |
-| ECS schedule/effect/run telemetry | absent/PR #6 experiment | `rig-bevy` | New | ECS state + core provider metadata | Must observe committed authoritative state and stale/late outcomes. |
+| ECS schedule/effect/run telemetry | absent/PR #6 experiment | `rig-ecs` | New | ECS state + core provider metadata | Must observe committed authoritative state and stale/late outcomes. |
 | provider modules and mapping implementations | `rig-core::providers` | provider integration crates ideally; temporary core | Defer separate decomposition | core only | Runtime split must not rewrite provider behavior or cassettes. |
 | HTTP/provider response error helpers | core private module + public error re-export | `rig-core` | Remain | HTTP/serde | Required for provider failures and runtime error forwarding. |
 | `rig-derive::Embed` | `rig-derive`, emits core embedding paths | `rig-derive` targeting `rig-core` | Remain/update resolver tests | proc macro only | Portable derive ([`rig-derive/src/embed.rs:50`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-derive/src/embed.rs#L50)). |
 | `rig_tool` macro | `rig-derive`, emits `rig_core::tool::Tool` and `ToolContext` | split portable tool expansion and explicit classic contextual mode | Redesign | generated path may target core or agent | Current path resolver tries `rig-core`, then `rig` ([`rig-derive/src/lib.rs:22-34`](https://github.com/0xPlaygrounds/rig/blob/87f3f5b77a3caeffa10d60225c41e386753bf05e/crates/rig-derive/src/lib.rs#L22)); context emission is at lines 691-722. |
 | core test models/HTTP/provider validators | `rig-core::test_utils` | `rig-core` test support | Remain | core only | Used by provider mappings and both runtime harnesses. |
 | classic run/hook conformance | core tests today | `rig-agent` tests + shared scenario inputs | Move | rig-agent + test-only conformance | Keeps exact current semantics. |
-| Bevy runtime conformance | PR #6 experiment only | `rig-bevy` tests + shared scenario inputs | New | rig-bevy + test-only conformance | Tests the same observations through different state. |
+| Bevy runtime conformance | PR #6 experiment only | `rig-ecs` tests + shared scenario inputs | New | rig-ecs + test-only conformance | Tests the same observations through different state. |
 | examples | 70 external example files directly import or fully qualify a runtime-bearing `rig`/`rig_core` surface | facade/runtime-specific example directories | Split/update | selected runtime | Examples are public migration evidence; avoid hiding Bevy imports in classic prelude. Complete paths are in the [runtime-import inventory](runtime-import-inventory.md#complete-example-paths). |
 | external runtime-importing tests | 256 files: 234 provider tests, 12 other root tests/fixtures, and 10 `rig-derive` tests | core/provider, classic-runtime, facade, and derive targets according to the contract under test | Split/update | the narrow target under test | The exhaustive groups and paths in the [runtime-import inventory](runtime-import-inventory.md#complete-test-import-groups) prevent the crate move from leaving implicit facade/runtime dependencies behind. |
 | provider cassettes | root `tests/cassettes` | core provider tests | Remain once per provider mapping | core/provider integration only | Do not rerecord for runtime refactors. Runtime acceptance should reuse scripted or selected cassettes without changing fixtures. |
-| root facade and prelude | `rig` glob re-exports core and declares 41 forwarding/composition features | `rig` composes core + classic; `rig::bevy` opt-in | Redesign | may depend on both runtimes/integrations | Facade is the only allowed convergence point. The [complete feature map](runtime-import-inventory.md#complete-root-facade-feature-map) identifies runtime-free and runtime-bearing forwarding. |
+| root facade and prelude | `rig` glob re-exports core and declares 41 forwarding/composition features | `rig` composes core + classic; `rig::ecs` opt-in | Redesign | may depend on both runtimes/integrations | Facade is the only allowed convergence point. The [complete feature map](runtime-import-inventory.md#complete-root-facade-feature-map) identifies runtime-free and runtime-bearing forwarding. |
 
 ## Current companion dependencies
 
@@ -139,7 +139,7 @@ pub mod telemetry;    // provider semantic helpers
 pub mod wasm_compat;
 ```
 
-There is no `agent`, `hook`, `runtime`, `bevy`, or agent-based `extractor`
+There is no `agent`, `hook`, `runtime`, `ecs`, or agent-based `extractor`
 module in the target core. If built-in providers remain temporarily, their
 module is explicitly documented as transitional integration code.
 
@@ -158,7 +158,7 @@ pub mod telemetry;
 pub mod prelude;
 
 pub mod client {
-    pub trait AgentClientExt: rig_core::client::CompletionClient {
+    pub trait CompletionClient: rig_core::client::CompletionClient {
         fn agent(&self, model: impl Into<String>) -> AgentBuilder<Self::CompletionModel>;
         fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<Self::CompletionModel, T>;
     }
@@ -176,7 +176,7 @@ models. The default root prelude imports them, retaining `client.agent(...)`
 and OpenAI's `model.into_agent_builder()` spelling without making providers
 depend on `rig-agent`.
 
-### `rig-bevy`
+### `rig-ecs`
 
 ```rust,ignore
 pub mod components;
@@ -190,8 +190,8 @@ pub mod debug;
 pub mod runtime;      // local/hosted handles
 pub mod prelude;
 
-pub trait BevyCompletionClientExt: rig_core::client::CompletionClient {
-    fn bevy_agent(&self, model: impl Into<String>) -> AgentSpec<Self::CompletionModel>;
+pub trait EcsCompletionClientExt: rig_core::client::CompletionClient {
+    fn ecs_agent(&self, model: impl Into<String>) -> AgentSpec<Self::CompletionModel>;
 }
 ```
 
@@ -206,15 +206,15 @@ entity identity, or scheduling semantics.
 pub use rig_core::{completion, embeddings, memory, tool, vector_store, /* values */};
 pub use rig_agent as agent;
 
-#[cfg(feature = "bevy")]
-pub mod bevy {
-    pub use rig_bevy::*;
+#[cfg(feature = "ecs")]
+pub mod ecs {
+    pub use rig_ecs::*;
 }
 
 pub mod prelude {
     pub use rig_core::prelude::*;
     // Re-export only non-colliding classic conveniences deliberately.
-    pub use rig_agent::prelude::{Agent, AgentClientExt, Prompt, StreamingPrompt};
+    pub use rig_agent::prelude::{Agent, CompletionClient, Prompt, StreamingPrompt};
 }
 ```
 
@@ -222,8 +222,8 @@ The actual facade should prefer deliberate re-exports over the current
 `pub use rig_core::*` glob once modules split. `rig::prelude` keeps portable
 contract identities and adds classic ergonomics. Contextual classic tools are
 explicit at `rig::agent::tool`; `rig::tool` remains portable.
-`rig::bevy::prelude` selects Bevy ergonomics. Applications that import both
-traits see `agent()` and `bevy_agent()`, not two competing `agent()` methods.
+`rig::ecs::prelude` selects Bevy ergonomics. Applications that import both
+traits see `agent()` and `ecs_agent()`, not two competing `agent()` methods.
 
 ## Raw provider response policy
 
@@ -250,7 +250,7 @@ them in ECS domain snapshots, or make canonical progression depend on them.
 | --- | --- | --- | --- |
 | Core value/unit | `rig-core` | canonical serialization, request validation, usage math, tool output/error values, WASM bounds | message round trips, tool definition ordering rules, raw stream accumulation |
 | Provider mapping/cassette | once per provider integration against core | provider request conversion and raw response conversion only | existing `tests/providers/*/cassette` and `tests/cassettes/*` |
-| Shared runtime conformance | in both `rig-agent` and `rig-bevy` via dev-only harness | observable orchestration invariants | scenario list below |
+| Shared runtime conformance | in both `rig-agent` and `rig-ecs` via dev-only harness | observable orchestration invariants | scenario list below |
 | Provider-backed runtime acceptance | small provider/runtime matrix | catches integration assumptions not represented by scripts | OpenAI Responses, Anthropic Messages, Gemini Generate/Interactions; blocking and streaming |
 | Runtime-specific | owner crate only | extension/scheduler behavior that should differ | HookStack merge tests; Bevy schedule/relationship/stale-generation tests |
 
@@ -281,7 +281,7 @@ expected transcripts/events, and a private dev-only harness interface.
 
 ### Provider acceptance matrix
 
-At minimum, run these scenarios for both runtimes before `rig-bevy` is supported:
+At minimum, run these scenarios for both runtimes before `rig-ecs` is supported:
 
 | Provider surface | Blocking | Streaming | Tools | Structured output | Raw final |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -376,7 +376,7 @@ break is preferable to a shim that makes `rig-core` depend on `rig-agent`.
 ### PR 5 — finalize agent construction and extractor conveniences
 
 - **Prerequisites:** PR 4.
-- **Scope:** publish `AgentClientExt`; move/document extractor and agent-as-tool
+- **Scope:** publish `CompletionClient`; move/document extractor and agent-as-tool
   conveniences; publish blanket `AgentModelExt`; resolve provider-specific
   examples.
 - **Moves/API:** core `CompletionClient` loses runtime methods; classic prelude
@@ -401,7 +401,7 @@ break is preferable to a shim that makes `rig-core` depend on `rig-agent`.
 - **Prerequisites:** PR 5.
 - **Scope:** root dependencies/features/namespaces; deliberate re-exports.
 - **Moves/API:** `rig::agent`, default `rig::prelude`, placeholder feature wiring
-  for future `rig::bevy`; stop relying on an undifferentiated core glob where it
+  for future `rig::ecs`; stop relying on an undifferentiated core glob where it
   causes collisions.
 - **Tests:** feature powerset for default/core-only/agent, doc examples, facade
   path compile tests, no duplicate method candidates.
@@ -427,7 +427,7 @@ break is preferable to a shim that makes `rig-core` depend on `rig-agent`.
 - **Completion:** no generated path points at moved core symbols; all workspace
   examples select an explicit runtime; cassettes unchanged.
 
-### PR 8 — create minimal `rig-bevy` boundary
+### PR 8 — create minimal `rig-ecs` boundary
 
 - **Prerequisites:** PR 7; Bevy MSRV/target policy accepted.
 - **Scope:** new crate with dependency on core and Bevy, feature-gated facade
@@ -516,7 +516,7 @@ break is preferable to a shim that makes `rig-core` depend on `rig-agent`.
   WASM/native policies; docs examples.
 - **Compatibility:** divergences must be named and approved, not hidden by
   weakening assertions.
-- **Rollback:** keep `rig-bevy` experimental if gates fail.
+- **Rollback:** keep `rig-ecs` experimental if gates fail.
 - **Risks:** overfitting harness to classic API or accepting indirect evidence.
 - **Completion:** every shared scenario passes or has an explicit, documented,
   maintainer-approved runtime-specific classification.
@@ -533,7 +533,7 @@ break is preferable to a shim that makes `rig-core` depend on `rig-agent`.
   it.
 - **Rollback:** retain experimental status.
 - **Risks:** declaring support from API shape rather than operational evidence.
-- **Completion:** maintainers explicitly label `rig-bevy` experimental or
+- **Completion:** maintainers explicitly label `rig-ecs` experimental or
   supported and publish the evidence; default eligibility is a later ADR.
 
 ## Per-step acyclicity invariant
@@ -543,13 +543,13 @@ At every migration step:
 ```text
 provider/store/memory integrations -> rig-core
 rig-agent -> rig-core
-rig-bevy -> rig-core
+rig-ecs -> rig-core
 rig -> rig-core + selected runtimes + integrations
 ```
 
 Temporary compatibility may live in the root facade or within the crate that
 owns the implementation. It may not be implemented by adding
-`rig-core -> rig-agent`, `rig-agent -> rig-bevy`, or `rig-bevy -> rig-agent`.
+`rig-core -> rig-agent`, `rig-agent -> rig-ecs`, or `rig-ecs -> rig-agent`.
 
 ## Completion audit for the future migration
 

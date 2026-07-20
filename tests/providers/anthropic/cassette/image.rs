@@ -1,7 +1,7 @@
 //! Migrated from `examples/image.rs`.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;

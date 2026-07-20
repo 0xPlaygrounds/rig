@@ -11,7 +11,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(target_family = "wasm")]
-compile_error!("rig-bevy is an experimental native-only runtime; use rig-agent on WebAssembly");
+compile_error!("rig-ecs is an experimental native-only runtime; use rig-agent on WebAssembly");
 
 mod components;
 mod config;
@@ -48,7 +48,7 @@ pub use persistence::{
 };
 pub use policy::{InvalidToolPolicy, OutputMode, StructuredOutputPolicy};
 pub use runtime::{
-    BevyAgentBuilder, BevyAgentDefinition, BevyClientExt, BevyModelExt, HostedRuntime,
-    LocalRunResult, LocalRuntime, LocalStreamingRun, RunHandle, RunStepStatus, StreamingRunEvent,
+    EcsAgentBuilder, EcsAgentDefinition, EcsClientExt, EcsModelExt, HostedRuntime, LocalRunResult,
+    LocalRuntime, LocalStreamingRun, RunHandle, RunStepStatus, StreamingRunEvent,
     StreamingRunResult, ToolGrant,
 };

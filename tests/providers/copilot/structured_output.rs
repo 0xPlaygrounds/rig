@@ -1,6 +1,6 @@
 //! Copilot structured output coverage, including the migrated example path.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::completion::{Prompt, TypedPrompt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

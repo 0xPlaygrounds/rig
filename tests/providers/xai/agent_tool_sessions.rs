@@ -11,7 +11,7 @@ use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
 use rig::agent::tool::Tool;
-use rig::client::{AgentClientExt, CompletionClient};
+use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message, Prompt};
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::providers::openai::responses_api::Output;

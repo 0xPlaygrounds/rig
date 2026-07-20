@@ -1,7 +1,7 @@
 //! Llamafile streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::client::{AgentClientExt, CompletionClient};
+use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::streaming::StreamingPrompt;

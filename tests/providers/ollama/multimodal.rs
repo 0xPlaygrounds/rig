@@ -1,7 +1,7 @@
 //! Migrated from `examples/image_ollama.rs`.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::{AgentClientExt, ProviderClient};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;

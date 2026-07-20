@@ -1,6 +1,6 @@
 //! xAI streaming smoke test.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::providers::xai;
 use rig::streaming::StreamingPrompt;
 

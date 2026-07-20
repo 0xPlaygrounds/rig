@@ -43,7 +43,7 @@ pub struct PortableEmbeddingContext {
 #[error("portable fixture failure")]
 pub struct PortableFixtureError;
 
-/// Build the exact rich output used to compare classic and Bevy adaptation.
+/// Build the exact rich output used to compare classic and ECS adaptation.
 pub fn portable_fixture_output(label: impl Into<String>) -> ToolOutput {
     let mut content = OneOrMany::one(ToolResultContent::json(
         serde_json::json!({"label": label.into()}),

@@ -1,4 +1,4 @@
-use rig_agent::client::AgentClientExt;
+use rig_agent::client::CompletionClient;
 use rig_agent::completion::Prompt;
 use rig_core::client::ProviderClient;
 use rig_core::providers;

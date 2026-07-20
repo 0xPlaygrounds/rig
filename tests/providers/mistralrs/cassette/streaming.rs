@@ -1,6 +1,6 @@
 //! Cassette coverage for mistral.rs chat-completions streaming reasoning chunks.
 
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::streaming::StreamingPrompt;
 
 use crate::support::collect_stream_observation;

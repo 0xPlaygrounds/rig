@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::agent::tool::Tool;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
 use schemars::{JsonSchema, schema_for};

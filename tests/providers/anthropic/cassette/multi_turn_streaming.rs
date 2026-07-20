@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::tool::Tool;
-use rig::client::AgentClientExt;
+use rig::client::CompletionClient;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
 use schemars::{JsonSchema, schema_for};

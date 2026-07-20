@@ -2,7 +2,7 @@
 //!
 //! This unpublished crate supplies scenario definitions and scripted portable
 //! effects. It deliberately contains no production orchestration and no public
-//! cross-runtime trait. `rig-agent` and `rig-bevy` consume these fixtures only
+//! cross-runtime trait. `rig-agent` and `rig-ecs` consume these fixtures only
 //! from their own tests and adapt them to their native APIs independently.
 
 mod fixtures;

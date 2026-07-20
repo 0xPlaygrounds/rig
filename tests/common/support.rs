@@ -109,7 +109,7 @@ pub(crate) fn smoke_structured_output_value() -> serde_json::Value {
     })
 }
 
-pub(crate) fn bevy_synthetic_output_tool_name<T>() -> String
+pub(crate) fn ecs_synthetic_output_tool_name<T>() -> String
 where
     T: JsonSchema,
 {

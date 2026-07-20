@@ -55,7 +55,7 @@ edition = "2024"
 # `rig.workspace = true` (add per-example features at the use site).
 rig = { path = ".", version = "0.40.0" }
 rig-agent = { path = "crates/rig-agent", version = "0.40.0" }
-rig-bevy = { path = "crates/rig-bevy", version = "0.40.0" }
+rig-ecs = { path = "crates/rig-ecs", version = "0.40.0" }
 rig-core = { path = "crates/rig-core", version = "0.40.0" }
 anyhow = "1.0.102"
 arrow-array = "58"
@@ -171,7 +171,7 @@ workspace = true
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.40.0", default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.40.0", optional = true, default-features = false }
-rig-bevy = { path = "crates/rig-bevy", version = "0.40.0", optional = true, default-features = false }
+rig-ecs = { path = "crates/rig-ecs", version = "0.40.0", optional = true, default-features = false }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.40.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.40.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.40.0", optional = true, default-features = false }
@@ -266,7 +266,7 @@ url = { workspace = true }
 [features]
 default = ["rig-core/default", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent"]
-bevy = ["dep:rig-bevy"]
+ecs = ["dep:rig-ecs"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]

@@ -13,11 +13,11 @@ layer plus two independent runtimes:
 - `rig-agent` owns the current classic runtime, including its sans-I/O
   `AgentRun`, shared blocking/streaming driver, typed hooks, tools, memory
   orchestration, extraction, and agent telemetry;
-- `rig-bevy` owns a Bevy ECS-native runtime: components, relationships,
+- `rig-ecs` owns a Bevy ECS-native runtime: components, relationships,
   schedules, systems, effects, policies, persistence, and runtime handles;
 - `rig` remains the facade. Its default prelude adds classic runtime
   conveniences without replacing portable contract identities; Bevy APIs live
-  under `rig::bevy` and `rig::bevy::prelude`.
+  under `rig::ecs` and `rig::ecs::prelude`.
 
 The topology alone is insufficient. The two runtimes must share behavioral
 specifications and conformance fixtures, not a common orchestration state
@@ -214,7 +214,7 @@ construction conveniences.
 flowchart TD
     rig[rig facade]
     agent[rig-agent]
-    bevy[rig-bevy]
+    ecs[rig-ecs]
     core[rig-core]
     integrations[providers / vector stores / memory integrations]
     derive[rig-derive]
@@ -222,22 +222,22 @@ flowchart TD
 
     rig --> core
     rig --> agent
-    rig -. bevy feature .-> bevy
+    rig -. ecs feature .-> ecs
     rig -. integration features .-> integrations
     agent --> core
-    bevy --> core
+    ecs --> core
     integrations --> core
     derive -. generated core Tool/Embed paths .-> core
     derive -. optional classic macro paths .-> agent
     agent -. dev dependency .-> conformance
-    bevy -. dev dependency .-> conformance
+    ecs -. dev dependency .-> conformance
     conformance --> core
 
     core -.-x agent
-    core -.-x bevy
+    core -.-x ecs
     core -.-x bevy_ecs[bevy_ecs]
-    agent -.-x bevy
-    bevy -.-x agent
+    agent -.-x ecs
+    ecs -.-x agent
 ```
 
 `rig-core` must remain buildable without either runtime or `bevy_ecs`. The
@@ -273,7 +273,7 @@ flowchart LR
       classic_facade[Agent / Prompt / Chat / Extractor]
     end
 
-    subgraph bevy[rig-bevy]
+    subgraph ecs[rig-ecs]
       world[World components and relationships]
       schedule[schedules and systems]
       effects[owned asynchronous effects]
@@ -305,7 +305,7 @@ flowchart LR
 ```
 
 Both runtimes consume identical canonical provider values but own distinct
-progression. `AgentRun` remains valuable in `rig-agent`; making `rig-bevy` drive
+progression. `AgentRun` remains valuable in `rig-agent`; making `rig-ecs` drive
 it would turn ECS into storage around an opaque state machine and prevent ECS
 systems from owning topology, policy, effect correlation, and concurrency.
 
@@ -318,8 +318,8 @@ flowchart TD
     core_values[ToolDefinition / ToolOutput / ToolExecutionError]
     agent_adapter[rig-agent contextual adapter]
     agent_runtime[ToolSet / ToolServer / snapshots / dispatch]
-    bevy_adapter[rig-bevy effect adapter]
-    bevy_runtime[capability + grant entities / call effects / policies]
+    ecs_adapter[rig-ecs effect adapter]
+    ecs_runtime[capability + grant entities / call effects / policies]
     provider[CompletionRequest tool definitions]
 
     author --> core_contract
@@ -327,10 +327,10 @@ flowchart TD
     core_values --> provider
     core_contract --> agent_adapter
     agent_adapter --> agent_runtime
-    core_contract --> bevy_adapter
-    bevy_adapter --> bevy_runtime
+    core_contract --> ecs_adapter
+    ecs_adapter --> ecs_runtime
     agent_runtime --> provider
-    bevy_runtime --> provider
+    ecs_runtime --> provider
 ```
 
 The core contract should not expose a Bevy `World`, entity, component, grant,
@@ -348,36 +348,36 @@ flowchart TD
     user[application]
     facade[rig]
     default_prelude[rig::prelude]
-    bevy_ns[rig::bevy]
-    bevy_prelude[rig::bevy::prelude]
+    ecs_ns[rig::ecs]
+    ecs_prelude[rig::ecs::prelude]
     core[rig_core public contracts]
     agent[rig_agent classic runtime]
-    bevy[rig_bevy ECS runtime]
+    ecs[rig_ecs ECS runtime]
     integrations[feature-gated integrations]
 
     user --> facade
     facade --> core
     facade --> agent
-    facade -. bevy feature .-> bevy_ns
+    facade -. ecs feature .-> ecs_ns
     facade -. provider/store features .-> integrations
     default_prelude --> core
     default_prelude --> agent
-    bevy_ns --> bevy
-    bevy_prelude --> core
-    bevy_prelude --> bevy
+    ecs_ns --> ecs
+    ecs_prelude --> core
+    ecs_prelude --> ecs
 ```
 
 The default prelude preserves one unambiguous ergonomic path:
 `use rig::prelude::*; client.agent(...);`. The method comes from
-`rig_agent::client::AgentClientExt`, not `rig_core::CompletionClient`.
+`rig_agent::client::CompletionClient`, not `rig_core::CompletionClient`.
 The same prelude exposes `rig_agent::client::AgentModelExt`, which replaces
 OpenAI's core-owned inherent `model.into_agent_builder()` without a provider
 dependency on the runtime.
-`rig-bevy` uses an intentionally distinct method such as `bevy_agent(...)` or
+`rig-ecs` uses an intentionally distinct method such as `ecs_agent(...)` or
 explicit runtime spawning. Its extension trait is exported only from
-`rig::bevy::prelude`, so importing both runtimes does not create method
-collisions. Advanced users may depend on `rig-bevy` directly; facade consumers
-get a discoverable `rig::bevy` namespace.
+`rig::ecs::prelude`, so importing both runtimes does not create method
+collisions. Advanced users may depend on `rig-ecs` directly; facade consumers
+get a discoverable `rig::ecs` namespace.
 
 ## Migration dependency DAG
 
@@ -390,7 +390,7 @@ flowchart TD
     P5[5. Move construction extensions and extractor]
     P6[6. Update rig facade and preludes]
     P7[7. Update derive macros, integrations, examples, and tests]
-    P8[8. Create minimal rig-bevy boundary]
+    P8[8. Create minimal rig-ecs boundary]
     P9a[9a. ECS topology and deterministic schedules]
     P9b[9b. Owned effects, model calls, and streaming]
     P9c[9c. Tools, grants, policies, and concurrency]
@@ -423,9 +423,9 @@ acyclic. Detailed prerequisites, rollback, tests, and completion criteria are in
 
 | Concern | Decision |
 | --- | --- |
-| Hooks | Move intact to `rig-agent`; no hook types in `rig-core` or `rig-bevy`. |
-| ECS policy | Components/systems/schedules in `rig-bevy`; do not wrap `HookStack`. |
-| Classic state machine | Move intact to `rig-agent`; do not share it with `rig-bevy`. |
+| Hooks | Move intact to `rig-agent`; no hook types in `rig-core` or `rig-ecs`. |
+| ECS policy | Components/systems/schedules in `rig-ecs`; do not wrap `HookStack`. |
+| Classic state machine | Move intact to `rig-agent`; do not share it with `rig-ecs`. |
 | Messages/requests/responses/usage | Canonical values in `rig-core`. |
 | Prompt/Chat/TypedPrompt | Classic invocation facades in `rig-agent`; Bevy exposes its own handle API. |
 | Raw streaming | Provider primitives in `rig-core`; runtime stream items and drivers in runtime crates. |
@@ -449,12 +449,12 @@ the prohibited reverse dependency.
 1. Choose the portable/contextual tool authoring migration, including how
    `#[rig_tool]` expresses a classic `ToolContext` parameter after the split.
 2. Set separate MSRV/WASM support promises for `rig-core`, `rig-agent`, and
-   `rig-bevy`. `rig-bevy` may legitimately be native-only initially; that must
+   `rig-ecs`. `rig-ecs` may legitimately be native-only initially; that must
    not weaken `rig-core` or `rig-agent` WASM contracts.
 3. Define raw provider-final retention and typed subscription APIs for hosted
    Bevy runs without persisting or serializing arbitrary provider responses.
 4. Decide when built-in provider extraction begins. It should be tracked
    separately from the runtime split.
-5. Set the quantitative gate for moving `rig-bevy` from experimental to
+5. Set the quantitative gate for moving `rig-ecs` from experimental to
    supported; it must include conformance, provider acceptance, persistence,
    cancellation, and stale-result tests, not only API stability.

@@ -62,7 +62,7 @@
 //! ## Agent runtimes
 //! This crate owns the provider-agnostic model, message, tool, and storage
 //! contracts. The sibling `rig-agent` crate provides the classic builder and
-//! run-loop API, while `rig-bevy` provides the native ECS runtime.
+//! run-loop API, while `rig-ecs` provides the native ECS runtime.
 //!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
@@ -79,7 +79,7 @@
 //! ## Conversation memory
 //! Runtimes can load and persist per-conversation history through the
 //! [ConversationMemory](crate::memory::ConversationMemory) trait. Both
-//! `rig-agent` and `rig-bevy` integrate this portable backend contract.
+//! `rig-agent` and `rig-ecs` integrate this portable backend contract.
 //! The default in-process backend
 //! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
 //! for tests and single-process agents; reusable history-shaping policies (sliding

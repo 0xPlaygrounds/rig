@@ -1,5 +1,5 @@
 use rig::{
-    client::{AgentClientExt, ProviderClient},
+    client::{CompletionClient, ProviderClient},
     completion::TypedPrompt,
     providers::{azure::Client, openai::GPT_5_MINI},
 };

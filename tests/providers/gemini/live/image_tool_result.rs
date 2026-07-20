@@ -1,5 +1,5 @@
 use rig::{
-    client::{AgentClientExt, ProviderClient},
+    client::{CompletionClient, ProviderClient},
     completion::Prompt,
     providers::gemini,
 };
