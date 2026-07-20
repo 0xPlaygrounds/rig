@@ -10,8 +10,6 @@
 //! tools live at [`crate::agent::tool`]). Classic construction methods such as
 //! `client.agent(...)` come from [`crate::client::CompletionClient`], the same
 //! import as before the runtime split.
-//! See the migration guide in `docs/architecture/rig-runtime-split/` for the
-//! complete mapping.
 //!
 //! # Companion integrations
 //!

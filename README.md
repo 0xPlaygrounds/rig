@@ -92,8 +92,7 @@ rig = { version = "0.40", features = ["ecs"] }
 
 Classic construction uses `CompletionClient::agent`; ECS construction uses the
 distinct `EcsClientExt::ecs_agent`, so importing both runtime extensions is
-unambiguous. See the [runtime migration guide](docs/architecture/rig-runtime-split/migration-guide.md)
-and the [`ecs_agent` example](examples/ecs_agent/src/main.rs).
+unambiguous. See the [`ecs_agent` example](examples/ecs_agent/src/main.rs).
 
 ## Who is using Rig?
 Below is a non-exhaustive list of companies and people who are using Rig:
