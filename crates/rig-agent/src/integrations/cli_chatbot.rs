@@ -1,10 +1,13 @@
+use rig_core::{
+    markers::{Missing, Provided},
+    message::Message,
+    wasm_compat::WasmCompatSend,
+};
+
 use crate::{
     agent::{Agent, MultiTurnStreamItem, Text},
     completion::{Chat, CompletionError, CompletionModel, PromptError, Usage},
-    markers::{Missing, Provided},
-    message::Message,
     streaming::{StreamedAssistantContent, StreamingPrompt},
-    wasm_compat::WasmCompatSend,
 };
 use futures::StreamExt;
 use std::io::{self, Write};

@@ -14,17 +14,34 @@
 //! This crate owns the mature builder, run state machine, typed hook system,
 //! contextual tool registry, memory orchestration, extraction, and shared
 //! blocking/streaming driver. Portable provider, message, tool, and storage
-//! contracts remain in [`rig_core`].
+//! contracts remain in [`rig_core`] and are reachable here through the
+//! explicit [`core`] namespace; this crate's root deliberately exports only
+//! runtime-owned items. The comprehensive end-user facade is the root `rig`
+//! crate.
 
 extern crate self as rig;
-
-pub use rig_core::*;
 
 /// Direct access to portable provider, data, memory, and tool contracts.
 ///
 /// This explicit namespace is also the stable expansion root for portable
 /// `#[rig_tool]` functions in crates that depend on `rig-agent` without a
 /// separate direct `rig-core` dependency.
+///
+/// Portable `rig-core` root items are reachable here, but deliberately *not*
+/// at the `rig_agent` crate root — adding a root export to `rig-core` must not
+/// silently add one to `rig-agent`. The `rig-core` boundary sentinel proves
+/// both halves of that invariant:
+///
+/// ```
+/// // Reachable through the explicit `core` namespace.
+/// use rig_agent::core::__RigCoreBoundarySentinel;
+/// let _sentinel = __RigCoreBoundarySentinel;
+/// ```
+///
+/// ```compile_fail
+/// // NOT reachable at the `rig_agent` crate root.
+/// use rig_agent::__RigCoreBoundarySentinel as _;
+/// ```
 pub mod core {
     pub use rig_core::*;
 }

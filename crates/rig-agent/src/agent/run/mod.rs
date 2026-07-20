@@ -69,8 +69,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use rig_core::{
     OneOrMany,
+    message::{AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent},
+};
+
+use crate::{
     agent::hook::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
     agent::prompt_request::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
@@ -79,7 +83,6 @@ use crate::{
     },
     completion::{Message, PromptError, Usage},
     json_utils,
-    message::{AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent},
 };
 
 pub use streamed::{
@@ -1494,7 +1497,7 @@ impl AgentRun {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::{ToolFunction, ToolResultContent};
+    use rig_core::message::{ToolFunction, ToolResultContent};
     use serde_json::json;
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {

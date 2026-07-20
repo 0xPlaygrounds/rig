@@ -65,8 +65,8 @@
 //! ```
 //!
 //! Return [`ToolOutput`] for explicit JSON or multimodal presentation. A
-//! [`ToolResultContent`](crate::message::ToolResultContent) or
-//! [`OneOrMany`](crate::OneOrMany) of content blocks can also be used directly
+//! [`ToolResultContent`](rig_core::message::ToolResultContent) or
+//! [`OneOrMany`](rig_core::OneOrMany) of content blocks can also be used directly
 //! as a typed tool output without being mistaken for ordinary JSON.
 //!
 //! ```
@@ -116,11 +116,12 @@ use futures::Future;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    completion::{self, ToolDefinition},
+use rig_core::{
     embeddings::{embed::EmbedError, tool::ToolSchema},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
+
+use crate::completion::{self, ToolDefinition};
 
 pub(crate) mod extensions;
 #[cfg(feature = "rmcp")]
@@ -147,8 +148,8 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// Output convertible into Rig's canonical model presentation.
     ///
     /// Every owned serializable value implements [`IntoToolOutput`]
-    /// automatically. [`ToolResultContent`](crate::message::ToolResultContent)
-    /// and [`OneOrMany`](crate::OneOrMany) preserve rich content when returned
+    /// automatically. [`ToolResultContent`](rig_core::message::ToolResultContent)
+    /// and [`OneOrMany`](rig_core::OneOrMany) preserve rich content when returned
     /// directly; use [`ToolOutput`] when constructing the presentation
     /// explicitly.
     type Output: IntoToolOutput;
@@ -821,7 +822,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
+    use rig_core::{
         OneOrMany,
         message::{ImageMediaType, ToolResultContent},
     };
@@ -1225,11 +1226,11 @@ mod tests {
 
 #[cfg(test)]
 mod migrated_tests {
-    use crate::message::{DocumentSourceKind, ToolResultContent};
     use crate::test_utils::{
         MockExampleTool, MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool,
         MockToolError, mock_math_toolset,
     };
+    use rig_core::message::{DocumentSourceKind, ToolResultContent};
     use rig_runtime_conformance::{
         PortableEmbeddingFixture, portable_dynamic_fixture, portable_fixture_output,
     };
@@ -1662,7 +1663,10 @@ mod migrated_tests {
         match content.first() {
             ToolResultContent::Image(image) => {
                 assert!(matches!(image.data, DocumentSourceKind::Base64(_)));
-                assert_eq!(image.media_type, Some(crate::message::ImageMediaType::PNG));
+                assert_eq!(
+                    image.media_type,
+                    Some(rig_core::message::ImageMediaType::PNG)
+                );
             }
             other => panic!("expected image tool result content, got {other:?}"),
         }

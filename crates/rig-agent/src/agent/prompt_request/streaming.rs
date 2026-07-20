@@ -1,5 +1,10 @@
-use crate::{
+use rig_core::{
     OneOrMany,
+    message::{AssistantContent, UserContent},
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+};
+
+use crate::{
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
         AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelTurnFinished, StepEventKind,
@@ -16,10 +21,8 @@ use crate::{
         resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
     completion::GetTokenUsage,
-    message::{AssistantContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
@@ -30,8 +33,8 @@ use super::{CompletionCall, PromptResponse, forward_prompt_setters};
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
-    message::{Message, Text},
 };
+use rig_core::message::{Message, Text};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type StreamingResult<R> =
@@ -76,7 +79,7 @@ pub enum MultiTurnStreamItem<R> {
         /// applied (so a redaction rewrite is reflected here, not leaked). The
         /// model's *original* call is reported via
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
-        tool_call: crate::message::ToolCall,
+        tool_call: rig_core::message::ToolCall,
         /// Rig-generated id correlating this execution with the model tool call
         /// ([`StreamedAssistantContent::ToolCall::internal_call_id`]) and the
         /// resulting [`StreamedUserContent::ToolResult`].
@@ -268,8 +271,8 @@ pub enum StreamingError {
     Prompt(#[from] Box<PromptError>),
 }
 
-impl From<crate::memory::MemoryError> for StreamingError {
-    fn from(err: crate::memory::MemoryError) -> Self {
+impl From<rig_core::memory::MemoryError> for StreamingError {
+    fn from(err: rig_core::memory::MemoryError) -> Self {
         Self::Prompt(Box::new(PromptError::MemoryError(err)))
     }
 }
@@ -481,7 +484,7 @@ pub(crate) fn drive_agent<M, S>(
     mut run: AgentRun,
     agent_span: tracing::Span,
     created_agent_span: bool,
-    memory_handle: Option<(Arc<dyn crate::memory::ConversationMemory>, String)>,
+    memory_handle: Option<(Arc<dyn rig_core::memory::ConversationMemory>, String)>,
     is_streaming: bool,
 ) -> impl Stream<Item = Result<DriveItem<S::Raw>, StreamingError>>
 where
@@ -572,7 +575,7 @@ where
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
                     if runner.record_telemetry_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
-                        crate::telemetry::record_model_input(&chat_span, &input_messages, true);
+                        rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
                         prepared.builder = prepared.builder.record_content_telemetry(false);
                     }
 
@@ -705,7 +708,7 @@ where
     // paired with the model's tool call. `span` is `Span::none()` for a
     // preresolved (invalid-recovery) call, which never executes.
     struct PreparedToolCall {
-        tool_call: crate::message::ToolCall,
+        tool_call: rig_core::message::ToolCall,
         preresolved_result: Option<UserContent>,
         internal_call_id: String,
         span: tracing::Span,
@@ -719,7 +722,7 @@ where
     //     during the model turn); committed to history only.
     enum ToolSurface {
         // Boxed to keep this enum small next to the empty `Skipped`/`Preresolved`.
-        Executed(Box<crate::message::ToolCall>),
+        Executed(Box<rig_core::message::ToolCall>),
         Skipped,
         Preresolved,
     }
@@ -743,7 +746,7 @@ where
         // model turn) and gets no execute span.
         let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
         for pending in calls {
-            let internal_call_id = pending.internal_call_id.unwrap_or_else(crate::id::generate);
+            let internal_call_id = pending.internal_call_id.unwrap_or_else(rig_core::id::generate);
             let (span, preresolved_result) = match pending.preresolved_result {
                 Some(result) => (tracing::Span::none(), Some(result)),
                 None => {
@@ -1381,7 +1384,7 @@ where
                                 assistant_text_from_choice(&canonical_choice),
                             );
                         }
-                        crate::telemetry::record_model_output(
+                        rig_core::telemetry::record_model_output(
                             &chat_span,
                             &canonical_choice,
                             runner.record_telemetry_content,
@@ -1407,7 +1410,7 @@ where
                     assistant_text_from_choice(&canonical_choice),
                 );
             }
-            crate::telemetry::record_model_output(
+            rig_core::telemetry::record_model_output(
                 &chat_span,
                 &canonical_choice,
                 runner.record_telemetry_content,
@@ -1635,11 +1638,6 @@ mod migrated_tests {
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::AgentClientExt;
     use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
-    use crate::message::{
-        AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
-        ToolChoice, ToolResultContent, UserContent,
-    };
-    use crate::providers::anthropic;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
@@ -1649,6 +1647,11 @@ mod migrated_tests {
     use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
     use rig_core::client::ProviderClient;
+    use rig_core::message::{
+        AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
+        ToolChoice, ToolResultContent, UserContent,
+    };
+    use rig_core::providers::anthropic;
     use serde::Deserialize;
     use std::collections::{BTreeSet, HashMap};
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -1662,8 +1665,8 @@ mod migrated_tests {
     fn reasoning(
         id: Option<&str>,
         content: impl IntoIterator<Item = ReasoningContent>,
-    ) -> crate::message::Reasoning {
-        let mut reasoning = crate::message::Reasoning::new("");
+    ) -> rig_core::message::Reasoning {
+        let mut reasoning = rig_core::message::Reasoning::new("");
         reasoning.id = id.map(str::to_string);
         reasoning.content = content.into_iter().collect();
         reasoning
@@ -1710,7 +1713,7 @@ mod migrated_tests {
 
     #[test]
     fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
-        use crate::message::{ToolCall, ToolFunction};
+        use rig_core::message::{ToolCall, ToolFunction};
 
         let output_call = AssistantContent::ToolCall(ToolCall::new(
             "c1".to_string(),
@@ -1863,7 +1866,7 @@ mod migrated_tests {
         let instruction = serde_json::json!({
             "instruction": "Use the image part to answer."
         });
-        let mut content = crate::OneOrMany::one(ToolResultContent::json(instruction.clone()));
+        let mut content = rig_core::OneOrMany::one(ToolResultContent::json(instruction.clone()));
         content.push(ToolResultContent::image_base64(
             "base64data==",
             Some(ImageMediaType::PNG),
@@ -2223,10 +2226,12 @@ mod migrated_tests {
         let advertised = BTreeSet::from([tool_name.clone()]);
         let turn = crate::agent::run::ModelTurn::new(
             None,
-            OneOrMany::one(AssistantContent::ToolCall(crate::message::ToolCall::new(
-                "expected_call".to_string(),
-                crate::message::ToolFunction::new(tool_name, serde_json::json!({})),
-            ))),
+            OneOrMany::one(AssistantContent::ToolCall(
+                rig_core::message::ToolCall::new(
+                    "expected_call".to_string(),
+                    rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
+                ),
+            )),
             Usage::new(),
             advertised.clone(),
             advertised,
@@ -6399,7 +6404,7 @@ mod migrated_tests {
     #[tokio::test]
     #[ignore = "This requires an API key"]
     async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
-        use crate::message::Message;
+        use rig_core::message::Message;
 
         let client = anthropic::Client::from_env()?;
         let agent = client
@@ -6465,7 +6470,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn streaming_appends_to_memory_after_final_response() {
-        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+        use rig_core::memory::{ConversationMemory, InMemoryConversationMemory};
 
         let memory = InMemoryConversationMemory::new();
         let agent = AgentBuilder::new(streaming_text_then_final_model())
@@ -6588,7 +6593,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn streaming_with_history_overrides_memory() {
-        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+        use rig_core::memory::{ConversationMemory, InMemoryConversationMemory};
 
         let memory = InMemoryConversationMemory::new();
         memory
@@ -6622,7 +6627,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn streaming_without_memory_disables_for_request() {
-        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+        use rig_core::memory::{ConversationMemory, InMemoryConversationMemory};
 
         let memory = InMemoryConversationMemory::new();
         let agent = AgentBuilder::new(streaming_text_then_final_model())
@@ -6664,7 +6669,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn streaming_with_filter_shapes_loaded_history() {
-        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+        use rig_core::memory::{ConversationMemory, InMemoryConversationMemory};
 
         let memory = InMemoryConversationMemory::new()
             .with_filter(|msgs: Vec<Message>| msgs.into_iter().rev().take(2).rev().collect());

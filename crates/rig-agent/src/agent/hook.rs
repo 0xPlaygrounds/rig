@@ -119,13 +119,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{future::Future, sync::Arc};
 
 use crate::tool::extensions::TypeMap;
-use crate::{
+use rig_core::{
     OneOrMany,
+    message::{AssistantContent, Message, ToolChoice},
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+};
+
+use crate::{
     completion::{Document, Usage},
     json_utils,
-    message::{AssistantContent, Message, ToolChoice},
     tool::{ToolContext, ToolOutput, ToolResult},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 /// Opaque process-scoped identifier for one agent run.
@@ -134,7 +137,7 @@ pub struct RunId(String);
 
 impl RunId {
     pub(crate) fn generate() -> Self {
-        Self(crate::id::generate())
+        Self(rig_core::id::generate())
     }
 
     /// Identifier as text.
@@ -1695,9 +1698,9 @@ mod migrated_tests {
         }
     }
     fn completion_call_event() -> CompletionCall<'static> {
-        static PROMPT: std::sync::OnceLock<crate::message::Message> = std::sync::OnceLock::new();
+        static PROMPT: std::sync::OnceLock<rig_core::message::Message> = std::sync::OnceLock::new();
         CompletionCall {
-            prompt: PROMPT.get_or_init(|| crate::message::Message::user("hi")),
+            prompt: PROMPT.get_or_init(|| rig_core::message::Message::user("hi")),
             history: &[],
             turn: 1,
         }

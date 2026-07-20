@@ -5,13 +5,14 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{
+use rig_core::{
     OneOrMany,
     message::{ImageMediaType, ToolResultContent},
-    tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolOutput, ToolSet},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
 };
+
+use crate::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolOutput, ToolSet};
 
 /// Shared error type for mock tools.
 #[derive(Debug, thiserror::Error)]

@@ -45,6 +45,34 @@ check_declared_graph() {
   rm -f "$metadata"
 }
 
+check_rig_agent_root_surface() {
+  local lib="crates/rig-agent/src/lib.rs"
+  local allowlist="ci/rig-agent-root-reexport-allowlist.txt"
+
+  # A blanket glob re-export at the crate root turns rig-agent back into an
+  # implicit second facade. It is never permitted, regardless of the allowlist.
+  # Root items sit at column 0; the `core` module's own glob is indented.
+  if grep -Eq '^pub use rig_core::\*' "$lib"; then
+    echo "forbidden: blanket 'pub use rig_core::*' at the rig-agent crate root" >&2
+    echo "  portable contracts must be reached through rig_agent::core" >&2
+    return 1
+  fi
+
+  # Every enumerated root re-export from the portable crates must be declared in
+  # the allowlist, so widening rig-agent's public surface is always a reviewed,
+  # intentional change rather than an accidental one.
+  local actual expected
+  actual="$(grep -E '^pub use (rig_core|rig_derive)' "$lib" | sed 's/[[:space:]]*$//' | sort -u)"
+  expected="$(grep -vE '^[[:space:]]*(#|$)' "$allowlist" | sed 's/[[:space:]]*$//' | sort -u)"
+
+  if [[ "$actual" != "$expected" ]]; then
+    echo "rig-agent root re-export surface drifted from the allowlist:" >&2
+    diff <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2 || true
+    echo "  update ${allowlist} only if the change is intentional" >&2
+    return 1
+  fi
+}
+
 check_resolved_tree_excludes() {
   local package="$1"
   shift
@@ -65,5 +93,7 @@ check_declared_graph --no-default-features
 check_resolved_tree_excludes rig-core rig-agent rig-bevy bevy_ecs
 check_resolved_tree_excludes rig-agent rig-bevy bevy_ecs
 check_resolved_tree_excludes rig-bevy rig-agent
+
+check_rig_agent_root_surface
 
 echo "runtime dependency graph guard passed"

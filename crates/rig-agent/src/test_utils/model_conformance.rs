@@ -29,10 +29,10 @@ use crate::{
         AssistantContent, CompletionError, CompletionModel, Message, Prompt, PromptError,
         ToolDefinition,
     },
-    message::{ToolChoice, UserContent},
     streaming::StreamingPrompt,
     tool::{Tool, ToolContext},
 };
+use rig_core::message::{ToolChoice, UserContent};
 
 /// Typed failure from a portable model-conformance scenario.
 #[derive(Debug, thiserror::Error)]
@@ -360,11 +360,11 @@ fn tool_result_values(message: &Message) -> Vec<serde_json::Value> {
         })
         .flat_map(|result| result.content.iter())
         .filter_map(|content| match content {
-            crate::message::ToolResultContent::Text(text) => {
+            rig_core::message::ToolResultContent::Text(text) => {
                 Some(serde_json::Value::String(text.text.clone()))
             }
-            crate::message::ToolResultContent::Json { value } => Some(value.clone()),
-            crate::message::ToolResultContent::Image(_) => None,
+            rig_core::message::ToolResultContent::Json { value } => Some(value.clone()),
+            rig_core::message::ToolResultContent::Image(_) => None,
         })
         .collect()
 }
@@ -2094,10 +2094,12 @@ where
 mod tests {
     use super::*;
     use crate::{
-        OneOrMany,
         completion::Usage,
-        message::{ToolCall, ToolFunction},
         test_utils::{MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
+    };
+    use rig_core::{
+        OneOrMany,
+        message::{ToolCall, ToolFunction},
     };
 
     fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {

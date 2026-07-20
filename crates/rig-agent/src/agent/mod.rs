@@ -158,7 +158,6 @@ mod tool;
 /// configured name.
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
-pub use crate::message::Text;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
 pub use hook::CompletionCall as CompletionCallEvent;
@@ -175,5 +174,6 @@ pub use prompt_request::streaming::{
 pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
+pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;

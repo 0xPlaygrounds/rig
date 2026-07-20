@@ -3,11 +3,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    agent::AgentBuilder,
-    extractor::ExtractorBuilder,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
+use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use rig_core::client::completion::CompletionClient;
 

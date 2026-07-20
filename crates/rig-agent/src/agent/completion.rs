@@ -9,11 +9,10 @@ use crate::{
         Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     json_utils,
-    message::ToolChoice,
     streaming::{StreamingChat, StreamingPrompt},
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
-    wasm_compat::WasmCompatSend,
 };
+use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
@@ -592,7 +591,7 @@ where
     /// prompt injection (see [`OutputMode`] and issue #1928).
     pub(crate) output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
-    pub(crate) memory: Option<Arc<dyn crate::memory::ConversationMemory>>,
+    pub(crate) memory: Option<Arc<dyn rig_core::memory::ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
     pub(crate) default_conversation_id: Option<String>,
 }

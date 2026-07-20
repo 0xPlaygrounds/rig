@@ -3,7 +3,7 @@
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
-use crate::{
+use rig_core::{
     memory::MemoryError,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };

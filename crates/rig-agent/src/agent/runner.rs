@@ -53,11 +53,14 @@ use super::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
     },
 };
+use rig_core::{
+    memory::ConversationMemory,
+    message::{ToolCall, ToolChoice, UserContent},
+};
+
 use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
-    memory::ConversationMemory,
-    message::{ToolCall, ToolChoice, UserContent},
     tool::{
         ToolContext, ToolDispatch, ToolOutput, ToolResult,
         server::{ToolRegistrySnapshot, ToolServerHandle},
@@ -83,7 +86,7 @@ pub(crate) enum UnhandledInvalidToolCallPolicy {
 /// here once instead of being copy-pasted into each `TurnSource::open_chat_span`.
 macro_rules! build_chat_span {
     ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {{
-        let system_instructions = $crate::telemetry::system_instructions_json(
+        let system_instructions = $crate::core::telemetry::system_instructions_json(
             $effective_preamble,
             $runner.record_telemetry_content,
         );
@@ -561,7 +564,7 @@ pub(crate) fn acquire_agent_span(
 ) -> (tracing::Span, bool) {
     if tracing::Span::current().is_disabled() {
         let system_instructions =
-            crate::telemetry::system_instructions_json(preamble, record_content);
+            rig_core::telemetry::system_instructions_json(preamble, record_content);
         let span = info_span!(
             "invoke_agent",
             gen_ai.operation.name = "invoke_agent",
@@ -1005,7 +1008,7 @@ where
                                 if runner.record_telemetry_content
                                     && let Some(choice) = run.accepted_turn_choice()
                                 {
-                                    crate::telemetry::record_model_output(
+                                    rig_core::telemetry::record_model_output(
                                         &chat_span, &choice, true,
                                     );
                                 }
@@ -1030,7 +1033,7 @@ where
                                     if runner.record_telemetry_content
                                         && let Some(choice) = run.accepted_turn_choice()
                                     {
-                                        crate::telemetry::record_model_output(
+                                        rig_core::telemetry::record_model_output(
                                             &chat_span, &choice, true,
                                         );
                                     }
@@ -1049,7 +1052,7 @@ where
                         if runner.record_telemetry_content
                             && let Some(choice) = run.accepted_turn_choice()
                         {
-                            crate::telemetry::record_model_output(&chat_span, &choice, true);
+                            rig_core::telemetry::record_model_output(&chat_span, &choice, true);
                         }
                         break;
                     }
@@ -1202,10 +1205,10 @@ mod tests {
     use crate::{
         agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
         completion::{CompletionModel, Document},
-        message::ToolChoice,
         test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
         tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
     };
+    use rig_core::message::ToolChoice;
 
     struct MetadataFailingTool;
 
@@ -1645,16 +1648,12 @@ mod migrated_tests {
     use serde_json::json;
     use tokio::sync::{Barrier, Notify};
 
-    use crate::OneOrMany;
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{
         CompletionError, CompletionModel, Document, Message, Prompt, PromptError, Usage,
-    };
-    use crate::message::{
-        AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
@@ -1665,11 +1664,15 @@ mod migrated_tests {
         Tool, ToolContext, ToolExecutionError, ToolSet,
         server::{ToolServer, ToolServerHandle},
     };
-    use crate::vector_store::{
+    use rig_core::OneOrMany;
+    use rig_core::message::{
+        AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
+    };
+    use rig_core::vector_store::{
         VectorSearchRequest, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
         request::Filter,
     };
-    use crate::wasm_compat::WasmCompatSend;
+    use rig_core::wasm_compat::WasmCompatSend;
 
     /// Records the kind of every hook event (and every tool-result payload) so a
     /// run() and a stream() of the same scenario can be compared.
@@ -3234,7 +3237,7 @@ mod migrated_tests {
         // outcomes are observed and the persisted tool results keep call order.
         #[tokio::test]
         async fn concurrent_tools_preserve_order_and_both_outcomes() {
-            use crate::message::{
+            use rig_core::message::{
                 AssistantContent, ToolCall as MessageToolCall, ToolFunction, UserContent,
             };
 
@@ -3324,11 +3327,11 @@ mod migrated_tests {
         };
         use crate::streaming::StreamedAssistantContent;
         use crate::streaming::StreamingCompletionResponse;
-        use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
         use crate::test_utils::{
             MockAddTool, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn,
         };
         use crate::tool::{ToolContext, ToolExecutionError};
+        use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
         use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
 
@@ -4181,7 +4184,7 @@ mod migrated_tests {
                         UserContent::ToolResult(result)
                             if result.content.iter().any(|c| matches!(
                                 c,
-                                crate::message::ToolResultContent::Text(text)
+                                rig_core::message::ToolResultContent::Text(text)
                                     if text.text == expected
                             ))
                     ))
@@ -4200,7 +4203,7 @@ mod migrated_tests {
                         UserContent::ToolResult(result)
                             if result.content.iter().any(|content| matches!(
                                 content,
-                                crate::message::ToolResultContent::Json { value }
+                                rig_core::message::ToolResultContent::Json { value }
                                     if value == expected
                             ))
                     ))
@@ -8233,7 +8236,7 @@ mod migrated_tests {
                             if result.id == "real"
                                 && result.content.iter().any(|content| matches!(
                                     content,
-                                    crate::message::ToolResultContent::Text(text)
+                                    rig_core::message::ToolResultContent::Text(text)
                                         if text.text == "real final_result output"
                                 ))
                     ))

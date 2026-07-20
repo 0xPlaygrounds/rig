@@ -1,5 +1,6 @@
 use agent_runtime::{
-    Embed, rig_tool,
+    core::Embed,
+    rig_tool,
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 
@@ -30,4 +31,8 @@ fn main() {
     assert_contextual::<ContextualEcho>();
     assert_portable::<PortableEcho>();
     assert_embed::<EmbeddedDocument>();
+
+    // Portable core items stay reachable through the explicit `core` namespace
+    // even under a renamed `rig-agent` dependency.
+    let _sentinel = agent_runtime::core::__RigCoreBoundarySentinel;
 }

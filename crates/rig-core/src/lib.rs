@@ -187,3 +187,13 @@ pub use schemars;
 pub use rig_derive::Embed;
 
 pub mod telemetry;
+
+/// Boundary-test scaffolding. Not a public API.
+///
+/// This exists solely so downstream runtime crates can prove, in their own
+/// tests, that a new `rig-core` root export does **not** silently reappear at
+/// their crate root while remaining reachable through their explicit `core`
+/// namespace. It permanently stands in for "some future `rig-core` root item".
+/// Do not depend on it and do not remove it.
+#[doc(hidden)]
+pub struct __RigCoreBoundarySentinel;

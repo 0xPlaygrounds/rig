@@ -2,16 +2,17 @@ use std::{collections::HashMap, sync::Arc};
 
 use schemars::{JsonSchema, Schema, schema_for};
 
+use rig_core::{
+    memory::ConversationMemory, message::ToolChoice, vector_store::VectorStoreIndexDyn,
+};
+
 use crate::{
     agent::hook::{AgentHook, HookStack},
     completion::{CompletionModel, Document},
-    memory::ConversationMemory,
-    message::ToolChoice,
     tool::{
         DynamicTool, PortableDynamicTool, Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
-    vector_store::VectorStoreIndexDyn,
 };
 
 #[cfg(feature = "rmcp")]

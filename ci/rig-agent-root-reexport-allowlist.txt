@@ -1,0 +1,12 @@
+# Allowlisted crate-root re-exports from rig-core / rig-derive in rig-agent.
+#
+# rig-agent's root deliberately exports only runtime-owned items. Portable
+# rig-core contracts are reached through `rig_agent::core`, never re-exported
+# at the rig-agent root. The only sanctioned root re-exports from the portable
+# crates are the runtime-facing derive macros below.
+#
+# Adding a line here is an intentional, reviewed widening of rig-agent's public
+# surface. A bare `pub use rig_core::*;` glob is never allowed and is rejected
+# regardless of this file. Lines starting with `#` and blank lines are ignored.
+pub use rig_derive::rig_tool;
+pub use rig_derive::rig_tool as tool_macro;

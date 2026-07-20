@@ -2,7 +2,7 @@
 //! This feature is not WASM-compatible (and as such, is incompatible with the `worker` feature).
 use crate::agent::Agent;
 use crate::completion::{Chat, CompletionModel};
-use crate::message::Message as RigMessage;
+use rig_core::message::Message as RigMessage;
 use serenity::all::{
     Command, CommandInteraction, Context, CreateCommand, CreateThread, EventHandler,
     GatewayIntents, Interaction, Message, Ready, async_trait,

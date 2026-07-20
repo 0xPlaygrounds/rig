@@ -4,10 +4,8 @@ use std::any::{Any, TypeId, type_name};
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
-use crate::{
-    tool::ToolExecutionError,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::tool::ToolExecutionError;
+use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 type AnyMap = HashMap<TypeId, Box<dyn AnyClone>, BuildHasherDefault<IdHasher>>;
 

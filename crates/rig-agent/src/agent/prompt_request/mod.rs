@@ -1,12 +1,15 @@
 pub mod streaming;
 
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
-use crate::{
+use rig_core::{
     OneOrMany,
-    completion::{CompletionModel, Message, PromptError, Usage},
     message::{AssistantContent, ToolResultContent, UserContent},
-    tool::{ToolContext, ToolOutput},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+};
+
+use crate::{
+    completion::{CompletionModel, Message, PromptError, Usage},
+    tool::{ToolContext, ToolOutput},
 };
 use serde::{Deserialize, Serialize};
 use std::{future::IntoFuture, marker::PhantomData};
@@ -116,7 +119,7 @@ macro_rules! forward_prompt_setters {
         }
 
         /// Override the tool-choice policy for this request.
-        pub fn tool_choice(mut self, tool_choice: crate::message::ToolChoice) -> Self {
+        pub fn tool_choice(mut self, tool_choice: rig_core::message::ToolChoice) -> Self {
             self.$recv = self.$recv.tool_choice(tool_choice);
             self
         }
@@ -882,7 +885,6 @@ mod tests {
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
             StructuredOutputError, TypedPrompt, Usage,
         },
-        message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
             MockContextProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
@@ -890,6 +892,7 @@ mod tests {
         },
         tool::{Tool, ToolContext},
     };
+    use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -1278,8 +1281,9 @@ mod tests {
         // An explicitly-set `content` (e.g. the streaming surface's structured
         // final turn) must survive a serialize/deserialize round-trip and is not
         // clobbered by the output-derived fallback.
-        let response = PromptResponse::new("visible text", Usage::new())
-            .with_content(crate::OneOrMany::one(AssistantContent::text("structured")));
+        let response = PromptResponse::new("visible text", Usage::new()).with_content(
+            rig_core::OneOrMany::one(AssistantContent::text("structured")),
+        );
 
         let value = serde_json::to_value(&response).expect("serialize prompt response");
         assert!(
@@ -1699,7 +1703,7 @@ mod tests {
                                 if result.content.iter().any(|content| {
                                     matches!(
                                         content,
-                                        crate::message::ToolResultContent::Json { value }
+                                        rig_core::message::ToolResultContent::Json { value }
                                             if value == &serde_json::json!(5)
                                     )
                                 })
@@ -1741,7 +1745,7 @@ mod tests {
                                 if result.content.iter().any(|content| {
                                     matches!(
                                         content,
-                                        crate::message::ToolResultContent::Text(text)
+                                        rig_core::message::ToolResultContent::Text(text)
                                             if text.text.contains("Use one of these tools instead")
                                     )
                                 })
@@ -1822,7 +1826,7 @@ mod tests {
                                 && result.call_id.as_deref() == Some("call_1")
                                 && result.content.iter().any(|content| matches!(
                                     content,
-                                    crate::message::ToolResultContent::Text(text)
+                                    rig_core::message::ToolResultContent::Text(text)
                                         if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
                                 ))
                     ))
@@ -1833,7 +1837,7 @@ mod tests {
                                 && result.call_id.as_deref() == Some("call_2")
                                 && result.content.iter().any(|content| matches!(
                                     content,
-                                    crate::message::ToolResultContent::Text(text)
+                                    rig_core::message::ToolResultContent::Text(text)
                                         if text.text.contains("Use one of these tools instead")
                                 ))
             ))
@@ -1891,7 +1895,7 @@ mod tests {
                                 && result.call_id.as_deref() == Some("call_1")
                                 && result.content.iter().any(|content| matches!(
                                     content,
-                                    crate::message::ToolResultContent::Text(text)
+                                    rig_core::message::ToolResultContent::Text(text)
                                         if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
                                 ))
                     ))
@@ -1902,7 +1906,7 @@ mod tests {
                                 && result.call_id.as_deref() == Some("call_2")
                                 && result.content.iter().any(|content| matches!(
                                     content,
-                                    crate::message::ToolResultContent::Text(text)
+                                    rig_core::message::ToolResultContent::Text(text)
                                         if text.text == "default_api is not available"
                                 ))
                     ))
@@ -1970,7 +1974,7 @@ mod tests {
                                 if result.content.iter().any(|content| {
                                     matches!(
                                         content,
-                                        crate::message::ToolResultContent::Text(text)
+                                        rig_core::message::ToolResultContent::Text(text)
                                             if text.text == "default_api is not available"
                                     )
                                 })
@@ -2016,7 +2020,7 @@ mod tests {
                                     && result.content.iter().any(|content| {
                                         matches!(
                                             content,
-                                            crate::message::ToolResultContent::Text(text)
+                                            rig_core::message::ToolResultContent::Text(text)
                                                 if text.text == "default_api is not available"
                                         )
                                     })
@@ -2434,7 +2438,7 @@ mod tests {
 
     // ----- Conversation memory integration tests -----
 
-    use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+    use rig_core::memory::{ConversationMemory, InMemoryConversationMemory};
 
     #[tokio::test]
     async fn memory_loads_into_request_history() {

@@ -15,7 +15,9 @@ use crate::{
         DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolContext, ToolDispatch,
         ToolResult, ToolSet, dispatch_tool,
     },
-    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
+};
+use rig_core::vector_store::{
+    VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter,
 };
 
 /// One turn's provider definitions and the exact registry entries behind them.

@@ -370,7 +370,7 @@ flowchart TD
 The default prelude preserves one unambiguous ergonomic path:
 `use rig::prelude::*; client.agent(...);`. The method comes from
 `rig_agent::client::AgentClientExt`, not `rig_core::CompletionClient`.
-The same prelude exposes `rig_agent::model::AgentModelExt`, which replaces
+The same prelude exposes `rig_agent::client::AgentModelExt`, which replaces
 OpenAI's core-owned inherent `model.into_agent_builder()` without a provider
 dependency on the runtime.
 `rig-bevy` uses an intentionally distinct method such as `bevy_agent(...)` or

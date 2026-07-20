@@ -35,11 +35,14 @@ use std::marker::PhantomData;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use rig_core::{
+    message::{Message, ToolChoice},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
+
 use crate::{
     agent::{Agent, AgentBuilder, AgentHook, OutputMode},
     completion::{CompletionError, CompletionModel, PromptError, Usage},
-    message::{Message, ToolChoice},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 const SUBMIT_TOOL_NAME: &str = "submit";
@@ -350,8 +353,8 @@ mod tests {
         CompletionCallAction, CompletionResponseEvent, HookContext, ModelTurnAction,
         ObservationAction, RequestPatch,
     };
-    use crate::message::{AssistantContent, ToolCall, ToolFunction};
     use crate::test_utils::{MockCompletionModel, MockTurn};
+    use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 
     #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
     struct Person {

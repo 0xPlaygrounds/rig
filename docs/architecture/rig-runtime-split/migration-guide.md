@@ -65,6 +65,39 @@ runtime under `rig::agent`, including contextual tools at
 `rig::agent::tool`. Direct `rig-core` users import only portable contracts;
 core no longer re-exports agent progression.
 
+## `rig-agent` root re-exports
+
+`rig-agent` no longer re-exports the whole of `rig-core` at its crate root. It
+previously carried `pub use rig_core::*;`, which made `rig-agent` an implicit
+second facade and re-exported every present and future `rig-core` root item
+without review. The crate root now exports only runtime-owned items (plus the
+runtime-facing `rig_tool` / `tool_macro` macros).
+
+This only affects code that depends on `rig-agent` **directly** and reached a
+portable `rig-core` item through the `rig-agent` crate root. The root `rig`
+facade is unchanged: `rig::…` and `rig::prelude::*` still expose portable
+contracts exactly as before.
+
+Portable contracts remain reachable from `rig-agent` through the explicit
+`rig_agent::core` namespace (or a direct `rig-core` dependency):
+
+```rust,ignore
+// Before (relied on `pub use rig_core::*` at the rig-agent root)
+use rig_agent::OneOrMany;
+use rig_agent::Embed;
+use rig_agent::message::Message;
+
+// After — reach portable contracts through the explicit namespace
+use rig_agent::core::OneOrMany;
+use rig_agent::core::Embed;
+use rig_agent::core::message::Message;
+// ...or depend on rig-core directly and use `rig_core::…`.
+```
+
+Contextual, runtime-facing items keep their `rig-agent` paths unchanged:
+`rig_agent::tool::Tool`, `rig_agent::Agent`, `rig_agent::rig_tool`, and the
+rest of the runtime surface are not affected.
+
 ## Runtime construction
 
 Classic client and model construction moved to extension traits:

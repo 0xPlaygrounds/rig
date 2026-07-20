@@ -3,8 +3,8 @@
 use crate::{
     agent::StreamingPromptRequest,
     completion::{CompletionModel, GetTokenUsage, Message},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
+use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use rig_core::streaming::*;
 

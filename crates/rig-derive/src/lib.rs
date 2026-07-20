@@ -811,9 +811,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    let schemars_crate = format!("{}::schemars", tool_owner.to_string().replace(' ', ""));
+    // `schemars` is a portable re-export owned by `rig-core`; resolve it through
+    // the portable path so contextual tools (whose `tool_owner` is the runtime
+    // crate, which no longer re-exports core at its root) still find it.
+    let schemars_owner = rig_portable_path();
+    let schemars_crate = format!("{}::schemars", schemars_owner.to_string().replace(' ', ""));
     let expanded = quote! {
-        #[derive(serde::Deserialize, #tool_owner::schemars::JsonSchema)]
+        #[derive(serde::Deserialize, #schemars_owner::schemars::JsonSchema)]
         #[schemars(crate = #schemars_crate)]
         #vis struct #params_struct_name {
             #(#field_tokens,)*
@@ -837,7 +841,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             fn parameters(&self) -> serde_json::Value {
                 let mut schema = serde_json::to_value(
-                    #tool_owner::schemars::schema_for!(#params_struct_name)
+                    #schemars_owner::schemars::schema_for!(#params_struct_name)
                 ).unwrap_or_else(|_| serde_json::json!({"type": "object"}));
                 schema["required"] = serde_json::json!([#(#required_args),*]);
                 schema

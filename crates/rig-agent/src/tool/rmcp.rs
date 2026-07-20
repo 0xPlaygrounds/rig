@@ -72,12 +72,12 @@ use rmcp::model::{
 use rmcp::service::PeerRequestOptions;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::OneOrMany;
-use crate::message::{ImageMediaType, MimeType, ToolResultContent};
 use crate::tool::ErasedTool;
 use crate::tool::server::{ManagedToolToken, ToolServerHandle};
 use crate::tool::{ToolContext, ToolExecutionError, ToolOutput, ToolResult};
-use crate::wasm_compat::WasmBoxedFuture;
+use rig_core::OneOrMany;
+use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
+use rig_core::wasm_compat::WasmBoxedFuture;
 
 /// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolContext`] to have
 /// Rig's MCP registration methods forward it as a call's `_meta`.
@@ -222,7 +222,7 @@ async fn send_mcp_request(
             if remaining.is_zero() {
                 return Err(rmcp::ServiceError::Timeout { timeout });
             }
-            crate::wasm_compat::timeout(
+            rig_core::wasm_compat::timeout(
                 remaining,
                 peer.send_cancellable_request(request, PeerRequestOptions::no_options()),
             )
@@ -240,7 +240,7 @@ async fn send_mcp_request(
     };
     let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
     let mut handle = handle;
-    match crate::wasm_compat::timeout(remaining, &mut handle.rx).await {
+    match rig_core::wasm_compat::timeout(remaining, &mut handle.rx).await {
         Ok(response) => response.map_err(|_| rmcp::ServiceError::TransportClosed)?,
         Err(_) => {
             cancel_timed_out_request(handle);
@@ -277,7 +277,7 @@ async fn bounded_best_effort_cancellation(
     cancellation: impl std::future::Future<Output = Result<(), rmcp::ServiceError>>,
     grace_period: Duration,
 ) {
-    let _ = crate::wasm_compat::timeout(grace_period, cancellation).await;
+    let _ = rig_core::wasm_compat::timeout(grace_period, cancellation).await;
 }
 
 impl McpTool {
@@ -812,11 +812,11 @@ mod tests {
     };
 
     use super::*;
-    use crate::message::ToolResultContent as RigToolResultContent;
     use crate::tool::{
         ToolErrorKind,
         server::{ToolServer, ToolServerHandle},
     };
+    use rig_core::message::ToolResultContent as RigToolResultContent;
 
     #[derive(Clone)]
     enum Scenario {
