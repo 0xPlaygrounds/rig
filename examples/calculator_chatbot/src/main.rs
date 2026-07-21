@@ -3,9 +3,9 @@ use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
+    agent::tool::{Tool, ToolEmbedding, ToolSet},
     embeddings::EmbeddingsBuilder,
     providers::openai::Client,
-    tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 

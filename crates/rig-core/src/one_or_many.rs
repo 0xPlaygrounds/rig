@@ -138,7 +138,7 @@ impl<T: Clone> OneOrMany<T> {
     }
 
     /// Build a `OneOrMany` from an iterator when the caller can naturally handle an empty input.
-    pub(crate) fn from_iter_optional<I>(items: I) -> Option<Self>
+    pub fn from_iter_optional<I>(items: I) -> Option<Self>
     where
         I: IntoIterator<Item = T>,
     {

@@ -3,15 +3,17 @@
 
 use futures::StreamExt;
 use rig::{
+    agent::tool::Tool,
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
     completion::{AssistantContent, GetTokenUsage, ToolDefinition},
     embeddings::Embedding,
     streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
-    tool::Tool,
+    tool::PortableTool,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 pub(crate) const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 pub(crate) const BASIC_PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
@@ -99,6 +101,30 @@ pub(crate) struct SmokeStructuredOutput {
     pub(crate) summary: String,
 }
 
+pub(crate) fn smoke_structured_output_value() -> serde_json::Value {
+    json!({
+        "title": "Seattle Rust Meetup",
+        "category": "Technology",
+        "summary": "A focused local meetup for Rust developers."
+    })
+}
+
+pub(crate) fn ecs_synthetic_output_tool_name<T>() -> String
+where
+    T: JsonSchema,
+{
+    let schema = schemars::schema_for!(T);
+    let mut hasher = Sha256::new();
+    hasher.update(schema.as_value().to_string().as_bytes());
+    let prefix = hasher
+        .finalize()
+        .iter()
+        .take(4)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("__rig_output_{prefix}")
+}
+
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct SmokePerson {
     #[schemars(required)]
@@ -176,6 +202,64 @@ impl Tool for Subtract {
         _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
+        Ok(args.x - args.y)
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub(crate) struct PortableAdder;
+
+impl PortableTool for PortableAdder {
+    const NAME: &'static str = "add";
+    type Error = MathError;
+    type Args = OperationArgs;
+    type Output = i32;
+
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "description": "The first number to add"},
+                "y": {"type": "number", "description": "The second number to add"}
+            },
+            "required": ["x", "y"]
+        })
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Ok(args.x + args.y)
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub(crate) struct PortableSubtract;
+
+impl PortableTool for PortableSubtract {
+    const NAME: &'static str = "subtract";
+    type Error = MathError;
+    type Args = OperationArgs;
+    type Output = i32;
+
+    fn description(&self) -> String {
+        "Subtract y from x (i.e.: x - y)".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "description": "The number to subtract from"},
+                "y": {"type": "number", "description": "The number to subtract"}
+            },
+            "required": ["x", "y"]
+        })
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -405,6 +489,30 @@ pub(crate) async fn collect_stream_final_response<R>(
     }
 
     Ok(final_response.expect("stream should yield a final response"))
+}
+
+pub(crate) async fn collect_stream_final_response_and_provider_final<R>(
+    stream: &mut StreamingResult<R>,
+) -> Result<(String, R), StreamingError> {
+    let mut final_response = None;
+    let mut provider_final = None;
+
+    while let Some(item) = stream.next().await {
+        match item? {
+            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
+                provider_final = Some(final_);
+            }
+            MultiTurnStreamItem::FinalResponse(response) => {
+                final_response = Some(response.output().to_owned());
+            }
+            _ => {}
+        }
+    }
+
+    Ok((
+        final_response.expect("stream should yield a final response"),
+        provider_final.expect("stream should yield a typed provider final"),
+    ))
 }
 
 pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named<R>(

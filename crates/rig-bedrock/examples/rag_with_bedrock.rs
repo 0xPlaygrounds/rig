@@ -1,15 +1,16 @@
 use std::vec;
 
+use rig_agent::agent::{
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
+};
+use rig_agent::{client::CompletionClient, completion::Prompt};
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
-use rig_core::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
-};
-use rig_core::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::{
     Embed,
-    completion::{Document, Message, Prompt},
+    completion::{Document, Message},
     embeddings::EmbeddingsBuilder,
     message::UserContent,
     vector_store::{

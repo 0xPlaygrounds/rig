@@ -1,0 +1,21 @@
+[package]
+name = "rig-runtime-conformance"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+publish = false
+description = "Unpublished behavioral conformance fixtures for Rig runtimes."
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = [
+  "test-utils",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

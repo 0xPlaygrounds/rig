@@ -8,10 +8,10 @@
 use std::sync::Arc;
 
 use rig::{
+    agent::tool::{rmcp::McpClientHandler, server::ToolServer},
     client::{CompletionClient, ProviderClient},
     completion::Prompt,
     providers::openai,
-    tool::{rmcp::McpClientHandler, server::ToolServer},
 };
 use rmcp::{
     RoleServer, ServerHandler,

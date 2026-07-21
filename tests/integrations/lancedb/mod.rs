@@ -13,11 +13,11 @@ use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
-    client::EmbeddingsClient,
+    client::CompletionClient,
+    client::{AgentModelExt, EmbeddingsClient},
     completion::{Document, Message, Prompt},
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     message::UserContent,
-    prelude::CompletionClient,
     providers::openai,
     vector_store::{VectorStoreIndex, request::VectorSearchRequest},
 };

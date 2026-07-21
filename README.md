@@ -50,6 +50,7 @@
 - [Table of contents](#table-of-contents)
 - [What is Rig?](#what-is-rig)
 - [Features](#features)
+- [Runtime choices](#runtime-choices)
 - [Who's using Rig?](#who-is-using-rig)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
@@ -62,13 +63,36 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
+- A classic runtime enabled by default and an experimental, opt-in Bevy ECS runtime
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
-- Full WASM compatibility (core library only)
+- Full WASM compatibility for the portable core and classic runtime
+
+## Runtime choices
+
+Rig separates portable provider/backend contracts from agent orchestration:
+
+- `rig-core` contains provider-neutral messages, completion models, portable tools,
+  memory and vector-store contracts, and built-in provider mappings.
+- `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
+  contextual tools, extraction, and the serializable `AgentRun` state machine. It
+  remains enabled by default.
+- `rig-ecs` contains the experimental native-only ECS runtime. Enable the root
+  `ecs` feature and use `rig::ecs`; it is intentionally absent from the default
+  prelude.
+
+```toml
+[dependencies]
+rig = { version = "0.40", features = ["ecs"] }
+```
+
+Classic construction uses `CompletionClient::agent`; ECS construction uses the
+distinct `EcsClientExt::ecs_agent`, so importing both runtime extensions is
+unambiguous. See the [`ecs_agent` example](examples/ecs_agent/src/main.rs).
 
 ## Who is using Rig?
 Below is a non-exhaustive list of companies and people who are using Rig:

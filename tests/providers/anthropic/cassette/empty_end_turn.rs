@@ -9,11 +9,11 @@ use std::sync::{
 };
 
 use rig::{
+    agent::tool::Tool,
     client::CompletionClient,
     completion::{CompletionModel, Prompt, ToolDefinition},
     message::{AssistantContent, Message, UserContent},
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
-    tool::Tool,
 };
 use serde::Deserialize;
 use serde_json::json;

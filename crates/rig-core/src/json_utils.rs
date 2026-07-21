@@ -32,23 +32,12 @@ pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
 /// Normalize a provider-wire field that may contain encoded JSON in a string.
 ///
 /// This deliberately unwraps [`serde_json::Value::String`] and is only for
-/// provider decoding, before a value enters Rig's canonical message model. To
-/// serialize an existing [`crate::completion::ToolFunction::arguments`] value
-/// or any other already-parsed JSON, use [`serialize_json_value`] instead.
+/// provider decoding, before a value enters Rig's canonical message model.
 pub fn value_to_json_string(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(s) => s.clone(),
         other => other.to_string(),
     }
-}
-
-/// Serialize a canonical JSON value without provider-wire normalization.
-///
-/// Hook-produced tool arguments are already parsed JSON. In particular, a
-/// [`serde_json::Value::String`] is a JSON string scalar and must retain its
-/// quotes; stripping them would turn the replacement into invalid JSON.
-pub fn serialize_json_value(value: &serde_json::Value) -> String {
-    value.to_string()
 }
 
 /// Deserialize a field that may arrive as either a JSON-encoded string or any other

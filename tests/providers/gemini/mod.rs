@@ -13,6 +13,8 @@ mod cassette {
     mod chat_history;
     mod document_ordering;
     mod dynamic_tools;
+    #[cfg(feature = "ecs")]
+    mod ecs_runtime;
     mod embeddings;
     mod extractor;
     mod generate_behaviors;
@@ -42,4 +44,6 @@ mod cassette {
     mod transcription;
 }
 
-mod live {}
+mod live {
+    mod image_tool_result;
+}

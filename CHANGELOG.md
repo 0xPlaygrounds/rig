@@ -13,6 +13,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(ecs)* [**breaking**] The `rig-bevy` crate is renamed to `rig-ecs`. The
+  facade module `rig::bevy` is now `rig::ecs` (and `rig::ecs::prelude`), the
+  root `bevy` feature is now `ecs`, and the runtime extension traits are
+  renamed: `BevyClientExt` → `EcsClientExt`, `BevyModelExt` → `EcsModelExt`,
+  `BevyAgentBuilder` → `EcsAgentBuilder`, `BevyAgentDefinition` →
+  `EcsAgentDefinition`, and `bevy_agent()` → `ecs_agent()`. The crate is still
+  implemented on the third-party `bevy_ecs` engine, which is unchanged.
+
+  ```toml
+  # Before
+  rig = { version = "0.40", features = ["bevy"] }
+  # After
+  rig = { version = "0.40", features = ["ecs"] }
+  ```
+
+  ```rust
+  // Before
+  use rig::bevy::{BevyClientExt, LocalRuntime};
+  // After
+  use rig::ecs::{EcsClientExt, LocalRuntime};
+  ```
+
+- *(agent)* [**breaking**] `rig-agent` no longer re-exports all of `rig-core`
+  at its crate root. The previous `pub use rig_core::*;` made `rig-agent` an
+  implicit second facade; the root now exports only runtime-owned items (plus
+  the runtime-facing `rig_tool` / `tool_macro` macros). Code that depends on
+  `rig-agent` directly and reached a portable `rig-core` item through the
+  `rig-agent` root must import it from `rig_agent::core` (e.g.
+  `rig_agent::core::OneOrMany`) or depend on `rig-core` directly. The root
+  `rig` facade is unaffected: `rig::…` and `rig::prelude::*` are unchanged.
+
+  ```rust
+  // Before
+  use rig_agent::{OneOrMany, message::Message};
+
+  // After
+  use rig_agent::core::{OneOrMany, message::Message};
+  ```
+
 - *(agent)* [**breaking**] Managed agent hooks are now provider-independent.
   `AgentHook`, `HookStack`, and the internal erased-hook interface no longer
   carry a completion-model type parameter. `CompletionResponseEvent` and

@@ -1,11 +1,11 @@
 use rig::prelude::*;
 use rig::{
     agent::Agent,
+    agent::tool::Tool,
     completion::{CompletionError, CompletionModel, Prompt, PromptError},
     extractor::Extractor,
     message::Message,
     providers::anthropic,
-    tool::Tool,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

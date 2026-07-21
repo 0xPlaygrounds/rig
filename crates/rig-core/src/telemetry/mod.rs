@@ -63,11 +63,18 @@ impl CompletionOperation {
     }
 }
 
+/// Core-owned marker field for a runtime span that may absorb provider completion fields.
+///
+/// Runtimes declare this field on their completion-parent spans without having
+/// to share a tracing target. The field's presence is the marker; its value is
+/// intentionally ignored by [`CompletionSpanBuilder`].
+pub const COMPLETION_PARENT_MARKER_FIELD: &str = "rig.completion_parent";
+
 /// Builder for a canonical GenAI completion span.
 ///
-/// Rig-owned `rig::agent_chat` spans are enriched and reused so an agent turn
-/// has exactly one model span. Other ambient spans remain parents of a newly
-/// created `rig::completions` span.
+/// Runtime spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] are enriched and
+/// reused so one model turn has exactly one model span. Other ambient spans
+/// remain parents of a newly created `rig::completions` span.
 pub struct CompletionSpanBuilder<'a> {
     provider: &'a str,
     request_model: &'a str,
@@ -97,13 +104,15 @@ impl<'a> CompletionSpanBuilder<'a> {
         self
     }
 
-    /// Build a canonical completion span or enrich Rig's current agent-chat span.
+    /// Build a canonical completion span or enrich Rig's current completion-parent span.
     pub fn build(self) -> tracing::Span {
         let current = tracing::Span::current();
-        if current
-            .metadata()
-            .is_some_and(|metadata| metadata.target() == "rig::agent_chat")
-        {
+        if current.metadata().is_some_and(|metadata| {
+            metadata
+                .fields()
+                .field(COMPLETION_PARENT_MARKER_FIELD)
+                .is_some()
+        }) {
             current.record("gen_ai.operation.name", self.operation.as_str());
             current.record("gen_ai.provider.name", self.provider);
             current.record("gen_ai.request.model", self.request_model);
@@ -370,10 +379,8 @@ fn output_messages(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryOutput
     }]
 }
 
-pub(crate) fn system_instructions_json(
-    instructions: Option<&str>,
-    enabled: bool,
-) -> Option<String> {
+/// Serializes system instructions using the normalized GenAI telemetry shape.
+pub fn system_instructions_json(instructions: Option<&str>, enabled: bool) -> Option<String> {
     if !enabled {
         return None;
     }
@@ -392,7 +399,7 @@ pub(crate) fn system_instructions_json(
 /// Message content can contain prompts, retrieved context, tool results, and
 /// other sensitive or high-cardinality data. Keep this disabled unless the
 /// caller has explicitly opted in for debugging/observability.
-pub(crate) fn record_model_input(span: &tracing::Span, messages: &[Message], enabled: bool) {
+pub fn record_model_input(span: &tracing::Span, messages: &[Message], enabled: bool) {
     if !enabled || span.is_disabled() {
         return;
     }
@@ -408,7 +415,7 @@ pub(crate) fn record_model_input(span: &tracing::Span, messages: &[Message], ena
 /// Message content can contain model responses, tool calls, and other sensitive
 /// or high-cardinality data. Keep this disabled unless the caller has explicitly
 /// opted in for debugging/observability.
-pub(crate) fn record_model_output(
+pub fn record_model_output(
     span: &tracing::Span,
     content: &OneOrMany<AssistantContent>,
     enabled: bool,
@@ -844,15 +851,16 @@ mod tests {
         });
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
-            let agent_chat = tracing::info_span!(
+            let completion_parent = tracing::info_span!(
                 target: "rig::agent_chat",
                 "chat_streaming",
+                rig.completion_parent = true,
                 gen_ai.operation.name = tracing::field::Empty,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.system_instructions = tracing::field::Empty,
             );
-            let _guard = agent_chat.enter();
+            let _guard = completion_parent.enter();
             let span = CompletionSpanBuilder::new(
                 "anthropic",
                 "claude-sonnet",
@@ -860,15 +868,16 @@ mod tests {
             )
             .system_instructions(Some("provider system"), true)
             .build();
-            assert_eq!(span.id(), agent_chat.id());
+            assert_eq!(span.id(), completion_parent.id());
         });
 
         let Ok(captured) = captured.0.lock() else {
             panic!("captured span lock poisoned");
         };
         let Some(span) = captured.as_ref() else {
-            panic!("agent chat span was not captured");
+            panic!("completion-parent span was not captured");
         };
+        assert_eq!(span.target, "rig::agent_chat");
         for (field, value) in [
             ("gen_ai.operation.name", "chat_streaming"),
             ("gen_ai.provider.name", "anthropic"),
@@ -883,6 +892,48 @@ mod tests {
     }
 
     #[test]
+    fn neutral_completion_parent_span_is_adopted_and_enriched() {
+        let captured = CapturedSpan::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            span: captured.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(subscriber, || {
+            let completion_parent = tracing::info_span!(
+                target: "test_runtime",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+                gen_ai.provider.name = tracing::field::Empty,
+                gen_ai.request.model = tracing::field::Empty,
+            );
+            let _guard = completion_parent.enter();
+            let span = CompletionSpanBuilder::new(
+                "neutral-provider",
+                "neutral-model",
+                CompletionOperation::Chat,
+            )
+            .build();
+            assert_eq!(span.id(), completion_parent.id());
+        });
+
+        let Ok(captured) = captured.0.lock() else {
+            panic!("captured span lock poisoned");
+        };
+        let Some(span) = captured.as_ref() else {
+            panic!("neutral completion-parent span was not captured");
+        };
+        assert_eq!(span.target, "test_runtime");
+        for (field, value) in [
+            ("gen_ai.operation.name", "chat"),
+            ("gen_ai.provider.name", "neutral-provider"),
+            ("gen_ai.request.model", "neutral-model"),
+        ] {
+            assert!(contains_string(&span.recorded_values, field, value));
+        }
+    }
+
+    #[test]
     fn absent_provider_system_does_not_overwrite_agent_instructions() {
         let captured = CapturedSpan::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
@@ -890,14 +941,15 @@ mod tests {
         });
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
-            let agent_chat = tracing::info_span!(
-                target: "rig::agent_chat",
+            let completion_parent = tracing::info_span!(
+                target: "test_runtime",
                 "chat",
+                rig.completion_parent = true,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.system_instructions = "effective agent instructions",
             );
-            let _guard = agent_chat.enter();
+            let _guard = completion_parent.enter();
             CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
         });
 
@@ -905,7 +957,7 @@ mod tests {
             panic!("captured span lock poisoned");
         };
         let Some(span) = captured.as_ref() else {
-            panic!("agent chat span was not captured");
+            panic!("completion-parent span was not captured");
         };
         assert!(contains_string(
             &span.initial_values,

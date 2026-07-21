@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::{completion::Prompt, providers::anthropic, tool::Tool};
+use rig::{agent::tool::Tool, completion::Prompt, providers::anthropic};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 

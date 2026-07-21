@@ -1,7 +1,6 @@
+use rig_agent::{agent::stream_to_stdout, client::CompletionClient, streaming::StreamingPrompt};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
-use rig_core::agent::stream_to_stdout;
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::streaming::StreamingPrompt;
+use rig_core::client::ProviderClient;
 mod common;
 
 #[tokio::main]

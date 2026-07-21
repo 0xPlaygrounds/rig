@@ -5,6 +5,8 @@ mod cassette {
     mod chat_history;
     mod completions_api;
     mod document_ordering;
+    #[cfg(feature = "ecs")]
+    mod ecs_runtime;
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
@@ -36,6 +38,7 @@ mod live {
     mod gpt_5_5;
     #[cfg(feature = "image")]
     mod image_generation;
+    mod streaming_tools_reasoning;
     mod transcription;
     #[cfg(feature = "websocket")]
     mod websocket;

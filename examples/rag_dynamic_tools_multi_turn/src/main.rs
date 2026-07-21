@@ -1,10 +1,10 @@
 use anyhow::Result;
 use rig::{
+    agent::tool::{Tool, ToolEmbedding, ToolSet},
     completion::Prompt,
     embeddings::EmbeddingsBuilder,
     prelude::*,
     providers::openai::{self, Client},
-    tool::{Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};

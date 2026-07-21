@@ -2,9 +2,9 @@ use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
+    agent::tool::Tool,
     integrations::cli_chatbot::ChatBotBuilder,
     providers::openai::{self, Client},
-    tool::Tool,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
