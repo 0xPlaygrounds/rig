@@ -1,6 +1,6 @@
 //! Migrated from `examples/openai_agent_completions_api.rs` against a local llama.cpp server.
 
-use rig::client::CompletionClient;
+use rig::client::{AgentModelExt, CompletionClient};
 use rig::completion::CompletionModel;
 use rig::completion::Prompt;
 use rig::telemetry::ProviderResponseExt;

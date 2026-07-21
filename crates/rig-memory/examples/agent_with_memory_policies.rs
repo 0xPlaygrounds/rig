@@ -13,8 +13,9 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::completion::{Message, Prompt};
+use rig_agent::{client::CompletionClient, completion::Prompt};
+use rig_core::client::ProviderClient;
+use rig_core::completion::Message;
 use rig_core::providers::openai;
 use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory, TokenWindowMemory};
 

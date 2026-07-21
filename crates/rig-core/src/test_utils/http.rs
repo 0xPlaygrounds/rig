@@ -1,6 +1,7 @@
 //! HTTP client doubles for provider tests.
 
 use std::{
+    collections::VecDeque,
     future::{self, Future},
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -172,6 +173,115 @@ impl HttpClientExt for RecordingHttpClient {
         self.record_request(parts.uri.to_string(), parts.headers, Bytes::new());
 
         async move { Self::build_unary_response(response) }
+    }
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        future::ready(Err(http_client::Error::InvalidStatusCode(
+            http::StatusCode::NOT_IMPLEMENTED,
+        )))
+    }
+}
+
+/// An [`HttpClientExt`] implementation that records unary requests and returns
+/// one scripted response per request.
+///
+/// This is useful for testing retry and recovery paths through real provider
+/// request/response conversion without live credentials.
+#[derive(Clone, Debug, Default)]
+pub struct SequencedHttpClient {
+    requests: Arc<Mutex<Vec<CapturedHttpRequest>>>,
+    responses: Arc<Mutex<VecDeque<MockHttpResponse>>>,
+}
+
+impl SequencedHttpClient {
+    /// Create a client that returns the supplied responses in order.
+    pub fn new(responses: impl IntoIterator<Item = MockHttpResponse>) -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(Vec::new())),
+            responses: Arc::new(Mutex::new(responses.into_iter().collect())),
+        }
+    }
+
+    /// Return the requests captured so far.
+    pub fn requests(&self) -> Vec<CapturedHttpRequest> {
+        match self.requests.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+
+    /// Return the number of scripted responses that have not been consumed.
+    pub fn remaining_responses(&self) -> usize {
+        match self.responses.lock() {
+            Ok(guard) => guard.len(),
+            Err(poisoned) => poisoned.into_inner().len(),
+        }
+    }
+
+    fn record_request(&self, uri: String, headers: http::HeaderMap, body: Bytes) {
+        let request = CapturedHttpRequest { uri, headers, body };
+        match self.requests.lock() {
+            Ok(mut guard) => guard.push(request),
+            Err(poisoned) => poisoned.into_inner().push(request),
+        }
+    }
+
+    fn next_response(&self) -> Option<MockHttpResponse> {
+        match self.responses.lock() {
+            Ok(mut guard) => guard.pop_front(),
+            Err(poisoned) => poisoned.into_inner().pop_front(),
+        }
+    }
+}
+
+impl HttpClientExt for SequencedHttpClient {
+    fn send<T, U>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        let response = self.next_response();
+        let (parts, body) = req.into_parts();
+        self.record_request(parts.uri.to_string(), parts.headers, body.into());
+
+        async move {
+            match response {
+                Some(response) => RecordingHttpClient::build_unary_response(response),
+                None => Err(http_client::Error::InvalidStatusCode(
+                    http::StatusCode::NOT_IMPLEMENTED,
+                )),
+            }
+        }
+    }
+
+    fn send_multipart<U>(
+        &self,
+        req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        let response = self.next_response();
+        let (parts, _body) = req.into_parts();
+        self.record_request(parts.uri.to_string(), parts.headers, Bytes::new());
+
+        async move {
+            match response {
+                Some(response) => RecordingHttpClient::build_unary_response(response),
+                None => Err(http_client::Error::InvalidStatusCode(
+                    http::StatusCode::NOT_IMPLEMENTED,
+                )),
+            }
+        }
     }
 
     fn send_streaming<T>(

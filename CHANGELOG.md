@@ -13,6 +13,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(core, agent)* [**breaking**] Split the monolithic core into a portable
+  contracts crate (`rig-core`) and the classic agent runtime crate (`rig-agent`),
+  presented behind the `rig` facade. Code using the `rig` facade needs
+  essentially no source changes — `rig::…` paths, `rig::prelude::*`,
+  `rig::tool::{Tool, ToolContext}`, and `use rig::client::CompletionClient` all
+  keep working. Direct `rig-core` dependents that constructed agents must now
+  depend on `rig-agent`. See the migration guide (`MIGRATING.md`).
+
+- *(tool)* [**breaking**] The portable, context-free tool contract is now named
+  `PortableTool` (with `PortableToolEmbedding`, `PortableDynamicTool`,
+  `portable_tool_definition`); the `rig_core::tool::Tool` alias is removed. On
+  the `rig` facade, `rig::tool::Tool` remains the classic *contextual* trait, so
+  existing facade code is unchanged; portable contracts are always available as
+  `rig::tool::PortableTool` (and in full under `rig::tool::portable`).
+
+- *(client)* [**breaking**] Provider clients no longer carry inherent
+  `agent()` / `extractor()` methods. Construct classic agents and extractors
+  through the `CompletionClient` extension trait: add
+  `use rig::client::CompletionClient;` (or `use rig::prelude::*;`). A single
+  `rig::client::CompletionClient` import provides `completion_model`, `agent`,
+  and `extractor`.
+
+- *(agent)* [**breaking**] `rig-agent` no longer re-exports all of `rig-core`
+  at its crate root. The previous `pub use rig_core::*;` made `rig-agent` an
+  implicit second facade; the root now exports only runtime-owned items (plus
+  the runtime-facing `rig_tool` / `tool_macro` macros). Code that depends on
+  `rig-agent` directly and reached a portable `rig-core` item through the
+  `rig-agent` root must import it from `rig_agent::core` (e.g.
+  `rig_agent::core::OneOrMany`) or depend on `rig-core` directly. The root
+  `rig` facade is unaffected: `rig::…` and `rig::prelude::*` are unchanged.
+
+  ```rust
+  // Before
+  use rig_agent::{OneOrMany, message::Message};
+
+  // After
+  use rig_agent::core::{OneOrMany, message::Message};
+  ```
+
 - *(agent)* [**breaking**] Managed agent hooks are now provider-independent.
   `AgentHook`, `HookStack`, and the internal erased-hook interface no longer
   carry a completion-model type parameter. `CompletionResponseEvent` and

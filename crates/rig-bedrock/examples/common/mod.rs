@@ -3,7 +3,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use rig_core::tool::Tool;
+use rig_agent::tool::{Tool, ToolContext};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -54,7 +54,7 @@ impl Tool for Adder {
 
     async fn call(
         &self,
-        _context: &mut rig_core::tool::ToolContext,
+        _context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;

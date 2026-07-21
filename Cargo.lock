@@ -9803,9 +9803,11 @@ dependencies = [
  "reqwest 0.13.4",
  "reqwest-middleware",
  "reqwest-retry",
+ "rig-agent",
  "rig-bedrock",
  "rig-candle",
  "rig-core",
+ "rig-derive",
  "rig-fastembed",
  "rig-gemini-grpc",
  "rig-helixdb",
@@ -9829,6 +9831,7 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_yaml",
+ "sha2 0.10.9",
  "sqlite-vec",
  "sqlx",
  "syn 2.0.117",
@@ -9844,6 +9847,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-agent"
+version = "0.40.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "fastrand",
+ "futures",
+ "http 1.4.2",
+ "indexmap 2.14.0",
+ "rig-core",
+ "rig-derive",
+ "rig-runtime-conformance",
+ "rmcp",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "serenity",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "rig-bedrock"
 version = "0.40.0"
 dependencies = [
@@ -9854,6 +9884,7 @@ dependencies = [
  "aws-smithy-types",
  "base64 0.22.1",
  "reqwest 0.13.4",
+ "rig-agent",
  "rig-core",
  "rig-derive",
  "schemars 1.2.1",
@@ -9874,6 +9905,7 @@ dependencies = [
  "candle-nn",
  "candle-transformers",
  "futures",
+ "rig-agent",
  "rig-core",
  "safetensors",
  "serde",
@@ -9892,7 +9924,6 @@ dependencies = [
  "as-any",
  "assert_fs",
  "async-stream",
- "axum 0.8.9",
  "base64 0.22.1",
  "bytes",
  "epub",
@@ -9902,7 +9933,6 @@ dependencies = [
  "futures-timer",
  "glob",
  "http 1.4.2",
- "hyper-util",
  "indexmap 2.14.0",
  "lopdf",
  "mime",
@@ -9919,12 +9949,10 @@ dependencies = [
  "reqwest-middleware",
  "reqwest-retry",
  "rig-derive",
- "rmcp",
  "schemars 1.2.1",
  "serde",
  "serde_json",
  "serde_path_to_error",
- "serenity",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
@@ -9947,6 +9975,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
+ "rig-agent",
  "rig-core",
  "schemars 1.2.1",
  "serde",
@@ -9981,6 +10010,7 @@ dependencies = [
  "futures",
  "prost 0.14.4",
  "protoc-bin-vendored",
+ "rig-agent",
  "rig-core",
  "serde",
  "serde_json",
@@ -10017,6 +10047,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
+ "rig-agent",
  "rig-core",
  "serde",
  "serde_json",
@@ -10028,6 +10059,7 @@ name = "rig-memory"
 version = "0.40.0"
 dependencies = [
  "anyhow",
+ "rig-agent",
  "rig-core",
  "serde_json",
  "tokio",
@@ -10118,6 +10150,17 @@ dependencies = [
  "testcontainers",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "rig-runtime-conformance"
+version = "0.40.0"
+dependencies = [
+ "rig-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -10213,6 +10256,7 @@ dependencies = [
  "base64 0.22.1",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
+ "rig-agent",
  "rig-core",
  "schemars 1.2.1",
  "serde",
