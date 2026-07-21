@@ -32,6 +32,10 @@ fn portable_tool_facade_is_feature_additive() -> Result<(), Box<dyn std::error::
             "agent",
             &["--no-default-features", "--features", "agent"][..],
         ),
+        (
+            "agent-ecs",
+            &["--no-default-features", "--features", "agent,ecs"][..],
+        ),
         ("default", &[][..]),
         ("all-features", &["--all-features"][..]),
     ] {
@@ -44,6 +48,32 @@ fn portable_tool_facade_is_feature_additive() -> Result<(), Box<dyn std::error::
             )
             .into());
         }
+    }
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(
+    not(feature = "facade-build-tests"),
+    ignore = "slow nested cargo check; run with --features facade-build-tests or --all-features"
+)]
+fn contextual_classic_tool_is_rejected_by_ecs() -> Result<(), Box<dyn std::error::Error>> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = root.join("tests/fixtures/tool_facade/contextual_ecs/Cargo.toml");
+    let target_dir = root.join("target/tool-facade-contextual-rejection");
+    let output = cargo_check(&fixture, &target_dir, &[])?;
+
+    if output.status.success() {
+        return Err(
+            "contextual classic tool unexpectedly satisfied the ECS runtime.s portable bound"
+                .into(),
+        );
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("PortableTool") || !stderr.contains("ContextualClassicTool") {
+        return Err(format!("unexpected compiler diagnostic:\n{stderr}").into());
     }
 
     Ok(())

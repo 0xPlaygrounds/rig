@@ -12,6 +12,9 @@ facade:
 - **`rig`** — the facade you depend on. It re-exports both at their familiar
   `rig::…` paths.
 
+A new experimental **`rig-ecs`** runtime is also available (opt-in via the `ecs`
+feature); it does not affect existing code.
+
 ## If you depend on the `rig` facade (most users)
 
 **Almost nothing changes.** These all keep working:

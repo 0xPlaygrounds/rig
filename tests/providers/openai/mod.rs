@@ -5,6 +5,8 @@ mod cassette {
     mod chat_history;
     mod completions_api;
     mod document_ordering;
+    #[cfg(feature = "ecs")]
+    mod ecs_runtime;
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
