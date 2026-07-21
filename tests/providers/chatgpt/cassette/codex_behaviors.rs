@@ -6,11 +6,11 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
+use rig::tool::Tool;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
 use crate::support::{Adder, TOOLS_PREAMBLE, assistant_text_response};
@@ -29,7 +29,7 @@ async fn strict_tools_opt_in_roundtrip() {
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Adder))
                 .build();
 
             let response = model

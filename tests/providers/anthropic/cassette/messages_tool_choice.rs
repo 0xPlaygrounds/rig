@@ -7,11 +7,11 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
+use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{Adder, Subtract, TOOLS_PREAMBLE};
@@ -36,7 +36,7 @@ async fn required_maps_to_any_and_forces_tool_use() {
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .max_tokens(1024)
-                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -79,7 +79,7 @@ async fn none_suppresses_tool_use() {
                 .completion_request("Name the capital of France in one word.")
                 .preamble("You are a concise assistant. Answer directly.".to_string())
                 .max_tokens(1024)
-                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::None)
                 .build();
 
@@ -125,8 +125,8 @@ async fn specific_tool_targets_named_tool() {
                 .completion_request("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .max_tokens(1024)
-                .tool(rig::agent::tool::tool_definition(&Adder))
-                .tool(rig::agent::tool::tool_definition(&Subtract))
+                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
                 })

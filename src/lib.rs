@@ -5,11 +5,13 @@
 //! portable contracts from `rig_core` at their familiar `rig::...` paths and the
 //! classic runtime from `rig_agent` under `rig::agent`.
 //!
-//! Two classic paths intentionally changed with the runtime split: `rig::tool`
-//! now holds only the portable, context-free tool contracts (classic contextual
-//! tools live at [`crate::agent::tool`]). Classic construction methods such as
-//! `client.agent(...)` come from [`crate::client::CompletionClient`], the same
-//! import as before the runtime split.
+//! `rig::tool` keeps the classic contextual tool API (`Tool`, `ToolContext`,
+//! …) with the default `agent` feature — the same surface as before the runtime
+//! split — and always exposes the runtime-independent contracts explicitly as
+//! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool`. The
+//! classic API also lives at [`crate::agent::tool`]. Classic construction
+//! methods such as `client.agent(...)` come from
+//! [`crate::client::CompletionClient`], the same import as before the split.
 //!
 //! # Companion integrations
 //!
@@ -116,13 +118,44 @@ pub mod streaming {
     pub use rig_core::streaming::*;
 }
 
-/// Portable, context-free tool contracts.
+/// Tools for the default (classic) runtime.
 ///
-/// This module has the same public identities in every feature combination.
-/// Contextual classic tools are available from [`crate::agent::tool`] when the
-/// `agent` feature is enabled.
+/// With the `agent` feature (on by default), `Tool`, `ToolContext`, and friends
+/// here are the classic *contextual* tool API — the same surface as before the
+/// runtime split, so `use rig::tool::{Tool, ToolContext};` keeps working. The
+/// runtime-independent portable contracts are always exposed explicitly as
+/// [`PortableTool`], [`PortableToolEmbedding`], and [`PortableDynamicTool`]
+/// (and in full under [`portable`]). The classic API also lives at
+/// [`crate::agent::tool`] for code that prefers the explicit runtime path.
 pub mod tool {
-    pub use rig_core::tool::*;
+    // Canonical execution values — portable, always available.
+    pub use rig_core::tool::{
+        IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
+    };
+    // Runtime-independent portable contracts — explicit, always available.
+    pub use rig_core::tool::{
+        PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
+    };
+    // Built-in portable tools (e.g. `ThinkTool`), always available.
+    pub use rig_core::tool::builtin;
+
+    // Classic contextual tool API (default runtime). `Tool`/`ToolContext` are
+    // the classic contextual trait and its mutable context; none of these
+    // collide with the portable exports above.
+    #[cfg(all(feature = "agent", feature = "rmcp"))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub use rig_agent::tool::rmcp;
+    #[cfg(feature = "agent")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+    pub use rig_agent::tool::{
+        DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, ToolSetBuilder,
+        server, tool_definition,
+    };
+
+    /// The complete portable `rig-core` tool surface, under one explicit path.
+    pub mod portable {
+        pub use rig_core::tool::*;
+    }
 }
 
 #[cfg(all(feature = "agent", any(test, feature = "test-utils")))]

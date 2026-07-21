@@ -21,7 +21,6 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::tool::{Tool, ToolSet};
 use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
 };
@@ -29,6 +28,7 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::UserContent;
 use rig::providers::openai;
+use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -67,7 +67,7 @@ impl Tool for Add {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
                     let name = &call.tool_call.function.name;
                     let args = call.tool_call.function.arguments.to_string();
                     println!("→ executing {name}({args})");
-                    let mut context = rig::agent::tool::ToolContext::new();
+                    let mut context = rig::tool::ToolContext::new();
                     let result = local_tools.execute(name, args, &mut context).await;
                     results.push(UserContent::tool_result(
                         call.tool_call.id.clone(),

@@ -4,10 +4,10 @@
 //! drives on tool-list-changed notifications, so its semantics must survive
 //! the rmcp migration unchanged.
 
-use rig::agent::tool::server::ToolServer;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::gemini;
+use rig::tool::server::ToolServer;
 
 use super::super::agent_run_support::{history_has_assistant_tool_call, tool_result_texts};
 use super::super::support::with_gemini_cassette;

@@ -150,7 +150,7 @@ impl From<OneOrMany<ToolResultContent>> for ToolOutput {
 /// A blanket implementation keeps ordinary [`Serialize`] outputs ergonomic.
 /// Because that blanket implementation already covers every serializable type,
 /// it cannot be overridden with another implementation for a serializable
-/// custom type. Return [`ToolOutput`] from [`Tool::call`](crate::tool::Tool::call)
+/// custom type. Return [`ToolOutput`] from [`PortableTool::call`](crate::tool::PortableTool::call)
 /// when that type needs a custom presentation. Implement this trait directly
 /// only for output types that do not implement [`Serialize`].
 pub trait IntoToolOutput {

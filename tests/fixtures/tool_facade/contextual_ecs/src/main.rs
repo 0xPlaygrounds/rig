@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use rig::agent::tool::{Tool, ToolContext};
+use rig::tool::{Tool, ToolContext};
 use serde::Deserialize;
 
 #[derive(Deserialize)]

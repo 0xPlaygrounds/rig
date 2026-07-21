@@ -21,11 +21,11 @@
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
 
 use anyhow::Result;
-use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -70,7 +70,7 @@ impl Tool for SendEmail {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         // A real implementation would hit an email API here.
@@ -113,7 +113,7 @@ impl Tool for DeleteFile {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         // A real implementation would delete the file here.

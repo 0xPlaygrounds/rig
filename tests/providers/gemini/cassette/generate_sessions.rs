@@ -8,12 +8,12 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::gemini;
 use rig::streaming::StreamingChat;
+use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::{
@@ -225,7 +225,7 @@ async fn long_history_replay_nonstreaming() {
                 })
                 .message(Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let response = model

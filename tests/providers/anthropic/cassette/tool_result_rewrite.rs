@@ -10,12 +10,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, ToolResultAction, ToolResultEvent};
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
+use rig::tool::Tool;
 use rig_agent::test_utils::validate_result_redaction;
 use serde::Deserialize;
 use serde_json::json;
@@ -80,7 +80,7 @@ impl Tool for GetUserRecord {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         // Constant (id-independent) so the round-trip is deterministic for replay.

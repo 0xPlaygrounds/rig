@@ -3,10 +3,10 @@
 //! Run it to see a multi-step arithmetic task complete without passing `max_turns` per prompt.
 
 use anyhow::Result;
-use rig::agent::tool::Tool;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::anthropic;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -45,7 +45,7 @@ impl Tool for Add {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
@@ -75,7 +75,7 @@ impl Tool for Divide {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         if args.y == 0 {

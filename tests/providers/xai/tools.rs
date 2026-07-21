@@ -1,9 +1,9 @@
 //! xAI tools smoke test.
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::xai;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 
 use super::support::with_xai_cassette;
@@ -45,7 +45,7 @@ impl Tool for Adder {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
@@ -78,7 +78,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)

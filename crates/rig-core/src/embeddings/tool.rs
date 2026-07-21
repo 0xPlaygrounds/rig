@@ -1,6 +1,6 @@
-//! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::ToolEmbedding]
+//! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::PortableToolEmbedding]
 
-use crate::{Embed, tool::ToolEmbedding};
+use crate::{Embed, tool::PortableToolEmbedding};
 use serde::Serialize;
 
 use super::embed::EmbedError;
@@ -30,7 +30,7 @@ impl ToolSchema {
     /// ```rust
     /// use rig_core::{
     ///     embeddings::ToolSchema,
-    ///     tool::{Tool, ToolEmbedding},
+    ///     tool::{PortableTool, PortableToolEmbedding},
     /// };
     ///
     /// #[derive(Debug, thiserror::Error)]
@@ -42,7 +42,7 @@ impl ToolSchema {
     /// struct InitError;
     ///
     /// struct Nothing;
-    /// impl Tool for Nothing {
+    /// impl PortableTool for Nothing {
     ///     const NAME: &'static str = "nothing";
     ///
     ///     type Args = ();
@@ -62,7 +62,7 @@ impl ToolSchema {
     ///     }
     /// }
     ///
-    /// impl ToolEmbedding for Nothing {
+    /// impl PortableToolEmbedding for Nothing {
     ///     type InitError = InitError;
     ///     type Context = ();
     ///     type State = ();
@@ -85,7 +85,7 @@ impl ToolSchema {
     /// ```
     pub fn try_from<T>(tool: &T) -> Result<Self, EmbedError>
     where
-        T: ToolEmbedding + 'static,
+        T: PortableToolEmbedding + 'static,
     {
         Ok(ToolSchema {
             name: T::NAME.to_string(),
@@ -100,11 +100,11 @@ mod tests {
     use std::convert::Infallible;
 
     use super::ToolSchema;
-    use crate::tool::{Tool, ToolEmbedding, ToolExecutionError};
+    use crate::tool::{PortableTool, PortableToolEmbedding, ToolExecutionError};
 
     struct NamedTool;
 
-    impl Tool for NamedTool {
+    impl PortableTool for NamedTool {
         const NAME: &'static str = "static_name";
 
         type Error = rig::tool::ToolExecutionError;
@@ -125,7 +125,7 @@ mod tests {
         }
     }
 
-    impl ToolEmbedding for NamedTool {
+    impl PortableToolEmbedding for NamedTool {
         type InitError = Infallible;
         type Context = ();
         type State = ();

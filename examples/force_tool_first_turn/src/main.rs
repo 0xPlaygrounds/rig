@@ -21,12 +21,12 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Prompt, PromptError};
 use rig::message::ToolChoice;
 use rig::providers::openai;
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -74,7 +74,7 @@ impl Tool for Add {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)

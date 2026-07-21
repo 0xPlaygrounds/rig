@@ -69,7 +69,7 @@
 //! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
 //! trait, which can be implemented to define vector stores and indices respectively.
 //! Indexes can be queried directly by applications or runtimes. For active RAG,
-//! expose the index through its blanket [`Tool`](crate::tool::Tool)
+//! expose the index through its blanket [`PortableTool`](crate::tool::PortableTool)
 //! implementation, or through a custom tool, so the model decides when and how
 //! to retrieve. The classic `rig-agent` runtime can also query indexes from
 //! hooks and append the resulting documents to a turn's extra context.

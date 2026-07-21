@@ -51,7 +51,7 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let mut empty_history = Vec::<Message>::new();

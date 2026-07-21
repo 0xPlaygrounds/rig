@@ -186,23 +186,23 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
 
 impl<T> Tool for T
 where
-    T: rig_core::tool::Tool,
+    T: rig_core::tool::PortableTool,
 {
-    const NAME: &'static str = <T as rig_core::tool::Tool>::NAME;
-    type Args = <T as rig_core::tool::Tool>::Args;
-    type Output = <T as rig_core::tool::Tool>::Output;
-    type Error = <T as rig_core::tool::Tool>::Error;
+    const NAME: &'static str = <T as rig_core::tool::PortableTool>::NAME;
+    type Args = <T as rig_core::tool::PortableTool>::Args;
+    type Output = <T as rig_core::tool::PortableTool>::Output;
+    type Error = <T as rig_core::tool::PortableTool>::Error;
 
     fn description(&self) -> String {
-        rig_core::tool::Tool::description(self)
+        rig_core::tool::PortableTool::description(self)
     }
 
     fn parameters(&self) -> serde_json::Value {
-        rig_core::tool::Tool::parameters(self)
+        rig_core::tool::PortableTool::parameters(self)
     }
 
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {
-        rig_core::tool::Tool::map_error(self, error)
+        rig_core::tool::PortableTool::map_error(self, error)
     }
 
     async fn call(
@@ -210,7 +210,7 @@ where
         _context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        rig_core::tool::Tool::call(self, args).await
+        rig_core::tool::PortableTool::call(self, args).await
     }
 }
 

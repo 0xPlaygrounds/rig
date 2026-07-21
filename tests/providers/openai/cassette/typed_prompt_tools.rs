@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
+use rig::tool::Tool;
 
 use super::super::support::with_openai_completions_cassette_result;
 use crate::support::assert_weather_tool_roundtrip_response;
@@ -57,7 +57,7 @@ impl Tool for WeatherTool {
 
     fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
         self.call_count.fetch_add(1, Ordering::SeqCst);

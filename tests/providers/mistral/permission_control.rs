@@ -1,7 +1,6 @@
 //! Mistral permission-control regression coverage.
 
 use anyhow::Result;
-use rig::agent::tool::Tool;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     stream_to_stdout,
@@ -10,6 +9,7 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::mistral;
 use rig::streaming::StreamingPrompt;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -67,7 +67,7 @@ impl Tool for ReadFileHead {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
@@ -102,7 +102,7 @@ impl Tool for ReadFileTail {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")

@@ -169,7 +169,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let first_turn = collect_raw_stream_observation(

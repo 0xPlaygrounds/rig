@@ -24,13 +24,13 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::OneOrMany;
-use rig::agent::tool::server::ToolServerHandle;
-use rig::agent::tool::{Tool, ToolEmbedding, ToolOutput};
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
 use rig::completion::ToolDefinition;
 use rig::message::{ImageMediaType, ToolResultContent};
+use rig::tool::server::ToolServerHandle;
+use rig::tool::{Tool, ToolEmbedding, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -104,7 +104,7 @@ impl Tool for CountingAdd {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
@@ -134,7 +134,7 @@ impl Tool for CountingSubtract {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
@@ -174,7 +174,7 @@ impl Tool for CountingPing {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
@@ -224,7 +224,7 @@ impl Tool for CodewordLookup {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
@@ -280,7 +280,7 @@ impl Tool for StrictRegister {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
@@ -311,7 +311,7 @@ impl Tool for MottoTool {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(MOTTO_OUTPUT.to_string())
@@ -355,7 +355,7 @@ impl Tool for ConfigTool {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(ConfigOutput {
@@ -385,7 +385,7 @@ impl Tool for BadgeImageTool {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(ToolOutput::content(OneOrMany::one(
@@ -538,7 +538,7 @@ macro_rules! embeddable_operation {
 
             async fn call(
                 &self,
-                _context: &mut rig::agent::tool::ToolContext,
+                _context: &mut rig::tool::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 self.counter.bump();

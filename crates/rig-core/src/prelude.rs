@@ -32,7 +32,7 @@ pub use crate::Embed;
 pub use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 
 // Tools.
-pub use crate::tool::Tool;
+pub use crate::tool::PortableTool;
 
 // Vector stores.
 pub use crate::vector_store::VectorStoreIndex;

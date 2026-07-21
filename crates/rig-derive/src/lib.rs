@@ -516,8 +516,8 @@ fn result_type_tokens(
 }
 
 /// A procedural macro that transforms a function into a portable
-/// `rig::tool::Tool`, or into `rig::agent::tool::Tool` when the function accepts
-/// classic runtime context.
+/// `rig_core::tool::PortableTool`, or into the classic contextual
+/// `rig::tool::Tool` when the function accepts classic runtime context.
 ///
 /// # Examples
 ///
@@ -583,13 +583,13 @@ fn result_type_tokens(
 ///
 /// With execution context:
 /// ```text
-/// use rig::agent::tool::ToolContext;
+/// use rig::tool::ToolContext;
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool]
 /// fn current_user(
 ///     // The marker is required for imported names and type aliases. A fully
-///     // qualified `&mut rig::agent::tool::ToolContext` is also recognized directly.
+///     // qualified `&mut rig::tool::ToolContext` is also recognized directly.
 ///     #[rig(context)] context: &mut ToolContext,
 ///     greeting: String,
 /// ) -> Result<String, rig::tool::ToolExecutionError> {
@@ -769,6 +769,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     } else {
         quote!(#tool_owner::tool)
     };
+    // Contextual tools implement the classic `Tool` trait; context-free tools
+    // implement the portable `PortableTool` contract owned by `rig-core`.
+    let tool_trait = if has_context {
+        quote!(#tool_module::Tool)
+    } else {
+        quote!(#tool_module::PortableTool)
+    };
 
     // Generate the call implementation based on whether the function is async
     let call_impl = if has_context && is_async {
@@ -828,7 +835,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(Default)]
         #vis struct #struct_name;
 
-        impl #tool_module::Tool for #struct_name {
+        impl #tool_trait for #struct_name {
             const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;

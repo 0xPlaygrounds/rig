@@ -7,11 +7,11 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::gemini;
+use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
@@ -26,7 +26,7 @@ async fn required_maps_to_any_and_forces_function_call() {
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .temperature(0.0)
-                .tool(rig::agent::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
                 .build();
 

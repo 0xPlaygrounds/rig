@@ -2,10 +2,10 @@
 //! terminate-early, and observation of every call/result pair.
 
 use rig::agent::AgentHook;
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::{Prompt, PromptError};
 use rig::providers::gemini;
+use rig::tool::Tool;
 
 use super::super::agent_run_support::tool_result_texts;
 use super::super::support::with_gemini_cassette;

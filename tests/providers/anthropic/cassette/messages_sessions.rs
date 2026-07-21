@@ -11,12 +11,12 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::anthropic;
 use rig::streaming::{StreamingChat, StreamingPrompt};
+use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
 use super::streaming_tools::assert_cassette_groups_multiple_tool_results;
@@ -273,7 +273,7 @@ async fn long_history_replay_nonstreaming() {
                 .completion_request("Look up the harbor label with the tool.")
                 .preamble(preamble.to_string())
                 .max_tokens(1024)
-                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
             let first_response = model
                 .completion(first_request)
@@ -322,7 +322,7 @@ async fn long_history_replay_nonstreaming() {
                     ALPHA_SIGNAL_OUTPUT,
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let response = model

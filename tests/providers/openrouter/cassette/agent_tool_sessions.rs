@@ -9,11 +9,11 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message, TypedPrompt};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::streaming::{StreamingChat, StreamingPrompt};
+use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -138,7 +138,7 @@ impl Tool for PingEmpty {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -188,7 +188,7 @@ impl Tool for InspectManifest {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -227,7 +227,7 @@ impl Tool for JoinLabels {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -257,7 +257,7 @@ impl Tool for EscapeEcho {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
@@ -589,7 +589,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                      Do not write normal text before the tool call.",
                 )
                 .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(rig::agent::tool::tool_definition(&tool))
+                .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -643,7 +643,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 })
                 .message(Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
                 .build();
 

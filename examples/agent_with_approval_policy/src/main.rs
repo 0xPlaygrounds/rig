@@ -20,11 +20,11 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use rig::agent::tool::Tool;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -59,7 +59,7 @@ impl Tool for SearchWeb {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         println!("   🔎 [search_web] -> {}", args.query);
@@ -98,7 +98,7 @@ impl Tool for TransferFunds {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);

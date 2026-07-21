@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
+use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
 
@@ -51,7 +51,7 @@ impl Tool for Add {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -85,7 +85,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -119,7 +119,7 @@ impl Tool for Multiply {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -153,7 +153,7 @@ impl Tool for Divide {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);

@@ -82,7 +82,7 @@ impl Tool for Notify {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);

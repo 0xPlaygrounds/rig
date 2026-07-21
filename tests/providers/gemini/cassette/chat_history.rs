@@ -6,11 +6,11 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::gemini;
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -61,7 +61,7 @@ impl Tool for StressAdd {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -102,7 +102,7 @@ impl Tool for StressSubtract {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);

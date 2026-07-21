@@ -170,7 +170,7 @@ impl Tool for Adder {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
@@ -199,7 +199,7 @@ impl Tool for Subtract {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
@@ -287,7 +287,7 @@ impl Tool for AlphaSignal {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
@@ -317,7 +317,7 @@ impl Tool for BetaSignal {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(BETA_SIGNAL_OUTPUT.to_string())

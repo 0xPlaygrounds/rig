@@ -8,7 +8,7 @@
 //!
 //! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
 //!
-//! Types implementing [`VectorStoreIndex`] automatically implement [`Tool`].
+//! Types implementing [`VectorStoreIndex`] automatically implement [`PortableTool`].
 
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use crate::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingError},
-    tool::Tool,
+    tool::PortableTool,
     vector_store::request::{Filter, FilterError, SearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -177,7 +177,7 @@ fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
     }
 }
 
-/// The output of vector store queries invoked via [`Tool`]
+/// The output of vector store queries invoked via [`PortableTool`]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VectorStoreOutput {
     /// Similarity score returned by the vector store.
@@ -188,7 +188,7 @@ pub struct VectorStoreOutput {
     pub document: Value,
 }
 
-impl<T, F> Tool for T
+impl<T, F> PortableTool for T
 where
     F: SearchFilter<Value = serde_json::Value>
         + WasmCompatSend
@@ -301,11 +301,11 @@ mod tests {
             .query("answer")
             .samples(1)
             .build();
-        let output = <TestIndex as Tool>::call(&index, request)
+        let output = <TestIndex as PortableTool>::call(&index, request)
             .await
             .expect("vector tool call should succeed");
 
-        assert_eq!(<TestIndex as Tool>::NAME, "search_vector_store");
+        assert_eq!(<TestIndex as PortableTool>::NAME, "search_vector_store");
         assert_eq!(
             *queries.lock().expect("query recorder lock"),
             vec!["answer"]

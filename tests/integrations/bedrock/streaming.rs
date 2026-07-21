@@ -1,10 +1,10 @@
 //! AWS Bedrock streaming smoke tests inspired by the OpenAI and Anthropic provider tests.
 
-use rig::agent::tool::Tool;
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel as _;
 use rig::message::ToolChoice;
 use rig::streaming::StreamingPrompt;
+use rig::tool::Tool;
 
 use super::{
     BEDROCK_COMPLETION_MODEL, client,
@@ -59,7 +59,7 @@ async fn raw_streaming_tool_call_smoke() {
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-        .tool(rig::agent::tool::tool_definition(&AlphaSignal))
+        .tool(rig::tool::tool_definition(&AlphaSignal))
         .tool_choice(ToolChoice::Specific {
             function_names: vec![AlphaSignal::NAME.to_string()],
         })

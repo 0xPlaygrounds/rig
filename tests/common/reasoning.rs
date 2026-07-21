@@ -10,13 +10,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::agent::tool::Tool;
 use rig::agent::{MultiTurnStreamItem, StreamingError};
 use rig::completion::{self, CompletionModel};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::tool::Tool;
 use rig::wasm_compat::WasmCompatSend;
 use serde::Deserialize;
 use serde_json::json;
@@ -319,7 +319,7 @@ impl Tool for WeatherTool {
 
     async fn call(
         &self,
-        _context: &mut rig::agent::tool::ToolContext,
+        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);

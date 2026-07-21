@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use rig::tool::{Tool, ToolEmbedding};
+use rig::tool::{PortableTool, PortableToolEmbedding};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -10,7 +10,7 @@ struct Arguments {
 
 struct StablePortableTool;
 
-impl Tool for StablePortableTool {
+impl PortableTool for StablePortableTool {
     const NAME: &'static str = "stable_portable_tool";
     type Args = Arguments;
     type Output = String;
@@ -38,7 +38,7 @@ struct StableContext {
     label: String,
 }
 
-impl ToolEmbedding for StablePortableTool {
+impl PortableToolEmbedding for StablePortableTool {
     type InitError = Infallible;
     type Context = StableContext;
     type State = ();
@@ -58,52 +58,66 @@ impl ToolEmbedding for StablePortableTool {
     }
 }
 
-struct PreludePortableTool;
-
-impl rig::prelude::Tool for PreludePortableTool {
-    const NAME: &'static str = "prelude_portable_tool";
-    type Args = Arguments;
-    type Output = String;
-    type Error = Infallible;
-
-    fn description(&self) -> String {
-        "prelude portable tool".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
-    }
-
-    async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
-        Ok(arguments.value)
-    }
-}
-
-fn assert_root_tool<T: rig::tool::Tool>() {}
-fn assert_prelude_tool<T: rig::prelude::Tool>() {}
+// The portable contract is reachable through every explicit path, in every
+// feature combination (including `--no-default-features`).
+fn assert_root_portable<T: rig::tool::PortableTool>() {}
+fn assert_core_portable<T: rig::core::tool::PortableTool>() {}
+fn assert_namespaced_portable<T: rig::tool::portable::PortableTool>() {}
+fn assert_prelude_portable<T: rig::prelude::PortableTool>() {}
 
 fn main() {
-    assert_root_tool::<StablePortableTool>();
-    assert_prelude_tool::<StablePortableTool>();
-    assert_root_tool::<PreludePortableTool>();
+    assert_root_portable::<StablePortableTool>();
+    assert_core_portable::<StablePortableTool>();
+    assert_namespaced_portable::<StablePortableTool>();
+    assert_prelude_portable::<StablePortableTool>();
 
-    let portable_dynamic = rig::tool::DynamicTool::new(
+    let portable_dynamic = rig::tool::PortableDynamicTool::new(
         "portable_dynamic",
         "portable dynamic tool",
         serde_json::json!({"type": "object"}),
         |arguments| Box::pin(async move { Ok(rig::tool::ToolOutput::json(arguments)) }),
     );
+    let _ = &portable_dynamic;
 
+    // With the classic runtime (default), `rig::tool::Tool` is the *contextual*
+    // trait, and a portable tool still registers through the blanket impl.
     #[cfg(feature = "agent")]
     {
-        fn assert_classic_tool<T: rig::agent::tool::Tool>() {}
-        fn assert_classic_embedding<T: rig::agent::tool::ToolEmbedding>() {}
+        use rig::tool::{Tool, ToolContext};
 
+        struct ContextualTool;
+
+        impl Tool for ContextualTool {
+            const NAME: &'static str = "contextual_tool";
+            type Args = Arguments;
+            type Output = String;
+            type Error = Infallible;
+
+            fn description(&self) -> String {
+                "contextual tool".to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                serde_json::json!({"type": "object"})
+            }
+
+            async fn call(
+                &self,
+                _context: &mut ToolContext,
+                arguments: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                Ok(arguments.value)
+            }
+        }
+
+        fn assert_classic_tool<T: rig::tool::Tool>() {}
+
+        // The classic contextual trait accepts a `call(&mut ToolContext, Args)`
+        // implementation, and a portable tool is usable as a classic tool via
+        // the blanket impl.
+        assert_classic_tool::<ContextualTool>();
         assert_classic_tool::<StablePortableTool>();
-        assert_classic_embedding::<StablePortableTool>();
-        let _classic_dynamic =
-            rig::agent::tool::DynamicTool::from_portable(portable_dynamic.clone());
-    }
 
-    let _ = portable_dynamic;
+        let _classic_dynamic = rig::tool::DynamicTool::from_portable(portable_dynamic);
+    }
 }
