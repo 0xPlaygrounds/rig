@@ -40,17 +40,13 @@ pub fn value_to_json_string(value: &serde_json::Value) -> String {
     }
 }
 
-/// Serialize a JSON value to its compact string form, falling back to `Display`
-/// on the practically-unreachable serialization error.
+/// Serialize a JSON value to its compact string form (with `String` scalars kept quoted).
 ///
 /// Unlike [`value_to_json_string`], this never unwraps a `String` value — a JSON
 /// string is serialized with its quotes. Used by the classic runtime when
 /// canonicalizing tool-call arguments and hook-rewritten payloads.
 pub fn serialize_json_value(value: &serde_json::Value) -> String {
-    match serde_json::to_string(value) {
-        Ok(serialized) => serialized,
-        Err(_) => value.to_string(),
-    }
+    value.to_string()
 }
 
 /// Deserialize a field that may arrive as either a JSON-encoded string or any other
