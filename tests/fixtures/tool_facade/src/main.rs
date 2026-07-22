@@ -119,5 +119,27 @@ fn main() {
         assert_classic_tool::<StablePortableTool>();
 
         let _classic_dynamic = rig::tool::DynamicTool::from_portable(portable_dynamic);
+
+        // Regression: `#[rig_tool]` must auto-detect the *fully-qualified* facade
+        // path `rig::tool::ToolContext` as runtime context (not a model
+        // argument), matching the documented `use rig::tool::{Tool, ToolContext};`
+        // compatibility promise. If detection regresses, the context param is
+        // treated as a model argument and this fixture fails to compile.
+        // See rig-derive `is_tool_context_type`.
+        #[cfg(feature = "derive")]
+        {
+            #[rig::tool_macro(description = "echoes using fully-qualified facade context")]
+            fn facade_qualified_context_tool(
+                context: &mut rig::tool::ToolContext,
+                value: String,
+            ) -> Result<String, rig::tool::ToolExecutionError> {
+                let _ = context;
+                Ok(value)
+            }
+
+            // The context param is stripped from the model-visible schema, so the
+            // generated tool implements the classic contextual `Tool` trait.
+            assert_classic_tool::<FacadeQualifiedContextTool>();
+        }
     }
 }

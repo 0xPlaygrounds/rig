@@ -373,7 +373,7 @@ fn is_tool_context_type(ty: &Type) -> bool {
     matches!(
         segments.as_slice(),
         [root, tool, context]
-            if root == "rig_agent"
+            if matches!(root.as_str(), "rig" | "rig_agent")
                 && tool == "tool"
                 && context == "ToolContext"
     ) || matches!(
@@ -852,7 +852,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             fn parameters(&self) -> serde_json::Value {
                 let mut schema = serde_json::to_value(
                     #schemars_owner::schemars::schema_for!(#params_struct_name)
-                ).unwrap_or_else(|_| serde_json::json!({"type": "object"}));
+                ).expect("tool parameter schema is always serializable");
                 schema["required"] = serde_json::json!([#(#required_args),*]);
                 schema
             }
