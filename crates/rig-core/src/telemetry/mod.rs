@@ -153,7 +153,10 @@ impl<'a> CompletionSpanBuilder<'a> {
     /// Build a canonical completion span or enrich Rig's current completion-parent span.
     pub fn build(self) -> tracing::Span {
         let current = tracing::Span::current();
-        if current.metadata().is_some_and(is_adoptable_completion_parent) {
+        if current
+            .metadata()
+            .is_some_and(is_adoptable_completion_parent)
+        {
             current.record("gen_ai.operation.name", self.operation.as_str());
             current.record("gen_ai.provider.name", self.provider);
             current.record("gen_ai.request.model", self.request_model);
