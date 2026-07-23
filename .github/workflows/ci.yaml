@@ -72,8 +72,10 @@ jobs:
 
   # The runtime split adds wasm-sensitive code to rig-agent (the target-gated
   # MCP cancellation dispatch) and feature forwarding in the `rig` facade, so
-  # check both on the wasm target too. Both need `--features wasm` for the
-  # relaxed (non-`Send`) async bounds, mirroring the rig-core lane above.
+  # check both on the wasm target too. These are bare (default-feature) checks:
+  # rig-agent's async bounds are relaxed on `target_arch = "wasm32"` and its
+  # `[target.'cfg(wasm32)']` deps pull in `rig-core/wasm` automatically, so a
+  # standalone `--target wasm32` build must compile without opting into `wasm`.
   check-wasm-runtimes:
     name: stable / check ${{ matrix.package }} wasm target
     runs-on: ubuntu-latest
@@ -91,7 +93,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Run cargo check wasm target
-        run: cargo check --package ${{ matrix.package }} --features wasm --target wasm32-unknown-unknown
+        run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
 
   clippy:
     name: stable / clippy
