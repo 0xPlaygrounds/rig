@@ -6,7 +6,7 @@ tools, extraction, and runtime integrations.
 
 Most applications should use the root `rig` facade, where this runtime remains
 enabled by default. Low-level provider and backend contracts live in
-`rig-core`.
+`rig-core`; the experimental ECS-native sibling runtime lives in `rig-ecs`.
 
 Direct users import construction and prompting explicitly:
 

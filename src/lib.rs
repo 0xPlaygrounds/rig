@@ -57,6 +57,13 @@ pub mod agent {
     }
 }
 
+/// Experimental native-only ECS runtime.
+#[cfg(feature = "ecs")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ecs")))]
+pub mod ecs {
+    pub use rig_ecs::*;
+}
+
 /// Provider clients plus classic agent/extractor constructors.
 pub mod client {
     // The classic runtime's `CompletionClient` extension (adding `agent()` /

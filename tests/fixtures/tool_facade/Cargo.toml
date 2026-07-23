@@ -14,11 +14,13 @@ serde_json = "1.0.150"
 [features]
 default = ["agent", "derive", "reqwest", "rustls"]
 agent = ["rig/agent"]
+ecs = ["rig/ecs"]
 derive = ["rig/derive"]
 reqwest = ["rig/reqwest"]
 rustls = ["rig/rustls"]
 all_root = [
     "rig/agent",
+    "rig/ecs",
     "rig/test-utils",
     "rig/bedrock",
     "rig/candle",

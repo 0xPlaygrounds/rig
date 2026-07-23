@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(aws)* Stop enabling the AWS SDK's legacy Rustls connector in the Bedrock and S3 Vectors integrations, removing vulnerable `rustls-webpki` 0.101 from their active dependency graphs while retaining the modern default HTTPS client.
 
+### Added
+
+- *(ecs)* Experimental, native-only ECS-based agent runtime in the new
+  `rig-ecs` crate, built on the third-party `bevy_ecs` engine. Opt in with the
+  `ecs` feature and use it through `rig::ecs` (and `rig::ecs::prelude`); the
+  classic runtime remains the default. The ECS world is authoritative for agent
+  topology and run progression, with provider/tool/memory work modeled as owned
+  effects re-entering through validated ingress. Construction uses
+  `EcsClientExt::ecs_agent`, distinct from the classic
+  `CompletionClient::agent`, so both runtimes can be imported together without
+  method collisions.
+
 ### Changed
 
 - *(core, agent)* [**breaking**] Split the monolithic core into a portable
