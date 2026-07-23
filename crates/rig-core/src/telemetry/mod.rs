@@ -66,15 +66,61 @@ impl CompletionOperation {
 /// Core-owned marker field for a runtime span that may absorb provider completion fields.
 ///
 /// Runtimes declare this field on their completion-parent spans without having
-/// to share a tracing target. The field's presence is the marker; its value is
-/// intentionally ignored by [`CompletionSpanBuilder`].
+/// to share a tracing target. The field's presence (its value is ignored) marks
+/// the span as a *candidate* for adoption, but adoption also requires the span
+/// to statically declare every field in [`COMPLETION_PARENT_REQUIRED_FIELDS`].
+///
+/// This second requirement exists because [`tracing::Span::record`] silently
+/// no-ops for any field absent from a span's static metadata: a span carrying
+/// only the marker would be adopted and then drop every recorded completion
+/// field, losing telemetry with no error. A span missing any required field is
+/// therefore *not* adopted — [`CompletionSpanBuilder::build`] creates a fresh
+/// `rig::completions` child span instead, so telemetry is never silently lost.
 pub const COMPLETION_PARENT_MARKER_FIELD: &str = "rig.completion_parent";
+
+/// Fields a completion-parent span must statically declare (as
+/// [`tracing::field::Empty`] or a value) to be adopted by
+/// [`CompletionSpanBuilder::build`], alongside [`COMPLETION_PARENT_MARKER_FIELD`].
+///
+/// These mirror the canonical fields the builder's own `rig::completions` span
+/// declares, so an adopted span can absorb the request, response, usage, and
+/// content telemetry recorded over a completion's lifetime without dropping any.
+/// Kept in sync with the `new_completion_span!` field set.
+pub const COMPLETION_PARENT_REQUIRED_FIELDS: &[&str] = &[
+    "gen_ai.operation.name",
+    "gen_ai.provider.name",
+    "gen_ai.request.model",
+    "gen_ai.system_instructions",
+    "gen_ai.response.id",
+    "gen_ai.response.model",
+    "gen_ai.usage.input_tokens",
+    "gen_ai.usage.output_tokens",
+    "gen_ai.usage.cache_read.input_tokens",
+    "gen_ai.usage.cache_creation.input_tokens",
+    "gen_ai.usage.tool_use_prompt_tokens",
+    "gen_ai.usage.reasoning_tokens",
+    "gen_ai.input.messages",
+    "gen_ai.output.messages",
+];
+
+/// Whether `metadata` describes a completion-parent span eligible for adoption:
+/// it carries [`COMPLETION_PARENT_MARKER_FIELD`] and statically declares every
+/// field in [`COMPLETION_PARENT_REQUIRED_FIELDS`].
+fn is_adoptable_completion_parent(metadata: &tracing::Metadata<'_>) -> bool {
+    let fields = metadata.fields();
+    fields.field(COMPLETION_PARENT_MARKER_FIELD).is_some()
+        && COMPLETION_PARENT_REQUIRED_FIELDS
+            .iter()
+            .all(|name| fields.field(name).is_some())
+}
 
 /// Builder for a canonical GenAI completion span.
 ///
-/// Runtime spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] are enriched and
-/// reused so one model turn has exactly one model span. Other ambient spans
-/// remain parents of a newly created `rig::completions` span.
+/// Runtime spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] and the
+/// [`COMPLETION_PARENT_REQUIRED_FIELDS`] are enriched and reused so one model
+/// turn has exactly one model span. Other ambient spans — and marker spans that
+/// omit a required field — remain parents of a newly created `rig::completions`
+/// span.
 pub struct CompletionSpanBuilder<'a> {
     provider: &'a str,
     request_model: &'a str,
@@ -107,12 +153,7 @@ impl<'a> CompletionSpanBuilder<'a> {
     /// Build a canonical completion span or enrich Rig's current completion-parent span.
     pub fn build(self) -> tracing::Span {
         let current = tracing::Span::current();
-        if current.metadata().is_some_and(|metadata| {
-            metadata
-                .fields()
-                .field(COMPLETION_PARENT_MARKER_FIELD)
-                .is_some()
-        }) {
+        if current.metadata().is_some_and(is_adoptable_completion_parent) {
             current.record("gen_ai.operation.name", self.operation.as_str());
             current.record("gen_ai.provider.name", self.provider);
             current.record("gen_ai.request.model", self.request_model);
@@ -844,6 +885,52 @@ mod tests {
     }
 
     #[test]
+    fn marker_span_missing_required_fields_is_not_adopted() {
+        // A span that carries the marker but omits required canonical fields
+        // (here: everything past `gen_ai.request.model`) must NOT be adopted.
+        // Adopting it would silently drop the response/usage/content telemetry
+        // that `Span::record` no-ops on for undeclared fields. Instead the
+        // builder creates a fresh `rig::completions` child so nothing is lost.
+        let captured = CapturedSpan::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            span: captured.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(subscriber, || {
+            let partial_marker = tracing::info_span!(
+                target: "third_party_runtime",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+                gen_ai.provider.name = tracing::field::Empty,
+                gen_ai.request.model = tracing::field::Empty,
+            );
+            let _guard = partial_marker.enter();
+            let span =
+                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            assert_ne!(span.id(), partial_marker.id());
+        });
+
+        let Ok(captured) = captured.0.lock() else {
+            panic!("captured span lock poisoned");
+        };
+        let Some(span) = captured.as_ref() else {
+            panic!("completion span was not captured");
+        };
+        // A canonical child span is created and parented under the marker span,
+        // and it carries the completion fields the marker span could not absorb.
+        assert_eq!(span.target, "rig::completions");
+        assert_eq!(span.parent_name.as_deref(), Some("chat"));
+        for (field, value) in [
+            ("gen_ai.operation.name", "chat"),
+            ("gen_ai.provider.name", "openai"),
+            ("gen_ai.request.model", "gpt-5"),
+        ] {
+            assert!(contains_string(&span.initial_values, field, value));
+        }
+    }
+
+    #[test]
     fn agent_chat_span_is_adopted_and_enriched() {
         let captured = CapturedSpan::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
@@ -859,6 +946,16 @@ mod tests {
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
             );
             let _guard = completion_parent.enter();
             let span = CompletionSpanBuilder::new(
@@ -906,6 +1003,17 @@ mod tests {
                 gen_ai.operation.name = tracing::field::Empty,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
+                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
             );
             let _guard = completion_parent.enter();
             let span = CompletionSpanBuilder::new(
@@ -945,9 +1053,20 @@ mod tests {
                 target: "test_runtime",
                 "chat",
                 rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.system_instructions = "effective agent instructions",
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
             );
             let _guard = completion_parent.enter();
             CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
