@@ -602,27 +602,29 @@ impl TryFrom<message::ToolResult> for Message {
     type Error = message::MessageError;
 
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
-        let text = value
+        let parts = value
             .content
             .into_iter()
-            .map(|content| {
-                match content {
-                message::ToolResultContent::Text(message::Text { text, .. }) => Ok(text),
-                message::ToolResultContent::Json { value } => Ok(value.to_string()),
+            .map(|content| match content {
+                message::ToolResultContent::Text(message::Text { text, .. }) => Ok(ToolResultContent::from(text)),
+                message::ToolResultContent::Json { value } => Ok(ToolResultContent::from(value.to_string())),
                 message::ToolResultContent::Image(_) => Err(message::MessageError::ConversionError(
-                    "OpenAI does not support images in tool results. Tool results must be text."
+                    "OpenAI Chat Completions does not support images in tool results. Tool results must be text."
                         .into(),
                 )),
-            }
             })
-            .collect::<Result<Vec<_>, _>>()?
-            .join("\n");
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let content = match parts.as_slice() {
+            [part] => ToolResultContentValue::String(part.text.clone()),
+            _ => ToolResultContentValue::Array(parts),
+        };
 
         Ok(Message::ToolResult {
             // `call_id` carries the provider-issued call id when it differs
             // from the rig-level tool-result id (e.g. Mistral, llama.cpp).
             tool_call_id: value.call_id.unwrap_or(value.id),
-            content: ToolResultContentValue::String(text),
+            content,
         })
     }
 }
@@ -1793,11 +1795,15 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ));
         }
 
-        if tool_result_array_content {
-            for msg in &mut full_history {
-                if let Message::ToolResult { content, .. } = msg {
-                    *content = content.to_array();
-                }
+        for msg in &mut full_history {
+            if let Message::ToolResult { content, .. } = msg {
+                let normalized = if tool_result_array_content {
+                    content.to_array()
+                } else {
+                    ToolResultContentValue::String(content.as_text())
+                };
+
+                *content = normalized;
             }
         }
 
@@ -2063,6 +2069,34 @@ mod tests {
         }
     }
 
+    fn request_with_multi_block_tool_result() -> CoreCompletionRequest {
+        let tool_result = message::ToolResult {
+            id: "result-id".to_string(),
+            call_id: Some("call-id".to_string()),
+            content: OneOrMany::many(vec![
+                message::ToolResultContent::text("first"),
+                message::ToolResultContent::text("second"),
+            ])
+            .expect("multiple tool-result blocks should be non-empty"),
+        };
+
+        CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::User {
+                content: OneOrMany::one(message::UserContent::ToolResult(tool_result)),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
         let content = OneOrMany::many(vec![
@@ -2206,6 +2240,97 @@ mod tests {
 
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["content"], "First.\nSecond.");
+    }
+
+    #[test]
+    fn tool_result_array_content_preserves_multiple_text_blocks() {
+        let request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: request_with_multi_block_tool_result(),
+            strict_tools: false,
+            tool_result_array_content: true,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request conversion should succeed");
+
+        let wire = serde_json::to_value(&request.messages).expect("messages should serialize");
+
+        assert_eq!(
+            wire,
+            serde_json::json!([
+                {
+                    "role": "tool",
+                    "tool_call_id": "call-id",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "first"
+                        },
+                        {
+                            "type": "text",
+                            "text": "second"
+                        }
+                    ]
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn tool_result_string_content_flattens_multiple_text_blocks() {
+        let request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: request_with_multi_block_tool_result(),
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request conversion should succeed");
+
+        let wire = serde_json::to_value(&request.messages).expect("messages should serialize");
+
+        assert_eq!(
+            wire,
+            serde_json::json!([
+                {
+                    "role": "tool",
+                    "tool_call_id": "call-id",
+                    "content": "first\nsecond"
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
+        let result = message::ToolResult {
+            id: "result-id".to_string(),
+            call_id: Some("call-id".to_string()),
+            content: OneOrMany::many(vec![
+                message::ToolResultContent::text("first"),
+                message::ToolResultContent::json(serde_json::json!({
+                "status": "ok"
+            })),
+                message::ToolResultContent::text("second"),
+            ])
+                .expect("tool-result content should be non-empty"),
+        };
+
+        let converted = Message::try_from(result).expect("tool result should convert");
+
+        assert_eq!(
+            converted,
+            Message::ToolResult {
+                tool_call_id: "call-id".to_string(),
+                content: ToolResultContentValue::Array(vec![
+                    ToolResultContent::from("first".to_string()),
+                    ToolResultContent::from(r#"{"status":"ok"}"#.to_string()),
+                    ToolResultContent::from("second".to_string()),
+                ]),
+            }
+        );
     }
 
     #[test]
