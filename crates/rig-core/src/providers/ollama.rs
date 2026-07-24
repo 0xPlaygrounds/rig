@@ -445,15 +445,11 @@ fn split_legacy_thinking(content: &str, permits_omitted_start: bool) -> (Option<
 pub(super) struct OllamaCompletionRequest {
     model: String,
     pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
     pub stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     think: Option<Think>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     keep_alive: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -493,6 +489,18 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
 
         let mut think: Option<Think> = None;
         let mut keep_alive: Option<String> = None;
+
+        // The native API has no top-level `temperature` or `max_tokens`;
+        // both are model parameters that belong in `options` (`max_tokens`
+        // is called `num_predict` there).
+        let mut base_options = serde_json::Map::new();
+        if let Some(temperature) = req.temperature {
+            base_options.insert("temperature".to_string(), json!(temperature));
+        }
+        if let Some(max_tokens) = req.max_tokens {
+            base_options.insert("num_predict".to_string(), json!(max_tokens));
+        }
+        let base_options = Value::Object(base_options);
 
         let options = if let Some(mut extra) = req.additional_params {
             // Extract top-level parameters that should not be in `options`
@@ -536,16 +544,14 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                 }
             }
 
-            json_utils::merge(json!({ "temperature": req.temperature }), extra)
+            json_utils::merge(base_options, extra)
         } else {
-            json!({ "temperature": req.temperature })
+            base_options
         };
 
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
-            temperature: req.temperature,
-            max_tokens: req.max_tokens,
             stream: false,
             think,
             keep_alive,
@@ -1837,13 +1843,12 @@ mod tests {
                     "content": "What is 2 + 2?"
                 }
             ],
-            "temperature": 0.7,
             "stream": false,
             "think": true,
-            "max_tokens": 1024,
             "keep_alive": "-1m",
             "options": {
                 "temperature": 0.7,
+                "num_predict": 1024,
                 "num_ctx": 4096
             }
         });
@@ -1904,13 +1909,12 @@ mod tests {
                     "content": "What is 2 + 2?"
                 }
             ],
-            "temperature": 0.7,
             "stream": false,
             "think": "low",
-            "max_tokens": 1024,
             "keep_alive": "-1m",
             "options": {
                 "temperature": 0.7,
+                "num_predict": 1024,
                 "num_ctx": 4096
             }
         });
@@ -1971,13 +1975,12 @@ mod tests {
                     "content": "What is 2 + 2?"
                 }
             ],
-            "temperature": 0.7,
             "stream": false,
             "think": "medium",
-            "max_tokens": 1024,
             "keep_alive": "-1m",
             "options": {
                 "temperature": 0.7,
+                "num_predict": 1024,
                 "num_ctx": 4096
             }
         });
@@ -2038,13 +2041,12 @@ mod tests {
                     "content": "What is 2 + 2?"
                 }
             ],
-            "temperature": 0.7,
             "stream": false,
             "think": "high",
-            "max_tokens": 1024,
             "keep_alive": "-1m",
             "options": {
                 "temperature": 0.7,
+                "num_predict": 1024,
                 "num_ctx": 4096
             }
         });
@@ -2133,7 +2135,6 @@ mod tests {
                     "content": "Hello!"
                 }
             ],
-            "temperature": 0.5,
             "stream": false,
             "options": {
                 "temperature": 0.5
@@ -2141,6 +2142,40 @@ mod tests {
         });
 
         assert_eq!(serialized, expected);
+    }
+
+    // The native API takes the token limit as `options.num_predict`; an
+    // explicit `num_predict` in `additional_params` wins over
+    // `CompletionRequest::max_tokens`.
+    #[test]
+    fn test_completion_request_num_predict_from_additional_params_wins() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(1024),
+            tool_choice: None,
+            additional_params: Some(json!({ "num_predict": 42 })),
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
+            .expect("Failed to create Ollama request");
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert_eq!(serialized["options"], json!({ "num_predict": 42 }));
+        assert_eq!(serialized.get("max_tokens"), None);
     }
 
     #[test]
