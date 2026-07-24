@@ -71,7 +71,7 @@ pub(crate) fn reasoning_choices_from_done_item(
         },
     }));
 
-    if let Some(encrypted_content) = encrypted_content {
+    if let Some(encrypted_content) = encrypted_content.filter(|s| !s.is_empty()) {
         choices.push(RawStreamingChoice::Reasoning {
             id: Some(id.to_owned()),
             content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
@@ -1168,6 +1168,22 @@ mod tests {
                 id: Some(id),
                 content: ReasoningContent::Summary(text),
             }) if id == "rs_2" && text == "only summary"
+        ));
+    }
+
+    #[test]
+    fn empty_encrypted_reasoning_is_not_emitted() {
+        let content = vec!["visible reasoning".to_string()];
+
+        let choices = reasoning_choices_from_done_item("rs_1", &[], &content, Some(""));
+
+        assert_eq!(choices.len(), 1);
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::Reasoning {
+                content: ReasoningContent::Text { text, .. },
+                ..
+            }) if text == "visible reasoning"
         ));
     }
 
