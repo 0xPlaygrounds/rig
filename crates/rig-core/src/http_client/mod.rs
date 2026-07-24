@@ -18,7 +18,7 @@ pub enum Error {
     #[error("Invalid status code: {0}")]
     InvalidStatusCode(StatusCode),
     #[error("Invalid status code {0} with message: {1}")]
-    InvalidStatusCodeWithMessage(StatusCode, String),
+    InvalidStatusCodeWithMessage(StatusCode, String, Option<Box<HeaderMap>>),
     #[error("Header value outside of legal range: {0}")]
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
     #[error("Request in error state, cannot access headers")]
@@ -39,7 +39,7 @@ pub enum Error {
 impl Error {
     pub(crate) fn non_success_status(&self) -> Option<StatusCode> {
         match self {
-            Self::InvalidStatusCode(status) | Self::InvalidStatusCodeWithMessage(status, _) => {
+            Self::InvalidStatusCode(status) | Self::InvalidStatusCodeWithMessage(status, _, _) => {
                 Some(*status)
             }
             _ => None,
@@ -48,7 +48,25 @@ impl Error {
 
     pub(crate) fn non_success_body(&self) -> Option<&str> {
         match self {
-            Self::InvalidStatusCodeWithMessage(_, body) => Some(body.as_str()),
+            Self::InvalidStatusCodeWithMessage(_, body, _) => Some(body.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Returns the response headers of a non-success HTTP response, when they
+    /// were captured at error construction.
+    ///
+    /// Rig's bundled HTTP clients capture the full response [`HeaderMap`]
+    /// whenever a non-success status error is built from a live response, so
+    /// rate-limit metadata such as `Retry-After` or `x-ratelimit-*` stays
+    /// available to callers (for example a [`retry::RetryPolicy`] deciding how
+    /// long to back off after a 429).
+    ///
+    /// Returns `None` when the error was constructed without access to the
+    /// response headers (e.g. errors built from only a status and body).
+    pub fn non_success_headers(&self) -> Option<&HeaderMap> {
+        match self {
+            Self::InvalidStatusCodeWithMessage(_, _, headers) => headers.as_deref(),
             _ => None,
         }
     }
@@ -68,11 +86,12 @@ fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
 
 async fn non_success_status_error(response: reqwest::Response) -> Error {
     let status = response.status();
+    let headers = Box::new(response.headers().clone());
     let message = response
         .text()
         .await
         .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
-    Error::InvalidStatusCodeWithMessage(status, message)
+    Error::InvalidStatusCodeWithMessage(status, message, Some(headers))
 }
 
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
@@ -275,6 +294,59 @@ macro_rules! impl_http_client_ext {
 }
 
 impl_http_client_ext!(reqwest::Client);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn non_success_status_error_preserves_response_headers() {
+        let response = http::Response::builder()
+            .status(StatusCode::TOO_MANY_REQUESTS)
+            .header("retry-after", "20")
+            .header("x-ratelimit-remaining", "0")
+            .body(r#"{"error":{"message":"rate limited"}}"#)
+            .expect("valid response");
+        let response = reqwest::Response::from(response);
+
+        let error = non_success_status_error(response).await;
+
+        assert_eq!(
+            error.non_success_status(),
+            Some(StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(
+            error.non_success_body(),
+            Some(r#"{"error":{"message":"rate limited"}}"#)
+        );
+        let headers = error
+            .non_success_headers()
+            .expect("headers captured at error construction");
+        assert_eq!(
+            headers.get("retry-after").and_then(|v| v.to_str().ok()),
+            Some("20")
+        );
+        assert_eq!(
+            headers
+                .get("x-ratelimit-remaining")
+                .and_then(|v| v.to_str().ok()),
+            Some("0")
+        );
+    }
+
+    #[test]
+    fn non_success_headers_absent_when_not_captured() {
+        let error = Error::InvalidStatusCodeWithMessage(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate limited".to_string(),
+            None,
+        );
+        assert!(error.non_success_headers().is_none());
+
+        let error = Error::InvalidStatusCode(StatusCode::TOO_MANY_REQUESTS);
+        assert!(error.non_success_headers().is_none());
+    }
+}
 
 impl_http_client_ext!(
     #[cfg(feature = "reqwest-middleware")]

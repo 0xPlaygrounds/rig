@@ -1346,6 +1346,7 @@ mod tests {
         let error = CompletionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
             http::StatusCode::BAD_REQUEST,
             body.to_string(),
+            None,
         ));
 
         assert_eq!(error.provider_response_body(), Some(body));

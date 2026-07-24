@@ -264,6 +264,7 @@ mod provider_response_tests {
         let error = EmbeddingError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
             StatusCode::BAD_REQUEST,
             body.to_string(),
+            None,
         ));
 
         assert_eq!(error.provider_response_body(), Some(body));
