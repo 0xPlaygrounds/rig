@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.40.0...rig-surrealdb-v0.41.0) - 2026-07-24
+
+### Other
+
+- Remove built-in agent dynamic context ([#2174](https://github.com/0xPlaygrounds/rig/pull/2174)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2174
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.2.7...rig-surrealdb-v0.38.1) - 2026-06-02
 
 ### Other

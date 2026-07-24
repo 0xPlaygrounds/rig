@@ -22,15 +22,15 @@ thiserror = { workspace = true }
 web-time = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tokenizers = { workspace = true, features = ["onig"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["wasm"] }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = ["wasm"] }
 tokenizers = { workspace = true, default-features = false, features = ["unstable_wasm"] }
 
 [dev-dependencies]
 rig-agent = { workspace = true, features = ["test-utils"] }
-rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["test-utils"] }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = ["test-utils"] }
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
