@@ -129,6 +129,25 @@ fn completion_client_single_import_surface() {
     let _extractor = client.extractor::<Extracted>("gpt-4o").build();
 }
 
+/// The explicit facade import pair `rig::client::{CompletionClient, AgentClientExt}`
+/// exposes the same `completion_model` + `agent` + `extractor` surface as the
+/// prelude, without depending on `rig-core`. Guards the restored
+/// `rig::client::CompletionClient` path (documented in `README.md` / `MIGRATING.md`).
+#[test]
+fn completion_client_explicit_facade_import_surface() {
+    use rig::client::{AgentClientExt, CompletionClient};
+
+    #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+    struct Extracted {
+        value: String,
+    }
+
+    let client = rig::providers::openai::Client::new("test-key").expect("client builds");
+    let _model = client.completion_model("gpt-4o"); // CompletionClient
+    let _agent = client.agent("gpt-4o").build(); // AgentClientExt
+    let _extractor = client.extractor::<Extracted>("gpt-4o").build(); // AgentClientExt
+}
+
 /// `use rig::prelude::*` still brings the classic contextual `Tool` and
 /// `ToolContext` into scope (pre-split prelude behaviour).
 mod prelude_regression {
