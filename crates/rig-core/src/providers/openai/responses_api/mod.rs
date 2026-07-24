@@ -320,20 +320,17 @@ pub enum ToolResultOutputContent {
 fn responses_tool_result_output(
     content: OneOrMany<message::ToolResultContent>,
 ) -> Result<ToolResultOutput, MessageError> {
-    let mut text_output = Vec::new();
     let mut rich_output = Vec::new();
-    let mut has_image = false;
 
     for content in content {
         match content {
             message::ToolResultContent::Text(Text { text, .. }) => {
-                text_output.push(text.clone());
                 rich_output.push(ToolResultOutputContent::InputText { text });
             }
             message::ToolResultContent::Json { value } => {
-                let text = value.to_string();
-                text_output.push(text.clone());
-                rich_output.push(ToolResultOutputContent::InputText { text });
+                rich_output.push(ToolResultOutputContent::InputText {
+                    text: value.to_string(),
+                });
             }
             message::ToolResultContent::Image(message::Image {
                 data,
@@ -341,7 +338,6 @@ fn responses_tool_result_output(
                 detail,
                 ..
             }) => {
-                has_image = true;
                 let (image_url, file_id) = match data {
                     DocumentSourceKind::Base64(data) => {
                         let media_type = media_type.ok_or_else(|| {
@@ -374,10 +370,10 @@ fn responses_tool_result_output(
         }
     }
 
-    if has_image {
-        Ok(ToolResultOutput::Content(rich_output))
-    } else {
-        Ok(ToolResultOutput::Text(text_output.join("\n")))
+    match rich_output.as_slice() {
+        [ToolResultOutputContent::InputText { text }] => Ok(ToolResultOutput::Text(text.clone())),
+
+        _ => Ok(ToolResultOutput::Content(rich_output)),
     }
 }
 
@@ -2860,6 +2856,106 @@ mod tests {
                 }] if output == &expected
             ));
         }
+    }
+
+    #[test]
+    fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
+        let content = OneOrMany::many(vec![
+            message::ToolResultContent::text("first"),
+            message::ToolResultContent::text("second"),
+        ])
+        .expect("multiple tool-result blocks should be non-empty");
+
+        let input = message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+                id: "result-id".to_string(),
+                call_id: Some("call-id".to_string()),
+                content,
+            })),
+        };
+
+        let expected = ToolResultOutput::Content(vec![
+            ToolResultOutputContent::InputText {
+                text: "first".to_string(),
+            },
+            ToolResultOutputContent::InputText {
+                text: "second".to_string(),
+            },
+        ]);
+
+        let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
+
+        match messages.as_slice() {
+            [Message::ToolResult { output, .. }] => {
+                assert_eq!(output, &expected);
+            }
+            other => panic!("expected one tool result, got {other:?}"),
+        }
+
+        let items: Vec<InputItem> = input.try_into().expect("input item conversion");
+
+        match items.as_slice() {
+            [
+                InputItem {
+                    input: InputContent::FunctionCallOutput(ToolResult { output, .. }),
+                    ..
+                },
+            ] => {
+                assert_eq!(output, &expected);
+            }
+            other => panic!("expected one function-call output, got {other:?}"),
+        }
+
+        let wire = serde_json::to_value(&items[0]).expect("input item should serialize");
+
+        assert_eq!(
+            wire,
+            json!({
+                "type": "function_call_output",
+                "call_id": "call-id",
+                "output": [
+                    {
+                        "type": "input_text",
+                        "text": "first"
+                    },
+                    {
+                        "type": "input_text",
+                        "text": "second"
+                    }
+                ],
+                "status": "completed"
+            })
+        );
+    }
+
+    #[test]
+    fn multiple_text_and_json_tool_result_blocks_preserve_boundaries() {
+        let content = OneOrMany::many(vec![
+            message::ToolResultContent::text("before"),
+            message::ToolResultContent::json(json!({
+                "status": "ok"
+            })),
+            message::ToolResultContent::text("after"),
+        ])
+        .expect("multiple tool-result blocks should be non-empty");
+
+        let output =
+            responses_tool_result_output(content).expect("tool-result conversion should succeed");
+
+        assert_eq!(
+            output,
+            ToolResultOutput::Content(vec![
+                ToolResultOutputContent::InputText {
+                    text: "before".to_string(),
+                },
+                ToolResultOutputContent::InputText {
+                    text: r#"{"status":"ok"}"#.to_string(),
+                },
+                ToolResultOutputContent::InputText {
+                    text: "after".to_string(),
+                },
+            ])
+        );
     }
 
     #[test]
