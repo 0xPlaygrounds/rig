@@ -5498,6 +5498,89 @@ mod migrated_tests {
         );
     }
 
+    /// Concurrent tool execution is bounded on *both* sides: real parallelism
+    /// occurs (lower bound) and the configured `tool_concurrency` cap is never
+    /// exceeded (upper bound). Four parallel calls run under a cap of two; the
+    /// barrier is sized to the cap, so it only releases when `cap` calls are in
+    /// flight together — a serial runtime would deadlock, while an over-eager one
+    /// (ignoring the cap) would let `max_active` exceed it.
+    #[tokio::test]
+    async fn concurrent_tool_execution_stays_within_the_configured_bound() {
+        #[derive(Clone)]
+        struct ConcurrencyProbe {
+            barrier: Arc<Barrier>,
+            active: Arc<AtomicU32>,
+            max_active: Arc<AtomicU32>,
+        }
+
+        impl Tool for ConcurrencyProbe {
+            const NAME: &'static str = "add";
+            type Error = MockToolError;
+            type Args = serde_json::Value;
+            type Output = String;
+
+            fn description(&self) -> String {
+                "concurrency probe".to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                json!({"type": "object", "properties": {}})
+            }
+
+            async fn call(
+                &self,
+                _context: &mut ToolContext,
+                _args: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                let now = self.active.fetch_add(1, SeqCst) + 1;
+                self.max_active.fetch_max(now, SeqCst);
+                self.barrier.wait().await;
+                self.active.fetch_sub(1, SeqCst);
+                Ok("ok".to_string())
+            }
+        }
+
+        let cap = 2usize;
+        let probe = ConcurrencyProbe {
+            barrier: Arc::new(Barrier::new(cap)),
+            active: Arc::new(AtomicU32::new(0)),
+            max_active: Arc::new(AtomicU32::new(0)),
+        };
+        let max_active = probe.max_active.clone();
+
+        // One turn issues four parallel calls to the probe (registered as `add`).
+        let model = MockCompletionModel::from_turns([
+            MockTurn::from_contents([
+                tool_call_content("c1", json!({})),
+                tool_call_content("c2", json!({})),
+                tool_call_content("c3", json!({})),
+                tool_call_content("c4", json!({})),
+            ])
+            .expect("four tool calls is a valid turn"),
+            MockTurn::text("done"),
+        ]);
+
+        let _ = AgentBuilder::new(model)
+            .tool(probe)
+            .build()
+            .runner("probe concurrency")
+            .max_turns(3)
+            .tool_concurrency(cap)
+            .run()
+            .await
+            .expect("run should succeed");
+
+        let observed = max_active.load(SeqCst);
+        assert!(
+            observed > 1,
+            "tools actually ran concurrently (lower bound): max_active={observed}"
+        );
+        assert!(
+            observed <= cap as u32,
+            "in-flight never exceeded the configured bound {cap} (upper bound): max_active={observed}"
+        );
+    }
+
     /// `tool_concurrency(0)` is clamped to 1 and runs to completion. The timeout
     /// guards against a regression that lets `concurrency == 0` reach a
     /// `buffer_unordered(0)` (which never makes progress) instead of the

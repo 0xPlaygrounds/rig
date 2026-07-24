@@ -1230,13 +1230,171 @@ mod migrated_tests {
         MockExampleTool, MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool,
         MockToolError, mock_math_toolset,
     };
-    use rig_core::message::{DocumentSourceKind, ToolResultContent};
-    use rig_runtime_conformance::{
+    use portable_fixtures::{
         PortableEmbeddingFixture, portable_dynamic_fixture, portable_fixture_output,
     };
+    use rig_core::message::{DocumentSourceKind, ToolResultContent};
     use serde_json::json;
 
     use super::*;
+
+    /// Portable-tool fixtures relocated from the removed `rig-runtime-conformance`
+    /// crate; used only by these migrated tests.
+    mod portable_fixtures {
+        use rig_core::{
+            OneOrMany,
+            message::{ImageMediaType, ToolResultContent},
+            tool::{
+                PortableDynamicTool, PortableTool, PortableToolEmbedding, ToolExecutionError,
+                ToolOutput,
+            },
+        };
+        use serde::{Deserialize, Serialize};
+
+        const PORTABLE_FIXTURE_IMAGE: &str = "cG9ydGFibGUtZml4dHVyZQ==";
+
+        #[derive(Clone, Debug, Deserialize, Serialize)]
+        pub struct PortableEmbeddingArgs {
+            pub value: String,
+            #[serde(default)]
+            pub fail: bool,
+        }
+
+        #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+        pub struct PortableEmbeddingContext {
+            pub prefix: String,
+        }
+
+        #[derive(Debug, thiserror::Error)]
+        #[error("portable fixture failure")]
+        pub struct PortableFixtureError;
+
+        pub fn portable_fixture_output(label: impl Into<String>) -> ToolOutput {
+            let mut content = OneOrMany::one(ToolResultContent::json(
+                serde_json::json!({"label": label.into()}),
+            ));
+            content.push(ToolResultContent::image_base64(
+                PORTABLE_FIXTURE_IMAGE,
+                Some(ImageMediaType::PNG),
+                None,
+            ));
+            ToolOutput::content(content)
+        }
+
+        pub fn portable_dynamic_fixture() -> PortableDynamicTool {
+            PortableDynamicTool::new(
+                "portable_runtime_name",
+                "portable dynamic definition",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "string"},
+                        "fail": {"type": "boolean"}
+                    },
+                    "required": ["value"]
+                }),
+                |arguments| {
+                    Box::pin(async move {
+                        if arguments
+                            .get("fail")
+                            .and_then(serde_json::Value::as_bool)
+                            .unwrap_or_default()
+                        {
+                            Err(ToolExecutionError::provider("portable dynamic failure")
+                                .with_code("portable_dynamic_fixture")
+                                .with_model_output(portable_fixture_output(
+                                    "portable dynamic failure",
+                                )))
+                        } else {
+                            Ok(portable_fixture_output(format!(
+                                "dynamic:{}",
+                                arguments
+                                    .get("value")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or_default()
+                            )))
+                        }
+                    })
+                },
+            )
+        }
+
+        #[derive(Clone)]
+        pub struct PortableEmbeddingFixture {
+            context: PortableEmbeddingContext,
+        }
+
+        impl PortableEmbeddingFixture {
+            pub fn new(prefix: impl Into<String>) -> Self {
+                Self {
+                    context: PortableEmbeddingContext {
+                        prefix: prefix.into(),
+                    },
+                }
+            }
+        }
+
+        impl PortableTool for PortableEmbeddingFixture {
+            const NAME: &'static str = "portable_embedding_fixture";
+            type Args = PortableEmbeddingArgs;
+            type Output = ToolOutput;
+            type Error = PortableFixtureError;
+
+            fn description(&self) -> String {
+                format!("{} portable embedding fixture", self.context.prefix)
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "string"},
+                        "fail": {"type": "boolean"}
+                    },
+                    "required": ["value"]
+                })
+            }
+
+            fn map_error(&self, error: Self::Error) -> ToolExecutionError {
+                ToolExecutionError::provider(error.to_string())
+                    .with_code("portable_fixture")
+                    .with_model_output(portable_fixture_output("portable failure"))
+                    .with_source(error)
+            }
+
+            async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
+                if arguments.fail {
+                    Err(PortableFixtureError)
+                } else {
+                    Ok(portable_fixture_output(format!(
+                        "{}:{}",
+                        self.context.prefix, arguments.value
+                    )))
+                }
+            }
+        }
+
+        impl PortableToolEmbedding for PortableEmbeddingFixture {
+            type InitError = std::convert::Infallible;
+            type Context = PortableEmbeddingContext;
+            type State = ();
+
+            fn embedding_docs(&self) -> Vec<String> {
+                vec![format!(
+                    "{} portable embedding document",
+                    self.context.prefix
+                )]
+            }
+
+            fn context(&self) -> Self::Context {
+                self.context.clone()
+            }
+
+            fn init(_state: Self::State, context: Self::Context) -> Result<Self, Self::InitError> {
+                Ok(Self { context })
+            }
+        }
+    }
 
     fn get_test_toolset() -> ToolSet {
         mock_math_toolset()
