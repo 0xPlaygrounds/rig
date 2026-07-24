@@ -40,6 +40,93 @@ pub mod streaming;
 #[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
 pub mod websocket;
 
+/// `additional_params` key that places a prompt-cache breakpoint at a chosen
+/// position in the message history.
+///
+/// Set this key on a generic [`message::Text`], [`message::Image`], or
+/// [`message::Document`] block to a [`PromptCacheBreakpoint`] payload
+/// (`{"mode": "explicit"}`), and the marker lands as the
+/// `prompt_cache_breakpoint` field of the corresponding `input_text`,
+/// `input_image`, or `input_file` content part. A payload under this key that
+/// is not a valid [`PromptCacheBreakpoint`] fails the request conversion.
+///
+/// ```
+/// use rig_core::message::{Text, UserContent};
+/// use rig_core::providers::openai::responses_api::{
+///     OPENAI_PROMPT_CACHE_BREAKPOINT_KEY, PromptCacheBreakpoint,
+/// };
+///
+/// let marked = UserContent::Text(Text {
+///     text: "large stable prefix...".to_string(),
+///     additional_params: Some(serde_json::json!({
+///         OPENAI_PROMPT_CACHE_BREAKPOINT_KEY: PromptCacheBreakpoint::explicit(),
+///     })),
+/// });
+/// ```
+///
+/// Breakpoints apply to user-side input blocks; markers on assistant content
+/// are not converted. Supported on GPT-5.6 and later models.
+///
+/// See <https://developers.openai.com/api/docs/guides/prompt-caching#prompt-cache-breakpoints>.
+pub const OPENAI_PROMPT_CACHE_BREAKPOINT_KEY: &str = "openai_prompt_cache_breakpoint";
+
+/// A manually placed prompt-cache breakpoint on a Responses API content block.
+///
+/// Serializes as the `prompt_cache_breakpoint` field of `input_text`,
+/// `input_image`, and `input_file` content parts. Supported on GPT-5.6 and
+/// later models; older models reject the field.
+///
+/// See <https://developers.openai.com/api/docs/guides/prompt-caching#prompt-cache-breakpoints>.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct PromptCacheBreakpoint {
+    /// The breakpoint mode. `explicit` is the only valid value.
+    pub mode: PromptCacheBreakpointMode,
+}
+
+impl PromptCacheBreakpoint {
+    /// Create an explicit prompt-cache breakpoint.
+    pub fn explicit() -> Self {
+        Self {
+            mode: PromptCacheBreakpointMode::Explicit,
+        }
+    }
+}
+
+/// The mode of a [`PromptCacheBreakpoint`]. Only `explicit` is valid.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PromptCacheBreakpointMode {
+    Explicit,
+}
+
+/// Request-level prompt cache options for the Responses API, set via
+/// `additional_params` (`{"prompt_cache_options": {"mode": "explicit"}}`).
+///
+/// `mode: "implicit"` (the default when omitted) keeps OpenAI's automatic
+/// breakpoint on the latest message in addition to any explicit
+/// [`PromptCacheBreakpoint`] markers; `mode: "explicit"` disables the
+/// automatic breakpoint so only marked positions are used. Supported on
+/// GPT-5.6 and later models.
+///
+/// See <https://developers.openai.com/api/docs/guides/prompt-caching#prompt-cache-breakpoints>.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct PromptCacheOptions {
+    /// Breakpoint placement mode. Defaults to implicit when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<PromptCacheMode>,
+    /// Minimum cache lifetime (e.g. `"30m"`). GPT-5.6+ only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
+}
+
+/// Breakpoint placement mode for [`PromptCacheOptions`].
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PromptCacheMode {
+    Implicit,
+    Explicit,
+}
+
 /// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
 /// Intended to be derived from [`crate::completion::request::CompletionRequest`].
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -442,11 +529,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
                 for user_content in content {
                     match user_content {
-                        crate::message::UserContent::Text(Text { text, .. }) => {
+                        crate::message::UserContent::Text(text) => {
+                            let prompt_cache_breakpoint =
+                                extract_openai_prompt_cache_breakpoint(&text.additional_params)?;
                             items.push(InputItem {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
-                                    content: OneOrMany::one(UserContent::InputText { text }),
+                                    content: OneOrMany::one(UserContent::InputText {
+                                        text: text.text,
+                                        prompt_cache_breakpoint,
+                                    }),
                                     name: None,
                                 }),
                             });
@@ -473,6 +565,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         }
                         crate::message::UserContent::Document(Document {
                             data: DocumentSourceKind::FileId(file_id),
+                            additional_params,
                             ..
                         }) => items.push(InputItem {
                             role: Some(Role::User),
@@ -482,6 +575,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     file_data: None,
                                     file_url: None,
                                     filename: None,
+                                    prompt_cache_breakpoint:
+                                        extract_openai_prompt_cache_breakpoint(&additional_params)?,
                                 }),
                                 name: None,
                             }),
@@ -489,8 +584,10 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         crate::message::UserContent::Document(Document {
                             data,
                             media_type: Some(DocumentMediaType::PDF),
-                            ..
+                            additional_params,
                         }) => {
+                            let prompt_cache_breakpoint =
+                                extract_openai_prompt_cache_breakpoint(&additional_params)?;
                             let (file_data, file_url) = match data {
                                 DocumentSourceKind::Base64(data) => {
                                     (Some(format!("data:application/pdf;base64,{data}")), None)
@@ -517,6 +614,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                         file_data,
                                         file_url,
                                         filename: Some("document.pdf".to_string()),
+                                        prompt_cache_breakpoint,
                                     }),
                                     name: None,
                                 }),
@@ -525,11 +623,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         crate::message::UserContent::Document(Document {
                             data:
                                 DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text),
+                            additional_params,
                             ..
                         }) => items.push(InputItem {
                             role: Some(Role::User),
                             input: InputContent::Message(Message::User {
-                                content: OneOrMany::one(UserContent::InputText { text }),
+                                content: OneOrMany::one(UserContent::InputText {
+                                    text,
+                                    prompt_cache_breakpoint:
+                                        extract_openai_prompt_cache_breakpoint(&additional_params)?,
+                                }),
                                 name: None,
                             }),
                         }),
@@ -537,8 +640,11 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             data,
                             media_type,
                             detail,
+                            additional_params,
                             ..
                         }) => {
+                            let prompt_cache_breakpoint =
+                                extract_openai_prompt_cache_breakpoint(&additional_params)?;
                             let url = match data {
                                 DocumentSourceKind::Base64(data) => {
                                     let media_type = if let Some(media_type) = media_type {
@@ -567,6 +673,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     content: OneOrMany::one(UserContent::InputImage {
                                         image_url: url,
                                         detail: detail.unwrap_or_default(),
+                                        prompt_cache_breakpoint,
                                     }),
                                     name: None,
                                 }),
@@ -1660,6 +1767,9 @@ pub struct AdditionalParameters {
     /// Prompt cache retention policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_retention: Option<String>,
+    /// Prompt cache breakpoint options (GPT-5.6+). See [`PromptCacheOptions`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_options: Option<PromptCacheOptions>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
     #[serde(
         skip_serializing_if = "Map::is_empty",
@@ -2476,11 +2586,15 @@ impl std::str::FromStr for SystemContent {
 pub enum UserContent {
     InputText {
         text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        prompt_cache_breakpoint: Option<PromptCacheBreakpoint>,
     },
     InputImage {
         image_url: String,
         #[serde(default)]
         detail: ImageDetail,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        prompt_cache_breakpoint: Option<PromptCacheBreakpoint>,
     },
     InputFile {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -2491,6 +2605,8 @@ pub enum UserContent {
         file_data: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         filename: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        prompt_cache_breakpoint: Option<PromptCacheBreakpoint>,
     },
     Audio {
         input_audio: InputAudio,
@@ -2522,17 +2638,47 @@ fn flush_responses_user_content(
     Ok(())
 }
 
+/// Extract a caller-placed [`PromptCacheBreakpoint`] from a content block's
+/// `additional_params`, stored under [`OPENAI_PROMPT_CACHE_BREAKPOINT_KEY`].
+///
+/// Returns `Ok(None)` when no marker is present. Errors if the marker is
+/// present but not a valid [`PromptCacheBreakpoint`] payload.
+fn extract_openai_prompt_cache_breakpoint(
+    additional_params: &Option<serde_json::Value>,
+) -> Result<Option<PromptCacheBreakpoint>, MessageError> {
+    let Some(value) = additional_params
+        .as_ref()
+        .and_then(|value| value.get(OPENAI_PROMPT_CACHE_BREAKPOINT_KEY))
+    else {
+        return Ok(None);
+    };
+
+    serde_json::from_value::<PromptCacheBreakpoint>(value.clone())
+        .map(Some)
+        .map_err(|err| {
+            MessageError::ConversionError(format!(
+                "`{OPENAI_PROMPT_CACHE_BREAKPOINT_KEY}` metadata is not a valid PromptCacheBreakpoint: {err}"
+            ))
+        })
+}
+
 fn responses_user_content(content: message::UserContent) -> Result<UserContent, MessageError> {
     match content {
-        message::UserContent::Text(message::Text { text, .. }) => {
-            Ok(UserContent::InputText { text })
-        }
+        message::UserContent::Text(text) => Ok(UserContent::InputText {
+            prompt_cache_breakpoint: extract_openai_prompt_cache_breakpoint(
+                &text.additional_params,
+            )?,
+            text: text.text,
+        }),
         message::UserContent::Image(message::Image {
             data,
             detail,
             media_type,
+            additional_params,
             ..
         }) => {
+            let prompt_cache_breakpoint =
+                extract_openai_prompt_cache_breakpoint(&additional_params)?;
             let url = match data {
                 DocumentSourceKind::Base64(data) => {
                     let media_type = media_type
@@ -2556,22 +2702,27 @@ fn responses_user_content(content: message::UserContent) -> Result<UserContent, 
             Ok(UserContent::InputImage {
                 image_url: url,
                 detail: detail.unwrap_or_default(),
+                prompt_cache_breakpoint,
             })
         }
         message::UserContent::Document(message::Document {
             data: DocumentSourceKind::FileId(file_id),
+            additional_params,
             ..
         }) => Ok(UserContent::InputFile {
             file_id: Some(file_id),
             file_url: None,
             file_data: None,
             filename: None,
+            prompt_cache_breakpoint: extract_openai_prompt_cache_breakpoint(&additional_params)?,
         }),
         message::UserContent::Document(message::Document {
             media_type: Some(DocumentMediaType::PDF),
             data,
-            ..
+            additional_params,
         }) => {
+            let prompt_cache_breakpoint =
+                extract_openai_prompt_cache_breakpoint(&additional_params)?;
             let (file_data, file_url, filename) = match data {
                 DocumentSourceKind::Base64(data) => (
                     Some(format!("data:application/pdf;base64,{data}")),
@@ -2596,12 +2747,17 @@ fn responses_user_content(content: message::UserContent) -> Result<UserContent, 
                 file_url,
                 file_data,
                 filename,
+                prompt_cache_breakpoint,
             })
         }
         message::UserContent::Document(message::Document {
             data: DocumentSourceKind::Base64(text),
+            additional_params,
             ..
-        }) => Ok(UserContent::InputText { text }),
+        }) => Ok(UserContent::InputText {
+            prompt_cache_breakpoint: extract_openai_prompt_cache_breakpoint(&additional_params)?,
+            text,
+        }),
         message::UserContent::Audio(message::Audio {
             data: DocumentSourceKind::Base64(data),
             media_type,
@@ -2748,6 +2904,7 @@ impl FromStr for UserContent {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(UserContent::InputText {
             text: s.to_string(),
+            prompt_cache_breakpoint: None,
         })
     }
 }
@@ -2817,9 +2974,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first(), UserContent::InputText { text } if text == "before")
+            ] if matches!(before.first(), UserContent::InputText { text, .. } if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first(), UserContent::InputText { text } if text == "after")
+                && matches!(after.first(), UserContent::InputText { text, .. } if text == "after")
         ));
     }
 
@@ -4727,5 +4884,182 @@ mod tests {
                 serde_json::from_value(item.clone()).expect("should decode to Unknown");
             assert_eq!(output, Output::Unknown(item));
         }
+    }
+
+    // Manually placed prompt-cache breakpoints (GPT-5.6+): markers attached to
+    // generic message blocks via `additional_params` must land on the
+    // corresponding Responses API content parts, on both conversion paths.
+    // See <https://developers.openai.com/api/docs/guides/prompt-caching#prompt-cache-breakpoints>.
+
+    fn breakpoint_params() -> serde_json::Value {
+        json!({ OPENAI_PROMPT_CACHE_BREAKPOINT_KEY: PromptCacheBreakpoint::explicit() })
+    }
+
+    fn user_text_message(text: &str, breakpoint: bool) -> message::Message {
+        let mut block = message::Text::new(text);
+        if breakpoint {
+            block.additional_params = Some(breakpoint_params());
+        }
+        message::Message::User {
+            content: OneOrMany::one(message::UserContent::Text(block)),
+        }
+    }
+
+    fn request_value_with_history(history: Vec<message::Message>) -> serde_json::Value {
+        let request = CompletionRequest::try_from((
+            "gpt-5.6".to_string(),
+            crate::completion::CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::many(history).expect("history should be non-empty"),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            },
+        ))
+        .expect("request should convert");
+        serde_json::to_value(&request).expect("request should serialize")
+    }
+
+    #[test]
+    fn prompt_cache_breakpoint_lands_on_chosen_message_position() {
+        let value = request_value_with_history(vec![
+            user_text_message("turn one", false),
+            message::Message::assistant("reply one"),
+            user_text_message("turn two", true),
+            message::Message::assistant("reply two"),
+        ]);
+
+        let input = value["input"].as_array().unwrap();
+        assert_eq!(input.len(), 4, "unexpected input shape: {value:#}");
+        // The chosen position carries the breakpoint...
+        assert_eq!(
+            input[2]["content"][0]["prompt_cache_breakpoint"]["mode"],
+            "explicit"
+        );
+        // ...and no other position does (placement is exactly where we asked).
+        for index in [0, 1, 3] {
+            assert!(
+                input[index]["content"][0]
+                    .get("prompt_cache_breakpoint")
+                    .is_none(),
+                "unexpected breakpoint at input[{index}]: {value:#}"
+            );
+        }
+    }
+
+    #[test]
+    fn prompt_cache_breakpoint_lands_on_image_block() {
+        let image = message::Image {
+            data: DocumentSourceKind::url("https://example.com/photo.png"),
+            media_type: None,
+            detail: None,
+            additional_params: Some(breakpoint_params()),
+        };
+        let value = request_value_with_history(vec![message::Message::User {
+            content: OneOrMany::one(message::UserContent::Image(image)),
+        }]);
+
+        let block = &value["input"][0]["content"][0];
+        assert_eq!(block["type"], "input_image");
+        assert_eq!(block["prompt_cache_breakpoint"]["mode"], "explicit");
+    }
+
+    #[test]
+    fn prompt_cache_breakpoint_lands_on_file_block() {
+        let document = message::Document {
+            data: DocumentSourceKind::base64("dGVzdA=="),
+            media_type: Some(message::DocumentMediaType::PDF),
+            additional_params: Some(breakpoint_params()),
+        };
+        let value = request_value_with_history(vec![message::Message::User {
+            content: OneOrMany::one(message::UserContent::Document(document)),
+        }]);
+
+        let block = &value["input"][0]["content"][0];
+        assert_eq!(block["type"], "input_file");
+        assert_eq!(block["prompt_cache_breakpoint"]["mode"], "explicit");
+    }
+
+    #[test]
+    fn prompt_cache_breakpoint_survives_vec_message_conversion() {
+        let text = message::Text {
+            text: "cache me".to_string(),
+            additional_params: Some(breakpoint_params()),
+        };
+        let messages = Vec::<Message>::try_from(message::Message::User {
+            content: OneOrMany::one(message::UserContent::Text(text)),
+        })
+        .expect("message conversion");
+        let value = serde_json::to_value(&messages).expect("messages should serialize");
+
+        assert_eq!(
+            value[0]["content"][0]["prompt_cache_breakpoint"]["mode"],
+            "explicit"
+        );
+    }
+
+    #[test]
+    fn prompt_cache_breakpoint_rejects_invalid_payload() {
+        let mut block = message::Text::new("hi");
+        block.additional_params = Some(serde_json::json!({
+            OPENAI_PROMPT_CACHE_BREAKPOINT_KEY: "not-a-breakpoint"
+        }));
+        let input = message::Message::User {
+            content: OneOrMany::one(message::UserContent::Text(block)),
+        };
+
+        assert!(Vec::<InputItem>::try_from(crate::completion::Message::from(input)).is_err());
+    }
+
+    #[test]
+    fn prompt_cache_breakpoint_ignores_unrelated_sibling_params() {
+        let mut block = message::Text::new("hi");
+        block.additional_params = Some(json!({
+            "other": true,
+            OPENAI_PROMPT_CACHE_BREAKPOINT_KEY: PromptCacheBreakpoint::explicit(),
+        }));
+        let value = request_value_with_history(vec![message::Message::User {
+            content: OneOrMany::one(message::UserContent::Text(block)),
+        }]);
+
+        assert_eq!(
+            value["input"][0]["content"][0]["prompt_cache_breakpoint"]["mode"],
+            "explicit"
+        );
+    }
+
+    #[test]
+    fn prompt_cache_options_serialize_at_request_top_level() {
+        let request = CompletionRequest::try_from((
+            "gpt-5.6".to_string(),
+            crate::completion::CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::one(user_text_message("hello", false)),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: Some(json!({
+                    "prompt_cache_key": "tenant:acme:v1",
+                    "prompt_cache_options": { "mode": "explicit", "ttl": "30m" }
+                })),
+                output_schema: None,
+                record_telemetry_content: false,
+            },
+        ))
+        .expect("request should convert");
+        let value = serde_json::to_value(&request).expect("request should serialize");
+
+        assert_eq!(value["prompt_cache_key"], "tenant:acme:v1");
+        assert_eq!(value["prompt_cache_options"]["mode"], "explicit");
+        assert_eq!(value["prompt_cache_options"]["ttl"], "30m");
     }
 }
