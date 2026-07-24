@@ -26,6 +26,7 @@ mod cassette {
     mod streaming_tools;
     mod structured_output;
     mod typed_prompt_tools;
+    mod url_pdf_document;
     mod vllm;
 }
 
