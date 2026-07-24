@@ -1,4 +1,3 @@
-use core_runtime::embeddings::Embed;
 use core_runtime::tool::{PortableTool, ToolExecutionError};
 use rig_macros::rig_tool;
 

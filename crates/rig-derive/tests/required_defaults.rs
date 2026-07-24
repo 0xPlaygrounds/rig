@@ -83,6 +83,28 @@ async fn test_explicit_empty_required_overrides_default() {
     );
 }
 
+/// The schema and the deserializer must agree: a parameter omitted from an
+/// explicit `required(...)` list deserializes via its `Default` when the model
+/// leaves it out, instead of failing at runtime.
+#[tokio::test]
+async fn test_param_omitted_from_required_deserializes_via_default() {
+    let params: AddExplicitParameters =
+        serde_json::from_value(serde_json::json!({"a": 7})).unwrap();
+    assert_eq!(params.a, 7);
+    assert_eq!(params.b, 0, "omitted non-required param should use Default");
+}
+
+/// A parameter listed in an explicit `required(...)` list stays required for
+/// the deserializer as well.
+#[tokio::test]
+async fn test_param_listed_in_required_stays_required_for_deserialization() {
+    let error = serde_json::from_value::<AddExplicitParameters>(serde_json::json!({"b": 7}));
+    assert!(
+        error.is_err(),
+        "omitting a required param should fail deserialization"
+    );
+}
+
 #[tokio::test]
 async fn test_no_params_means_empty_required() {
     let def = rig_agent::tool::tool_definition(&Constant);

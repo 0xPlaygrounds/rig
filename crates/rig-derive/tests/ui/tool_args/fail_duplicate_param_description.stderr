@@ -1,0 +1,5 @@
+error: duplicate `params(...)` entry for `query`
+ --> tests/ui/tool_args/fail_duplicate_param_description.rs:4:36
+  |
+4 | #[rig_tool(params(query = "first", query = "second"))]
+  |                                    ^^^^^

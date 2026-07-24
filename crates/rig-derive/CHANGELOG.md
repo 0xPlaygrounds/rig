@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(rig-derive)* [**breaking**] `#[rig_tool]` required-ness is derived from the
+  parameter types so the advertised schema and the deserializer always agree:
+  without `required(...)`, `Option<T>` parameters are optional (previously
+  advertised as required); with `required(...)`, omitted parameters get
+  `#[serde(default)]` (their types must be `Option<T>` or `Default`). Names in
+  `params(...)`/`required(...)` must match actual parameters, and malformed or
+  duplicate attribute entries are compile errors instead of silently ignored.
+  Listing an `Option<T>` parameter in `required(...)` is a compile error
+  (schemars and serde would both silently ignore the directive), and a
+  wildcard context binding (`#[rig(context)] _: &mut ToolContext`) is now
+  rejected — name it `_context` instead.
+- *(rig-derive)* Crate-name resolution and context classification share one
+  authority: fully qualified `&mut ToolContext` paths are recognized under
+  renamed `rig`/`rig-agent` dependencies without `#[rig(context)]`, and a
+  contextual tool without a reachable runtime crate gets a targeted
+  diagnostic. Generated code resolves `serde`/`serde_json`/`schemars` through
+  `rig-core`'s re-exports (no direct downstream dependency needed), the
+  `Embed` derive emits fully qualified impls (no `Embed` import needed at the
+  call site), and `parameters()` builds its schema once via `LazyLock` with no
+  generated `expect`.
+
 - *(rig-derive)* [**breaking**] generated `#[rig_tool]` implementations preserve the function's `Result<T, E>` error as `Tool::Error` until erased dispatch normalizes it. Context-free functions implement the portable `Tool::call` API; functions with one `&mut ToolContext` parameter implement the contextual classic API. The context parameter may appear in any position; fully qualified `rig::agent::tool::ToolContext` / `rig_agent::tool::ToolContext` paths are recognized directly, while imported names and aliases use `#[rig(context)]`. The macro forwards runtime context and excludes that parameter from the generated arguments and JSON Schema without confusing unrelated application types also named `ToolContext`.
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.39.0...rig-derive-v0.40.0) - 2026-07-10

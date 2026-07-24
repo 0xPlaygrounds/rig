@@ -1,0 +1,5 @@
+error: `qurey` does not match any parameter of `search`
+ --> tests/ui/tool_args/fail_params_unknown_param.rs:4:19
+  |
+4 | #[rig_tool(params(qurey = "The search query"))]
+  |                   ^^^^^

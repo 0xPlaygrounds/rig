@@ -1,5 +1,5 @@
 [package]
-name = "rig-derive-core-renamed-fixture"
+name = "rig-derive-core-only-contextual-fixture"
 version = "0.0.0"
 edition = "2024"
 publish = false
