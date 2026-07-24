@@ -883,7 +883,7 @@ where
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = CompletionSpanBuilder::new(
-            "openai",
+            Ext::PROVIDER_NAME,
             &request.model,
             CompletionOperation::ChatStreaming,
         )

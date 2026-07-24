@@ -61,6 +61,8 @@ impl Provider for OpenAIResponsesExt {
 }
 
 impl ResponsesProviderExt for OpenAIResponsesExt {
+    const PROVIDER_NAME: &'static str = "openai";
+
     fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
         self.system_instructions_placement
     }

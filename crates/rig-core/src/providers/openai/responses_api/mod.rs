@@ -1122,6 +1122,13 @@ pub enum SystemInstructionsPlacement {
 /// [`GenericResponsesCompletionModel`], so a client-level configuration can
 /// control request shaping for every model created from that client.
 pub trait ResponsesProviderExt {
+    /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
+    ///
+    /// Defaults to `"openai"`. OpenAI-compatible backends on other hosts (e.g.
+    /// Amazon Bedrock Mantle) override this so metrics are not attributed to
+    /// OpenAI.
+    const PROVIDER_NAME: &'static str = "openai";
+
     /// Where Rig system instructions are placed in requests built from this
     /// provider. See [`SystemInstructionsPlacement`].
     ///
@@ -1526,6 +1533,8 @@ struct CompletionResponseWireRef<'a> {
 struct CompletionResponseWire {
     id: String,
     object: ResponseObject,
+    /// Some OpenAI-compatible hosts (e.g. Bedrock Mantle) emit floats.
+    #[serde(deserialize_with = "deserialize_created_at")]
     created_at: u64,
     status: ResponseStatus,
     error: Option<ResponseError>,
@@ -1542,6 +1551,46 @@ struct CompletionResponseWire {
     tools: Vec<ResponsesToolDefinition>,
     #[serde(flatten)]
     additional_parameters: AdditionalParameters,
+}
+
+/// Accept integer or float Unix timestamps; keep the public field as `u64`.
+///
+/// Bedrock Mantle (and some other OpenAI-compatible gateways) return
+/// `created_at` as a JSON float (e.g. `1784497980.0`). Truncate toward zero.
+fn deserialize_created_at<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Number(n) => {
+            if let Some(u) = n.as_u64() {
+                return Ok(u);
+            }
+            if let Some(i) = n.as_i64() {
+                if i < 0 {
+                    return Err(serde::de::Error::custom(format!(
+                        "created_at must be non-negative, got {i}"
+                    )));
+                }
+                return Ok(i as u64);
+            }
+            if let Some(f) = n.as_f64() {
+                if !f.is_finite() || f < 0.0 {
+                    return Err(serde::de::Error::custom(format!(
+                        "created_at must be a non-negative finite number, got {f}"
+                    )));
+                }
+                return Ok(f as u64);
+            }
+            Err(serde::de::Error::custom(format!(
+                "created_at number could not be converted to u64: {n}"
+            )))
+        }
+        other => Err(serde::de::Error::custom(format!(
+            "created_at must be a number, got {other}"
+        ))),
+    }
 }
 
 impl Serialize for CompletionResponse {
@@ -2238,9 +2287,13 @@ where
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_completion_request(completion_request)?;
-        let span = CompletionSpanBuilder::new("openai", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
+        let span = CompletionSpanBuilder::new(
+            Ext::PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::Chat,
+        )
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+        .build();
         let body = serde_json::to_vec(&request)?;
 
         if enabled!(Level::TRACE) {
@@ -3457,6 +3510,39 @@ mod tests {
             "output": [],
             "service_tier": service_tier,
         })
+    }
+
+    #[test]
+    fn completion_response_deserializes_float_created_at() {
+        // Bedrock Mantle GPT-OSS Responses returns created_at as a float.
+        let raw = json!({
+            "id": "resp_mantle_float",
+            "object": "response",
+            "created_at": 1784497980.0,
+            "status": "completed",
+            "model": "openai.gpt-oss-20b",
+            "output": [],
+        });
+
+        let response: CompletionResponse =
+            serde_json::from_value(raw).expect("float created_at should deserialize");
+        assert_eq!(response.created_at, 1_784_497_980);
+    }
+
+    #[test]
+    fn completion_response_deserializes_integer_created_at() {
+        let raw = json!({
+            "id": "resp_int",
+            "object": "response",
+            "created_at": 1_700_000_000_u64,
+            "status": "completed",
+            "model": "gpt-4o",
+            "output": [],
+        });
+
+        let response: CompletionResponse =
+            serde_json::from_value(raw).expect("integer created_at should deserialize");
+        assert_eq!(response.created_at, 1_700_000_000);
     }
 
     #[test]
