@@ -6,6 +6,7 @@ mod cassette {
     mod document_file_id;
     mod empty_end_turn;
     mod image;
+    mod manual_cache_control;
     mod messages_behaviors;
     mod messages_sessions;
     mod messages_thinking;
