@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"type":"url","url":"https://bitcoin.org/bitcoin.pdf"},"type":"document"},{"text":"What is the title of this paper? Answer in one short sentence.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a helpful assistant that analyzes documents.","type":"text"}],"temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"The title of this paper is **\"Bitcoin: A Peer-to-Peer Electronic Cash System\"** by Satoshi Nakamoto.","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":19396,"output_tokens":34,"service_tier":"standard"}}'

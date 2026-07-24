@@ -1274,21 +1274,19 @@ impl TryFrom<message::Message> for Message {
                         ))?;
 
                         let source = match media_type {
-                            DocumentMediaType::PDF => {
-                                let data = match data {
-                                    DocumentSourceKind::Base64(data)
-                                    | DocumentSourceKind::String(data) => data,
-                                    _ => {
-                                        return Err(MessageError::ConversionError(
-                                            "Only base64 encoded data is supported for PDF documents".into(),
-                                        ));
-                                    }
-                                };
-                                DocumentSource::Base64 {
+                            DocumentMediaType::PDF => match data {
+                                DocumentSourceKind::Base64(data)
+                                | DocumentSourceKind::String(data) => DocumentSource::Base64 {
                                     data,
                                     media_type: DocumentFormat::PDF,
+                                },
+                                DocumentSourceKind::Url(url) => DocumentSource::Url { url },
+                                _ => {
+                                    return Err(MessageError::ConversionError(
+                                        "Only base64 encoded data or URLs are supported for PDF documents".into(),
+                                    ));
                                 }
-                            }
+                            },
                             DocumentMediaType::TXT => {
                                 let data = match data {
                                     DocumentSourceKind::String(data)
@@ -6000,5 +5998,33 @@ mod tests {
         assert_eq!(coerce_tool_input(json!([1, 2, 3])), json!({}));
         assert_eq!(coerce_tool_input(json!(42)), json!({}));
         assert_eq!(coerce_tool_input(json!(true)), json!({}));
+    }
+
+    // Regression test for issue #1429: PR #1431 added the `DocumentSource::Url`
+    // wire variant and response-side parsing, but the request-side
+    // `UserContent::Document` conversion still rejected URL-backed PDFs even
+    // though the Anthropic Messages API supports
+    // `"source": {"type": "url", ...}` for PDFs.
+    //
+    // See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>
+    // for URL-sourced PDF documents.
+    #[test]
+    fn url_pdf_converts_to_url_document_source() {
+        let pdf_url = "https://example.com/resume.pdf";
+        let msg = message::Message::User {
+            content: OneOrMany::one(message::UserContent::document_url(
+                pdf_url,
+                Some(message::DocumentMediaType::PDF),
+            )),
+        };
+
+        let converted = Message::try_from(msg).expect("URL PDF should convert");
+        let json = serde_json::to_value(&converted).expect("message should serialize");
+
+        assert_eq!(
+            json.pointer("/content/0/source"),
+            Some(&json!({ "type": "url", "url": pdf_url })),
+            "URL PDF should map to a url document source: {json:#}"
+        );
     }
 }
