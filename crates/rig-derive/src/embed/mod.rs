@@ -68,21 +68,29 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
 }
 
 /// A field carrying both `#[embed]` and `#[embed(embed_with = "...")]` would be
-/// embedded twice; make the conflict an error instead.
+/// embedded twice, and of two `#[embed(embed_with = "...")]` attributes only
+/// the first would be honored; make both conflicts errors instead.
 fn reject_conflicting_embed_attributes(data_struct: &DataStruct) -> syn::Result<()> {
     for field in &data_struct.fields {
         let basic = field
             .attrs
             .iter()
             .any(|attr| matches!(&attr.meta, Meta::Path(path) if path.is_ident(EMBED)));
-        let custom = field
+        let mut custom_attrs = field
             .attrs
             .iter()
-            .any(|attr| matches!(&attr.meta, Meta::List(_)) && attr.path().is_ident(EMBED));
+            .filter(|attr| matches!(&attr.meta, Meta::List(_)) && attr.path().is_ident(EMBED));
+        let custom = custom_attrs.next().is_some();
         if basic && custom {
             return Err(syn::Error::new_spanned(
                 field,
                 "a field cannot combine `#[embed]` and `#[embed(embed_with = \"...\")]`",
+            ));
+        }
+        if let Some(duplicate) = custom_attrs.next() {
+            return Err(syn::Error::new_spanned(
+                duplicate,
+                "a field cannot have more than one `#[embed(embed_with = \"...\")]` attribute",
             ));
         }
     }

@@ -41,7 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The `Embed` derive emits fully qualified trait impls and no longer requires
   the `Embed` trait to be imported at the call site. A field carrying both
   `#[embed]` and `#[embed(embed_with = "...")]` is now a compile error instead
-  of being embedded twice.
+  of being embedded twice, and a field carrying more than one
+  `#[embed(embed_with = "...")]` attribute is a compile error instead of the
+  first silently winning.
 
 ### Removed
 

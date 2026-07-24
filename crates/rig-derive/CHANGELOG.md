@@ -30,7 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call site), and `parameters()` builds its schema once via `LazyLock` with no
   generated `expect`. A field carrying both `#[embed]` and
   `#[embed(embed_with = "...")]` is now a compile error instead of being
-  embedded twice.
+  embedded twice, and a field carrying more than one
+  `#[embed(embed_with = "...")]` attribute is a compile error instead of the
+  first silently winning.
 
 - *(rig-derive)* [**breaking**] generated `#[rig_tool]` implementations preserve the function's `Result<T, E>` error as `Tool::Error` until erased dispatch normalizes it. Context-free functions implement the portable `Tool::call` API; functions with one `&mut ToolContext` parameter implement the contextual classic API. The context parameter may appear in any position; fully qualified `rig::agent::tool::ToolContext` / `rig_agent::tool::ToolContext` paths are recognized directly, while imported names and aliases use `#[rig(context)]`. The macro forwards runtime context and excludes that parameter from the generated arguments and JSON Schema without confusing unrelated application types also named `ToolContext`.
 
