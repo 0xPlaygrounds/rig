@@ -14,9 +14,9 @@ use rig::agent::{
     AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
     ToolCall as ToolCallEvent, ToolCallAction,
 };
-use rig::client::CompletionClient;
 use rig::completion::{GetTokenUsage, PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};

@@ -1,8 +1,4 @@
-use rig::{
-    client::{CompletionClient, ProviderClient},
-    completion::Prompt,
-    providers::gemini,
-};
+use rig::{completion::Prompt, prelude::*, providers::gemini};
 use rig_agent::test_utils::MockImageGeneratorTool;
 
 /// Verifies that Gemini can process an image returned by a classic tool call.

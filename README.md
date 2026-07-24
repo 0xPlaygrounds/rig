@@ -118,8 +118,7 @@ cargo add rig
 
 ### Simple example
 ```rust
-use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::openai;
 
 #[tokio::main]

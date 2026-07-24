@@ -18,7 +18,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_agent::{client::CompletionClient, completion::{Chat, Prompt}};
+//! use rig_agent::prelude::*;
 //! use rig_core::{client::ProviderClient, providers::openai};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,7 +54,7 @@
 //! ```no_run
 //! use rig_agent::{
 //!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
-//!     client::CompletionClient,
+//!     prelude::*,
 //!     completion::Prompt,
 //! };
 //! use rig_core::{

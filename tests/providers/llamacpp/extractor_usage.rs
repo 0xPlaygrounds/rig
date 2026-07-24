@@ -1,8 +1,8 @@
 //! Integration tests for llama.cpp extractor usage tracking.
 
 use anyhow::{Result, anyhow};
-use rig::client::CompletionClient;
 use rig::extractor::ExtractionResponse;
+use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

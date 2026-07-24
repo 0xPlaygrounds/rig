@@ -1,9 +1,9 @@
 //! AWS Bedrock tool-choice cassette coverage ported from Gemini tests.
 
 use rig::bedrock;
-use rig::client::CompletionClient;
 use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
 use rig::message::ToolChoice;
+use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 

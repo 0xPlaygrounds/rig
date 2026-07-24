@@ -5,9 +5,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message};
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig::tool::builtin::ThinkTool;

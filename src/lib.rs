@@ -11,7 +11,9 @@
 //! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool`. The
 //! classic API also lives at [`crate::agent::tool`]. Classic construction
 //! methods such as `client.agent(...)` come from
-//! [`crate::client::CompletionClient`], the same import as before the split.
+//! [`crate::client::AgentClientExt`]; `use rig::prelude::*;` brings it in
+//! alongside the canonical `CompletionClient`, the same surface as before the
+//! split.
 //!
 //! # Companion integrations
 //!
@@ -59,12 +61,16 @@ pub mod agent {
 
 /// Provider clients plus classic agent/extractor constructors.
 pub mod client {
-    // The classic runtime's `CompletionClient` extension (adding `agent()` /
-    // `extractor()`) owns this path; it shadows the portable provider trait of
-    // the same name from the glob below. Provider authors implement the
-    // portable trait via `rig_core::client::completion::CompletionClient`.
+    // Classic-runtime construction extensions: `agent()` / `extractor()` on any
+    // completion client (`AgentClientExt`) and `into_agent_builder()` on any
+    // completion model (`AgentModelExt`).
     #[cfg(feature = "agent")]
-    pub use rig_agent::client::{AgentModelExt, CompletionClient};
+    pub use rig_agent::client::{AgentClientExt, AgentModelExt};
+
+    // The full portable provider-client surface, including the canonical
+    // `CompletionClient`. `AgentClientExt` is a distinct name, so there is no
+    // shadow — just one canonical completion-client trait plus the classic
+    // construction extension.
     pub use rig_core::client::*;
 }
 
@@ -98,13 +104,14 @@ pub mod prelude {
     // impl Tool for X {…}` keeps working.
     #[cfg(feature = "agent")]
     pub use crate::tool::{Tool, ToolContext};
-    // The classic `CompletionClient` here intentionally shadows the portable
-    // one brought in by the `rig_core::prelude::*` glob below. The classic trait
-    // is a superset (it forwards `completion_model` and adds `agent`/
-    // `extractor`), so this is the more useful prelude default.
+    // The classic construction extension `AgentClientExt` (adding `agent()` /
+    // `extractor()`) sits alongside the canonical `CompletionClient` brought in
+    // by the `rig_core::prelude::*` glob below. The two traits share no method
+    // names, so both resolve without ambiguity and together restore the
+    // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentModelExt, Chat, CompletionClient, MultiTurnStreamItem, Prompt, PromptError,
+        Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
         StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
         TypedPrompt,
     };

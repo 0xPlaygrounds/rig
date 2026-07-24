@@ -4,9 +4,9 @@
 //! proven by a downstream-observable change (the model can't echo settings).
 
 use rig::agent::RequestPatch;
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::message::{Message, ToolChoice};
+use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::hook_stress_support::{ApplyPatch, FirstTurnPatch, fact_doc};

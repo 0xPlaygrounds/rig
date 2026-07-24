@@ -19,22 +19,30 @@ facade:
 ```rust
 use rig::prelude::*;
 use rig::tool::{Tool, ToolContext};   // classic contextual tool trait
-use rig::client::CompletionClient;    // provides completion_model + agent + extractor
 use rig::completion::Prompt;
 ```
+
+`use rig::prelude::*;` brings the canonical `CompletionClient`
+(`completion_model`) together with the classic `AgentClientExt` (`agent` /
+`extractor`) — the full pre-split client surface from one import.
 
 `rig::tool::Tool` is still the classic *contextual* trait (the one whose
 `call` takes `&mut ToolContext`). The only two things to know:
 
-1. **Constructing agents/extractors needs the client trait in scope.** Provider
-   clients no longer have inherent `.agent()` / `.extractor()` methods, so:
+1. **Constructing agents/extractors needs the client traits in scope.** Provider
+   clients no longer have inherent `.agent()` / `.extractor()` methods. Bring the
+   client surface in through the prelude:
 
    ```rust
-   use rig::client::CompletionClient;   // or `use rig::prelude::*;`
-   let agent = client.agent(model).build();
+   use rig::prelude::*;
+   let agent = client.agent(model).build();          // from AgentClientExt
    let extractor = client.extractor::<T>(model).build();
-   let m = client.completion_model(model);   // same trait, one import
+   let m = client.completion_model(model);            // from CompletionClient
    ```
+
+   If you prefer explicit imports:
+   `use rig::client::{CompletionClient, AgentClientExt};` — `CompletionClient`
+   provides `completion_model`, `AgentClientExt` provides `agent` / `extractor`.
 
 2. **The portable, context-free tool contract is `PortableTool`.** If you were
    using a runtime-independent tool, it is now `rig::tool::PortableTool`
@@ -52,8 +60,10 @@ use rig::completion::Prompt;
 `rig-core` is now portable-only. It no longer provides agent construction:
 `CompletionClient::agent` / `extractor`, `AgentBuilder`, `ExtractorBuilder`,
 contextual tools, hooks, and the run loop moved to `rig-agent`. Depend on
-`rig-agent` (or the `rig` facade) for those, and import
-`rig_agent::client::CompletionClient` for `.agent()` / `.extractor()`.
+`rig-agent` (or the `rig` facade) for those. The canonical
+`CompletionClient` (`completion_model`) lives in `rig-core`; `rig-agent` adds
+`rig_agent::client::AgentClientExt` for `.agent()` / `.extractor()`. Bring both
+in at once with `use rig_agent::prelude::*;`.
 
 Portable tools implement `rig_core::tool::PortableTool`. The `#[rig_tool]` macro
 for context-free functions produces a `PortableTool`; for functions that take

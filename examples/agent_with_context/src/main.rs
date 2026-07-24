@@ -4,8 +4,8 @@
 
 use anyhow::Result;
 use rig::agent::AgentBuilder;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::cohere::{self, COMMAND_R};
 
 const CONTEXT_DOCS: [&str; 3] = [

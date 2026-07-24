@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use rig::agent::Agent;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Prompt, PromptError};
+use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::openai::GPT_4O;
 use rig::providers::{anthropic, openai};

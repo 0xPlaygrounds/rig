@@ -1,8 +1,8 @@
 //! Preserves the live default-max-turns example as provider-local regression coverage.
 
 use anyhow::Result;
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

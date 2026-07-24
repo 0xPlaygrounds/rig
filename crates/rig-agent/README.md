@@ -11,7 +11,7 @@ enabled by default. Low-level provider and backend contracts live in
 Direct users import construction and prompting explicitly:
 
 ```rust,ignore
-use rig_agent::{client::CompletionClient, completion::Prompt};
+use rig_agent::prelude::*;
 use rig_core::{client::ProviderClient, providers::openai};
 
 let client = openai::Client::from_env()?;

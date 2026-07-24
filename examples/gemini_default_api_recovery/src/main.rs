@@ -9,8 +9,8 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
 };
-use rig::client::{CompletionClient, ProviderClient};
 use rig::message::ToolResultContent;
+use rig::prelude::*;
 use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},

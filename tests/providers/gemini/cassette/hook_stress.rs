@@ -28,8 +28,8 @@ use rig::agent::{
     ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, ObservationAction, RequestPatch,
     StreamingError, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
-use rig::client::CompletionClient;
 use rig::completion::{Document, Prompt};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
 use rig::tool::Tool;

@@ -1,4 +1,4 @@
-use rig_agent::client::CompletionClient;
+use rig_agent::prelude::*;
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_core::client::ProviderClient;

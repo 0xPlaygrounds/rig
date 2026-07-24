@@ -1,8 +1,8 @@
 //! Moonshot required-tool-choice smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::message::ToolChoice;
+use rig::prelude::*;
 use rig::providers::moonshot;
 
 use crate::support::{

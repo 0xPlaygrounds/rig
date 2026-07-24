@@ -1,7 +1,7 @@
 //! Copilot agent completion smoke test.
 
-use rig::client::{CompletionClient, ModelListingClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, live_client, with_copilot_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};

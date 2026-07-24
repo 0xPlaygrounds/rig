@@ -1,6 +1,6 @@
 //! Doubleword runs of provider-neutral tool conformance scenarios.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig_agent::test_utils::{optional_argument, sequential_tools};
 
 use super::super::{DEFAULT_MODEL, TOOL_MODEL, support::with_doubleword_cassette};

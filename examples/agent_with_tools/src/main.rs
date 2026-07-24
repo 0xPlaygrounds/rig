@@ -3,8 +3,8 @@
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{DynamicTool, ToolOutput};
 use serde::Deserialize;

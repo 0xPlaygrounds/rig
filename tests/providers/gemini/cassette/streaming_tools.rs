@@ -1,8 +1,8 @@
 //! Gemini streaming tools coverage, including the migrated example path.
 
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,

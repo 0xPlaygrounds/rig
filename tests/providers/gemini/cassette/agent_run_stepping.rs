@@ -3,9 +3,9 @@
 //! and `max_turns` exhaustion.
 
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
-use rig::client::CompletionClient;
 use rig::completion::PromptError;
 use rig::message::{Message, ToolChoice, UserContent};
+use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::agent_run_support::{

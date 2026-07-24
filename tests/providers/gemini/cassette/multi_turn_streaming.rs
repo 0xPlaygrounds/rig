@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;

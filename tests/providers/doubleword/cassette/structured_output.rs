@@ -1,7 +1,7 @@
 //! Cassette-backed Doubleword structured output coverage.
 
-use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
+use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::support::{

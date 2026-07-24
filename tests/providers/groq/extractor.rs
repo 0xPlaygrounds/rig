@@ -1,6 +1,6 @@
 //! Groq extractor smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::prelude::*;
 use rig::providers::groq;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};

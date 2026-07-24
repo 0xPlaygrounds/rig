@@ -1,7 +1,7 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
-use rig::client::CompletionClient;
 use rig::completion::GetTokenUsage;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 

@@ -1,11 +1,11 @@
 //! Migrated from `examples/image.rs`.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;
 use rig::message::ImageMediaType;
+use rig::prelude::*;
 use rig::providers::anthropic;
 use tokio::fs;
 

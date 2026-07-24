@@ -1,6 +1,6 @@
 use rig::{
-    client::{CompletionClient, ProviderClient},
     completion::TypedPrompt,
+    prelude::*,
     providers::{azure::Client, openai::GPT_5_MINI},
 };
 use schemars::JsonSchema;

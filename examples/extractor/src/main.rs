@@ -3,7 +3,7 @@
 //! Run it to compare a plain structured extraction with a usage-aware one.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::prelude::*;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

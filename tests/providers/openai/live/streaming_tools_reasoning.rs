@@ -1,7 +1,5 @@
 use futures::StreamExt;
-use rig::{
-    client::CompletionClient, completion::Message, providers::openai, streaming::StreamingChat,
-};
+use rig::{completion::Message, prelude::*, providers::openai, streaming::StreamingChat};
 use rig_agent::test_utils::MockExampleTool;
 
 #[tokio::test]

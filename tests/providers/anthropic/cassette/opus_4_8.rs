@@ -1,10 +1,10 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
-use rig::client::CompletionClient;
 use rig::completion::{
     AssistantContent, CompletionModel, Document, Message, ProviderToolDefinition,
 };
 use rig::message::Text;
+use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::telemetry::ProviderResponseExt;
 use serde::Deserialize;

@@ -1,8 +1,8 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
 use rig::agent::OutputMode;
-use rig::client::CompletionClient;
 use rig::completion::{Prompt, TypedPrompt};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;

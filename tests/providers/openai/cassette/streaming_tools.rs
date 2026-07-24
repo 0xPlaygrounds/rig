@@ -1,9 +1,9 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 
 use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 use rig::streaming::StreamingPrompt;
