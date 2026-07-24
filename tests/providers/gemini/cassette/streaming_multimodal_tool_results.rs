@@ -3,10 +3,10 @@
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
-use rig::client::CompletionClient;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
 };
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,

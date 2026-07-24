@@ -5,7 +5,7 @@ and agent APIs. The crate receives byte buffers and performs no filesystem or
 network access itself.
 
 ```rust,no_run
-use rig_core::{agent::AgentBuilder, completion::Prompt};
+use rig_agent::{agent::AgentBuilder, completion::Prompt};
 use rig_candle::{CandleModel, ModelData};
 
 #[tokio::main]

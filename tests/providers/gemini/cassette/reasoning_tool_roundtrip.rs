@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::*;
 use rig::streaming::StreamingChat;
 
 use crate::reasoning::{self, WeatherTool};

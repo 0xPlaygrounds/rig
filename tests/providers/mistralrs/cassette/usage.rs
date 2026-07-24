@@ -1,7 +1,7 @@
 //! Cassette coverage for mistral.rs usage without OpenAI `output_tokens_details`.
 
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
+use rig::prelude::*;
 use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};

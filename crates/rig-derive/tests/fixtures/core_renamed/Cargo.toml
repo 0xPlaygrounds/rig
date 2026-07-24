@@ -1,0 +1,13 @@
+[package]
+name = "rig-derive-core-renamed-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+core_runtime = { package = "rig-core", path = "../../../../rig-core", default-features = false }
+rig_macros = { package = "rig-derive", path = "../../.." }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.150"

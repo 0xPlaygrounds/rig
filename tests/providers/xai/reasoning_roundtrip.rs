@@ -3,7 +3,7 @@
 //! Run only these cases with:
 //! `cargo test -p rig --test xai xai::reasoning_roundtrip::streaming -- --ignored --nocapture`
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;

@@ -8,9 +8,9 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::client::CompletionClient;
 use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
+use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette_result;

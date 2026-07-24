@@ -11,12 +11,12 @@
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
-use rig::test_utils::validate_rewritten_arguments;
 use rig::tool::Tool;
+use rig_agent::test_utils::validate_rewritten_arguments;
 use serde::Deserialize;
 use serde_json::json;
 

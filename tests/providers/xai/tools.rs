@@ -1,7 +1,7 @@
 //! xAI tools smoke test.
 
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::xai;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,6 @@
 //! DeepSeek reasoning roundtrip tests.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;

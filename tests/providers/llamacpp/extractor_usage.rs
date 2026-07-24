@@ -2,6 +2,7 @@
 
 use anyhow::{Result, anyhow};
 use rig::extractor::ExtractionResponse;
+use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

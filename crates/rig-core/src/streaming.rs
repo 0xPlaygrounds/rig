@@ -2,20 +2,14 @@
 //! It provides traits and types for generating streaming completion requests and
 //! handling streaming completion responses.
 //!
-//! The main traits defined in this module are:
-//! - [StreamingPrompt]: Defines a high-level streaming LLM one-shot prompt interface
-//! - [StreamingChat]: Defines a high-level streaming LLM chat interface with history
-//!
+//! Provider implementations use these types to expose raw streamed completion
+//! events without depending on a runtime.
 
 use crate::OneOrMany;
-use crate::agent::prompt_request::streaming::StreamingPromptRequest;
-use crate::completion::{
-    CompletionError, CompletionModel, CompletionResponse, GetTokenUsage, Message, Usage,
-};
+use crate::completion::{CompletionError, CompletionResponse, GetTokenUsage, Usage};
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
 };
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -555,72 +549,6 @@ where
             },
         }
     }
-}
-
-/// Trait for high-level streaming prompt interface.
-///
-/// This trait provides a simple interface for streaming prompts to a completion model.
-/// Implementations can optionally support prompt hooks for observing and controlling
-/// the agent's execution lifecycle.
-pub trait StreamingPrompt<M, R>
-where
-    M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
-{
-    /// Stream a simple prompt to the model.
-    ///
-    /// Attach hooks to observe or steer the run via
-    /// [`StreamingPromptRequest::add_hook`].
-    fn stream_prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest<M>;
-}
-
-/// Trait for high-level streaming chat interface with conversation history.
-///
-/// This trait provides an interface for streaming chat completions with support
-/// for maintaining conversation history. Implementations can optionally support
-/// prompt hooks for observing and controlling the agent's execution lifecycle.
-pub trait StreamingChat<M, R>: WasmCompatSend + WasmCompatSync
-where
-    M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
-{
-    /// Stream a chat with history to the model.
-    ///
-    /// The messages returned by the model can be accessed via `PromptResponse::messages()`
-    ///
-    /// You are responsible for managing history, a simple linear solution could look like:
-    /// ```ignore
-    ///  let mut history = vec![];
-    ///
-    ///  loop {
-    ///      let prompt = "Create GPT-67, make no mistakes";
-    ///      let mut stream = agent.stream_chat(prompt, &history).await;
-    ///
-    ///      while let Some(msg) = stream.next().await {
-    ///         match msg {
-    ///              Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-    ///                  history.extend_from_slice(fin.messages().unwrap_or_default());
-    ///                  break;
-    ///             }
-    ///             Ok(_other) => { /* Do something with this chunk */ }
-    ///             Err(e) => return Err(e.into()),
-    ///         }
-    ///     }
-    /// }
-    /// ```
-    fn stream_chat<I, T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> StreamingPromptRequest<M>
-    where
-        I: IntoIterator<Item = T> + WasmCompatSend,
-        T: Into<Message>;
 }
 
 // Test module

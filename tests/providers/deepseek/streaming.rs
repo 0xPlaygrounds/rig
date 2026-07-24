@@ -1,6 +1,6 @@
 //! DeepSeek streaming smoke test.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::deepseek::DEEPSEEK_V4_FLASH;
 use rig::streaming::StreamingPrompt;
 

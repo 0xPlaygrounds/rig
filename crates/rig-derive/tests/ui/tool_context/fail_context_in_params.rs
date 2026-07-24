@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use rig_core::tool::ToolContext;
+use rig_agent::tool::ToolContext;
 use rig_derive::rig_tool;
 
 #[rig_tool(params(context = "host context"))]

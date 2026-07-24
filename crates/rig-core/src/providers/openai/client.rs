@@ -4,14 +4,14 @@ use crate::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
-    extractor::ExtractorBuilder,
     http_client::{self, HttpClientExt},
-    prelude::CompletionClient,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::fmt::Debug;
+
+#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
+use crate::client::completion::CompletionClient;
 
 // ================================================================
 // Main OpenAI Client
@@ -147,24 +147,10 @@ where
         + WasmCompatSync
         + 'static,
 {
-    /// Create an extractor builder with the given completion model.
-    /// Uses the OpenAI Responses API (default behavior).
-    pub fn extractor<U>(
-        &self,
-        model: impl Into<String>,
-    ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<H>, U>
-    where
-        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
-    {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
-
     /// Sets where Rig system instructions are placed in Responses requests for
-    /// every completion model created from this client, including through
-    /// [`CompletionClient::agent`] and [`Self::extractor`]. Models capture the
+    /// every completion model created from this client. Models capture the
     /// placement when they are created, so models built before this call are
-    /// unaffected. See [`SystemInstructionsPlacement`] for when each placement
-    /// applies.
+    /// unaffected. See [`SystemInstructionsPlacement`] for when each placement applies.
     pub fn with_system_instructions_placement(
         self,
         placement: SystemInstructionsPlacement,
@@ -176,8 +162,7 @@ where
 
     /// Sends Rig system instructions as `system` messages in `input` instead of
     /// as top-level Responses API `instructions` for every completion model
-    /// created from this client, including through [`CompletionClient::agent`]
-    /// and [`Self::extractor`]. Models built before this call are unaffected.
+    /// created from this client. Models built before this call are unaffected.
     ///
     /// OpenAI's Responses API supports `instructions`, and Rig uses it by
     /// default. Use this compatibility fallback for OpenAI-compatible providers
@@ -232,18 +217,6 @@ where
         + WasmCompatSync
         + 'static,
 {
-    /// Create an extractor builder with the given completion model.
-    /// Uses the OpenAI Chat Completions API.
-    pub fn extractor<U>(
-        &self,
-        model: impl Into<String>,
-    ) -> ExtractorBuilder<super::completion::CompletionModel<H>, U>
-    where
-        U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
-    {
-        ExtractorBuilder::new(self.completion_model(model))
-    }
-
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API. A system-instructions
     /// placement configured before switching to the Completions API is

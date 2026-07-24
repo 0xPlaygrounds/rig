@@ -6,9 +6,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::message::{AssistantContent, UserContent};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::Deserialize;

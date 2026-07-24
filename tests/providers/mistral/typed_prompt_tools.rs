@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::TypedPrompt;
+use rig::prelude::*;
 use rig::providers::mistral;
 use rig::tool::Tool;
 

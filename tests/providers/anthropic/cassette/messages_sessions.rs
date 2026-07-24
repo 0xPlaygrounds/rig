@@ -11,9 +11,9 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;

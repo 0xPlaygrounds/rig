@@ -2,8 +2,8 @@ use anyhow::Result;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

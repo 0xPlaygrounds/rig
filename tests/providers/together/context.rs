@@ -1,7 +1,7 @@
 //! Together context smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::together;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};

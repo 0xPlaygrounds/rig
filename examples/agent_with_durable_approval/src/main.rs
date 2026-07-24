@@ -30,9 +30,9 @@
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{ToolResultContent, UserContent};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;

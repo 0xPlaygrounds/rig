@@ -1,12 +1,12 @@
 //! Anthropic prompt caching cassette tests.
 
 use futures::StreamExt;
-use rig::client::CompletionClient;
 use rig::completion::{
     AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, GetTokenUsage,
     ToolDefinition, Usage,
 };
 use rig::message::ToolChoice;
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::StreamedAssistantContent;
 use serde_json::json;

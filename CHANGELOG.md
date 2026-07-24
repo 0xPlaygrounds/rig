@@ -7,11 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- *(agent)* Remove the experimental `rig-runtime-conformance` crate and its
+  classic-runtime adapter. With a single runtime it was a premature cross-runtime
+  abstraction, and its scenarios were ~90% redundant with `rig-agent`'s own test
+  suite. The genuinely-unique invariants (multi-step memory append-once, append
+  of only newly-committed messages, no-append on hook stop, committed-transcript
+  role validity, and a two-sided concurrency bound) are now covered by direct
+  tests in `rig-agent`. A real conformance contract can be re-extracted once a
+  second runtime exists.
+
 ### Fixed
 
 - *(aws)* Stop enabling the AWS SDK's legacy Rustls connector in the Bedrock and S3 Vectors integrations, removing vulnerable `rustls-webpki` 0.101 from their active dependency graphs while retaining the modern default HTTPS client.
 
 ### Changed
+
+- *(core, agent)* [**breaking**] Split the monolithic core into a portable
+  contracts crate (`rig-core`) and the classic agent runtime crate (`rig-agent`),
+  presented behind the `rig` facade. Code using the `rig` facade needs
+  essentially no source changes — `rig::…` paths, `rig::prelude::*`, and
+  `rig::tool::{Tool, ToolContext}` all keep working. Direct `rig-core` dependents
+  that constructed agents must now depend on `rig-agent`. See the migration
+  guide (`MIGRATING.md`).
+
+- *(tool)* [**breaking**] The portable, context-free tool contract is now named
+  `PortableTool` (with `PortableToolEmbedding`, `PortableDynamicTool`,
+  `portable_tool_definition`); the `rig_core::tool::Tool` alias is removed. On
+  the `rig` facade, `rig::tool::Tool` remains the classic *contextual* trait, so
+  existing facade code is unchanged; portable contracts are always available as
+  `rig::tool::PortableTool` (and in full under `rig::tool::portable`).
+
+- *(client)* [**breaking**] Provider clients no longer carry inherent
+  `agent()` / `extractor()` methods. There is a single canonical
+  `CompletionClient` trait (in `rig-core`, providing `completion_model`); the
+  classic `agent()` / `extractor()` constructors live on the new `AgentClientExt`
+  extension trait. `use rig::prelude::*;` brings both into scope for the full
+  pre-split client surface (or import `rig::client::{CompletionClient,
+  AgentClientExt}` explicitly).
+
+- *(agent)* [**breaking**] `rig-agent` no longer re-exports all of `rig-core`
+  at its crate root. The previous `pub use rig_core::*;` made `rig-agent` an
+  implicit second facade; the root now exports only runtime-owned items (plus
+  the runtime-facing `rig_tool` / `tool_macro` macros). Code that depends on
+  `rig-agent` directly and reached a portable `rig-core` item through the
+  `rig-agent` root must import it from `rig_agent::core` (e.g.
+  `rig_agent::core::OneOrMany`) or depend on `rig-core` directly. The root
+  `rig` facade is unaffected: `rig::…` and `rig::prelude::*` are unchanged.
+
+  ```rust
+  // Before
+  use rig_agent::{OneOrMany, message::Message};
+
+  // After
+  use rig_agent::core::{OneOrMany, message::Message};
+  ```
 
 - *(agent)* [**breaking**] Managed agent hooks are now provider-independent.
   `AgentHook`, `HookStack`, and the internal erased-hook interface no longer

@@ -25,9 +25,9 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
     ObservationAction, RequestPatch,
 };
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Document, Message, Prompt};
 use rig::message::UserContent;
+use rig::prelude::*;
 use rig::providers::openai;
 
 // ---------------------------------------------------------------------------

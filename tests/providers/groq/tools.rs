@@ -1,7 +1,7 @@
 //! Groq tools smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::groq;
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};

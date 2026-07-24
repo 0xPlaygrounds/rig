@@ -8,9 +8,9 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::client::CompletionClient;
 use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
+use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette_result;

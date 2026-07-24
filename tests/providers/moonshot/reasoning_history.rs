@@ -1,9 +1,9 @@
 //! Moonshot reasoning-history roundtrip smoke test.
 
 use rig::OneOrMany;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, Reasoning};
+use rig::prelude::*;
 use rig::providers::moonshot;
 
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};

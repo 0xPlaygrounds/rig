@@ -24,6 +24,7 @@ proc-macro = true
 [dev-dependencies]
 anyhow = { workspace = true }
 rig-core = { path = "../rig-core" }
+rig-agent = { path = "../rig-agent" }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

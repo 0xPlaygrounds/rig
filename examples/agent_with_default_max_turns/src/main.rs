@@ -3,8 +3,8 @@
 //! Run it to see a multi-step arithmetic task complete without passing `max_turns` per prompt.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

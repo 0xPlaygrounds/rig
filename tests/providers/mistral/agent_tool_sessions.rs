@@ -9,9 +9,9 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
+use rig::prelude::*;
 use rig::providers::mistral;
 use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;

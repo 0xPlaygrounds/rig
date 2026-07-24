@@ -22,8 +22,8 @@
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Usage;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 use rig::tool::Tool;

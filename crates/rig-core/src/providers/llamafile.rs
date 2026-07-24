@@ -5,22 +5,27 @@
 //! OpenAI-compatible API at `http://localhost:8080/v1`.
 //!
 //! # Example
-//! ```rust,ignore
-//! use rig_core::providers::llamafile;
-//! use rig_core::completion::Prompt;
+//! ```no_run
+//! use rig_core::{
+//!     client::CompletionClient,
+//!     completion::CompletionModel,
+//!     providers::llamafile,
+//! };
 //!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a new Llamafile client (defaults to http://localhost:8080)
 //! let client = llamafile::Client::from_url("http://localhost:8080")?;
 //!
-//! // Create an agent with a preamble
-//! let agent = client
-//!     .agent(llamafile::LLAMA_CPP)
-//!     .preamble("You are a helpful assistant.")
+//! // Send a completion request with a preamble.
+//! let model = client.completion_model(llamafile::LLAMA_CPP);
+//! let request = model
+//!     .completion_request("Hello!")
+//!     .preamble("You are a helpful assistant.".to_string())
 //!     .build();
-//!
-//! // Prompt the agent and print the response
-//! let response = agent.prompt("Hello!").await?;
-//! println!("{response}");
+//! let response = model.completion(request).await?;
+//! println!("{:?}", response.choice);
+//! # Ok(())
+//! # }
 //! ```
 
 use crate::client::{

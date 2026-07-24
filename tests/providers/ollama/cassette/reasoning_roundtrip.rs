@@ -4,7 +4,7 @@
 //! local Ollama server. Exercises that reasoning emitted on turn 1 survives into
 //! history and is accepted back by Ollama on turn 2 (regression for #1926).
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 
 use super::super::support::with_ollama_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};

@@ -2,12 +2,12 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
+use rig::prelude::*;
 use rig::providers::openrouter::Message as OpenRouterMessage;
 use rig::streaming::StreamingPrompt;
 use serde_json::Value;

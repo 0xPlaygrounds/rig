@@ -7,9 +7,9 @@
 //! build time, query embedding at prompt time) alongside the completion
 //! turns.
 
-use rig::client::{CompletionClient, EmbeddingsClient};
 use rig::completion::{Chat, Message};
 use rig::embeddings::EmbeddingsBuilder;
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::ToolSet;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;

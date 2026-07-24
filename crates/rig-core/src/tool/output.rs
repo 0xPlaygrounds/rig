@@ -1,6 +1,6 @@
 //! Canonical model-visible tool output.
 
-use std::any::Any;
+use std::{any::Any, fmt};
 
 use serde::Serialize;
 
@@ -15,9 +15,28 @@ use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
 /// [`serde_json::Value`], including a JSON string, stays JSON. Multimodal tools
 /// opt in explicitly with [`Self::content`]. Rig never reparses text as JSON to
 /// guess whether it represents rich content.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ToolOutput {
     content: OneOrMany<ToolResultContent>,
+}
+
+impl fmt::Debug for ToolOutput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let content_kinds = self
+            .content
+            .iter()
+            .map(|content| match content {
+                ToolResultContent::Text(_) => "text",
+                ToolResultContent::Image(_) => "image",
+                ToolResultContent::Json { .. } => "json",
+            })
+            .collect::<Vec<_>>();
+        formatter
+            .debug_struct("ToolOutput")
+            .field("content_count", &self.content.len())
+            .field("content_kinds", &content_kinds)
+            .finish()
+    }
 }
 
 impl ToolOutput {
@@ -131,12 +150,50 @@ impl From<OneOrMany<ToolResultContent>> for ToolOutput {
 /// A blanket implementation keeps ordinary [`Serialize`] outputs ergonomic.
 /// Because that blanket implementation already covers every serializable type,
 /// it cannot be overridden with another implementation for a serializable
-/// custom type. Return [`ToolOutput`] from [`Tool::call`](crate::tool::Tool::call)
+/// custom type. Return [`ToolOutput`] from [`PortableTool::call`](crate::tool::PortableTool::call)
 /// when that type needs a custom presentation. Implement this trait directly
 /// only for output types that do not implement [`Serialize`].
 pub trait IntoToolOutput {
     /// Convert this value without routing structured data through a string.
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError>;
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use crate::message::ImageMediaType;
+
+    use super::*;
+
+    #[test]
+    fn debug_reports_shape_without_tool_content() {
+        let output = ToolOutput::content(
+            OneOrMany::many(vec![
+                ToolResultContent::text("Bearer secret-tool-output"),
+                ToolResultContent::json(serde_json::json!({
+                    "credential": "secret-json-output"
+                })),
+                ToolResultContent::image_base64(
+                    "secret-image-output",
+                    Some(ImageMediaType::PNG),
+                    None,
+                ),
+            ])
+            .unwrap(),
+        );
+
+        let debug = format!("{output:?}");
+        assert!(debug.contains("content_count: 3"));
+        assert!(debug.contains("text"));
+        assert!(debug.contains("json"));
+        assert!(debug.contains("image"));
+        for secret in [
+            "secret-tool-output",
+            "secret-json-output",
+            "secret-image-output",
+        ] {
+            assert!(!debug.contains(secret));
+        }
+    }
 }
 
 impl<T> IntoToolOutput for T

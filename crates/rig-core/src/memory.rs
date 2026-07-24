@@ -1,9 +1,9 @@
 //! Conversation memory: Rig-managed persistent conversation history for agents.
 //!
 //! Memory differs from existing agent context features:
-//! - [`crate::agent::AgentBuilder::context`]: static documents always included in prompts.
-//! - [`crate::agent::RequestPatch::extra_context`]: per-turn documents supplied by application hooks.
-//! - [`crate::agent::prompt_request::PromptRequest::history`]: caller-managed message history.
+//! - classic runtime context: static documents always included in prompts;
+//! - classic runtime request patches: per-turn documents supplied by application hooks;
+//! - caller-managed message history supplied directly on completion requests;
 //! - **Memory** (this module): Rig-managed history loaded and saved automatically per
 //!   conversation id.
 //!
@@ -11,23 +11,23 @@
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! use rig_core::client::{CompletionClient, ProviderClient};
-//! use rig_core::completion::Prompt;
-//! use rig_core::memory::InMemoryConversationMemory;
-//! use rig_core::providers::openai;
+//! use rig_core::{
+//!     completion::Message,
+//!     memory::{ConversationMemory, InMemoryConversationMemory},
+//! };
 //!
 //! let memory = InMemoryConversationMemory::new();
-//!
-//! let openai = openai::Client::from_env()?;
-//! let agent = openai.agent("gpt-4o").memory(memory).build();
-//!
-//! agent.prompt("My name is Alice.")
-//!     .conversation("thread-1")
+//! memory
+//!     .append(
+//!         "thread-1",
+//!         vec![
+//!             Message::user("My name is Alice."),
+//!             Message::assistant("Hello, Alice!"),
+//!         ],
+//!     )
 //!     .await?;
-//!
-//! let answer = agent.prompt("What's my name?")
-//!     .conversation("thread-1")
-//!     .await?;
+//! let history = memory.load("thread-1").await?;
+//! assert_eq!(history.len(), 2);
 //! # Ok(()) }
 //! ```
 //!
@@ -85,7 +85,7 @@ impl MemoryError {
 /// A persistent conversation history backend.
 ///
 /// Implementors store an ordered list of [`Message`]s per `conversation_id`. Rig
-/// invokes [`ConversationMemory::load`] before sending a prompt and
+/// runtimes invoke [`ConversationMemory::load`] before sending a prompt and
 /// [`ConversationMemory::append`] after a successful turn.
 ///
 /// Implementations should keep `append` cheap; it runs inline before the agent

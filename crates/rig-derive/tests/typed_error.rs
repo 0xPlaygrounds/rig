@@ -1,4 +1,4 @@
-use rig_core::tool::{Tool, ToolContext, ToolErrorKind, ToolSet};
+use rig_agent::tool::{Tool, ToolContext, ToolErrorKind, ToolSet};
 use rig_derive::rig_tool;
 
 #[derive(Debug)]

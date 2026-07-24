@@ -1,9 +1,6 @@
-//! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::ToolEmbedding]
+//! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::PortableToolEmbedding]
 
-use crate::{
-    Embed,
-    tool::{ErasedEmbeddingTool, ToolEmbedding},
-};
+use crate::{Embed, tool::PortableToolEmbedding};
 use serde::Serialize;
 
 use super::embed::EmbedError;
@@ -33,7 +30,7 @@ impl ToolSchema {
     /// ```rust
     /// use rig_core::{
     ///     embeddings::ToolSchema,
-    ///     tool::{Tool, ToolContext, ToolEmbedding},
+    ///     tool::{PortableTool, PortableToolEmbedding},
     /// };
     ///
     /// #[derive(Debug, thiserror::Error)]
@@ -45,7 +42,7 @@ impl ToolSchema {
     /// struct InitError;
     ///
     /// struct Nothing;
-    /// impl Tool for Nothing {
+    /// impl PortableTool for Nothing {
     ///     const NAME: &'static str = "nothing";
     ///
     ///     type Args = ();
@@ -60,12 +57,12 @@ impl ToolSchema {
     ///         serde_json::json!({})
     ///     }
     ///
-    ///     async fn call(&self, _context: &mut ToolContext, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    ///     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
     ///         Ok(())
     ///     }
     /// }
     ///
-    /// impl ToolEmbedding for Nothing {
+    /// impl PortableToolEmbedding for Nothing {
     ///     type InitError = InitError;
     ///     type Context = ();
     ///     type State = ();
@@ -88,22 +85,11 @@ impl ToolSchema {
     /// ```
     pub fn try_from<T>(tool: &T) -> Result<Self, EmbedError>
     where
-        T: ToolEmbedding + 'static,
+        T: PortableToolEmbedding + 'static,
     {
-        Self::from_tool(T::NAME, tool)
-    }
-
-    /// Convert a tool to a schema using an explicit registered name.
-    ///
-    /// Registry paths should pass the key under which the tool was registered so
-    /// vector-store IDs resolve back to the same entry.
-    pub(crate) fn from_tool(
-        name: impl Into<String>,
-        tool: &dyn ErasedEmbeddingTool,
-    ) -> Result<Self, EmbedError> {
         Ok(ToolSchema {
-            name: name.into(),
-            context: tool.serialized_context().map_err(EmbedError::new)?,
+            name: T::NAME.to_string(),
+            context: serde_json::to_value(tool.context()).map_err(EmbedError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
     }
@@ -114,11 +100,11 @@ mod tests {
     use std::convert::Infallible;
 
     use super::ToolSchema;
-    use crate::tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError};
+    use crate::tool::{PortableTool, PortableToolEmbedding, ToolExecutionError};
 
     struct NamedTool;
 
-    impl Tool for NamedTool {
+    impl PortableTool for NamedTool {
         const NAME: &'static str = "static_name";
 
         type Error = rig::tool::ToolExecutionError;
@@ -134,16 +120,12 @@ mod tests {
             serde_json::json!({})
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            _args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
             Ok(())
         }
     }
 
-    impl ToolEmbedding for NamedTool {
+    impl PortableToolEmbedding for NamedTool {
         type InitError = Infallible;
         type Context = ();
         type State = ();

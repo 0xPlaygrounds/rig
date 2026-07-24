@@ -1,7 +1,7 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
+use rig::prelude::*;
 use rig::providers::openai;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;

@@ -5,11 +5,11 @@
 
 use futures::FutureExt;
 use rig::OneOrMany;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
+use rig::prelude::*;
 use rig::providers::openai::{self, FileData, UserContent as OpenAiUserContent};
 use serde::Deserialize;
 use std::future::Future;

@@ -1,6 +1,6 @@
 use anyhow::Result;
-use rig_core::prelude::*;
-use rig_core::{completion::Prompt, tool::Tool};
+use rig_agent::prelude::*;
+use rig_agent::tool::ToolContext;
 use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,7 @@ impl Tool for Adder {
 
     async fn call(
         &self,
-        _context: &mut rig_core::tool::ToolContext,
+        _context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);

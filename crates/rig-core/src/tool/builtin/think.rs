@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::tool::Tool;
+use crate::tool::PortableTool;
 
 /// Arguments for the Think tool
 #[derive(Deserialize)]
@@ -27,7 +27,7 @@ pub struct ThinkError(String);
 #[derive(Deserialize, Serialize)]
 pub struct ThinkTool;
 
-impl Tool for ThinkTool {
+impl PortableTool for ThinkTool {
     const NAME: &'static str = "think";
     type Error = ThinkError;
     type Args = ThinkArgs;
@@ -53,11 +53,7 @@ impl Tool for ThinkTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut crate::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // The think tool doesn't actually do anything except echo back the thought
         // This is intentional - it's just a space for the model to reason through problems
         Ok(args.thought)
@@ -67,12 +63,12 @@ impl Tool for ThinkTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool::tool_definition;
+    use crate::tool::portable_tool_definition;
 
     #[test]
     fn test_think_tool_definition() {
         let tool = ThinkTool;
-        let definition = tool_definition(&tool);
+        let definition = portable_tool_definition(&tool);
 
         assert_eq!(definition.name, "think");
         assert!(
@@ -89,10 +85,7 @@ mod tests {
             thought: "I need to verify the user's identity before proceeding".to_string(),
         };
 
-        let result = tool
-            .call(&mut crate::tool::ToolContext::new(), args)
-            .await
-            .unwrap();
+        let result = tool.call(args).await.unwrap();
         assert_eq!(
             result,
             "I need to verify the user's identity before proceeding"

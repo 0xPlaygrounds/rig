@@ -8,9 +8,9 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::client::CompletionClient;
 use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
+use rig::prelude::*;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::assert_nonempty_response;

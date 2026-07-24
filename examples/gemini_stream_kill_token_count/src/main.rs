@@ -49,8 +49,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionError, CompletionModel, GetTokenUsage, Usage};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,

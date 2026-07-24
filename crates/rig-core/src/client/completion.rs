@@ -1,8 +1,4 @@
-use crate::agent::AgentBuilder;
 use crate::completion::CompletionModel;
-use crate::extractor::ExtractorBuilder;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 /// A provider client with completion capabilities.
 /// Clone is required for conversions between client types.
@@ -27,35 +23,5 @@ pub trait CompletionClient {
     /// ```
     fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
         Self::CompletionModel::make(self, model)
-    }
-
-    /// Create an agent builder with the given completion model.
-    ///
-    /// # Example with OpenAI
-    /// ```no_run
-    /// use rig_core::prelude::*;
-    /// use rig_core::providers::openai::{Client, self};
-    ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key")?;
-    ///
-    /// let agent = openai.agent(openai::GPT_5_2)
-    ///    .preamble("You are comedian AI with a mission to make people laugh.")
-    ///    .temperature(0.0)
-    ///    .build();
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn agent(&self, model: impl Into<String>) -> AgentBuilder<Self::CompletionModel> {
-        AgentBuilder::new(self.completion_model(model))
-    }
-
-    /// Create an extractor builder with the given completion model.
-    fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<Self::CompletionModel, T>
-    where
-        T: JsonSchema + for<'a> Deserialize<'a> + Serialize + Send + Sync,
-    {
-        ExtractorBuilder::new(self.completion_model(model))
     }
 }

@@ -6,7 +6,7 @@
     clippy::unreachable
 )]
 
-use rig_core::tool::Tool;
+use rig_agent::tool::Tool;
 use rig_derive::rig_tool;
 
 #[rig_tool(
@@ -77,7 +77,7 @@ fn sync_calculator(
 async fn test_calculator_tool() {
     let calculator = Calculator;
 
-    let definition = rig_core::tool::tool_definition(&calculator);
+    let definition = rig_agent::tool::tool_definition(&calculator);
     assert_eq!(Calculator::NAME, "calculator");
     assert_eq!(
         definition.description,
@@ -140,7 +140,7 @@ async fn test_calculator_tool() {
 
     for (input, expected) in test_cases {
         let result = calculator
-            .call(&mut rig_core::tool::ToolContext::new(), input)
+            .call(&mut rig_agent::tool::ToolContext::new(), input)
             .await
             .unwrap();
         assert_eq!(result, serde_json::json!(expected));
@@ -153,7 +153,7 @@ async fn test_calculator_tool() {
         operation: "divide".to_string(),
     };
     let err = calculator
-        .call(&mut rig_core::tool::ToolContext::new(), div_zero)
+        .call(&mut rig_agent::tool::ToolContext::new(), div_zero)
         .await
         .unwrap_err();
     assert!(err.kind() == rig_core::tool::ToolErrorKind::Other);
@@ -165,7 +165,7 @@ async fn test_calculator_tool() {
         operation: "power".to_string(),
     };
     let err = calculator
-        .call(&mut rig_core::tool::ToolContext::new(), invalid_op)
+        .call(&mut rig_agent::tool::ToolContext::new(), invalid_op)
         .await
         .unwrap_err();
     assert!(err.kind() == rig_core::tool::ToolErrorKind::Other);
@@ -174,7 +174,7 @@ async fn test_calculator_tool() {
     let sync_calculator = SyncCalculator;
     let result = sync_calculator
         .call(
-            &mut rig_core::tool::ToolContext::new(),
+            &mut rig_agent::tool::ToolContext::new(),
             SyncCalculatorParameters {
                 x: 5,
                 y: 3,

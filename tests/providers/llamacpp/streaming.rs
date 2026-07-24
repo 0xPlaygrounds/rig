@@ -1,6 +1,6 @@
 //! llama.cpp streaming coverage, including the migrated example path.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 
 use crate::support::{

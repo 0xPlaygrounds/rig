@@ -2,11 +2,11 @@
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, GetTokenUsage};
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
+use rig::prelude::*;
 use rig::providers::gemini::interactions_api::{AdditionalParameters, Tool};
 use rig::streaming::StreamedAssistantContent;
 

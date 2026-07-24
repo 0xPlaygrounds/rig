@@ -1,6 +1,6 @@
 //! Perplexity streaming completion cassette coverage.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::perplexity;
 use rig::streaming::StreamingPrompt;
 

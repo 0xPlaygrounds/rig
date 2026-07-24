@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::client::CompletionClient;
 use rig::completion::TypedPrompt;
+use rig::prelude::*;
 use rig::tool::Tool;
 
 use crate::copilot::{live_responses_model, with_copilot_cassette_result};

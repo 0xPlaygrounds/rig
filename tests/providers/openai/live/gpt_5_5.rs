@@ -1,11 +1,11 @@
 //! Dedicated GPT-5.5 live smoke tests.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::message::Image;
 use rig::completion::{Chat, Message};
 use rig::completion::{Prompt, TypedPrompt};
 use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{StreamingChat, StreamingPrompt};
 use schemars::JsonSchema;

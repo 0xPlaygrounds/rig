@@ -1,8 +1,7 @@
 //! AWS Bedrock streaming smoke tests inspired by the OpenAI and Anthropic provider tests.
 
-use rig::client::CompletionClient;
-use rig::completion::CompletionModel as _;
 use rig::message::ToolChoice;
+use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 

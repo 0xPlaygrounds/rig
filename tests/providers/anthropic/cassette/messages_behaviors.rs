@@ -7,9 +7,9 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::anthropic;
 
 use super::super::support::with_anthropic_cassette;

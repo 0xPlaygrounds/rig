@@ -1,9 +1,9 @@
 //! DeepSeek streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice};
+use rig::prelude::*;
 use rig::providers::deepseek::DEEPSEEK_V4_FLASH;
 use rig::streaming::StreamingChat;
 

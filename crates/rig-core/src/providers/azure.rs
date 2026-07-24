@@ -835,8 +835,6 @@ mod audio_generation {
 
 #[cfg(test)]
 mod azure_tests {
-    use schemars::JsonSchema;
-
     use super::*;
     use crate::completion::{CompletionError, CompletionRequest};
 
@@ -844,8 +842,6 @@ mod azure_tests {
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
-    use crate::prelude::TypedPrompt;
-    use crate::providers::openai::GPT_5_MINI;
 
     #[cfg(any(feature = "image", feature = "audio"))]
     fn test_client(
@@ -1140,40 +1136,6 @@ mod azure_tests {
             .await?;
 
         tracing::info!("Azure completion: {:?}", completion);
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_azure_structured_output() -> anyhow::Result<()> {
-        let _ = tracing_subscriber::fmt::try_init();
-
-        #[derive(Debug, Deserialize, JsonSchema)]
-        struct Person {
-            name: String,
-            age: u32,
-        }
-
-        let client = Client::from_env()?;
-        let agent = client
-            .agent(GPT_5_MINI)
-            .preamble("You are a helpful assistant that extracts personal details.")
-            .max_tokens(100)
-            .output_schema::<Person>()
-            .build();
-
-        let result: Person = agent
-            .prompt_typed("Hello! My name is John Doe and I'm 54 years old.")
-            .await?;
-
-        anyhow::ensure!(
-            result.name == "John Doe",
-            "expected name John Doe, got {}",
-            result.name
-        );
-        anyhow::ensure!(result.age == 54, "expected age 54, got {}", result.age);
-
-        tracing::info!("Extracted person: {:?}", result);
         Ok(())
     }
 

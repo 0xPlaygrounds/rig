@@ -7,9 +7,9 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::memory::InMemoryConversationMemory;
+use rig::prelude::*;
 use rig::providers::openai;
 
 #[tokio::main]

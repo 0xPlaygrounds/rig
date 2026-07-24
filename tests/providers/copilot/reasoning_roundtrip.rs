@@ -1,6 +1,6 @@
 //! Copilot reasoning roundtrip tests.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::copilot::CopilotStreamingResponse;
 
 use crate::copilot::{live_responses_model, with_copilot_cassette};

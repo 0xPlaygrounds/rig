@@ -1,9 +1,9 @@
 //! Migrated from `examples/openai_websocket_mode.rs`.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;

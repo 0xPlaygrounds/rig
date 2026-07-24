@@ -6,7 +6,7 @@
     clippy::unreachable
 )]
 
-use rig_core::tool::Tool;
+use rig_agent::tool::Tool;
 use rig_derive::rig_tool;
 
 #[rig_tool(name = "search-docs")]
@@ -22,7 +22,7 @@ fn fallback_name_tool() -> Result<String, rig_core::tool::ToolExecutionError> {
 #[tokio::test]
 async fn test_custom_tool_name_overrides_function_name() {
     let tool = SearchDocsImpl;
-    let definition = rig_core::tool::tool_definition(&tool);
+    let definition = rig_agent::tool::tool_definition(&tool);
 
     assert_eq!(SearchDocsImpl::NAME, "search-docs");
     assert_eq!(definition.name, "search-docs");
@@ -31,7 +31,7 @@ async fn test_custom_tool_name_overrides_function_name() {
 #[tokio::test]
 async fn test_tool_name_falls_back_to_function_name() {
     let tool = FallbackNameTool;
-    let definition = rig_core::tool::tool_definition(&tool);
+    let definition = rig_agent::tool::tool_definition(&tool);
 
     assert_eq!(FallbackNameTool::NAME, "fallback_name_tool");
     assert_eq!(definition.name, "fallback_name_tool");

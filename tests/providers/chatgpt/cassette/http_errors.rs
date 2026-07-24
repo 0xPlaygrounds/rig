@@ -1,8 +1,8 @@
 //! ChatGPT cassette coverage for non-success Responses API status handling.
 
 use axum::http;
-use rig::client::CompletionClient;
 use rig::completion::{CompletionError, CompletionModel};
+use rig::prelude::*;
 use rig::providers::chatgpt;
 
 use super::super::support::with_chatgpt_cassette;

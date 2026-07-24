@@ -7,7 +7,7 @@
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!
 //! ```no_run
-//! use rig_core::{agent::AgentBuilder, completion::Prompt};
+//! use rig_agent::{agent::AgentBuilder, completion::Prompt};
 //! use rig_candle::{CandleModel, ModelData};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -3600,8 +3600,7 @@ mod tests {
     #[test]
     fn loaded_model_works_with_agent_builder()
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use rig_core::agent::AgentBuilder;
-        use rig_core::completion::Prompt;
+        use rig_agent::{agent::AgentBuilder, completion::Prompt};
 
         let runtime = tokio::runtime::Builder::new_current_thread().build()?;
         runtime.block_on(async {

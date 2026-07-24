@@ -21,8 +21,8 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;

@@ -13,3 +13,6 @@ target/
 # nodejs stuff
 node_modules/
 dist/
+
+# LanceDB example/test store artifacts (created at the workspace root)
+/data/
