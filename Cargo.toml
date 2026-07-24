@@ -141,7 +141,7 @@ tokio = "1.52.3"
 tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
-tokio-tungstenite = { version = "0.28.0", default-features = false }
+tokio-tungstenite = { version = "0.29.0", default-features = false }
 tokenizers = { version = "0.22.2", default-features = false }
 tonic = "0.14.6"
 tonic-build = "0.14.6"
