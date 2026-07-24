@@ -67,18 +67,11 @@ pub mod client {
     #[cfg(feature = "agent")]
     pub use rig_agent::client::{AgentClientExt, AgentModelExt};
 
-    // Portable provider-client surface from `rig-core`. The canonical
-    // `CompletionClient` is intentionally NOT re-exported here: reach it via
-    // `rig::prelude::*` or `rig_core::client::completion::CompletionClient`, so
-    // the facade exposes a single completion-client trait with no shadow.
-    pub use rig_core::client::{
-        ApiKey, BearerAuth, Capabilities, Capability, Capable, Client, ClientBuilder,
-        ClientBuilderError, DebugExt, EmbeddingsClient, ModelLister, ModelListingClient, Nothing,
-        Provider, ProviderBuilder, ProviderClient, ProviderClientError, ProviderClientResult,
-        RerankingClient, Transport, VerifyClient, VerifyError, audio_generation, embeddings,
-        image_generation, model_listing, optional_env_var, required_env_var, rerank, transcription,
-        verify,
-    };
+    // The full portable provider-client surface, including the canonical
+    // `CompletionClient`. `AgentClientExt` is a distinct name, so there is no
+    // shadow — just one canonical completion-client trait plus the classic
+    // construction extension.
+    pub use rig_core::client::*;
 }
 
 /// Low-level completion contracts plus classic prompting traits and errors.

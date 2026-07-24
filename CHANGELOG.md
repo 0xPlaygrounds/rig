@@ -31,12 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(client)* [**breaking**] Provider clients no longer carry inherent
   `agent()` / `extractor()` methods. There is a single canonical
   `CompletionClient` trait (in `rig-core`, providing `completion_model`); the
-  classic `agent()` / `extractor()` constructors live on the `AgentClientExt`
+  classic `agent()` / `extractor()` constructors live on the new `AgentClientExt`
   extension trait. `use rig::prelude::*;` brings both into scope for the full
-  pre-split client surface. The facade no longer exposes a
-  `rig::client::CompletionClient` path — reach the trait via `rig::prelude::*`
-  or `rig_core::client::completion::CompletionClient`, and `AgentClientExt` via
-  `rig::client::AgentClientExt`.
+  pre-split client surface (or import `rig::client::{CompletionClient,
+  AgentClientExt}` explicitly).
 
 - *(agent)* [**breaking**] `rig-agent` no longer re-exports all of `rig-core`
   at its crate root. The previous `pub use rig_core::*;` made `rig-agent` an

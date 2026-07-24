@@ -30,9 +30,8 @@ use rig::completion::Prompt;
 `call` takes `&mut ToolContext`). The only two things to know:
 
 1. **Constructing agents/extractors needs the client traits in scope.** Provider
-   clients no longer have inherent `.agent()` / `.extractor()` methods, and
-   `rig::client::CompletionClient` no longer exists as a facade path — reach the
-   client surface through the prelude:
+   clients no longer have inherent `.agent()` / `.extractor()` methods. Bring the
+   client surface in through the prelude:
 
    ```rust
    use rig::prelude::*;
@@ -42,8 +41,8 @@ use rig::completion::Prompt;
    ```
 
    If you prefer explicit imports:
-   `use rig_core::client::completion::CompletionClient;` for `completion_model`
-   and `use rig::client::AgentClientExt;` for `agent` / `extractor`.
+   `use rig::client::{CompletionClient, AgentClientExt};` — `CompletionClient`
+   provides `completion_model`, `AgentClientExt` provides `agent` / `extractor`.
 
 2. **The portable, context-free tool contract is `PortableTool`.** If you were
    using a runtime-independent tool, it is now `rig::tool::PortableTool`
