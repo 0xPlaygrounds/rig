@@ -2540,6 +2540,184 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn multi_step_tool_run_appends_committed_turn_exactly_once() {
+        // A tool round-trip is two model calls (tool call -> final text) but one
+        // run: the committed turn must be appended to memory exactly once, not
+        // once per model call.
+        let memory = CountingMemory::default();
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call-1", "add", json!({"x": 2, "y": 3})),
+            MockTurn::text("sum is 5"),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .memory(memory.clone())
+            .tool(MockAddTool)
+            .default_max_turns(2)
+            .build();
+
+        let _ = agent
+            .prompt("add 2 and 3")
+            .conversation("t1")
+            .await
+            .expect("multi-step run should succeed");
+
+        assert_eq!(
+            memory.append_count(),
+            1,
+            "one append for the whole run, not one per model call"
+        );
+
+        let stored = memory.load("t1").await.unwrap();
+        // user prompt + assistant tool call + tool result + final assistant text.
+        assert_eq!(
+            stored.len(),
+            4,
+            "the full committed turn is persisted once: {stored:?}"
+        );
+        assert!(
+            matches!(
+                stored.last(),
+                Some(Message::Assistant { content, .. })
+                    if content
+                        .iter()
+                        .any(|item| matches!(item, AssistantContent::Text(t) if t.text == "sum is 5"))
+            ),
+            "final assistant text is persisted: {stored:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn append_persists_only_newly_committed_messages() {
+        // With pre-loaded history, a run must append only the new turn's
+        // messages, never re-append the loaded history (which would duplicate
+        // it). Pre-load directly through `inner()` so it does not count as an
+        // append by the run.
+        let memory = CountingMemory::default();
+        memory
+            .inner()
+            .append(
+                "t1",
+                vec![Message::user("old-q"), Message::assistant("old-a")],
+            )
+            .await
+            .unwrap();
+
+        let model = MockCompletionModel::text("new-a");
+        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+
+        let _ = agent
+            .prompt("new-q")
+            .conversation("t1")
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(memory.append_count(), 1, "one append for the run");
+
+        let stored = memory.load("t1").await.unwrap();
+        // preloaded [old-q, old-a] + new [new-q, new-a]; re-appending the loaded
+        // history would instead make this 6.
+        assert_eq!(
+            stored.len(),
+            4,
+            "only the new turn is appended, loaded history is not duplicated: {stored:?}"
+        );
+        assert!(
+            matches!(
+                stored.first(),
+                Some(Message::User { content })
+                    if matches!(content.first(), UserContent::Text(t) if t.text == "old-q")
+            ),
+            "loaded history is preserved once at the front: {stored:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn hook_stopped_run_does_not_append() {
+        // A run stopped by a hook before it completes must not append.
+        struct StopOnCompletion;
+        impl AgentHook for StopOnCompletion {
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                _event: crate::agent::CompletionCallEvent<'_>,
+            ) -> crate::agent::CompletionCallAction {
+                crate::agent::CompletionCallAction::stop("stop")
+            }
+        }
+
+        let memory = CountingMemory::default();
+        let model = MockCompletionModel::text("unreached");
+        let agent = AgentBuilder::new(model)
+            .memory(memory.clone())
+            .add_hook(StopOnCompletion)
+            .build();
+
+        let result = agent.prompt("hello").conversation("t1").await;
+        assert!(result.is_err(), "a stop hook terminates the run");
+
+        assert_eq!(memory.append_count(), 0, "stopped runs do not append");
+        let stored = memory.load("t1").await.unwrap();
+        assert!(stored.is_empty(), "nothing persisted on stop: {stored:?}");
+    }
+
+    #[tokio::test]
+    async fn committed_transcript_roles_form_a_valid_sequence() {
+        // The committed history of a tool round-trip must be a well-formed
+        // role sequence: it starts with a user message, never commits two
+        // consecutive assistant messages, and pairs each assistant tool call
+        // with a following user tool-result message.
+        let memory = CountingMemory::default();
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call-1", "add", json!({"x": 1, "y": 1})),
+            MockTurn::text("done"),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .memory(memory.clone())
+            .tool(MockAddTool)
+            .default_max_turns(2)
+            .build();
+
+        let _ = agent
+            .prompt("go")
+            .conversation("t1")
+            .await
+            .expect("run should succeed");
+
+        let stored = memory.load("t1").await.unwrap();
+
+        assert!(
+            matches!(stored.first(), Some(Message::User { .. })),
+            "committed transcript begins with a user message: {stored:?}"
+        );
+        assert!(
+            !stored
+                .windows(2)
+                .any(|pair| matches!(pair, [Message::Assistant { .. }, Message::Assistant { .. }])),
+            "no two assistant messages are committed back to back: {stored:?}"
+        );
+        // Each assistant turn carrying a tool call is followed by a user
+        // tool-result message.
+        for (index, message) in stored.iter().enumerate() {
+            let has_tool_call = matches!(
+                message,
+                Message::Assistant { content, .. }
+                    if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
+            );
+            if has_tool_call {
+                assert!(
+                    matches!(stored.get(index + 1), Some(Message::User { content })
+                        if content
+                            .iter()
+                            .any(|item| matches!(item, UserContent::ToolResult(_)))),
+                    "assistant tool call at {index} is followed by a user tool result: {stored:?}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn missing_conversation_id_behaves_as_no_memory() {
         let memory = CountingMemory::default();
         let model = MockCompletionModel::text("ack");

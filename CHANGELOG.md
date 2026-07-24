@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- *(agent)* Remove the experimental `rig-runtime-conformance` crate and its
+  classic-runtime adapter. With a single runtime it was a premature cross-runtime
+  abstraction, and its scenarios were ~90% redundant with `rig-agent`'s own test
+  suite. The genuinely-unique invariants (multi-step memory append-once, append
+  of only newly-committed messages, no-append on hook stop, committed-transcript
+  role validity, and a two-sided concurrency bound) are now covered by direct
+  tests in `rig-agent`. A real conformance contract can be re-extracted once a
+  second runtime exists.
+
 ### Fixed
 
 - *(aws)* Stop enabling the AWS SDK's legacy Rustls connector in the Bedrock and S3 Vectors integrations, removing vulnerable `rustls-webpki` 0.101 from their active dependency graphs while retaining the modern default HTTPS client.

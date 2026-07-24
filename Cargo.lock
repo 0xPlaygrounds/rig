@@ -9858,7 +9858,6 @@ dependencies = [
  "indexmap 2.14.0",
  "rig-core",
  "rig-derive",
- "rig-runtime-conformance",
  "rmcp",
  "schemars 1.2.1",
  "serde",
@@ -10150,17 +10149,6 @@ dependencies = [
  "testcontainers",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "rig-runtime-conformance"
-version = "0.40.0"
-dependencies = [
- "rig-core",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]
