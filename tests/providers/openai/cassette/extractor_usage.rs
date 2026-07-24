@@ -7,8 +7,8 @@
 //! - Both `extract` and `extract_with_chat_history` variants work
 
 use anyhow::Result;
-use rig::client::CompletionClient;
 use rig::extractor::ExtractionResponse;
+use rig::prelude::*;
 use rig::providers;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

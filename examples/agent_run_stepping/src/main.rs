@@ -24,9 +24,9 @@ use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
 };
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::UserContent;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;

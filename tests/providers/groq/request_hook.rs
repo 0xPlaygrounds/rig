@@ -8,9 +8,9 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
+use rig::prelude::*;
 use rig::providers::groq;
 
 use crate::support::assert_nonempty_response;

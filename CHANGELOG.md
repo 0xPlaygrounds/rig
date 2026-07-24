@@ -16,10 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(core, agent)* [**breaking**] Split the monolithic core into a portable
   contracts crate (`rig-core`) and the classic agent runtime crate (`rig-agent`),
   presented behind the `rig` facade. Code using the `rig` facade needs
-  essentially no source changes — `rig::…` paths, `rig::prelude::*`,
-  `rig::tool::{Tool, ToolContext}`, and `use rig::client::CompletionClient` all
-  keep working. Direct `rig-core` dependents that constructed agents must now
-  depend on `rig-agent`. See the migration guide (`MIGRATING.md`).
+  essentially no source changes — `rig::…` paths, `rig::prelude::*`, and
+  `rig::tool::{Tool, ToolContext}` all keep working. Direct `rig-core` dependents
+  that constructed agents must now depend on `rig-agent`. See the migration
+  guide (`MIGRATING.md`).
 
 - *(tool)* [**breaking**] The portable, context-free tool contract is now named
   `PortableTool` (with `PortableToolEmbedding`, `PortableDynamicTool`,
@@ -29,11 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rig::tool::PortableTool` (and in full under `rig::tool::portable`).
 
 - *(client)* [**breaking**] Provider clients no longer carry inherent
-  `agent()` / `extractor()` methods. Construct classic agents and extractors
-  through the `CompletionClient` extension trait: add
-  `use rig::client::CompletionClient;` (or `use rig::prelude::*;`). A single
-  `rig::client::CompletionClient` import provides `completion_model`, `agent`,
-  and `extractor`.
+  `agent()` / `extractor()` methods. There is a single canonical
+  `CompletionClient` trait (in `rig-core`, providing `completion_model`); the
+  classic `agent()` / `extractor()` constructors live on the `AgentClientExt`
+  extension trait. `use rig::prelude::*;` brings both into scope for the full
+  pre-split client surface. The facade no longer exposes a
+  `rig::client::CompletionClient` path — reach the trait via `rig::prelude::*`
+  or `rig_core::client::completion::CompletionClient`, and `AgentClientExt` via
+  `rig::client::AgentClientExt`.
 
 - *(agent)* [**breaking**] `rig-agent` no longer re-exports all of `rig-core`
   at its crate root. The previous `pub use rig_core::*;` made `rig-agent` an

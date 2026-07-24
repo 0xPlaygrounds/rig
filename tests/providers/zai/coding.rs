@@ -1,7 +1,7 @@
 //! Z.AI coding OpenAI-compatible completion smoke test.
 
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::zai;
 
 use crate::support::assert_nonempty_response;

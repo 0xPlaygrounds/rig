@@ -1,8 +1,8 @@
 //! Gemini streaming coverage, including the migrated example path.
 
 use futures::StreamExt;
-use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FinishReason, GenerationConfig, ThinkingConfig, ThinkingLevel,

@@ -1,9 +1,9 @@
 //! AWS Bedrock raw streaming cassette coverage ported from OpenAI completions tests.
 
 use rig::bedrock;
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
+use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{

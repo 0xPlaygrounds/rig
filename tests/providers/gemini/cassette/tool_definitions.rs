@@ -5,8 +5,8 @@
 //! changes (e.g. swapping the handrolled definitions for rmcp-derived ones),
 //! replay fails with a body mismatch.
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -239,7 +239,7 @@ mod derive_macro {
 
     use super::super::super::agent_run_support::tool_result_texts;
     use super::super::super::support::with_gemini_cassette;
-    use rig::client::CompletionClient;
+    use rig::prelude::*;
     use rig::providers::gemini;
 
     #[rig_tool(

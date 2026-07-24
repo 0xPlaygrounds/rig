@@ -1,6 +1,6 @@
 //! Cassette-backed OpenRouter reasoning roundtrip tests.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 

@@ -3,8 +3,8 @@
 //! `Terminate` from a `ToolResult` (post-execution), and model-driven recovery
 //! from a tool error. Recorded against real Gemini.
 
-use rig::client::CompletionClient;
 use rig::completion::{Prompt, PromptError};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig_agent::test_utils::{
     validate_cancelled_failure, validate_result_redaction, validate_rewritten_arguments,

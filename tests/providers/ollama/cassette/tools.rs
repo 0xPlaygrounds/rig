@@ -4,7 +4,7 @@
 //! local Ollama server. Transport request matching stays in this provider suite;
 //! the behavioral assertions are shared with artifact-backed local models.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig_agent::test_utils::{optional_argument, sequential_tools};
 use serde_json::json;
 

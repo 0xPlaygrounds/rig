@@ -11,9 +11,9 @@
 
 use anyhow::{Result, bail};
 use rig::OneOrMany;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{Tool, ToolOutput, ToolSet};
 use serde::{Deserialize, Serialize};

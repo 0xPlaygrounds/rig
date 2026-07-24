@@ -5,9 +5,9 @@
 
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
-use rig::client::CompletionClient;
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig_agent::test_utils::validate_unknown_tool_failure;
 

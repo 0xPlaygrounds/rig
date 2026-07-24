@@ -1,6 +1,6 @@
 //! Migrated from `examples/groq_streaming_reasoning.rs`.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::prelude::*;
 use rig::providers::groq;
 use rig::streaming::StreamingPrompt;
 

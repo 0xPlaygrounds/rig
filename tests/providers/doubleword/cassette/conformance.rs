@@ -1,6 +1,6 @@
 //! Portable model-contract scenarios recorded through Doubleword's live API.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig_agent::test_utils::{
     cancellation_and_max_turns, hook_rewrites_and_request_patch, invalid_tool_recovery,
     parallel_tools, streaming_structured_after_tool, streaming_tool, structured_after_tool,

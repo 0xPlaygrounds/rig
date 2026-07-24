@@ -4,8 +4,8 @@
 //! drives on tool-list-changed notifications, so its semantics must survive
 //! the rmcp migration unchanged.
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::server::ToolServer;
 

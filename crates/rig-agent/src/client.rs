@@ -6,25 +6,20 @@ use serde::{Deserialize, Serialize};
 use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-/// The classic runtime's completion client surface.
+/// Classic-runtime construction sugar layered on any portable completion client.
 ///
-/// This mirrors the portable provider trait
-/// [`rig_core::client::completion::CompletionClient`] — forwarding
-/// `completion_model` — and adds the classic runtime's `agent` and `extractor`
-/// builders. A single `use rig::client::CompletionClient` therefore exposes the
-/// same surface it did before the runtime split, so `client.completion_model(m)`
-/// and `client.agent(m)` both keep working without a second import.
+/// Inherits `completion_model` / `CompletionModel` from its supertrait
+/// [`rig_core::client::completion::CompletionClient`] and adds the classic
+/// runtime's `agent` and `extractor` builders. Because the supertrait provides
+/// `completion_model`, there is nothing to keep in sync if the portable trait
+/// grows a method.
 ///
-/// Provider authors still implement the portable
-/// [`rig_core::client::completion::CompletionClient`]; this trait is blanket-
-/// implemented for every type that does, and forwards to it.
-pub trait CompletionClient {
-    /// The completion model produced by this client (the provider's model type).
-    type CompletionModel: rig_core::completion::CompletionModel<Client = Self>;
-
-    /// Create a completion model for `model`.
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel;
-
+/// Provider authors implement the portable
+/// [`rig_core::client::completion::CompletionClient`]; this extension trait is
+/// blanket-implemented for every type that does. Bring both traits into scope
+/// (e.g. via `use rig::prelude::*;`) for the full `completion_model` + `agent` +
+/// `extractor` surface.
+pub trait AgentClientExt: rig_core::client::completion::CompletionClient {
     /// Construct a classic agent builder for `model`.
     fn agent(&self, model: impl Into<String>) -> AgentBuilder<Self::CompletionModel> {
         AgentBuilder::new(self.completion_model(model))
@@ -44,20 +39,7 @@ pub trait CompletionClient {
     }
 }
 
-// This forward mirrors the portable `rig_core` `CompletionClient` surface (its
-// associated type + `completion_model`). If the portable trait grows a method,
-// add a matching forward here so a single `rig::client::CompletionClient` import
-// keeps exposing the full portable surface.
-impl<C> CompletionClient for C
-where
-    C: rig_core::client::completion::CompletionClient,
-{
-    type CompletionModel = <C as rig_core::client::completion::CompletionClient>::CompletionModel;
-
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        <C as rig_core::client::completion::CompletionClient>::completion_model(self, model)
-    }
-}
+impl<C: rig_core::client::completion::CompletionClient> AgentClientExt for C {}
 
 /// Adds classic agent construction to every portable completion model.
 pub trait AgentModelExt: rig_core::completion::CompletionModel + Sized {

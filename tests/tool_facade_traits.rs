@@ -108,11 +108,11 @@ fn portable_contract_paths_resolve() {
     assert_portable_facade::<PortableAdder>();
 }
 
-/// A single `use rig::client::CompletionClient` provides `completion_model`,
+/// A single `use rig::prelude::*` provides `completion_model`,
 /// `agent`, and `extractor` — the full pre-split client surface from one import.
 #[test]
 fn completion_client_single_import_surface() {
-    use rig::client::CompletionClient;
+    use rig::prelude::*;
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
     struct Extracted {
@@ -120,7 +120,7 @@ fn completion_client_single_import_surface() {
     }
 
     // `openai::Client::new` builds without any network call, so the three
-    // builders reachable through the single `CompletionClient` import each run
+    // builders reachable through the single `rig::prelude::*` import each run
     // to completion offline. A regression in any builder itself (not merely its
     // signature) now fails this test, unlike the previous compile-only check.
     let client = rig::providers::openai::Client::new("test-key").expect("client builds");

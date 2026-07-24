@@ -1,7 +1,7 @@
 //! llama.cpp extractor smoke test.
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
-use rig::client::CompletionClient;
+use rig::prelude::*;
 
 use super::support;
 

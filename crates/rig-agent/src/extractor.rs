@@ -5,7 +5,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_agent::client::CompletionClient;
+//! use rig_agent::prelude::*;
 //! use rig_core::providers::openai;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {

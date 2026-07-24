@@ -18,8 +18,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
-use rig::client::{CompletionClient, ProviderClient};
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::openai;
 
 static NEXT_RETRY_HOOK_ID: AtomicUsize = AtomicUsize::new(1);
