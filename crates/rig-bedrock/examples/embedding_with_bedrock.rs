@@ -1,6 +1,5 @@
 use rig_bedrock::client::Client;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
-use rig_core::Embed;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use tracing::info;
 

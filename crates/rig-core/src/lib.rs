@@ -183,7 +183,12 @@ pub use completion::message;
 pub use embeddings::Embed;
 pub use one_or_many::{EmptyListError, OneOrMany};
 pub use provider_response::ProviderResponseError;
+// `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
+// code (and downstream crates) can resolve them through Rig instead of
+// requiring a direct dependency on each.
 pub use schemars;
+pub use serde;
+pub use serde_json;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]

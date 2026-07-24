@@ -1,6 +1,7 @@
+use proc_macro2::TokenStream;
 use syn::{Attribute, DataStruct, Meta, parse_quote};
 
-use crate::EMBED;
+use super::EMBED;
 
 /// Finds and returns fields with simple `#[embed]` attribute tags only.
 pub(crate) fn basic_embed_fields(data_struct: &DataStruct) -> impl Iterator<Item = &syn::Field> {
@@ -16,10 +17,14 @@ pub(crate) fn basic_embed_fields(data_struct: &DataStruct) -> impl Iterator<Item
 }
 
 /// Adds bounds to where clause that force all fields tagged with `#[embed]` to implement the `Embed` trait.
-pub(crate) fn add_struct_bounds(generics: &mut syn::Generics, field_type: &syn::Type) {
+pub(crate) fn add_struct_bounds(
+    generics: &mut syn::Generics,
+    field_type: &syn::Type,
+    embed_trait: &TokenStream,
+) {
     let where_clause = generics.make_where_clause();
 
     where_clause.predicates.push(parse_quote! {
-        #field_type: Embed
+        #field_type: #embed_trait
     });
 }

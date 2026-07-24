@@ -84,3 +84,35 @@ exposes only runtime-owned items, not a blanket re-export of `rig-core`.
   `rmcp_tool.into()` / `ToolDefinition::from(&rmcp_tool)` conversion, build the
   `ToolDefinition` explicitly from the tool's `name`, `description`, and
   `schema_as_json_value()`.
+
+## `#[rig_tool]` schema/deserializer coherence
+
+`#[rig_tool]`'s `required` handling previously described the schema only: a
+parameter left out of an explicit `required(...)` list was advertised as
+optional, but the generated deserializer still demanded it, failing at runtime
+whenever the model legitimately omitted it. Required-ness now has one source
+of truth and the schema always matches the deserializer:
+
+- **No `required(...)` (the default):** non-`Option` parameters are required;
+  `Option<T>` parameters are optional and deserialize to `None` when absent.
+  (Previously `Option` parameters were *advertised* as required.) If a
+  provider integration needs every parameter marked required, list them
+  explicitly: `required(a, b, ...)`.
+- **Explicit `required(...)`:** listed parameters are required. Listing an
+  `Option<T>` parameter is a compile error — schemars excludes `Option`
+  fields from `required` and serde deserializes a missing `Option` to `None`,
+  so the directive would be silently ignored on both sides; drop the `Option`
+  or omit it from the list. Omitted parameters get `#[serde(default)]`, so
+  their types must be `Option<T>` or implement `Default`; a type that is
+  neither is now a compile error instead of a runtime deserialization
+  failure.
+- Names in `params(...)` and `required(...)` must match actual parameters, and
+  malformed or duplicate attribute entries are compile errors. A typo that
+  used to silently mis-advertise the schema no longer compiles.
+
+Two dependency-related improvements need no action but may let you tidy up:
+crates using `#[rig_tool]` / `#[derive(Embed)]` no longer need direct `serde`
+or `serde_json` dependencies for the generated code, the `Embed` trait no
+longer needs to be imported where it is derived, and fully qualified
+`&mut rig::tool::ToolContext` parameters are recognized without
+`#[rig(context)]` even under renamed dependencies.

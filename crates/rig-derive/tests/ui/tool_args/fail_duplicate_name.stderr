@@ -1,0 +1,5 @@
+error: duplicate `name` argument
+ --> tests/ui/tool_args/fail_duplicate_name.rs:4:28
+  |
+4 | #[rig_tool(name = "first", name = "second")]
+  |                            ^^^^

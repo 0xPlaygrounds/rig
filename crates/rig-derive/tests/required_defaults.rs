@@ -1,5 +1,7 @@
-//! Test that `#[rig_tool]` defaults `required` to all parameters when not
-//! explicitly specified, matching OpenAI's strict function calling expectations.
+//! Test that `#[rig_tool]` derives `required` from the parameter types
+//! (non-`Option` parameters required, `Option<T>` optional) unless an explicit
+//! `required(...)` overrides it, and that the advertised schema and the
+//! generated deserializer always agree.
 
 #![allow(
     clippy::expect_used,
@@ -80,6 +82,28 @@ async fn test_explicit_empty_required_overrides_default() {
     assert!(
         required.is_empty(),
         "expected explicit required() to make all params optional, got {required:?}"
+    );
+}
+
+/// The schema and the deserializer must agree: a parameter omitted from an
+/// explicit `required(...)` list deserializes via its `Default` when the model
+/// leaves it out, instead of failing at runtime.
+#[tokio::test]
+async fn test_param_omitted_from_required_deserializes_via_default() {
+    let params: AddExplicitParameters =
+        serde_json::from_value(serde_json::json!({"a": 7})).unwrap();
+    assert_eq!(params.a, 7);
+    assert_eq!(params.b, 0, "omitted non-required param should use Default");
+}
+
+/// A parameter listed in an explicit `required(...)` list stays required for
+/// the deserializer as well.
+#[tokio::test]
+async fn test_param_listed_in_required_stays_required_for_deserialization() {
+    let error = serde_json::from_value::<AddExplicitParameters>(serde_json::json!({"b": 7}));
+    assert!(
+        error.is_err(),
+        "omitting a required param should fail deserialization"
     );
 }
 
