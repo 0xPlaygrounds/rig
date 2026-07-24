@@ -31,7 +31,78 @@ pub(crate) fn rig_core_path() -> proc_macro2::TokenStream {
                 let ident = format_ident!("{name}");
                 quote!(::#ident)
             }
-            Err(_) => quote!(::rig_core),
+            Err(_) => match proc_macro_crate::crate_name("rig-agent") {
+                Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::core),
+                Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                    let ident = format_ident!("{name}");
+                    quote!(::#ident::core)
+                }
+                Err(_) => quote!(::rig_core),
+            },
+        },
+    }
+}
+
+fn rig_agent_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-agent") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident)
+            }
+            Err(_) => quote!(::rig_agent),
+        },
+    }
+}
+
+fn rig_agent_tool_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-agent") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::tool),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident::tool)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            // Through the facade, contextual tools implement `rig::tool::Tool`
+            // (the classic contextual trait under the default `agent` feature),
+            // matching the documented facade path.
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::tool),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident::tool)
+            }
+            Err(_) => quote!(::rig_agent::tool),
+        },
+    }
+}
+
+fn rig_portable_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-core") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::core),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident::core)
+            }
+            Err(_) => match proc_macro_crate::crate_name("rig-agent") {
+                Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate::core),
+                Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                    let ident = format_ident!("{name}");
+                    quote!(::#ident::core)
+                }
+                Err(_) => quote!(::rig_core),
+            },
         },
     }
 }
@@ -302,7 +373,14 @@ fn is_tool_context_type(ty: &Type) -> bool {
     matches!(
         segments.as_slice(),
         [root, tool, context]
-            if matches!(root.as_str(), "rig" | "rig_core")
+            if matches!(root.as_str(), "rig" | "rig_agent")
+                && tool == "tool"
+                && context == "ToolContext"
+    ) || matches!(
+        segments.as_slice(),
+        [root, agent, tool, context]
+            if root == "rig"
+                && agent == "agent"
                 && tool == "tool"
                 && context == "ToolContext"
     )
@@ -440,7 +518,9 @@ fn result_type_tokens(
     Ok((quote!(#output), quote!(#error)))
 }
 
-/// A procedural macro that transforms a function into a `rig::tool::Tool` that can be used with a `rig::agent::Agent`.
+/// A procedural macro that transforms a function into a portable
+/// `rig_core::tool::PortableTool`, or into the classic contextual
+/// `rig::tool::Tool` when the function accepts classic runtime context.
 ///
 /// # Examples
 ///
@@ -566,7 +646,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         Some(desc) => quote! { #desc.to_string() },
         None => match fn_doc {
             Some(doc) => quote! { #doc.to_string() },
-            None => quote! { format!("Function to {}", Self::NAME) },
+            None => quote! { format!("Function to {}", #tool_name) },
         },
     };
 
@@ -681,14 +761,50 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
-    let rig_core = rig_core_path();
+    let has_context = context_param_name.is_some();
+    let tool_owner = if has_context {
+        rig_agent_path()
+    } else {
+        rig_portable_path()
+    };
+    let tool_module = if has_context {
+        rig_agent_tool_path()
+    } else {
+        quote!(#tool_owner::tool)
+    };
+    // Contextual tools implement the classic `Tool` trait; context-free tools
+    // implement the portable `PortableTool` contract owned by `rig-core`.
+    let tool_trait = if has_context {
+        quote!(#tool_module::Tool)
+    } else {
+        quote!(#tool_module::PortableTool)
+    };
 
     // Generate the call implementation based on whether the function is async
-    let call_impl = if is_async {
+    let call_impl = if has_context && is_async {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #rig_core::tool::ToolContext,
+                _context: &mut #tool_module::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                #fn_name(#(#call_arguments),*).await
+            }
+        }
+    } else if has_context {
+        quote! {
+            async fn call(
+                &self,
+                _context: &mut #tool_module::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                #fn_name(#(#call_arguments),*)
+            }
+        }
+    } else if is_async {
+        quote! {
+            async fn call(
+                &self,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*).await
@@ -698,7 +814,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! {
             async fn call(
                 &self,
-                _context: &mut #rig_core::tool::ToolContext,
                 args: Self::Args,
             ) -> Result<Self::Output, Self::Error> {
                 #fn_name(#(#call_arguments),*)
@@ -706,9 +821,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    let schemars_crate = format!("{}::schemars", rig_core.to_string().replace(' ', ""));
+    // `schemars` is a portable re-export owned by `rig-core`; resolve it through
+    // the portable path so contextual tools (whose `tool_owner` is the runtime
+    // crate, which no longer re-exports core at its root) still find it.
+    let schemars_owner = rig_portable_path();
+    let schemars_crate = format!("{}::schemars", schemars_owner.to_string().replace(' ', ""));
     let expanded = quote! {
-        #[derive(serde::Deserialize, #rig_core::schemars::JsonSchema)]
+        #[derive(serde::Deserialize, #schemars_owner::schemars::JsonSchema)]
         #[schemars(crate = #schemars_crate)]
         #vis struct #params_struct_name {
             #(#field_tokens,)*
@@ -719,7 +838,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(Default)]
         #vis struct #struct_name;
 
-        impl #rig_core::tool::Tool for #struct_name {
+        impl #tool_trait for #struct_name {
             const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;
@@ -732,8 +851,8 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
             fn parameters(&self) -> serde_json::Value {
                 let mut schema = serde_json::to_value(
-                    #rig_core::schemars::schema_for!(#params_struct_name)
-                ).expect("schema serialization");
+                    #schemars_owner::schemars::schema_for!(#params_struct_name)
+                ).expect("tool parameter schema is always serializable");
                 schema["required"] = serde_json::json!([#(#required_args),*]);
                 schema
             }

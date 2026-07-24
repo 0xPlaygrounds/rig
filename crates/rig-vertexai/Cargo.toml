@@ -22,5 +22,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+rig-agent.workspace = true
 schemars = { workspace = true }
 tracing-subscriber = { workspace = true }

@@ -920,9 +920,15 @@ mod tests {
         let prompt = render_prompt(&request, ModelFamily::Qwen3).expect("render Qwen3");
         assert!(prompt.contains("# Tools"));
         assert!(prompt.contains("\"enum\":[\"a\",\"b\"]"));
-        assert!(prompt.contains(
-            "<tool_call>\n{\"arguments\":{\"value\":2},\"name\":\"calculate\"}\n</tool_call>"
-        ));
+        let tool_call_json = prompt
+            .rsplit_once("<tool_call>\n")
+            .and_then(|(_, remainder)| remainder.split_once("\n</tool_call>"))
+            .map(|(json, _)| json)
+            .expect("rendered tool call");
+        let tool_call: serde_json::Value =
+            serde_json::from_str(tool_call_json).expect("valid tool call JSON");
+        assert_eq!(tool_call["name"], "calculate");
+        assert_eq!(tool_call["arguments"], serde_json::json!({"value": 2}));
         assert!(prompt.contains("<tool_response>\n2\n</tool_response>"));
         assert!(prompt.ends_with("<|im_start|>assistant\n<think>\n\n</think>\n\n"));
     }

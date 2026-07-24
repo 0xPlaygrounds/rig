@@ -8,19 +8,22 @@
 //! (`/v1/batches`); Rig support for them is not yet included.
 //!
 //! Set `DOUBLEWORD_API_KEY` (and optionally `DOUBLEWORD_BASE_URL`) to use
-//! [`Client::from_env`].
+//! [`ProviderClient::from_env`](crate::client::ProviderClient::from_env).
 //!
 //! # Example
 //! ```no_run
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
+//!     completion::CompletionModel,
 //!     providers::doubleword,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = doubleword::Client::from_env()?;
-//! let agent = client.agent(doubleword::QWEN3_5_9B).build();
-//! # let _ = agent;
+//! let model = client.completion_model(doubleword::QWEN3_5_9B);
+//! let request = model.completion_request("What is Rig?").build();
+//! let response = model.completion(request).await?;
+//! # let _ = response;
 //! # Ok(())
 //! # }
 //! ```

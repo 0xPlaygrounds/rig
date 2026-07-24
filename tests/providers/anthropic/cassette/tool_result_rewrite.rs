@@ -15,8 +15,8 @@ use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
-use rig::test_utils::validate_result_redaction;
 use rig::tool::Tool;
+use rig_agent::test_utils::validate_result_redaction;
 use serde::Deserialize;
 use serde_json::json;
 
