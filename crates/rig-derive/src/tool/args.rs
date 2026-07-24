@@ -44,7 +44,7 @@ fn parse_string_literal(expr: &Expr, field_name: &str) -> syn::Result<String> {
 }
 
 fn validate_explicit_tool_name(name: &str, expr: &Expr) -> syn::Result<()> {
-    if name.is_empty() || name.len() > 64 {
+    if !(1..=64).contains(&name.chars().count()) {
         return Err(syn::Error::new_spanned(
             expr,
             "`name` must be between 1 and 64 characters long",
@@ -52,14 +52,10 @@ fn validate_explicit_tool_name(name: &str, expr: &Expr) -> syn::Result<()> {
     }
 
     let mut chars = name.chars();
-    let Some(first_char) = chars.next() else {
-        return Err(syn::Error::new_spanned(
-            expr,
-            "`name` must be between 1 and 64 characters long",
-        ));
-    };
-
-    if !first_char.is_ascii_alphabetic() && first_char != '_' {
+    if !chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+    {
         return Err(syn::Error::new_spanned(
             expr,
             "`name` must start with an ASCII letter or underscore",

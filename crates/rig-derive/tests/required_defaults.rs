@@ -1,5 +1,7 @@
-//! Test that `#[rig_tool]` defaults `required` to all parameters when not
-//! explicitly specified, matching OpenAI's strict function calling expectations.
+//! Test that `#[rig_tool]` derives `required` from the parameter types
+//! (non-`Option` parameters required, `Option<T>` optional) unless an explicit
+//! `required(...)` overrides it, and that the advertised schema and the
+//! generated deserializer always agree.
 
 #![allow(
     clippy::expect_used,

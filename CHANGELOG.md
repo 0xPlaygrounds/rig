@@ -39,7 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schemars}` are now public), so crates using `#[rig_tool]` or
   `#[derive(Embed)]` no longer need direct `serde`/`serde_json` dependencies.
   The `Embed` derive emits fully qualified trait impls and no longer requires
-  the `Embed` trait to be imported at the call site.
+  the `Embed` trait to be imported at the call site. A field carrying both
+  `#[embed]` and `#[embed(embed_with = "...")]` is now a compile error instead
+  of being embedded twice.
 
 ### Removed
 

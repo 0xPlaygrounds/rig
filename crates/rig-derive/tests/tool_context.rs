@@ -189,6 +189,7 @@ fn invalid_context_parameters_are_rejected() {
     tests.compile_fail("tests/ui/tool_context/fail_immutable_context.rs");
     tests.compile_fail("tests/ui/tool_context/fail_owned_context.rs");
     tests.compile_fail("tests/ui/tool_context/fail_multiple_contexts.rs");
+    tests.compile_fail("tests/ui/tool_context/fail_wildcard_context.rs");
     tests.compile_fail("tests/ui/tool_context/fail_context_in_params.rs");
     tests.compile_fail("tests/ui/tool_context/fail_context_in_required.rs");
 }
