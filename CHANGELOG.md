@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deserialization failure when the model leaves it out. Names in `params(...)`
   and `required(...)` must match actual parameters, and malformed or duplicate
   attribute entries are compile errors instead of being silently ignored.
+  Listing an `Option<T>` parameter in `required(...)` is a compile error
+  (schemars and serde would both silently ignore the directive), and a
+  wildcard context binding (`#[rig(context)] _: &mut ToolContext`) is now
+  rejected — name it `_context` instead.
 
 - *(derive)* `#[rig_tool]` recognizes fully qualified `&mut ToolContext`
   parameters under renamed `rig`/`rig-agent` dependencies without the

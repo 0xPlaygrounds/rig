@@ -98,11 +98,14 @@ of truth and the schema always matches the deserializer:
   (Previously `Option` parameters were *advertised* as required.) If a
   provider integration needs every parameter marked required, list them
   explicitly: `required(a, b, ...)`.
-- **Explicit `required(...)`:** listed parameters are required — including
-  `Option` ones, which must then be present (possibly `null`). Omitted
-  parameters get `#[serde(default)]`, so their types must be `Option<T>` or
-  implement `Default`; a type that is neither is now a compile error instead
-  of a runtime deserialization failure.
+- **Explicit `required(...)`:** listed parameters are required. Listing an
+  `Option<T>` parameter is a compile error — schemars excludes `Option`
+  fields from `required` and serde deserializes a missing `Option` to `None`,
+  so the directive would be silently ignored on both sides; drop the `Option`
+  or omit it from the list. Omitted parameters get `#[serde(default)]`, so
+  their types must be `Option<T>` or implement `Default`; a type that is
+  neither is now a compile error instead of a runtime deserialization
+  failure.
 - Names in `params(...)` and `required(...)` must match actual parameters, and
   malformed or duplicate attribute entries are compile errors. A typo that
   used to silently mis-advertise the schema no longer compiles.

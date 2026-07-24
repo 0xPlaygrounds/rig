@@ -106,8 +106,10 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
 /// fields deserialize to `None`). An explicit `required(...)` list overrides
 /// this. A parameter *omitted* from an explicit list is deserialized with
 /// `#[serde(default)]`, so its type must be `Option<T>` or implement
-/// `Default` — the advertised schema and the deserializer always agree. Names
-/// in `params(...)` and `required(...)` must match actual parameters.
+/// `Default` — the advertised schema and the deserializer always agree.
+/// Listing an `Option<T>` parameter is a compile error (schemars and serde
+/// would both silently ignore the directive). Names in `params(...)` and
+/// `required(...)` must match actual parameters.
 ///
 /// ```text
 /// use rig_derive::rig_tool;

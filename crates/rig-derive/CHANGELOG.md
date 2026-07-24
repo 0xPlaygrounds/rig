@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `#[serde(default)]` (their types must be `Option<T>` or `Default`). Names in
   `params(...)`/`required(...)` must match actual parameters, and malformed or
   duplicate attribute entries are compile errors instead of silently ignored.
+  Listing an `Option<T>` parameter in `required(...)` is a compile error
+  (schemars and serde would both silently ignore the directive), and a
+  wildcard context binding (`#[rig(context)] _: &mut ToolContext`) is now
+  rejected — name it `_context` instead.
 - *(rig-derive)* Crate-name resolution and context classification share one
   authority: fully qualified `&mut ToolContext` paths are recognized under
   renamed `rig`/`rig-agent` dependencies without `#[rig(context)]`, and a

@@ -258,6 +258,20 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
     if let Some(required) = &args.required {
         for ident in required {
             validate_name(ident)?;
+            // schemars excludes `Option` fields from `required` regardless of
+            // attributes, and serde deserializes a missing `Option` to `None`,
+            // so listing one here would be silently ignored on both sides.
+            // Reject it instead of dropping the author's directive.
+            if model_params
+                .iter()
+                .any(|param| param.optional && param.ident == ident)
+            {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    "an `Option` parameter cannot be listed in `required(...)`; \
+                     drop the `Option` or omit it",
+                ));
+            }
         }
     }
 
