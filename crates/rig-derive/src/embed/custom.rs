@@ -1,7 +1,7 @@
 use quote::ToTokens;
 use syn::{ExprPath, meta::ParseNestedMeta};
 
-use crate::EMBED;
+use super::EMBED;
 
 const EMBED_WITH: &str = "embed_with";
 

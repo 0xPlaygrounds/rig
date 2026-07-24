@@ -94,6 +94,19 @@ async fn test_option_nullable() {
     assert!(type_names.contains(&"null"), "expected null in type array");
 }
 
+/// Required-ness is derived from the types: without an explicit
+/// `required(...)`, `Option<T>` parameters are optional in the schema, exactly
+/// matching how the deserializer treats them.
+#[tokio::test]
+async fn test_option_param_not_required_by_default() {
+    let def = rig_agent::tool::tool_definition(&SearchOptional);
+    assert_eq!(
+        def.parameters["required"],
+        serde_json::json!(["query"]),
+        "only the non-Option param should be required"
+    );
+}
+
 #[tokio::test]
 async fn test_option_deserialization() {
     // Option<T> field absent -> None

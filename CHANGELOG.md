@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(derive)* [**breaking**] `#[rig_tool]` required-ness is now derived from the
+  parameter types, and the advertised schema always agrees with the
+  deserializer. Without an explicit `required(...)`, non-`Option` parameters
+  are required and `Option<T>` parameters are optional (previously `Option`
+  parameters were advertised as required even though absence deserialized to
+  `None`). With an explicit `required(...)`, parameters omitted from the list
+  are deserialized with `#[serde(default)]`, so omitting a non-`Option`,
+  non-`Default` parameter is now a compile error instead of a runtime
+  deserialization failure when the model leaves it out. Names in `params(...)`
+  and `required(...)` must match actual parameters, and malformed or duplicate
+  attribute entries are compile errors instead of being silently ignored.
+
+- *(derive)* `#[rig_tool]` recognizes fully qualified `&mut ToolContext`
+  parameters under renamed `rig`/`rig-agent` dependencies without the
+  `#[rig(context)]` marker; crate-name resolution and context classification
+  now share one authority. A contextual tool in a crate with neither `rig` nor
+  `rig-agent` reachable gets a targeted diagnostic instead of an unresolved
+  `::rig_agent` path error. Generated `parameters()` builds the schema once
+  (`LazyLock`) and no longer contains an `expect`, so downstream crates
+  denying `clippy::expect_used` are unaffected.
+
+- *(derive, core)* Macro-generated code resolves `serde`, `serde_json`, and
+  `schemars` through `rig-core`'s re-exports (`rig_core::{serde, serde_json,
+  schemars}` are now public), so crates using `#[rig_tool]` or
+  `#[derive(Embed)]` no longer need direct `serde`/`serde_json` dependencies.
+  The `Embed` derive emits fully qualified trait impls and no longer requires
+  the `Embed` trait to be imported at the call site.
+
 ### Removed
 
 - *(agent)* Remove the experimental `rig-runtime-conformance` crate and its
