@@ -183,6 +183,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Streaming execution observation: the atomically surfaced post-batch event is named `ToolExecutionCommitted`, reflecting that it is not a real-time start notification. Applications that need live host lifecycle events should observe `on_tool_call` / `on_tool_result`; typed result metadata remains available through `ToolResultEvent::tool_context` without entering model-facing messages.
 - *(core)* [**breaking**] Mark `PromptError`, `StructuredOutputError`, and `VectorStoreError` as non-exhaustive, requiring downstream match expressions to include a wildcard arm. Conversation memory load failures now surface as the typed `PromptError::MemoryError` variant instead of `CompletionError::RequestError`.
 
+### Fixed
+
+- *(openai)* Treat empty `encrypted_content` in non-streaming Responses API
+  reasoning items as absent, matching streaming behavior and avoiding empty
+  encrypted reasoning blocks.
+
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.39.0...rig-core-v0.40.0) - 2026-07-10
 
 ### Added

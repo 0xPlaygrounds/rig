@@ -2126,7 +2126,9 @@ impl From<Output> for Vec<completion::AssistantContent> {
                         signature: None,
                     }
                 }));
-                if let Some(encrypted_content) = encrypted_content {
+                if let Some(encrypted_content) =
+                    encrypted_content.filter(|content| !content.is_empty())
+                {
                     content.push(message::ReasoningContent::Encrypted(encrypted_content));
                 }
                 vec![completion::AssistantContent::Reasoning(
@@ -4643,6 +4645,55 @@ mod tests {
             serde_json::from_value(value).expect("reasoning should deserialize");
 
         assert_eq!(round_tripped, original);
+    }
+
+    #[test]
+    fn output_reasoning_conversion_omits_empty_encrypted_content() {
+        let output = Output::Reasoning {
+            id: "reasoning_1".to_string(),
+            summary: vec![],
+            content: vec!["visible reasoning".to_string()],
+            encrypted_content: Some(String::new()),
+            status: Some(ToolStatus::Completed),
+        };
+
+        let converted = Vec::<completion::AssistantContent>::from(output);
+
+        assert_eq!(converted.len(), 1);
+        let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
+            panic!("expected reasoning output");
+        };
+        assert_eq!(reasoning.id.as_deref(), Some("reasoning_1"));
+        assert_eq!(reasoning.content.len(), 1);
+        assert!(matches!(
+            reasoning.content.first(),
+            Some(message::ReasoningContent::Text { text, .. })
+                if text == "visible reasoning"
+        ));
+    }
+
+    #[test]
+    fn output_reasoning_conversion_preserves_non_empty_encrypted_content() {
+        let output = Output::Reasoning {
+            id: "reasoning_1".to_string(),
+            summary: vec![],
+            content: vec![],
+            encrypted_content: Some("ciphertext".to_string()),
+            status: Some(ToolStatus::Completed),
+        };
+
+        let converted = Vec::<completion::AssistantContent>::from(output);
+
+        assert_eq!(converted.len(), 1);
+        let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
+            panic!("expected reasoning output");
+        };
+        assert_eq!(
+            reasoning.content,
+            vec![message::ReasoningContent::Encrypted(
+                "ciphertext".to_string()
+            )]
+        );
     }
 
     #[test]
