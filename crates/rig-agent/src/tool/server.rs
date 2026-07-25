@@ -94,7 +94,7 @@ impl ToolServerState {
         for name in disconnected {
             self.toolset.delete_tool(&name);
             self.managed_generations.remove(&name);
-            tracing::debug!(tool_name = %name, "retired disconnected MCP tool registration");
+            tracing::debug!(tool_name = %name, "retired disconnected RMCP tool registration because its peer sink is closed; if this was unexpected, keep the corresponding RunningService alive for as long as the tool is registered");
         }
     }
 }
@@ -177,31 +177,65 @@ impl ToolServer {
         self
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
-    /// to change or disable it.
+    /// Add an MCP tool from `rmcp`, bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT).
+    ///
+    /// Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout) to change or
+    /// disable the timeout.
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// The supplied [`ServerSink`](rmcp::service::ServerSink) is only a
+    /// communication handle. It does not own or keep the underlying RMCP
+    /// connection alive.
+    ///
+    /// The caller must retain the corresponding
+    /// [`RunningService`](rmcp::service::RunningService) for as long as this tool
+    /// may be advertised or called.
+    ///
+    /// Cloning `running_service.peer()` is not sufficient to keep the service
+    /// alive. If the `RunningService` is dropped, the transport closes and Rig
+    /// retires the disconnected tool registration.
+    ///
+    /// A typical application stores the agent and the running services together:
+    ///
+    /// ```ignore
+    /// struct AppModel<M> {
+    ///     agent: Agent<M>,
+    ///     mcp_services: Vec<RunningService<RoleClient, ClientInfo>>,
+    /// }
+    /// ```
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
-    pub fn rmcp_tool(self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
-        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    pub fn rmcp_tool(self, tool: rmcp::model::Tool, peer_sink: rmcp::service::ServerSink) -> Self {
+        self.rmcp_tool_with_timeout(tool, peer_sink, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
-    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
+    /// Add an MCP tool from `rmcp` with a per-call timeout.
     ///
     /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
-    /// disable the timeout (unbounded).
+    /// disable the timeout.
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// This method stores the supplied peer sink, but it does not own the
+    /// [`RunningService`](rmcp::service::RunningService) that keeps the RMCP
+    /// transport and background task alive.
+    ///
+    /// The caller must retain the corresponding `RunningService` for as long as
+    /// the registered tool is needed. Dropping the service closes the transport,
+    /// after which Rig retires the disconnected tool.
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool_with_timeout(
         mut self,
         tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
+        peer_sink: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
         use crate::tool::rmcp::McpTool;
         self.toolset.add_erased(Arc::new(
-            McpTool::from_mcp_server(tool, client).with_timeout(timeout),
+            McpTool::from_mcp_server(tool, peer_sink).with_timeout(timeout),
         ));
         self
     }
