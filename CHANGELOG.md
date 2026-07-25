@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(openai)* Treat empty `encrypted_content` in non-streaming Responses API
+  reasoning items as absent, matching streaming behavior and avoiding empty
+  encrypted reasoning blocks.
+
 - *(aws)* Stop enabling the AWS SDK's legacy Rustls connector in the Bedrock and S3 Vectors integrations, removing vulnerable `rustls-webpki` 0.101 from their active dependency graphs while retaining the modern default HTTPS client.
 
 ### Changed
