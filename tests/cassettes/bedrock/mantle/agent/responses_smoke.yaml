@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant. Answer directly.","model":"openai.gpt-oss-20b","store":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"created_at":0,"error":null,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a concise assistant. Answer directly.","metadata":{},"model":"openai.gpt-oss-20b","object":"response","output":[{"content":[{"text":"We need to answer: In one or two sentences explain what Rust is and why memory safety matters. So a concise explanation: Rust is a systems programming language that emphasizes performance and reliability, providing compile-time guarantees of ownership and lending preventing data races and memory errors; memory safety matters because it eliminates bugs like use-after-free, nil pointer, and buffer overflows which lead to crashes, security vulnerabilities, and undefined behavior. So answer: \"Rust is ...\" In one or two sentences. Probably something like: \"Rust is a systems programming language that provides compile‑time guarantees of memory safety and thread safety via its ownership model, enabling fast, reliable code; memory safety matters because it prevents bugs and vulnerabilities such as dangling pointers, data races, and buffer overflows that can cause crashes or security exploits.\" That covers both. Let''s respond.","type":"reasoning_text"}],"id":"msg_REDACTED_1","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"text":"Rust is a systems‑level programming language that guarantees memory and thread safety at compile time by enforcing an ownership and borrowing model, allowing developers to write fast, low‑level code without the risk of dangling pointers or data races.  \n\nMemory safety matters because bugs such as use‑after‑free, null dereferences, and buffer overflows can crash a program, lead to subtle logic errors, or become serious security vulnerabilities.","type":"output_text"}],"id":"msg_REDACTED_2","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"service_tier":"default","status":"completed","temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":85,"input_tokens_details":{"cached_tokens":0},"output_tokens":260,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":345}}'

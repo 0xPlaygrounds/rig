@@ -102,6 +102,7 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 - [Ironclaw](https://github.com/nearai/ironclaw) - A secure personal AI assistant
 - [ilert](https://www.ilert.com/) - Incident management & alerting platform. Uses Rig as the multi-provider abstraction in its agentic LLM proxy powering ilert AI.
 - [Archestra](https://github.com/archestra-ai/archestra) - MCP-native secure AI platform. Uses Rig in its agentic benchmark.
+- [TagoIO](https://tago.io/) - IoT cloud platform. Uses Rig as the multi-provider abstraction for agentic AI features in production.
 
 For a curated list of Rig projects, libraries, tools, articles, and production users, check out [awesome-rig](https://github.com/0xPlaygrounds/awesome-rig).
 

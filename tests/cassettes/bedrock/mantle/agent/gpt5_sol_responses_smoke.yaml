@@ -1,0 +1,16 @@
+when:
+  path: /openai/v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant. Answer directly.","model":"openai.gpt-5.6-sol","reasoning":{"effort":"medium"},"store":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a concise assistant. Answer directly.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"openai.gpt-5.6-sol","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Rust is a systems programming language focused on performance, reliability, and safe concurrency. Memory safety prevents bugs such as null-pointer dereferences, buffer overflows, and use-after-free vulnerabilities.","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"all_turns","effort":"medium","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":37,"input_tokens_details":{"cache_write_tokens":35,"cached_tokens":0},"output_tokens":41,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":78},"user":null}'

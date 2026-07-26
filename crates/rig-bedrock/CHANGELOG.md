@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Bedrock **Mantle** OpenAI-compatible client (`rig_bedrock::mantle`):
+  - Default base `https://bedrock-mantle.{region}.api.aws/v1` for GPT-OSS and most models
+  - GPT-5.x alternate base `…/openai/v1` via `openai_gpt5_base_url`
+  - Short-term IAM bearer token mint (TTL = min(12h, source AWS session); multi-entry cache keyed by region + access key id; wall-clock refresh)
+  - First-class Mantle `ResponsesClient` / `CompletionsClient` (not OpenAI type aliases); telemetry provider `aws_bedrock`; only chat completion is `Capable`
+  - `ClientBuilder::from_env()` (sync), free `from_env` / `from_env_completions`
+  - Unversioned Mantle model constants (`openai.gpt-oss-20b`, Luna/Sol/Terra, …); versioned Converse ids on `completion::OPENAI_GPT_OSS_*_VERSIONED`
+  - Typed `MantleError` sources (no flattened `String` variants)
+  - Example: `agent_with_bedrock_mantle`
+  - Cassette + live smokes for GPT-OSS Completions/Responses/streaming and GPT-5.6 Luna/Sol/Terra
+
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.39.0...rig-bedrock-v0.40.0) - 2026-07-10
 
 ### Added

@@ -46,12 +46,28 @@ cargo test -p rig --all-features --test bedrock bedrock::cassette -- --nocapture
 cargo test -p rig --all-features --test doubleword doubleword::cassette -- --nocapture --test-threads=1
 ```
 
-Bedrock cassette replay does not require AWS credentials. Bedrock record mode uses the AWS
+Bedrock cassette replay does not require AWS credentials. Bedrock **Converse** record mode uses the AWS
 SDK credential provider chain and a direct SigV4-aware recorder, so it requires AWS credentials
 with Bedrock model access in `us-east-1` and overwrites existing cassette files. The Bedrock
 recorder buffers streaming/event-stream responses and stores non-UTF-8 cassette bodies as base64;
 those opaque bodies are intended for replay fidelity, and safety checks also scan their decoded
 bytes for credential-shaped material.
+
+Bedrock **Mantle** (OpenAI-compatible) cassettes under `tests/cassettes/bedrock/mantle/` use the
+same HTTP `ProviderCassette` path as OpenAI (bearer auth), not the Converse SigV4 direct recorder.
+Two real base URLs are used when recording:
+
+- GPT-OSS Completions/Responses: `https://bedrock-mantle.us-east-1.api.aws/v1`
+- GPT-5.x Responses (Luna / Sol / Terra): `https://bedrock-mantle.us-east-1.api.aws/openai/v1`
+
+Record with:
+
+```bash
+export AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1
+eval "$(aws configure export-credentials --format env)"
+RIG_PROVIDER_TEST_MODE=record \
+cargo test -p rig --all-features --test bedrock mantle -- --nocapture --test-threads=1
+```
 
 Record mode requires the relevant provider credentials in the environment and overwrites existing
 cassette files:

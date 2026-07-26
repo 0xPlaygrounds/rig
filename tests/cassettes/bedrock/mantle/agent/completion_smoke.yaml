@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"openai.gpt-oss-20b"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Rust is a system‑level programming language that provides zero‑cost abstractions with guaranteed memory safety and thread safety enforced at compile time. Ensuring memory safety prevents crashes, data races, and security exploits, making software more reliable and secure.","reasoning":"Need concise answer: Rust is a systems programming language with safety and concurrency. Memory safety prevents crashes/bugs.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai.gpt-oss-20b","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":80,"prompt_tokens":98,"total_tokens":178}}'

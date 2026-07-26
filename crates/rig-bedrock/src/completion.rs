@@ -123,6 +123,14 @@ pub const MISTRAL_SMALL_24_02: &str = "mistral.mistral-small-2402-v1:0";
 pub const MISTRAL_MIXTRAL_8X7B_INSTRUCT_V0: &str = "mistral.mixtral-8x7b-instruct-v0:1";
 /// `mistral.pixtral-large-2502-v1:0`
 pub const MISTRAL_PIXTRAL_LARGE_2502: &str = "mistral.pixtral-large-2502-v1:0";
+/// `openai.gpt-oss-20b-1:0` — Bedrock Runtime / Converse id (not Mantle catalog).
+///
+/// Mantle lists the unversioned id `openai.gpt-oss-20b` (`mantle::OPENAI_GPT_OSS_20B`).
+pub const OPENAI_GPT_OSS_20B_VERSIONED: &str = "openai.gpt-oss-20b-1:0";
+/// `openai.gpt-oss-120b-1:0` — Bedrock Runtime / Converse id (not Mantle catalog).
+///
+/// Mantle lists the unversioned id `openai.gpt-oss-120b` (`mantle::OPENAI_GPT_OSS_120B`).
+pub const OPENAI_GPT_OSS_120B_VERSIONED: &str = "openai.gpt-oss-120b-1:0";
 /// `stability.sd3-5-large-v1:0`
 pub const STABILITY_SD3_5_LARGE: &str = "stability.sd3-5-large-v1:0";
 /// `stability.stable-image-core-v1:1`
