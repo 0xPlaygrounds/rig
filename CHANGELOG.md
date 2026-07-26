@@ -7,7 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(core)* `rig_core::telemetry::Empty` re-exports `tracing::field::Empty`, so a
+  runtime can declare a completion-parent field as not-yet-valued without taking
+  a direct `tracing` dependency.
+
 ### Changed
+
+- *(core)* The telemetry completion-parent contract has one declarative
+  source: the new `rig_core::telemetry::completion_parent_span!` macro
+  declares the adoption marker and every required `gen_ai.*` field. `tracing`
+  bakes a span's field set into static metadata and `Span::record` silently
+  no-ops on undeclared fields, so a hand-mirrored field list that drops one
+  field loses that telemetry with no error — the contract was previously
+  duplicated in six places. Exact-set tests now pin the macro against
+  `COMPLETION_PARENT_REQUIRED_FIELDS` and against the span the completion
+  builder itself creates, so those lists (including `rig-agent`'s chat span,
+  which now delegates to the macro) can no longer drift. A completion parent
+  that carries the marker but omits a required field triggers a `warn!` naming
+  the missing fields — once per offending span callsite, so two broken runtimes
+  are both reported — before it degrades to a fresh `rig::completions` child
+  span, so the degradation is visible in logs rather than only as a duplicated
+  span layer in dashboards. The macro accepts an
+  optional `parent:` argument (default: the current span), and its expansion
+  resolves `tracing` through `rig-core`, so downstream crates do not need a
+  direct `tracing` dependency merely to invoke it (see the `Empty` re-export
+  above). Nothing is breaking: the marker field and the required field set are
+  unchanged.
 
 - *(derive)* [**breaking**] `#[rig_tool]` required-ness is now derived from the
   parameter types, and the advertised schema always agrees with the
