@@ -1,0 +1,21 @@
+[package]
+name = "rig-core-macro-hygiene"
+# Never released: a compile-only tripwire, pinned at 0.0.0 so it stays out of
+# the workspace version dance.
+version = "0.0.0"
+edition = { workspace = true }
+license = "MIT"
+publish = false
+description = "Compile-only dependency-hygiene tripwire for rig-core's exported macros. Not published."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+# `rig-core` is deliberately the ONLY dependency, and deliberately renamed:
+# `completion_parent_span!` must expand through paths it can resolve via
+# `rig-core` alone, under whatever name the downstream crate gave it. If the
+# expansion ever reaches for `::tracing` directly again, this crate stops
+# compiling and every `cargo check --workspace` fails. Do not add dependencies.
+[dependencies]
+rig_runtime_core = { package = "rig-core", path = "../rig-core", default-features = false }
