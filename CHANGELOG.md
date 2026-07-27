@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exception, and only if they were previously building with the feature off.)
   Dependents passing `features = ["wasm"]` should drop it; nothing replaces it.
 
+- *(core)* `if_wasm!`/`if_not_wasm!` now key on the target rather than a feature.
+  These are `#[macro_export]`ed, and a `cfg` inside a macro expansion is
+  evaluated in the *calling* crate — so the old expansion tested whether the
+  **caller** had a feature named `wasm`, not `rig-core`. Any caller without one
+  took the `if_not_wasm!` branch on every target, browser wasm included. Called
+  out separately because unlike the feature removal, which Cargo rejects at
+  resolution, this one changes behavior with nothing to fail on: a downstream
+  crate that did define a `wasm` feature and expected it to drive these macros
+  gets the target's answer now, silently. Gate on the target directly if you
+  need the old association.
+
 - *(agent)* [**breaking**] The `rmcp` feature is native-only. It never compiled
   for wasm — rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
   which rig's wasm tool registry cannot satisfy — but it failed with a wall of
