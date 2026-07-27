@@ -38,6 +38,12 @@ Browser wasm is the only supported wasm target, so target-gated dependencies use
 `agent::prompt_request::streaming` use the same predicate, because that is
 exactly where `rig-core`'s `WasmCompatSend`/`WasmCompatSync` markers go no-op.
 
+There is no `wasm` feature to enable: browser builds get `rig-core/wasm`
+automatically from that target table, and on any other target the feature would
+have been a no-op. Building for `wasm32-unknown-unknown` is the whole opt-in.
+(The root `rig` facade keeps its `wasm` feature — an agent-less facade build has
+no target table of its own and still needs a way to ask for `rig-core/wasm`.)
+
 **WASI is unsupported** because the dependency graph does not build for it, not
 merely because it is untested: `rig-core` depends unconditionally on `reqwest`,
 which pulls `hyper`/`socket2` and a tokio feature set that WASI rejects

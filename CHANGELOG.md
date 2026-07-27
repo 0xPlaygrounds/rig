@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] Remove `rig-agent`'s `wasm` feature. It was a no-op in
+  every buildable configuration: browser wasm already enables `rig-core/wasm`
+  through `rig-agent`'s target table, `rig-core`'s own gate additionally requires
+  `target_arch = "wasm32"` so the feature did nothing on native, and the one
+  target where it would have had an effect — WASI — does not build. Keeping it
+  would have been actively misleading, since on WASI it relaxed `rig-core`'s
+  `WasmCompat*` markers while `rig-agent`'s stream aliases still required `Send`.
+  Building for `wasm32-unknown-unknown` is the entire opt-in. Direct `rig-agent`
+  dependents listing `features = ["wasm"]` should drop it. The root `rig` facade
+  keeps its `wasm` feature (it now forwards only `rig-core/wasm`), because an
+  agent-less facade build has no target table of its own.
+
 - *(agent)* The WASM support matrix is now explicit: `wasm32-unknown-unknown`
   (browser) is the supported wasm target, WASI is documented as unsupported, and
   the `rmcp` feature is native-only. **Nothing that previously worked stops
