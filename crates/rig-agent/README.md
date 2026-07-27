@@ -32,24 +32,17 @@ Classic tools that need mutable per-call state implement
 | — | `wasm32-wasip1` / `wasm32-wasip2` (WASI) | **Not supported** |
 | — | `wasm32-unknown-emscripten` | Not supported |
 
-Browser wasm is the only supported wasm target, so target-gated dependencies use
-`cfg(all(target_arch = "wasm32", target_os = "unknown"))` rather than a bare
-`target_arch = "wasm32"`. The `Send`-relaxed stream aliases in
-`agent::prompt_request::streaming` use the same predicate, because that is
-exactly where `rig-core`'s `WasmCompatSend`/`WasmCompatSync` markers go no-op.
+**Building for `wasm32-unknown-unknown` is the entire opt-in** — there are no
+wasm feature flags anywhere in the workspace. `rig-core` relaxes its
+`WasmCompat*` bounds from the target alone.
 
-There are no wasm feature flags anywhere in the workspace. `rig-core` relaxes
-its `WasmCompat*` bounds from the target alone, so **building for
-`wasm32-unknown-unknown` is the entire opt-in** — no `--features wasm`, nothing
-to forward through the facade, nothing to keep in sync.
-
-**WASI is unsupported** because the dependency graph does not build for it, not
-merely because it is untested: `rig-core` depends unconditionally on `reqwest`,
-which pulls `hyper`/`socket2` and a tokio feature set that WASI rejects
-(`Socket2 doesn't support the compile target`; `Only features
-sync,macros,io-util,rt,time are supported on wasm`). Supporting WASI would mean
-making `reqwest` optional and supplying a `wasi:http` client behind
-`rig_core::http_client` — a deliberate project, not a `cfg` fix.
+Wasm gates name a `target_os` (`all(target_arch = "wasm32", target_os =
+"unknown")`) rather than a bare `target_arch = "wasm32"`, because the latter
+also matches WASI, which has no JS host. WASI itself does not build: `rig-core`
+depends unconditionally on `reqwest`, which pulls `hyper`/`socket2` and a tokio
+feature set WASI rejects. Supporting it would mean making `reqwest` optional and
+adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
+`cfg` fix.
 
 **`rmcp` is native-only.** rmcp's `ClientHandler` is declared
 `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes

@@ -53,13 +53,11 @@ jobs:
       # Browser wasm is the only supported wasm target, so every wasm gate must
       # name `target_os` — `all(target_arch = "wasm32", target_os = "unknown")`
       # for browser-specific behavior, or `target_family = "wasm"` for "any
-      # wasm". A bare `target_arch = "wasm32"` also captures WASI, which is how
-      # browser-only dependencies and `Send`-relaxed aliases leaked onto a
-      # target with no JS host (see crates/rig-agent/README.md#target-support).
-      # It also silently breaks pairs: `not(target_arch = "wasm32")` opposite
-      # `all(target_arch = "wasm32", target_os = "unknown")` leaves WASI
-      # matching *neither* arm, which is exactly the shape this caught in
-      # `rig-core`'s SSE type aliases.
+      # wasm". A bare `target_arch = "wasm32"` also matches WASI, which has no JS
+      # host, so browser-only dependencies and `Send`-relaxed aliases leak onto
+      # it. It also silently breaks complementary pairs — a bare negative
+      # opposite a browser-scoped positive leaves some targets matching neither
+      # arm, which is the shape this caught in `rig-core`'s SSE type aliases.
       #
       # Prose in comments is exempt, but note the exemption cannot simply skip
       # lines starting with `#`: that is a TOML comment *and* the first character
@@ -112,8 +110,8 @@ jobs:
   # example came to declare `default-features = false` without `agent` while
   # importing `rig::agent` — green in CI, broken standalone.
   #
-  # `wasm32-unknown-unknown` (browser) is the only supported wasm target; WASI
-  # is not supported. See crates/rig-agent/README.md for the matrix.
+  # `wasm32-unknown-unknown` (browser) is the only supported wasm target. See
+  # crates/rig-agent/README.md for the matrix.
   check-wasm-runtimes:
     name: stable / check ${{ matrix.package }} wasm target
     runs-on: ubuntu-latest

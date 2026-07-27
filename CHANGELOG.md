@@ -17,51 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(core, agent)* [**breaking**] Remove every wasm feature flag in the workspace
   — `rig-core`'s `wasm`, `rig-agent`'s `wasm`, and the `rig` facade's `wasm`.
-  Browser wasm now needs **no feature flags at all**: `cargo build --target
-  wasm32-unknown-unknown` is the entire opt-in. `rig-core`'s `WasmCompat*`
-  markers key on `all(target_arch = "wasm32", target_os = "unknown")` directly
-  rather than on a feature that every consumer already enabled from a target
-  table, and the feature's only dependency payload
-  (`wasm-bindgen-futures`) was never referenced in `rig-core` at all. Relaxing
-  the bounds cannot break user code — the relaxed markers are blanket-implemented
-  (`impl<T> WasmCompatSend for T {}`), so every type that satisfied the strict
-  form satisfies the relaxed one. Dependents passing `features = ["wasm"]` to
-  any of the three crates should drop it; nothing replaces it.
+  Browser wasm needs **no feature flags at all**: `cargo build --target
+  wasm32-unknown-unknown` is the entire opt-in. The feature was a pure `cfg`
+  switch that every consumer already flipped from a target table, and its one
+  optional dependency was never referenced. Relaxing the bounds cannot break
+  user code — the relaxed markers are blanket-implemented
+  (`impl<T> WasmCompatSend for T {}`). Dependents passing `features = ["wasm"]`
+  should drop it; nothing replaces it.
+
+- *(agent)* [**breaking**] The `rmcp` feature is native-only. It never compiled
+  for wasm — rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
+  which rig's wasm tool registry cannot satisfy — but it failed with a wall of
+  `dyn ErasedTool` trait errors. It now fails with one sentence naming the cause,
+  and CI asserts that stays true.
+
+- *(agent)* Document the supported target matrix: native is fully supported,
+  `wasm32-unknown-unknown` (browser) is supported, and WASI is not — its
+  dependency graph has never built. Browser-only dependencies and `Send`-relaxed
+  aliases are scoped accordingly, and `wasm-bindgen-futures` is no longer a
+  `rig-agent` dependency, its only user having been the now-native-only MCP
+  cancellation dispatch.
 
 - *(core)* Fix `rig-core`'s SSE `ResponseFuture`/`EventStream` aliases, whose
-  `cfg` arms did not partition: `not(target_arch = "wasm32")` opposite a
-  browser-scoped arm left WASI matching neither, so the types were undefined
-  there. Both arms now share one predicate.
-
-- *(agent)* [**breaking**] Remove `rig-agent`'s `wasm` feature. It was a no-op in
-  every buildable configuration: browser wasm already enables `rig-core/wasm`
-  through `rig-agent`'s target table, `rig-core`'s own gate additionally requires
-  `target_arch = "wasm32"` so the feature did nothing on native, and the one
-  target where it would have had an effect — WASI — does not build. Keeping it
-  would have been actively misleading, since on WASI it relaxed `rig-core`'s
-  `WasmCompat*` markers while `rig-agent`'s stream aliases still required `Send`.
-  Building for `wasm32-unknown-unknown` is the entire opt-in. Direct `rig-agent`
-  dependents listing `features = ["wasm"]` should drop it. The root `rig` facade
-  keeps its `wasm` feature (it now forwards only `rig-core/wasm`), because an
-  agent-less facade build has no target table of its own.
-
-- *(agent)* The WASM support matrix is now explicit: `wasm32-unknown-unknown`
-  (browser) is the supported wasm target, WASI is documented as unsupported, and
-  the `rmcp` feature is native-only. **Nothing that previously worked stops
-  working** — `rmcp` never compiled for any wasm target (rmcp's `ClientHandler`
-  requires `Send + Sync` unconditionally, which rig's wasm tool registry cannot
-  satisfy; rmcp's `local` feature relaxes only its future bounds), and WASI never
-  built at all (`rig-core` depends unconditionally on `reqwest`, which pulls
-  `hyper`/`socket2` and a tokio feature set WASI rejects). What changes is the
-  failure mode and the honesty of the gates: requesting `rmcp` on wasm now fails
-  with one explanatory `compile_error!` instead of a wall of `dyn ErasedTool`
-  trait errors; browser-only dependencies are scoped to
-  `cfg(all(target_arch = "wasm32", target_os = "unknown"))` instead of every
-  `wasm32` target, so WASI builds no longer pull a JS-host shim they cannot use;
-  and `wasm-bindgen-futures` is no longer a `rig-agent` dependency at all, since
-  its only user was the now-native-only MCP cancellation dispatch. CI asserts the
-  diagnostic fires and is the *only* error, so an ungated
-  `#[cfg(feature = "rmcp")]` cannot silently reintroduce the trait-error wall.
+  `cfg` arms did not partition and left some targets matching neither, so the
+  types were undefined there. Both arms now share one predicate.
 
 ### Changed
 
