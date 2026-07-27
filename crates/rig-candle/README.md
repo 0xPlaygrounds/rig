@@ -10,11 +10,12 @@ use rig_candle::{CandleModel, ModelData};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = CandleModel::from_safetensors(ModelData {
+    let model = CandleModel::from_safetensors_async(ModelData {
         config: std::fs::read("./model/config.json")?,
         tokenizer: std::fs::read("./model/tokenizer.json")?,
         weights: std::fs::read("./model/model.safetensors")?,
-    })?;
+    })
+    .await?;
     let agent = AgentBuilder::new(model)
         .preamble("You are a concise assistant.")
         .build();
@@ -29,15 +30,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   conversation formatting, text conversations.
 - SmolLM2-360M-Instruct: Q4_K_M GGUF using Candle's quantized Llama backend,
   explicit ChatML formatting. This remains the small native/WASM demo model.
-- Qwen3-4B-Instruct: the official `Qwen3-4B-Q4_K_M.gguf`, using Candle's
+- Qwen3-4B: the official `Qwen3-4B-Q4_K_M.gguf`, using Candle's
   quantized Qwen3 backend and the explicit Qwen Hermes tool protocol. This is
   the native-only agent-conformance profile; it is rejected on wasm32 because
   its runtime memory cannot fit reliably in wasm32 linear memory.
 
-`ModelArtifacts` selects safetensors versus GGUF explicitly. `from_gguf_bytes`
-accepts long-lived borrowed bytes such as `include_bytes!` without first copying
-the checkpoint. Arbitrary Qwen, Qwen2, Qwen3 MoE/vision, other sizes, shards,
-and unvalidated quantizations are rejected rather than treated as Llama.
+`ModelArtifacts` selects safetensors versus GGUF explicitly. Native async
+constructors and `build_async` perform validation and model construction on
+Tokio's blocking pool; synchronous constructors remain available. A load that
+has entered the blocking pool runs to completion even if its awaiting future is
+dropped. `builder_from_gguf_bytes` gives borrowed GGUF buffers the same
+generation/concurrency settings as owned artifacts without copying them;
+`from_gguf_bytes_async` accepts static buffers such as `include_bytes!`.
+Arbitrary Qwen, Qwen2, Qwen3 MoE/vision, other sizes, shards, and unvalidated
+quantizations are rejected rather than treated as Llama.
 
 The loader validates architecture metadata before tensor allocation, exact
 profile dimensions and special-token agreement, the complete GGUF vocabulary,
@@ -110,18 +116,17 @@ The live test loads the model once, reuses cheap `CandleModel` clones with a
 fresh KV cache per request, applies greedy decoding and a fixed seed, enforces
 timeouts, and prints tokens, tool counts, history size, timings, throughput, and
 safe output. On the ARM64 development host used for the release-mode
-verification, the expanded suite completed in 164.41 seconds. It passed a
-direct completion plus sixteen portable reports: buffered/raw-streaming text
+verification, it passed a direct completion plus sixteen portable reports:
+buffered/raw-streaming text
 parity, optional arguments, parallel calls, serial host execution of a parallel
 batch, a zero-argument tool, string/JSON result serialization, complex nested
 Unicode and escaped arguments, invalid-call fail/repair/retry/skip recovery,
 hook rewrite chaining with turn-local request patches, cancellation and
 max-turn diagnostics, structured extraction with usage, sequential tools,
 streamed tool execution, buffered and streamed synthetic structured output,
-and all tool-choice modes. Reported end-to-end generation throughput ranged
-from 3.48 to 7.83 tokens/s for the generated-output scenarios. Actual resident
-memory and speed depend on the target; the loaded quantized tensors are based on
-a 2.33-GiB GGUF, KV cache grows with context, and loading temporarily also holds
+and all tool-choice modes. Actual resident memory and speed depend on the target
+and concurrent system load; the loaded quantized tensors are based on a
+2.33-GiB GGUF, KV cache grows with context, and loading temporarily also holds
 the 2.33-GiB input byte buffer alongside constructed tensors. Plan for more than
 twice the checkpoint size during loading rather than treating file size as a
 hard memory bound.
@@ -152,10 +157,13 @@ quality.
 
 Builder defaults can be overridden by request `max_tokens` and `temperature`.
 The Candle-only `additional_params` keys are `top_k`, `top_p`, `seed`,
-`repeat_penalty`, and `repeat_last_n`; unknown keys are errors. Native inference
-runs in `spawn_blocking`; `max_concurrent_requests` defaults to one. Every
-request owns its cache and sampler. Cancellation is cooperative between Candle
-forwards, and the bounded stream channel has capacity eight.
+`repeat_penalty`, and `repeat_last_n`; unknown keys are errors. Omitting `top_k`
+or `top_p` inherits its builder default, while explicit JSON `null` disables it.
+Native inference runs in `spawn_blocking`; model loading and each complete
+inference operation run inside Candle's CPU context so its private Rayon pool
+stays active. `max_concurrent_requests` defaults to one. Every request owns its
+cache and sampler. Cancellation is cooperative between Candle forwards, and the
+bounded stream channel has capacity eight.
 
 WASM inference is synchronous and should run in an application-owned Web Worker.
 The maintained browser example embeds SmolLM2 at compile time, rejects modified
