@@ -63,13 +63,19 @@ jobs:
       # lines starting with `#`: that is a TOML comment *and* the first character
       # of a Rust `#[cfg(...)]` attribute, so a naive pattern silently ignores
       # every gate it is meant to catch. Exempt `//` (Rust) and `#` only when not
-      # followed by `[` (TOML). Spacing is normalized by the `cargo fmt` check
-      # above, so matching the spaced form is sufficient.
+      # followed by `[` (TOML).
+      #
+      # The match tolerates whitespace around the `=`. `cargo fmt` normalizes it
+      # in `.rs` files, but it does not format `Cargo.toml` and there is no TOML
+      # formatter in CI, so a manifest could otherwise smuggle a gate through as
+      # `cfg(target_arch="wasm32")`. Scope is every crate plus the facade rather
+      # than just rig-core/rig-agent: nothing else names `target_arch` today, and
+      # keeping the guard workspace-wide is what stops the next one.
       - name: Check wasm gates name a target_os
         run: |
-          if grep -rn 'target_arch = "wasm32"' \
-               crates/rig-core/src crates/rig-core/Cargo.toml \
-               crates/rig-agent/src crates/rig-agent/Cargo.toml \
+          if grep -rnE 'target_arch[[:space:]]*=[[:space:]]*"wasm32"' \
+               crates/*/src crates/*/tests crates/*/Cargo.toml \
+               src tests Cargo.toml \
              | grep -v 'target_os' \
              | grep -vE ':[[:space:]]*(//|#([^[]|$))'; then
             echo "::error::Found a bare 'target_arch = \"wasm32\"' gate. Browser wasm is the only supported wasm target: use all(target_arch = \"wasm32\", target_os = \"unknown\") for browser-specific behavior, or target_family = \"wasm\" for any wasm."
