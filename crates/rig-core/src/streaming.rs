@@ -218,12 +218,12 @@ impl From<RawStreamingToolCall> for ToolCall {
     }
 }
 
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// Provider stream of raw completion chunks on native targets.
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 /// Provider stream of raw completion chunks on wasm targets.
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
@@ -561,7 +561,7 @@ mod tests {
     use async_stream::stream;
     use tokio::time::sleep;
 
-    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
         stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
         + Send
@@ -570,7 +570,7 @@ mod tests {
         Box::pin(stream)
     }
 
-    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn to_stream_result(
         stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
         + 'static,

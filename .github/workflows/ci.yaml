@@ -50,29 +50,31 @@ jobs:
             exit 1
           fi
 
-      # Browser wasm is rig-agent's only supported wasm target, so every wasm
-      # gate there must name `target_os` — either `all(target_arch = "wasm32",
-      # target_os = "unknown")` for browser-specific behavior, or
-      # `target_family = "wasm"` for "any wasm". A bare `target_arch = "wasm32"`
-      # also captures WASI, which is how browser-only dependencies and
-      # `Send`-relaxed aliases previously leaked onto a target that has no JS
-      # host (see crates/rig-agent/README.md#target-support). rig-core is
-      # deliberately out of scope: it uses bare `not(target_arch = "wasm32")`
-      # for native-only exclusions and `all(feature = "wasm", target_arch =
-      # "wasm32")` for its `WasmCompat` markers, both correct there.
+      # Browser wasm is the only supported wasm target, so every wasm gate must
+      # name `target_os` — `all(target_arch = "wasm32", target_os = "unknown")`
+      # for browser-specific behavior, or `target_family = "wasm"` for "any
+      # wasm". A bare `target_arch = "wasm32"` also captures WASI, which is how
+      # browser-only dependencies and `Send`-relaxed aliases leaked onto a
+      # target with no JS host (see crates/rig-agent/README.md#target-support).
+      # It also silently breaks pairs: `not(target_arch = "wasm32")` opposite
+      # `all(target_arch = "wasm32", target_os = "unknown")` leaves WASI
+      # matching *neither* arm, which is exactly the shape this caught in
+      # `rig-core`'s SSE type aliases.
       #
       # Prose in comments is exempt, but note the exemption cannot simply skip
       # lines starting with `#`: that is a TOML comment *and* the first character
       # of a Rust `#[cfg(...)]` attribute, so a naive pattern silently ignores
       # every gate it is meant to catch. Exempt `//` (Rust) and `#` only when not
-      # followed by `[` (TOML).
-      - name: Check rig-agent wasm gates name a target_os
+      # followed by `[` (TOML). Spacing is normalized by the `cargo fmt` check
+      # above, so matching the spaced form is sufficient.
+      - name: Check wasm gates name a target_os
         run: |
           if grep -rn 'target_arch = "wasm32"' \
+               crates/rig-core/src crates/rig-core/Cargo.toml \
                crates/rig-agent/src crates/rig-agent/Cargo.toml \
              | grep -v 'target_os' \
              | grep -vE ':[[:space:]]*(//|#([^[]|$))'; then
-            echo "::error::Found a bare 'target_arch = \"wasm32\"' gate in rig-agent. Browser wasm is the only supported wasm target: use all(target_arch = \"wasm32\", target_os = \"unknown\") for browser-specific behavior, or target_family = \"wasm\" for any wasm."
+            echo "::error::Found a bare 'target_arch = \"wasm32\"' gate. Browser wasm is the only supported wasm target: use all(target_arch = \"wasm32\", target_os = \"unknown\") for browser-specific behavior, or target_family = \"wasm\" for any wasm."
             exit 1
           fi
 
@@ -94,14 +96,13 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Run cargo check wasm target
-        run: cargo check --package rig-core --features wasm --target wasm32-unknown-unknown
+        run: cargo check --package rig-core --target wasm32-unknown-unknown
 
   # The runtime split adds wasm-sensitive code to rig-agent and feature
   # forwarding in the `rig` facade, so check both on the wasm target too. These
-  # are bare (default-feature) checks: rig-agent's async bounds are relaxed on
-  # browser wasm and its `[target.'cfg(wasm32, os = unknown)']` deps pull in
-  # `rig-core/wasm` automatically, so a standalone `--target wasm32` build must
-  # compile without opting into `wasm`.
+  # are plain checks with no feature flags: the relaxed async bounds now follow
+  # from the target alone, so building for `wasm32-unknown-unknown` is the whole
+  # opt-in.
   #
   # `candle_wasm_chat` is here because it is the only consumer that exercises the
   # browser-wasm *facade* path, and each package must be checked **on its own**:

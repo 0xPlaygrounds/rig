@@ -298,11 +298,6 @@ discord-bot = ["agent", "rig-agent/discord-bot"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
 rayon = ["rig-core/rayon"]
-# `rig-agent` has no `wasm` feature to forward: on browser wasm its target table
-# enables `rig-core/wasm` unconditionally, and on every other target the feature
-# was a no-op. This still matters for agent-less facade builds, which have no
-# such target table of their own.
-wasm = ["rig-core/wasm"]
 rmcp = ["agent", "rig-agent/rmcp"]
 socks = ["rig-core/socks"]
 reqwest = ["rig-core/reqwest"]

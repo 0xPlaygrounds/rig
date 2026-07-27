@@ -28,7 +28,7 @@ Classic tools that need mutable per-call state implement
 | Tier | Target | Status |
 | --- | --- | --- |
 | 1 | native (linux / macOS / windows, `x86_64` and `aarch64`) | Full support, all features including `rmcp` |
-| 2 | `wasm32-unknown-unknown` (browser) | Supported. `rig-core/wasm` is enabled automatically; the `rmcp` feature is **not** available |
+| 2 | `wasm32-unknown-unknown` (browser) | Supported, with no feature flags to set; the `rmcp` feature is **not** available |
 | — | `wasm32-wasip1` / `wasm32-wasip2` (WASI) | **Not supported** |
 | — | `wasm32-unknown-emscripten` | Not supported |
 
@@ -38,11 +38,10 @@ Browser wasm is the only supported wasm target, so target-gated dependencies use
 `agent::prompt_request::streaming` use the same predicate, because that is
 exactly where `rig-core`'s `WasmCompatSend`/`WasmCompatSync` markers go no-op.
 
-There is no `wasm` feature to enable: browser builds get `rig-core/wasm`
-automatically from that target table, and on any other target the feature would
-have been a no-op. Building for `wasm32-unknown-unknown` is the whole opt-in.
-(The root `rig` facade keeps its `wasm` feature — an agent-less facade build has
-no target table of its own and still needs a way to ask for `rig-core/wasm`.)
+There are no wasm feature flags anywhere in the workspace. `rig-core` relaxes
+its `WasmCompat*` bounds from the target alone, so **building for
+`wasm32-unknown-unknown` is the entire opt-in** — no `--features wasm`, nothing
+to forward through the facade, nothing to keep in sync.
 
 **WASI is unsupported** because the dependency graph does not build for it, not
 merely because it is untested: `rig-core` depends unconditionally on `reqwest`,

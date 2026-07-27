@@ -22,8 +22,8 @@
 //! # Target support
 //!
 //! Native targets are fully supported. `wasm32-unknown-unknown` (browser) is
-//! supported, with `rig-core/wasm` enabled automatically and the `rmcp` feature
-//! unavailable — rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
+//! supported with no feature flags to set — the relaxed async bounds follow from
+//! the target — and the `rmcp` feature is unavailable there — rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
 //! which this crate's wasm tool registry cannot satisfy, so asking for it there
 //! raises a targeted `compile_error!`. WASI (`wasm32-wasip1`/`wasip2`) is **not
 //! supported**: the dependency graph does not build for it. See the crate

@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(core, agent)* [**breaking**] Remove every wasm feature flag in the workspace
+  — `rig-core`'s `wasm`, `rig-agent`'s `wasm`, and the `rig` facade's `wasm`.
+  Browser wasm now needs **no feature flags at all**: `cargo build --target
+  wasm32-unknown-unknown` is the entire opt-in. `rig-core`'s `WasmCompat*`
+  markers key on `all(target_arch = "wasm32", target_os = "unknown")` directly
+  rather than on a feature that every consumer already enabled from a target
+  table, and the feature's only dependency payload
+  (`wasm-bindgen-futures`) was never referenced in `rig-core` at all. Relaxing
+  the bounds cannot break user code — the relaxed markers are blanket-implemented
+  (`impl<T> WasmCompatSend for T {}`), so every type that satisfied the strict
+  form satisfies the relaxed one. Dependents passing `features = ["wasm"]` to
+  any of the three crates should drop it; nothing replaces it.
+
+- *(core)* Fix `rig-core`'s SSE `ResponseFuture`/`EventStream` aliases, whose
+  `cfg` arms did not partition: `not(target_arch = "wasm32")` opposite a
+  browser-scoped arm left WASI matching neither, so the types were undefined
+  there. Both arms now share one predicate.
+
 - *(agent)* [**breaking**] Remove `rig-agent`'s `wasm` feature. It was a no-op in
   every buildable configuration: browser wasm already enables `rig-core/wasm`
   through `rig-agent`'s target table, `rig-core`'s own gate additionally requires

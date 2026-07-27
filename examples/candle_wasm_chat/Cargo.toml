@@ -21,10 +21,8 @@ workspace = true
 # the shared `rig` and hid it. The wasm CI lane now builds this package on its
 # own so its declared features are actually exercised.
 #
-# No `wasm` feature: with `agent` enabled, `rig-agent`'s browser target table
-# already supplies `rig-core/wasm`, so listing it would be the same no-op this
-# release removed from `rig-agent` itself. The facade keeps the feature for
-# agent-less builds, which have no such target table.
+# No wasm feature is needed anywhere: the relaxed async bounds follow from
+# targeting `wasm32-unknown-unknown`.
 rig = { path = "../..", default-features = false, features = ["agent", "candle"] }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }

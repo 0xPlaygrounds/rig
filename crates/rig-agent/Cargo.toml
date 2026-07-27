@@ -45,16 +45,6 @@ tracing-futures = { workspace = true, features = ["futures-03"] }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rmcp = { workspace = true, optional = true, features = ["client"] }
 
-# `rig-core` relaxes its portable async bounds behind this feature. Enable it
-# automatically for browser-WASM builds so `cargo check --target wasm32-unknown-unknown`
-# remains a valid standalone `rig-agent` portability lane. Scoped to
-# `target_os = "unknown"` (browser) rather than the whole `wasm` family — the
-# same reasoning `rig-core` applies to its `futures-timer` backend, and the
-# predicate the `Send`-relaxed stream aliases in `agent::prompt_request::streaming`
-# must keep matching. WASI is not a supported target (see README).
-[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["wasm"] }
-
 [dev-dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
