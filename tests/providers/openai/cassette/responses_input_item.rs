@@ -11,6 +11,7 @@ fn test_input_item_serialization_avoids_duplicate_role() {
     let message = Message::User {
         content: OneOrMany::one(UserContent::InputText {
             text: "hello".to_string(),
+            prompt_cache_breakpoint: None,
         }),
         name: None,
     };
