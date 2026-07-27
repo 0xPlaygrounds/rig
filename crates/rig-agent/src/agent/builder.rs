@@ -27,14 +27,15 @@ use super::{Agent, OutputMode};
 #[cfg(feature = "rmcp")]
 fn build_rmcp_tools(
     tools: Vec<rmcp::model::Tool>,
-    client: rmcp::service::ServerSink,
+    peer_sink: rmcp::service::ServerSink,
     timeout: Option<std::time::Duration>,
 ) -> Vec<(String, RmcpTool)> {
     tools
         .into_iter()
         .map(|tool| {
             let name = tool.name.to_string();
-            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
+            let rmcp_tool =
+                RmcpTool::from_mcp_server(tool, peer_sink.clone()).with_timeout(timeout);
             (name, rmcp_tool)
         })
         .collect()
@@ -430,10 +431,34 @@ where
         }
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
-    /// to change or disable it.
+    /// Add an MCP tool from `rmcp`, bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT).
+    ///
+    /// Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout) to change or
+    /// disable the timeout.
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// The supplied [`ServerSink`](rmcp::service::ServerSink) is only a
+    /// communication handle. It does not own or keep the underlying RMCP
+    /// connection alive.
+    ///
+    /// The caller must retain the corresponding
+    /// [`RunningService`](rmcp::service::RunningService) for as long as the agent
+    /// may advertise or call this tool.
+    ///
+    /// Cloning `running_service.peer()` is not sufficient to keep the service
+    /// alive. Dropping the `RunningService` closes the transport, after which Rig
+    /// retires the disconnected tool registration.
+    ///
+    /// A typical application stores the agent and running services together:
+    ///
+    /// ```ignore
+    /// struct AppModel<M> {
+    ///     agent: Agent<M>,
+    ///     mcp_services: Vec<RunningService<RoleClient, ClientInfo>>,
+    /// }
+    /// ```
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -441,32 +466,46 @@ where
     pub fn rmcp_tool(
         self,
         tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
+        peer_sink: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, WithBuilderTools> {
-        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+        self.rmcp_tool_with_timeout(tool, peer_sink, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
-    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
+    /// Add an MCP tool from `rmcp` with a per-call timeout.
     ///
     /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
-    /// disable the timeout (unbounded). On timeout the call resolves to a tool
-    /// error the agent can recover from instead of blocking forever.
+    /// disable the timeout. On timeout, the call resolves to a tool error the
+    /// agent can recover from instead of blocking forever.
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// This builder stores only the supplied peer sink. It does not own the
+    /// [`RunningService`](rmcp::service::RunningService) that keeps the transport
+    /// and background task alive.
+    ///
+    /// The caller must retain the corresponding `RunningService` for as long as
+    /// the built agent needs this tool.
+    ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tool_with_timeout(
         self,
         tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
+        peer_sink: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> AgentBuilder<M, WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
+        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], peer_sink, timeout.into()))
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
-    /// to change or disable it.
+    /// Add multiple MCP tools from `rmcp`, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT).
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// The supplied peer sink does not own the RMCP connection. The caller must
+    /// retain the corresponding [`RunningService`](rmcp::service::RunningService)
+    /// for as long as the built agent needs any of these tools.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -474,27 +513,39 @@ where
     pub fn rmcp_tools(
         self,
         tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
+        peer_sink: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, WithBuilderTools> {
-        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+        self.rmcp_tools_with_timeout(
+            tools,
+            peer_sink,
+            crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT,
+        )
     }
 
-    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
-    /// issue #1914).
+    /// Add multiple MCP tools from `rmcp` with a per-call timeout.
     ///
     /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
-    /// disable the timeout (unbounded). On timeout a call resolves to a tool
-    /// error the agent can recover from instead of blocking forever.
+    /// disable the timeout.
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// This builder stores only the peer sink used to send tool calls. It does not
+    /// retain the `RunningService` that owns the connection.
+    ///
+    /// The caller must retain the corresponding
+    /// [`RunningService`](rmcp::service::RunningService) for as long as the built
+    /// agent needs these tools.
+    ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools_with_timeout(
         self,
         tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
+        peer_sink: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> AgentBuilder<M, WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
+        self.with_rmcp_toolset(build_rmcp_tools(tools, peer_sink, timeout.into()))
     }
 
     /// Transition into the `WithBuilderTools` state carrying the given built
@@ -657,35 +708,57 @@ where
         self
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
-    /// to change or disable it.
+    /// Add an array of MCP tools from `rmcp` to the agent, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT).
+    ///
+    /// Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout) to change or
+    /// disable the timeout.
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// The supplied [`ServerSink`](rmcp::service::ServerSink) is only a
+    /// communication handle. It does not own the underlying RMCP connection.
+    ///
+    /// The caller must retain the corresponding
+    /// [`RunningService`](rmcp::service::RunningService) for as long as the built
+    /// agent needs these tools.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
         self,
         tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
+        peer_sink: rmcp::service::ServerSink,
     ) -> Self {
-        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+        self.rmcp_tools_with_timeout(
+            tools,
+            peer_sink,
+            crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT,
+        )
     }
 
-    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
-    /// issue #1914).
+    /// Add an array of MCP tools from `rmcp` with a per-call timeout.
     ///
     /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
-    /// disable the timeout (unbounded). On timeout a call resolves to a tool
-    /// error the agent can recover from instead of blocking forever.
+    /// disable the timeout. On timeout, a call resolves to a tool error the agent
+    /// can recover from instead of blocking forever.
+    ///
+    /// # RMCP connection lifetime
+    ///
+    /// This builder stores only the peer sink used for tool calls. It does not
+    /// retain the [`RunningService`](rmcp::service::RunningService) that owns the
+    /// connection and background task.
+    ///
+    /// The caller must retain the corresponding `RunningService` for as long as
+    /// the built agent needs these tools.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools_with_timeout(
         self,
         tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
+        peer_sink: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
-        self.add_rmcp_tools(build_rmcp_tools(tools, client, timeout.into()))
+        self.add_rmcp_tools(build_rmcp_tools(tools, peer_sink, timeout.into()))
     }
 
     #[cfg(feature = "rmcp")]
@@ -925,6 +998,8 @@ mod tests {
             .serve((cfs, c2s))
             .await
             .expect("client connect");
+        // Keep `client` alive for the duration of the test. Cloning `peer()` does not
+        // own or keep the underlying RMCP connection alive.
         let peer = client.peer().clone();
 
         // The configured timeout (default, explicit, or disabled) is threaded
