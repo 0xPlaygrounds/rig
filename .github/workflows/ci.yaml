@@ -59,25 +59,67 @@ jobs:
       # opposite a browser-scoped positive leaves some targets matching neither
       # arm, which is the shape this caught in `rig-core`'s SSE type aliases.
       #
-      # Prose in comments is exempt, but note the exemption cannot simply skip
-      # lines starting with `#`: that is a TOML comment *and* the first character
-      # of a Rust `#[cfg(...)]` attribute, so a naive pattern silently ignores
-      # every gate it is meant to catch. Exempt `//` (Rust) and `#` only when not
-      # followed by `[` (TOML).
+      # The unit checked is the whole `cfg(...)` group, not the line. `cargo fmt`
+      # wraps an attribute wider than 100 columns across several lines, which
+      # splits `target_arch` from the `target_os` that answers for it — a
+      # line-scoped grep then reports a correctly written gate, and the fix it
+      # advises is already there. Worse, the `cargo fmt --check` step above
+      # *demands* the wrapped form, so the two steps would contradict each other
+      # with no way to satisfy both. Balanced-paren recursion keeps the group
+      # whole, which also makes whitespace around the `=` a non-issue: `cargo fmt`
+      # normalizes it in `.rs` files but does not format `Cargo.toml`, and there
+      # is no TOML formatter in CI, so `cfg(target_arch="wasm32")` in a
+      # `[target.'cfg(...)']` table must not slip through.
       #
-      # The match tolerates whitespace around the `=`. `cargo fmt` normalizes it
-      # in `.rs` files, but it does not format `Cargo.toml` and there is no TOML
-      # formatter in CI, so a manifest could otherwise smuggle a gate through as
-      # `cfg(target_arch="wasm32")`. Scope is every crate plus the facade rather
-      # than just rig-core/rig-agent: nothing else names `target_arch` today, and
-      # keeping the guard workspace-wide is what stops the next one.
+      # Comments are stripped first, per language, so prose quoting a bare gate
+      # stays exempt. Splitting the two syntaxes is the point: `#` opens a TOML
+      # comment but is also the first character of a Rust `#[cfg(...)]`, so
+      # stripping it from `.rs` files would silently ignore every gate this step
+      # exists to catch. Rust strips `//`, TOML strips `#` not followed by `[`.
+      #
+      # `cfg!(...)` is covered alongside `cfg(...)`, and a `target_arch =
+      # "wasm32"` outside any `cfg`/`cfg!` group (a `cfg_attr` predicate, say) is
+      # reported on its own so the group-scoped match cannot become a blind spot.
+      # Only `.rs` and `.toml` are read — the only places a gate can live, and it
+      # keeps the walk off the cassette fixtures under `tests/`. Scope is every
+      # crate plus the facade rather than just rig-core/rig-agent: nothing else
+      # names `target_arch` today, and keeping the guard workspace-wide is what
+      # stops the next one.
       - name: Check wasm gates name a target_os
         run: |
-          if grep -rnE 'target_arch[[:space:]]*=[[:space:]]*"wasm32"' \
-               crates/*/src crates/*/tests crates/*/Cargo.toml \
-               src tests Cargo.toml \
-             | grep -v 'target_os' \
-             | grep -vE ':[[:space:]]*(//|#([^[]|$))'; then
+          files=$(
+            find crates/*/src crates/*/tests src tests -type f \
+              \( -name '*.rs' -o -name '*.toml' \) 2>/dev/null
+            ls -1 crates/*/Cargo.toml Cargo.toml
+          )
+          if ! echo "$files" | xargs perl -e '
+            my $bad = 0;
+            for my $f (@ARGV) {
+              open my $fh, "<", $f or next;
+              my $src = do { local $/; <$fh> };
+              close $fh;
+              # Neither substitution eats a newline, so line numbers stay true.
+              $src =~ s{//[^\n]*}{}g if $f =~ /\.rs$/;
+              $src =~ s{\#(?!\[)[^\n]*}{}g if $f =~ /\.toml$/;
+              my $in_cfg = 0;
+              while ($src =~ /\bcfg!?(\((?:[^()]++|(?1))*+\))/g) {
+                my $group = $1;
+                my $hits = () = $group =~ /target_arch\s*=\s*"wasm32"/g;
+                $in_cfg += $hits;
+                next unless $hits && $group !~ /target_os/;
+                my $line = 1 + (substr($src, 0, pos($src) - length($group)) =~ tr/\n//);
+                $group =~ s/\s+/ /g;
+                print "$f:$line: cfg$group\n";
+                $bad = 1;
+              }
+              my $total = () = $src =~ /target_arch\s*=\s*"wasm32"/g;
+              if ($total > $in_cfg) {
+                print "$f: target_arch = \"wasm32\" outside any cfg(...) group\n";
+                $bad = 1;
+              }
+            }
+            exit($bad ? 1 : 0);
+          '; then
             echo "::error::Found a bare 'target_arch = \"wasm32\"' gate. Browser wasm is the only supported wasm target: use all(target_arch = \"wasm32\", target_os = \"unknown\") for browser-specific behavior, or target_family = \"wasm\" for any wasm."
             exit 1
           fi
