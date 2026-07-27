@@ -164,17 +164,22 @@ jobs:
           status=$?
           set -e
           echo "$out"
+          # Parse a decolorized copy. The workflow sets CARGO_TERM_COLOR=always,
+          # so rustc prefixes every diagnostic with SGR escapes and an anchored
+          # `^error` matches nothing — the count came out 0 and the step failed
+          # claiming the gate had leaked. The log above keeps its colors.
+          plain=$(printf '%s\n' "$out" | perl -pe 's/\e\[[0-9;]*[a-zA-Z]//g')
           if [ $status -eq 0 ]; then
             echo "::error::expected the rmcp native-only compile_error, but the build succeeded — the gate is gone"
             exit 1
           fi
-          if ! echo "$out" | grep -q 'the `rmcp` feature is native-only'; then
+          if ! printf '%s\n' "$plain" | grep -q 'the `rmcp` feature is native-only'; then
             echo "::error::build failed for the wrong reason; the native-only compile_error did not fire"
             exit 1
           fi
           # Exclude cargo's trailing "could not compile ..." summary, which is
           # itself printed as an `error:` line.
-          count=$(echo "$out" | grep -E '^error(\[|:)' | grep -cv 'could not compile' || true)
+          count=$(printf '%s\n' "$plain" | grep -E '^error(\[|:)' | grep -cv 'could not compile' || true)
           if [ "$count" -ne 1 ]; then
             echo "::error::expected exactly 1 error, got $count — an ungated \`#[cfg(feature = \"rmcp\")]\` is leaking follow-on errors"
             exit 1
