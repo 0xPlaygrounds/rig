@@ -11,26 +11,82 @@ use crate::message::{
 };
 use base64::Engine;
 use serde::Serialize;
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
+use tracing::callsite::Identifier;
+
+/// Macro implementation dependency; public because exported macro expansions
+/// must be able to resolve it from downstream crates.
+#[doc(hidden)]
+pub use tracing as __tracing;
+
+/// Marks a span field as declared but not yet valued.
+///
+/// Re-exported so a runtime can declare a contract field through
+/// [`completion_parent_span!`](crate::completion_parent_span) without taking a
+/// direct `tracing` dependency — the crate's own `__tracing` path is hidden,
+/// and `Option::<&str>::None` is the only other portable spelling. `rig-core`
+/// already exposes `tracing` types across this module's public API
+/// ([`CompletionSpanBuilder::build`] returns a [`tracing::Span`]), so this adds
+/// no new semver surface.
+pub use tracing::field::Empty;
+
+/// Implementation detail of [`new_completion_span!`] and
+/// [`completion_parent_span!`](crate::completion_parent_span): declares a span
+/// with the caller's header fields followed by the canonical completion
+/// telemetry fields recorded over a completion's lifetime.
+///
+/// `tracing` bakes a span's field set into static metadata, so the canonical
+/// list can only be single-sourced by a macro that owns the whole
+/// `info_span!` invocation — a `const` list can never be spliced in. This is
+/// the one copy; [`COMPLETION_PARENT_REQUIRED_FIELDS`] is the checklist form
+/// of the same contract and a test asserts the two agree exactly.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __rig_canonical_completion_span {
+    (
+        target: $target:literal,
+        $(parent: $parent:expr,)?
+        name: $name:literal,
+        // Both blocks are spliced verbatim into `info_span!`: the header block
+        // must end with a trailing comma, the extras block must begin with one.
+        // Violating either surfaces as an `info_span!` parse error at the call
+        // site, not here.
+        { $($header:tt)* }
+        { $($extra:tt)* }
+    ) => {
+        $crate::telemetry::__tracing::info_span!(
+            target: $target,
+            $(parent: $parent,)?
+            $name,
+            $($header)*
+            gen_ai.response.id = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.response.model = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.input_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.output_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.input.messages = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.output.messages = $crate::telemetry::__tracing::field::Empty
+            $($extra)*
+        )
+    };
+}
 
 macro_rules! new_completion_span {
     ($name:literal, $provider:expr, $request_model:expr, $operation:expr, $system:expr) => {
-        tracing::info_span!(
+        $crate::__rig_canonical_completion_span!(
             target: "rig::completions",
-            $name,
-            gen_ai.operation.name = $operation,
-            gen_ai.provider.name = $provider,
-            gen_ai.request.model = $request_model,
-            gen_ai.system_instructions = $system,
-            gen_ai.response.id = tracing::field::Empty,
-            gen_ai.response.model = tracing::field::Empty,
-            gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.usage.output_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            gen_ai.input.messages = tracing::field::Empty,
-            gen_ai.output.messages = tracing::field::Empty,
+            name: $name,
+            {
+                gen_ai.operation.name = $operation,
+                gen_ai.provider.name = $provider,
+                gen_ai.request.model = $request_model,
+                gen_ai.system_instructions = $system,
+            }
+            {}
         )
     };
 }
@@ -76,6 +132,14 @@ impl CompletionOperation {
 /// field, losing telemetry with no error. A span missing any required field is
 /// therefore *not* adopted — [`CompletionSpanBuilder::build`] creates a fresh
 /// `rig::completions` child span instead, so telemetry is never silently lost.
+///
+/// The declarative source of the contract is the
+/// [`completion_parent_span!`](crate::completion_parent_span) macro; declaring
+/// a span through it is what guarantees the marker and the field set stay in
+/// agreement. Changing [`COMPLETION_PARENT_REQUIRED_FIELDS`] therefore needs no
+/// marker change to degrade safely: a hand-written span built against an older
+/// field list simply fails the gate above and gets a fresh child span, with a
+/// warning (once per offending callsite) naming what it is missing.
 pub const COMPLETION_PARENT_MARKER_FIELD: &str = "rig.completion_parent";
 
 /// Fields a completion-parent span must statically declare (as
@@ -85,7 +149,12 @@ pub const COMPLETION_PARENT_MARKER_FIELD: &str = "rig.completion_parent";
 /// These mirror the canonical fields the builder's own `rig::completions` span
 /// declares, so an adopted span can absorb the request, response, usage, and
 /// content telemetry recorded over a completion's lifetime without dropping any.
-/// Kept in sync with the `new_completion_span!` field set.
+///
+/// This constant is the *checklist* form of the contract used by the adoption
+/// gate; the *declarative* form is the
+/// [`completion_parent_span!`](crate::completion_parent_span) macro, which is
+/// how a runtime declares a conforming span. A test asserts the two forms
+/// agree exactly, so neither can drift from the other.
 pub const COMPLETION_PARENT_REQUIRED_FIELDS: &[&str] = &[
     "gen_ai.operation.name",
     "gen_ai.provider.name",
@@ -103,15 +172,217 @@ pub const COMPLETION_PARENT_REQUIRED_FIELDS: &[&str] = &[
     "gen_ai.output.messages",
 ];
 
-/// Whether `metadata` describes a completion-parent span eligible for adoption:
-/// it carries [`COMPLETION_PARENT_MARKER_FIELD`] and statically declares every
-/// field in [`COMPLETION_PARENT_REQUIRED_FIELDS`].
-fn is_adoptable_completion_parent(metadata: &tracing::Metadata<'_>) -> bool {
+/// Declare a completion-parent span conforming to the adoption contract.
+///
+/// This macro is the single declarative source of the contract: it declares
+/// [`COMPLETION_PARENT_MARKER_FIELD`] and every field in
+/// [`COMPLETION_PARENT_REQUIRED_FIELDS`], so a span it builds is always
+/// adoptable by [`CompletionSpanBuilder::build`] and can absorb every field
+/// recorded over the completion's lifetime. Runtimes should declare their
+/// completion-parent spans through it rather than hand-writing the marker and
+/// field list — [`tracing::Span::record`] silently no-ops on undeclared
+/// fields, so a hand-written span that omits one field loses that telemetry
+/// with no error (and a span that omits enough to fail the adoption gate is
+/// not adopted at all). A span declared through this macro tracks the contract
+/// automatically; a hand-written one has to be maintained by hand.
+///
+/// By default the span is explicitly parented on
+/// [`tracing::Span::current()`]; pass `parent: <expr>` between `target` and
+/// `name` to override it with any parent expression [`tracing::info_span!`]
+/// accepts (including `None`). `operation` and `system_instructions` are
+/// declared with the given values; the provider records
+/// `gen_ai.provider.name` and `gen_ai.request.model` at adoption time.
+/// Additional runtime-specific fields may be appended after the named
+/// arguments. Extra fields must not repeat the marker or a required contract
+/// field: a duplicate compiles, but the span then declares two same-named
+/// fields and [`tracing::Span::record`] targets only the first.
+///
+/// Invoking this macro does not require a direct `tracing` dependency. To
+/// declare a field with no value yet, use [`Empty`] (re-exported here for
+/// exactly this reason) or `Option::<&str>::None`; [`tracing::field::Empty`]
+/// itself is the same type but only nameable by a crate that depends on
+/// `tracing` directly.
+///
+/// # Examples
+///
+/// ```
+/// use rig_core::telemetry::completion_parent_span;
+///
+/// let span = completion_parent_span!(
+///     target: "my_runtime",
+///     name: "chat",
+///     operation: "chat",
+///     system_instructions: Option::<&str>::None,
+///     gen_ai.agent.name = "assistant",
+/// );
+/// ```
+#[macro_export]
+macro_rules! completion_parent_span {
+    (
+        target: $target:literal,
+        parent: $parent:expr,
+        name: $name:literal,
+        operation: $operation:expr,
+        system_instructions: $system:expr
+        $(, $($extra:tt)*)?
+    ) => {
+        $crate::__rig_canonical_completion_span!(
+            target: $target,
+            parent: $parent,
+            name: $name,
+            {
+                rig.completion_parent = true,
+                gen_ai.operation.name = $operation,
+                gen_ai.system_instructions = $system,
+                gen_ai.provider.name = $crate::telemetry::__tracing::field::Empty,
+                gen_ai.request.model = $crate::telemetry::__tracing::field::Empty,
+            }
+            { $(, $($extra)*)? }
+        )
+    };
+    // Default arm: delegates to the explicit-parent arm so the two cannot
+    // drift in the fields they declare.
+    (
+        target: $target:literal,
+        name: $name:literal,
+        operation: $operation:expr,
+        system_instructions: $system:expr
+        $(, $($extra:tt)*)?
+    ) => {
+        $crate::completion_parent_span!(
+            target: $target,
+            parent: $crate::telemetry::__tracing::Span::current(),
+            name: $name,
+            operation: $operation,
+            system_instructions: $system
+            $(, $($extra)*)?
+        )
+    };
+}
+
+// `#[macro_export]` places the macro at the crate root; re-export it here so
+// it is also reachable at its documented home alongside the contract
+// constants it implements.
+pub use crate::completion_parent_span;
+
+/// What [`CompletionSpanBuilder::build`] decided about the span that is
+/// current when it runs.
+///
+/// This is the whole adoption decision table in one place, kept free of
+/// side effects so every row can be asserted directly. Emitting the
+/// diagnostics for it is [`warn_once_on_completion_parent_verdict`]'s job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompletionParentVerdict {
+    /// The marker plus the complete contract — adopt and enrich.
+    Adopt,
+    /// The marker, but the span omits at least one field in
+    /// [`COMPLETION_PARENT_REQUIRED_FIELDS`]. The missing names are computed
+    /// only if a warning is emitted.
+    RejectMissingFields,
+    /// No marker at all: an ordinary ambient span that becomes the parent of a
+    /// fresh `rig::completions` child. Never warns.
+    NotAParent,
+}
+
+/// Fields in [`COMPLETION_PARENT_REQUIRED_FIELDS`] that `metadata` does not
+/// statically declare. Only called on the warning path — the adoption gate
+/// itself needs a yes/no, not the names, and allocating a `Vec` on every
+/// completion would be waste.
+fn missing_required_fields(metadata: &tracing::Metadata<'_>) -> Vec<&'static str> {
     let fields = metadata.fields();
-    fields.field(COMPLETION_PARENT_MARKER_FIELD).is_some()
-        && COMPLETION_PARENT_REQUIRED_FIELDS
-            .iter()
-            .all(|name| fields.field(name).is_some())
+    COMPLETION_PARENT_REQUIRED_FIELDS
+        .iter()
+        .copied()
+        .filter(|name| fields.field(name).is_none())
+        .collect()
+}
+
+/// Classify the span `metadata` as a completion parent. Pure: no logging, no
+/// global state — see [`CompletionParentVerdict`] for the decision table.
+fn classify_completion_parent(metadata: &tracing::Metadata<'_>) -> CompletionParentVerdict {
+    let fields = metadata.fields();
+    // Exact match, never a prefix: a runtime field that merely starts with the
+    // marker name (`rig.completion_parent.id`, say) is not the marker and must
+    // not make its span a rejected parent.
+    if fields.field(COMPLETION_PARENT_MARKER_FIELD).is_none() {
+        return CompletionParentVerdict::NotAParent;
+    }
+    if COMPLETION_PARENT_REQUIRED_FIELDS
+        .iter()
+        .all(|name| fields.field(name).is_some())
+    {
+        CompletionParentVerdict::Adopt
+    } else {
+        CompletionParentVerdict::RejectMissingFields
+    }
+}
+
+/// Near-miss parent callsites already reported.
+///
+/// Keyed per callsite rather than by one process-wide flag: two runtimes can
+/// each declare a near-miss parent, and a single flag would report whichever
+/// won the race and stay silent about the other — while the `missing_fields`
+/// list it printed describes only that one span. Callsites are static, so this
+/// set is bounded by the number of distinct near-miss spans in the program
+/// (normally zero).
+static NEAR_MISS_WARNED: LazyLock<Mutex<HashSet<Identifier>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Clear the per-callsite warn budget.
+///
+/// The budget is process-global, so without this the warning tests are coupled:
+/// whichever runs first consumes the budget for any callsite they share, and the
+/// other sees silence. `cargo nextest` hides that (one process per test) while
+/// `cargo test` exposes it, so the coupling would be green in CI and red
+/// locally — the worst orientation for a latent test bug. Resetting makes each
+/// test independent of callsite identity, ordering, and runner.
+#[cfg(test)]
+fn reset_near_miss_warnings() {
+    NEAR_MISS_WARNED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+}
+
+/// Surface a verdict that a human should act on, once per offending callsite.
+///
+/// A rejected near-miss degrades safely — the fresh child span loses no
+/// telemetry — but silently, so the operator's only symptom would be a
+/// duplicated span layer in dashboards.
+///
+/// Neither a `Once` nor a poison-propagating lock: a subscriber panic must not
+/// turn a diagnostic into a hard failure on every subsequent completion, and a
+/// dedup set stays perfectly valid across an unrelated panic.
+fn warn_once_on_completion_parent_verdict(
+    verdict: CompletionParentVerdict,
+    metadata: &tracing::Metadata<'_>,
+) {
+    match verdict {
+        CompletionParentVerdict::Adopt | CompletionParentVerdict::NotAParent => {}
+        CompletionParentVerdict::RejectMissingFields => {
+            let first_sighting = {
+                let mut warned = NEAR_MISS_WARNED
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                warned.insert(metadata.callsite())
+            };
+            // The guard is released above, before `warn!`, and that scoping is
+            // load-bearing: `warn!` dispatches into arbitrary subscriber code,
+            // and a subscriber that transitively reaches `build` would
+            // deadlock re-entering this non-reentrant lock.
+            if !first_sighting {
+                return;
+            }
+            tracing::warn!(
+                marker = COMPLETION_PARENT_MARKER_FIELD,
+                missing_fields = ?missing_required_fields(metadata),
+                "completion-parent span declares the marker but not every required field \
+                 and is not adopted; provider telemetry lands on a fresh child span \
+                 instead — declare the span with \
+                 `rig_core::telemetry::completion_parent_span!`"
+            );
+        }
+    }
 }
 
 /// Builder for a canonical GenAI completion span.
@@ -153,17 +424,18 @@ impl<'a> CompletionSpanBuilder<'a> {
     /// Build a canonical completion span or enrich Rig's current completion-parent span.
     pub fn build(self) -> tracing::Span {
         let current = tracing::Span::current();
-        if current
-            .metadata()
-            .is_some_and(is_adoptable_completion_parent)
-        {
-            current.record("gen_ai.operation.name", self.operation.as_str());
-            current.record("gen_ai.provider.name", self.provider);
-            current.record("gen_ai.request.model", self.request_model);
-            if let Some(system_instructions) = self.system_instructions.as_deref() {
-                current.record("gen_ai.system_instructions", system_instructions);
+        if let Some(metadata) = current.metadata() {
+            let verdict = classify_completion_parent(metadata);
+            warn_once_on_completion_parent_verdict(verdict, metadata);
+            if verdict == CompletionParentVerdict::Adopt {
+                current.record("gen_ai.operation.name", self.operation.as_str());
+                current.record("gen_ai.provider.name", self.provider);
+                current.record("gen_ai.request.model", self.request_model);
+                if let Some(system_instructions) = self.system_instructions.as_deref() {
+                    current.record("gen_ai.system_instructions", system_instructions);
+                }
+                return current;
             }
-            return current;
         }
 
         let operation = self.operation.as_str();
@@ -694,6 +966,70 @@ mod tests {
         fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
     }
 
+    /// WARN-level events, rendered as `field=value` pairs joined with the
+    /// event's message, in emission order.
+    #[derive(Clone, Default)]
+    struct CapturedWarnings(Arc<Mutex<Vec<String>>>);
+
+    impl CapturedWarnings {
+        fn push(&self, rendered: String) {
+            if let Ok(mut events) = self.0.lock() {
+                events.push(rendered);
+            }
+        }
+
+        /// Drains, so a test can assert on one phase and then assert that a
+        /// later phase added nothing. A cloning read would make the second
+        /// assertion see the first phase's events and quietly fail.
+        fn take(&self) -> Vec<String> {
+            self.0
+                .lock()
+                .map(|mut events| std::mem::take(&mut *events))
+                .unwrap_or_default()
+        }
+    }
+
+    struct WarningCaptureLayer {
+        warnings: CapturedWarnings,
+    }
+
+    impl<S> Layer<S> for WarningCaptureLayer
+    where
+        S: Subscriber,
+        S: for<'lookup> LookupSpan<'lookup>,
+    {
+        fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+            if *event.metadata().level() != tracing::Level::WARN {
+                return;
+            }
+            let mut visitor = WarningCaptureVisitor::default();
+            event.record(&mut visitor);
+            self.warnings.push(visitor.rendered);
+        }
+    }
+
+    #[derive(Default)]
+    struct WarningCaptureVisitor {
+        rendered: String,
+    }
+
+    impl Visit for WarningCaptureVisitor {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            use std::fmt::Write;
+
+            // `missing_fields = ?vec` arrives here; the message itself arrives
+            // as the reserved `message` field. Both matter to the assertions,
+            // so render every field rather than special-casing.
+            let _ = write!(&mut self.rendered, " {}={value:?}", field.name());
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            use std::fmt::Write;
+
+            let _ = write!(&mut self.rendered, " {}={value}", field.name());
+        }
+    }
+
     #[derive(Clone, Default)]
     struct CapturedSpan(Arc<Mutex<Option<CapturedSpanData>>>);
 
@@ -838,28 +1174,71 @@ mod tests {
                     .iter()
                     .any(|(field, _)| field == "gen_ai.response.model")
             );
-            for field in [
-                "gen_ai.operation.name",
-                "gen_ai.provider.name",
-                "gen_ai.request.model",
-                "gen_ai.system_instructions",
-                "gen_ai.response.id",
-                "gen_ai.response.model",
-                "gen_ai.usage.input_tokens",
-                "gen_ai.usage.output_tokens",
-                "gen_ai.usage.cache_read.input_tokens",
-                "gen_ai.usage.cache_creation.input_tokens",
-                "gen_ai.usage.tool_use_prompt_tokens",
-                "gen_ai.usage.reasoning_tokens",
-                "gen_ai.input.messages",
-                "gen_ai.output.messages",
-            ] {
+            for field in COMPLETION_PARENT_REQUIRED_FIELDS {
                 assert!(
                     span.fields.iter().any(|candidate| candidate == field),
                     "missing {field}"
                 );
             }
         }
+    }
+
+    /// The default arm parents on the ambient span, and an explicit `parent:`
+    /// overrides it.
+    ///
+    /// A regression to `parent: None` in the default arm would root every
+    /// completion-parent span, detaching it from the surrounding trace. No
+    /// field-set assertion in this module can see that — the fields are
+    /// identical either way — while an operator sees completion spans floating
+    /// as roots instead of nesting under the agent span.
+    #[test]
+    fn completion_parent_span_macro_honours_its_parent_argument() {
+        /// `SpanCaptureLayer` has no target filter and keeps only the most
+        /// recent span, so read it immediately after the span under test is
+        /// created, and confirm the target before trusting the parent.
+        fn captured_parent(captured: &CapturedSpan) -> Option<String> {
+            let Ok(captured) = captured.0.lock() else {
+                panic!("captured span lock poisoned");
+            };
+            let Some(span) = captured.as_ref() else {
+                panic!("completion-parent span was not captured");
+            };
+            assert_eq!(span.target, "third_party_runtime");
+            span.parent_name.clone()
+        }
+
+        let captured = CapturedSpan::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            span: captured.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(subscriber, || {
+            let ambient = tracing::info_span!(target: "application", "ambient");
+
+            // Default arm: nests under whatever span is current.
+            ambient.in_scope(|| {
+                let _default_arm = completion_parent_span!(
+                    target: "third_party_runtime",
+                    name: "chat",
+                    operation: Empty,
+                    system_instructions: Option::<&str>::None,
+                );
+            });
+            assert_eq!(captured_parent(&captured).as_deref(), Some("ambient"));
+
+            // Explicit arm: the caller's parent wins over the ambient span, so
+            // this one is a root despite `ambient` being current.
+            ambient.in_scope(|| {
+                let _explicit_arm = completion_parent_span!(
+                    target: "third_party_runtime",
+                    parent: None,
+                    name: "chat",
+                    operation: Empty,
+                    system_instructions: Option::<&str>::None,
+                );
+            });
+            assert_eq!(captured_parent(&captured), None);
+        });
     }
 
     #[test]
@@ -900,6 +1279,8 @@ mod tests {
         });
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
+            // Deliberately hand-written (not `completion_parent_span!`): the
+            // point is a marker span that fails to declare required fields.
             let partial_marker = tracing::info_span!(
                 target: "third_party_runtime",
                 "chat",
@@ -907,6 +1288,21 @@ mod tests {
                 gen_ai.operation.name = tracing::field::Empty,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
+            );
+            // Premise check: the hand-written marker literal above must still
+            // match the constant — if the marker is ever renamed this fails
+            // first, pointing at the stale literal, so the test cannot keep
+            // passing for the wrong reason (no marker at all, rather than the
+            // marker with fields missing).
+            let Some(metadata) = partial_marker.metadata() else {
+                panic!("partial marker span was disabled");
+            };
+            assert!(
+                metadata
+                    .fields()
+                    .field(COMPLETION_PARENT_MARKER_FIELD)
+                    .is_some(),
+                "hand-written marker literal is stale; update it to {COMPLETION_PARENT_MARKER_FIELD}"
             );
             let _guard = partial_marker.enter();
             let span =
@@ -934,6 +1330,376 @@ mod tests {
     }
 
     #[test]
+    fn completion_parent_span_macro_matches_the_contract_exactly() {
+        use std::collections::HashSet;
+
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(Registry::default(), || {
+            let span = completion_parent_span!(
+                target: "contract_test",
+                name: "chat",
+                operation: "chat",
+                system_instructions: Option::<&str>::None,
+            );
+            let Some(metadata) = span.metadata() else {
+                panic!("contract span was disabled");
+            };
+            let declared: HashSet<&str> =
+                metadata.fields().iter().map(|field| field.name()).collect();
+            let expected: HashSet<&str> = COMPLETION_PARENT_REQUIRED_FIELDS
+                .iter()
+                .copied()
+                .chain([COMPLETION_PARENT_MARKER_FIELD])
+                .collect();
+            // Exact equality in both directions: a field added to the macro
+            // but not the constant (or vice versa) is drift, not a superset.
+            assert_eq!(declared, expected);
+            // Duplicate field names collapse in a `HashSet`, so also pin the
+            // count: set equality alone cannot catch a field declared twice.
+            assert_eq!(metadata.fields().len(), expected.len());
+            assert_eq!(
+                classify_completion_parent(metadata),
+                CompletionParentVerdict::Adopt
+            );
+
+            // The explicit-`parent:` arm declares the identical field set.
+            let span = completion_parent_span!(
+                target: "contract_test",
+                parent: None,
+                name: "chat",
+                operation: "chat",
+                system_instructions: Option::<&str>::None,
+            );
+            let Some(metadata) = span.metadata() else {
+                panic!("contract span with explicit parent was disabled");
+            };
+            let declared: HashSet<&str> =
+                metadata.fields().iter().map(|field| field.name()).collect();
+            assert_eq!(declared, expected);
+            assert_eq!(metadata.fields().len(), expected.len());
+            assert_eq!(
+                classify_completion_parent(metadata),
+                CompletionParentVerdict::Adopt
+            );
+
+            // Runtime-specific extra fields are additive on top of the contract.
+            let span = completion_parent_span!(
+                target: "contract_test",
+                name: "chat",
+                operation: "chat",
+                system_instructions: Option::<&str>::None,
+                gen_ai.agent.name = "assistant",
+            );
+            let Some(metadata) = span.metadata() else {
+                panic!("contract span with extras was disabled");
+            };
+            let declared: HashSet<&str> =
+                metadata.fields().iter().map(|field| field.name()).collect();
+            let expected: HashSet<&str> =
+                expected.into_iter().chain(["gen_ai.agent.name"]).collect();
+            assert_eq!(declared, expected);
+            assert_eq!(metadata.fields().len(), expected.len());
+            assert_eq!(
+                classify_completion_parent(metadata),
+                CompletionParentVerdict::Adopt
+            );
+        });
+    }
+
+    #[test]
+    fn canonical_completion_span_declares_exactly_the_required_fields() {
+        use std::collections::HashSet;
+
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(Registry::default(), || {
+            let span =
+                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let Some(metadata) = span.metadata() else {
+                panic!("completion span was disabled");
+            };
+            let declared: HashSet<&str> =
+                metadata.fields().iter().map(|field| field.name()).collect();
+            let expected: HashSet<&str> =
+                COMPLETION_PARENT_REQUIRED_FIELDS.iter().copied().collect();
+            // The adoption checklist and the span the builder itself creates
+            // must be the same set, or an adopted parent could not absorb
+            // every field the builder records.
+            assert_eq!(declared, expected);
+            // Duplicate field names collapse in a `HashSet`, so also pin the
+            // count: set equality alone cannot catch a field declared twice.
+            assert_eq!(metadata.fields().len(), expected.len());
+        });
+    }
+
+    #[test]
+    fn completion_parent_required_fields_are_pinned() {
+        // Changing this list is a contract change. An adopted parent declares
+        // its fields statically, so a runtime whose span was hand-written
+        // against the old list stops being adopted once the list moves — it
+        // degrades gracefully (fresh child span, one-time warning naming what
+        // is missing), but it does degrade. Confirm that is intended, note it
+        // in the CHANGELOG, then update this snapshot.
+        //
+        // This is the only test that notices. Every other contract test
+        // compares the three forms of the contract to each other, so a
+        // *coherent* change — a field added to both this constant and the
+        // macro — leaves them all agreeing, and green.
+        assert_eq!(COMPLETION_PARENT_MARKER_FIELD, "rig.completion_parent");
+        assert_eq!(
+            COMPLETION_PARENT_REQUIRED_FIELDS,
+            &[
+                "gen_ai.operation.name",
+                "gen_ai.provider.name",
+                "gen_ai.request.model",
+                "gen_ai.system_instructions",
+                "gen_ai.response.id",
+                "gen_ai.response.model",
+                "gen_ai.usage.input_tokens",
+                "gen_ai.usage.output_tokens",
+                "gen_ai.usage.cache_read.input_tokens",
+                "gen_ai.usage.cache_creation.input_tokens",
+                "gen_ai.usage.tool_use_prompt_tokens",
+                "gen_ai.usage.reasoning_tokens",
+                "gen_ai.input.messages",
+                "gen_ai.output.messages",
+            ]
+        );
+    }
+
+    /// Every row of the adoption decision table, asserted against the pure
+    /// classifier so no global warn-once state is involved.
+    #[test]
+    fn classify_completion_parent_covers_the_decision_table() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(Registry::default(), || {
+            let verdict = |span: &tracing::Span| {
+                let Some(metadata) = span.metadata() else {
+                    panic!("classifier fixture span was disabled");
+                };
+                classify_completion_parent(metadata)
+            };
+
+            // Marker + full contract.
+            let conforming = completion_parent_span!(
+                target: "classifier_test",
+                name: "chat",
+                operation: tracing::field::Empty,
+                system_instructions: tracing::field::Empty,
+            );
+            assert_eq!(verdict(&conforming), CompletionParentVerdict::Adopt);
+
+            // Marker, incomplete contract.
+            let partial = tracing::info_span!(
+                target: "classifier_test",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+            );
+            assert_eq!(
+                verdict(&partial),
+                CompletionParentVerdict::RejectMissingFields
+            );
+            let Some(partial_metadata) = partial.metadata() else {
+                panic!("classifier fixture span was disabled");
+            };
+            // The names only get computed on the warning path, so pin them here.
+            assert_eq!(
+                missing_required_fields(partial_metadata),
+                COMPLETION_PARENT_REQUIRED_FIELDS
+                    .iter()
+                    .copied()
+                    .filter(|name| *name != "gen_ai.operation.name")
+                    .collect::<Vec<_>>()
+            );
+
+            // An ordinary ambient span.
+            let ambient = tracing::info_span!(target: "application", "ambient");
+            assert_eq!(verdict(&ambient), CompletionParentVerdict::NotAParent);
+
+            // Marker detection is an exact field-name match, never a prefix: a
+            // runtime field that merely starts with the marker name must not
+            // make its span a rejected parent and warn at a runtime that never
+            // opted in.
+            let lookalike = tracing::info_span!(
+                target: "application",
+                "ambient",
+                rig.completion_parent.id = "abc",
+                rig.completion_parent_id = "abc",
+            );
+            assert_eq!(verdict(&lookalike), CompletionParentVerdict::NotAParent);
+        });
+    }
+
+    /// The near-miss diagnostic is the only thing that makes a rejected parent
+    /// visible to an operator — otherwise the sole symptom is a duplicated span
+    /// layer in dashboards — so its message, its `missing_fields` payload, and
+    /// its once-per-callsite budget all need pinning.
+    #[test]
+    fn near_miss_completion_parent_warns_once_per_callsite() {
+        let warnings = CapturedWarnings::default();
+        let subscriber = Registry::default().with(WarningCaptureLayer {
+            warnings: warnings.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        // The warn budget is process-global; claim a clean one rather than
+        // relying on this test's fixture span owning a callsite no other test
+        // touches.
+        reset_near_miss_warnings();
+        tracing::subscriber::with_default(subscriber, || {
+            // The `warn!` callsite lives in `warn_once_on_completion_parent_verdict`
+            // and is shared with every other near-miss test, so its interest may
+            // already be cached as `never` from a run under a different
+            // subscriber. Same hazard `test_utils::scoped_tracing_subscriber_guard`
+            // documents; same fix used in
+            // `agent::prompt_request::streaming`'s scoped-subscriber tests.
+            tracing::callsite::rebuild_interest_cache();
+
+            let near_miss = tracing::info_span!(
+                target: "third_party_runtime",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+            );
+            let _guard = near_miss.enter();
+            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            // Second completion under the *same* span callsite: the budget is
+            // per callsite, so this one must stay silent.
+            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        });
+
+        let captured = warnings.take();
+        assert_eq!(
+            captured.len(),
+            1,
+            "a near-miss callsite warns exactly once, got: {captured:?}"
+        );
+        let Some(message) = captured.first() else {
+            panic!("near miss did not warn");
+        };
+        assert!(
+            message.contains("gen_ai.provider.name"),
+            "warning must name the missing fields, got: {message}"
+        );
+        assert!(
+            message.contains("completion_parent_span!"),
+            "warning must point at the supported fix, got: {message}"
+        );
+    }
+
+    /// The property that justifies keying the budget on the callsite rather
+    /// than a single process-wide flag: two runtimes each declaring a broken
+    /// parent are both reported. A global flag would report whichever ran first
+    /// and stay silent about the other — and every other test in this module
+    /// passes under that behaviour, so this is the only one that pins it.
+    #[test]
+    fn distinct_near_miss_callsites_each_warn() {
+        let warnings = CapturedWarnings::default();
+        let subscriber = Registry::default().with(WarningCaptureLayer {
+            warnings: warnings.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        reset_near_miss_warnings();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+
+            // Two separate `info_span!` invocations, and they must stay
+            // separate: the callsite *is* the dedup key, so extracting these
+            // into a shared helper collapses them into one and this test would
+            // assert 1, not 2. `reset_near_miss_warnings` cannot protect this
+            // test the way it protects the others — distinct callsites are the
+            // thing under test.
+            let first = tracing::info_span!(
+                target: "runtime_a",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+            );
+            first.in_scope(|| {
+                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            });
+
+            let second = tracing::info_span!(
+                target: "runtime_b",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+            );
+            second.in_scope(|| {
+                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            });
+        });
+
+        let captured = warnings.take();
+        assert_eq!(
+            captured.len(),
+            2,
+            "each offending callsite warns once, got: {captured:?}"
+        );
+    }
+
+    /// The happy path must stay quiet: a conforming parent is adopted silently,
+    /// so the diagnostic above cannot become background noise on every
+    /// completion.
+    #[test]
+    fn conforming_completion_parent_never_warns() {
+        let warnings = CapturedWarnings::default();
+        let subscriber = Registry::default().with(WarningCaptureLayer {
+            warnings: warnings.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        // Claim a clean budget: the control below must be able to warn even if
+        // another test already reported this fixture's callsite.
+        reset_near_miss_warnings();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+
+            // Control. Asserting an absence proves nothing unless the warning
+            // pipe is known live in *this* subscriber: without this, the
+            // assertions below pass just as happily when the diagnostic has
+            // been deleted, or when callsite interest is stuck at `never`.
+            let near_miss = tracing::info_span!(
+                target: "third_party_runtime",
+                "chat",
+                rig.completion_parent = true,
+                gen_ai.operation.name = tracing::field::Empty,
+            );
+            near_miss.in_scope(|| {
+                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            });
+            assert_eq!(
+                warnings.take().len(),
+                1,
+                "control: a near miss must warn, or this test cannot detect silence"
+            );
+
+            let conforming = completion_parent_span!(
+                target: "third_party_runtime",
+                name: "chat",
+                operation: Empty,
+                system_instructions: Option::<&str>::None,
+            );
+            let _guard = conforming.enter();
+            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+
+            // An ordinary ambient span is not a parent at all, and must not warn
+            // either — a runtime that never opted in should never hear about
+            // this contract.
+            drop(_guard);
+            let ambient = tracing::info_span!(target: "application", "ambient");
+            let _ambient_guard = ambient.enter();
+            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        });
+
+        // The control drained the buffer, so anything here was emitted by the
+        // conforming or ambient span.
+        let captured = warnings.take();
+        assert!(
+            captured.is_empty(),
+            "adoption and non-participation are both silent, got: {captured:?}"
+        );
+    }
+
+    #[test]
     fn agent_chat_span_is_adopted_and_enriched() {
         let captured = CapturedSpan::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
@@ -941,24 +1707,11 @@ mod tests {
         });
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
-            let completion_parent = tracing::info_span!(
+            let completion_parent = completion_parent_span!(
                 target: "rig::agent_chat",
-                "chat_streaming",
-                rig.completion_parent = true,
-                gen_ai.operation.name = tracing::field::Empty,
-                gen_ai.provider.name = tracing::field::Empty,
-                gen_ai.request.model = tracing::field::Empty,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
+                name: "chat_streaming",
+                operation: tracing::field::Empty,
+                system_instructions: tracing::field::Empty,
             );
             let _guard = completion_parent.enter();
             let span = CompletionSpanBuilder::new(
@@ -999,24 +1752,11 @@ mod tests {
         });
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
-            let completion_parent = tracing::info_span!(
+            let completion_parent = completion_parent_span!(
                 target: "test_runtime",
-                "chat",
-                rig.completion_parent = true,
-                gen_ai.operation.name = tracing::field::Empty,
-                gen_ai.provider.name = tracing::field::Empty,
-                gen_ai.request.model = tracing::field::Empty,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
+                name: "chat",
+                operation: tracing::field::Empty,
+                system_instructions: tracing::field::Empty,
             );
             let _guard = completion_parent.enter();
             let span = CompletionSpanBuilder::new(
@@ -1052,24 +1792,11 @@ mod tests {
         });
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
-            let completion_parent = tracing::info_span!(
+            let completion_parent = completion_parent_span!(
                 target: "test_runtime",
-                "chat",
-                rig.completion_parent = true,
-                gen_ai.operation.name = tracing::field::Empty,
-                gen_ai.provider.name = tracing::field::Empty,
-                gen_ai.request.model = tracing::field::Empty,
-                gen_ai.system_instructions = "effective agent instructions",
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
+                name: "chat",
+                operation: tracing::field::Empty,
+                system_instructions: "effective agent instructions",
             );
             let _guard = completion_parent.enter();
             CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();

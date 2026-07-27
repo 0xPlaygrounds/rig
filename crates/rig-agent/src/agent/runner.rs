@@ -90,28 +90,15 @@ macro_rules! build_chat_span {
             $effective_preamble,
             $runner.record_telemetry_content,
         );
-        ::tracing::info_span!(
+        // The core macro is the single source of the completion-parent
+        // contract (marker + required fields); only the agent-specific field
+        // is declared here.
+        $crate::core::telemetry::completion_parent_span!(
             target: "rig::agent_chat",
-            parent: ::tracing::Span::current(),
-            $name,
-            // This literal mirrors rig-core's portable
-            // `telemetry::COMPLETION_PARENT_MARKER_FIELD` contract.
-            rig.completion_parent = true,
-            gen_ai.operation.name = $operation,
+            name: $name,
+            operation: $operation,
+            system_instructions: system_instructions.as_deref(),
             gen_ai.agent.name = $runner.agent_name_or_default(),
-            gen_ai.system_instructions = system_instructions.as_deref(),
-            gen_ai.provider.name = ::tracing::field::Empty,
-            gen_ai.request.model = ::tracing::field::Empty,
-            gen_ai.response.id = ::tracing::field::Empty,
-            gen_ai.response.model = ::tracing::field::Empty,
-            gen_ai.usage.output_tokens = ::tracing::field::Empty,
-            gen_ai.usage.input_tokens = ::tracing::field::Empty,
-            gen_ai.usage.cache_read.input_tokens = ::tracing::field::Empty,
-            gen_ai.usage.cache_creation.input_tokens = ::tracing::field::Empty,
-            gen_ai.usage.tool_use_prompt_tokens = ::tracing::field::Empty,
-            gen_ai.usage.reasoning_tokens = ::tracing::field::Empty,
-            gen_ai.input.messages = ::tracing::field::Empty,
-            gen_ai.output.messages = ::tracing::field::Empty,
         )
     }};
 }
@@ -3645,6 +3632,43 @@ mod migrated_tests {
             assert_eq!(agent_finals, 0);
             assert_eq!(retries, 0);
             assert_eq!(errors, 1);
+        }
+
+        /// Cross-crate tripwire: the chat span built by `build_chat_span!`
+        /// must statically declare rig-core's full completion-parent contract
+        /// (marker + every required field) plus the agent-specific
+        /// `gen_ai.agent.name`. `Span::record` silently no-ops on undeclared
+        /// fields, so a missing field here would lose that telemetry on every
+        /// adopted completion with no error.
+        #[test]
+        fn chat_span_declares_the_full_completion_parent_contract() {
+            use rig_core::telemetry::{
+                COMPLETION_PARENT_MARKER_FIELD, COMPLETION_PARENT_REQUIRED_FIELDS,
+            };
+
+            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+            tracing::subscriber::with_default(Registry::default(), || {
+                let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+                    .name("contract-agent")
+                    .build();
+                let runner = agent.runner("hello");
+                let span = build_chat_span!(runner, None, "chat", "chat");
+                let Some(metadata) = span.metadata() else {
+                    panic!("chat span was disabled");
+                };
+                let declared: HashSet<&str> =
+                    metadata.fields().iter().map(|field| field.name()).collect();
+                let expected: HashSet<&str> = COMPLETION_PARENT_REQUIRED_FIELDS
+                    .iter()
+                    .copied()
+                    .chain([COMPLETION_PARENT_MARKER_FIELD, "gen_ai.agent.name"])
+                    .collect();
+                assert_eq!(declared, expected);
+                // Duplicate field names collapse in a `HashSet`, so also pin
+                // the count: set equality alone cannot catch a field declared
+                // twice (e.g. an extra colliding with a contract field).
+                assert_eq!(metadata.fields().len(), expected.len());
+            });
         }
 
         #[tokio::test]

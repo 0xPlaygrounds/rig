@@ -150,6 +150,37 @@ jobs:
       - name: Test rig-agent agent unit tests with all features
         run: cargo nextest run -p rig-agent --all-features -E 'test(agent::)' --retries 2
 
+      # `cargo nextest run` (below) selects the workspace's *default members*,
+      # and this workspace's root manifest is itself the `rig` package with no
+      # `default-members` — so that run covers `rig` alone and a `crates/*` unit
+      # test executes in CI only when its package is named explicitly. The
+      # rig-agent half of the completion-parent contract rides along on the
+      # `agent::` filter above, but rig-core's `telemetry::` tests match nothing
+      # and would otherwise never run. They are the drift tripwires for the
+      # marker and the required `gen_ai.*` field set: unrun, the three forms of
+      # the contract can silently desync, which is the exact failure the
+      # `completion_parent_span!` macro exists to prevent.
+      #
+      # rig-agent is named explicitly even though `test(agent::)` above already
+      # matches `span_safety_net::`, so the cross-crate tripwire keeps running
+      # if that filter is ever narrowed. The tests are cheap and the duplicate
+      # run is the price of not depending on an unrelated filter.
+      #
+      # No `--retries`, deliberately, unlike the steps around it: these are
+      # static-metadata assertions (set equality against a `const`, field
+      # counts, callsite dedup), so a pass on the second attempt would be
+      # concealing nondeterminism rather than tolerating a flaky network.
+      #
+      # This resolves rig-core with its own `--all-features` set, a different
+      # configuration from both the `-p rig-agent` step above and the root
+      # `-p rig` run below, so rig-core is compiled here rather than reused.
+      # That cost is accepted deliberately: folding these tests into the
+      # `agent::` step would share one build but hand them its `--retries 2`,
+      # and a drift tripwire that passes on the second attempt conceals exactly
+      # the nondeterminism it exists to catch.
+      - name: Test telemetry completion-parent contract
+        run: cargo nextest run -p rig-core -p rig-agent --all-features -E 'test(telemetry::) + test(span_safety_net::)'
+
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
         with:
@@ -184,6 +215,12 @@ jobs:
       # No API keys needed: the doctests that actually execute are pure (the
       # provider examples are all `no_run`/compile-only), so this job stays
       # hermetic and non-flaky.
+      #
+      # Keep `--workspace`: it is also the only thing in CI that compiles
+      # `rig-core-macro-hygiene` (a bare root invocation selects just the `rig`
+      # package). A dedicated `cargo check -p` step would resolve rig-core with
+      # `default-features = false` and rebuild its whole tree; here feature
+      # unification makes the tripwire free.
       - name: Run doctests
         run: cargo test --doc --workspace --all-features
 
