@@ -50,6 +50,32 @@ jobs:
             exit 1
           fi
 
+      # Browser wasm is rig-agent's only supported wasm target, so every wasm
+      # gate there must name `target_os` — either `all(target_arch = "wasm32",
+      # target_os = "unknown")` for browser-specific behavior, or
+      # `target_family = "wasm"` for "any wasm". A bare `target_arch = "wasm32"`
+      # also captures WASI, which is how browser-only dependencies and
+      # `Send`-relaxed aliases previously leaked onto a target that has no JS
+      # host (see crates/rig-agent/README.md#target-support). rig-core is
+      # deliberately out of scope: it uses bare `not(target_arch = "wasm32")`
+      # for native-only exclusions and `all(feature = "wasm", target_arch =
+      # "wasm32")` for its `WasmCompat` markers, both correct there.
+      #
+      # Prose in comments is exempt, but note the exemption cannot simply skip
+      # lines starting with `#`: that is a TOML comment *and* the first character
+      # of a Rust `#[cfg(...)]` attribute, so a naive pattern silently ignores
+      # every gate it is meant to catch. Exempt `//` (Rust) and `#` only when not
+      # followed by `[` (TOML).
+      - name: Check rig-agent wasm gates name a target_os
+        run: |
+          if grep -rn 'target_arch = "wasm32"' \
+               crates/rig-agent/src crates/rig-agent/Cargo.toml \
+             | grep -v 'target_os' \
+             | grep -vE ':[[:space:]]*(//|#([^[]|$))'; then
+            echo "::error::Found a bare 'target_arch = \"wasm32\"' gate in rig-agent. Browser wasm is the only supported wasm target: use all(target_arch = \"wasm32\", target_os = \"unknown\") for browser-specific behavior, or target_family = \"wasm\" for any wasm."
+            exit 1
+          fi
+
       - name: Test WASM chat worker runtime
         run: node --test examples/candle_wasm_chat/www/worker-runtime.test.mjs
 
