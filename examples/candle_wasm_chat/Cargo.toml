@@ -14,7 +14,13 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [dependencies]
-rig = { path = "../..", default-features = false, features = ["candle", "wasm"] }
+# `agent` is required, not optional garnish: this example imports
+# `rig::agent::{Agent, AgentBuilder}` and `rig::completion::Chat`, all of which
+# live in `rig-agent` behind that feature. It was missing and the example did
+# not build standalone; a workspace `--all-features` build unified `agent` onto
+# the shared `rig` and hid it. The wasm CI lane now builds this package on its
+# own so its declared features are actually exercised.
+rig = { path = "../..", default-features = false, features = ["agent", "candle", "wasm"] }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 thiserror = { workspace = true }

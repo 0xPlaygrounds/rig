@@ -117,6 +117,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(examples)* `candle_wasm_chat` now declares the `agent` feature it actually
+  imports (`rig::agent::{Agent, AgentBuilder}`, `rig::completion::Chat`), so it
+  builds standalone rather than only inside a workspace-wide `--all-features`
+  build that happened to unify the feature onto the shared `rig`. The wasm CI
+  matrix now checks the example on its own, so a manifest that under-declares its
+  features fails instead of being masked by feature unification.
+
 - *(openai)* Treat empty `encrypted_content` in non-streaming Responses API
   reasoning items as absent, matching streaming behavior and avoiding empty
   encrypted reasoning blocks.

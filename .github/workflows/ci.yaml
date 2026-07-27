@@ -77,6 +77,14 @@ jobs:
   # `rig-core/wasm` automatically, so a standalone `--target wasm32` build must
   # compile without opting into `wasm`.
   #
+  # `candle_wasm_chat` is here because it is the only consumer that exercises the
+  # browser-wasm *facade* path, and each package must be checked **on its own**:
+  # cargo unifies features across packages built in one invocation, so a
+  # workspace-wide `--all-features` build (the doctest job) silently supplies
+  # features an individual manifest forgot to declare. That is precisely how this
+  # example came to declare `default-features = false` without `agent` while
+  # importing `rig::agent` — green in CI, broken standalone.
+  #
   # `wasm32-unknown-unknown` (browser) is the only supported wasm target; WASI
   # is not supported. See crates/rig-agent/README.md for the matrix.
   check-wasm-runtimes:
@@ -84,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [rig-agent, rig]
+        package: [rig-agent, rig, candle_wasm_chat]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
