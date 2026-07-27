@@ -25,6 +25,9 @@ workspace = true
 # targeting `wasm32-unknown-unknown`.
 rig = { path = "../..", default-features = false, features = ["agent", "candle"] }
 wasm-bindgen = { workspace = true }
+# Required despite never appearing in this crate's source: `#[wasm_bindgen]` on
+# an `async fn` expands to code referencing `wasm_bindgen_futures`. Grepping for
+# the crate name finds nothing, so it reads as dead — it is not.
 wasm-bindgen-futures = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
