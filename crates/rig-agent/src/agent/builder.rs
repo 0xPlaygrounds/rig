@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-#[cfg(feature = "rmcp")]
+#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
@@ -24,7 +24,7 @@ use super::{Agent, OutputMode};
 /// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
 /// timeout to each (`None` disables it; see issue #1914). Returns
 /// `(tool_name, tool)` pairs.
-#[cfg(feature = "rmcp")]
+#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 fn build_rmcp_tools(
     tools: Vec<rmcp::model::Tool>,
     client: rmcp::service::ServerSink,
@@ -436,7 +436,7 @@ where
     /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tool(
         self,
@@ -452,7 +452,7 @@ where
     /// disable the timeout (unbounded). On timeout the call resolves to a tool
     /// error the agent can recover from instead of blocking forever.
     /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tool_with_timeout(
         self,
@@ -469,7 +469,7 @@ where
     /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
         self,
@@ -486,7 +486,7 @@ where
     /// disable the timeout (unbounded). On timeout a call resolves to a tool
     /// error the agent can recover from instead of blocking forever.
     /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools_with_timeout(
         self,
@@ -499,7 +499,7 @@ where
 
     /// Transition into the `WithBuilderTools` state carrying the given built
     /// MCP tools.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     fn with_rmcp_toolset(
         self,
         built: Vec<(String, RmcpTool)>,
@@ -661,7 +661,7 @@ where
     /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
     /// to change or disable it.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
         self,
@@ -677,7 +677,7 @@ where
     /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
     /// disable the timeout (unbounded). On timeout a call resolves to a tool
     /// error the agent can recover from instead of blocking forever.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools_with_timeout(
         self,
@@ -688,7 +688,7 @@ where
         self.add_rmcp_tools(build_rmcp_tools(tools, client, timeout.into()))
     }
 
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
         for (_, tool) in built {
             self.tool_state.tools.add_erased(std::sync::Arc::new(tool));
@@ -876,7 +876,7 @@ mod tests {
     /// explicit, or `None`/disabled) onto every built tool, and the threaded
     /// timeout actually bounds a hanging call. This covers the plumbing behind
     /// `rmcp_tool[s]` / `rmcp_tool[s]_with_timeout` (see issue #1914).
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[tokio::test]
     async fn build_rmcp_tools_threads_timeout_into_built_tools() {
         use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;

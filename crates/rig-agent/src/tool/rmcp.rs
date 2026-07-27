@@ -266,11 +266,10 @@ fn cancel_timed_out_request(handle: rmcp::service::RequestHandle<rmcp::service::
         .await;
     };
 
-    #[cfg(not(target_arch = "wasm32"))]
+    // This module is native-only (see the `compile_error!` in `tool/mod.rs`), so
+    // there is no `spawn_local` branch to pick: `tokio::spawn` is always right
+    // here.
     tokio::spawn(cancellation);
-
-    #[cfg(target_arch = "wasm32")]
-    wasm_bindgen_futures::spawn_local(cancellation);
 }
 
 async fn bounded_best_effort_cancellation(
