@@ -80,18 +80,24 @@ jobs:
       # `cfg!(...)` is covered alongside `cfg(...)`, and a `target_arch =
       # "wasm32"` outside any `cfg`/`cfg!` group (a `cfg_attr` predicate, say) is
       # reported on its own so the group-scoped match cannot become a blind spot.
-      # Only `.rs` and `.toml` are read — the only places a gate can live, and it
-      # keeps the walk off the cassette fixtures under `tests/`. Scope is every
-      # crate plus the facade rather than just rig-core/rig-agent: nothing else
-      # names `target_arch` today, and keeping the guard workspace-wide is what
-      # stops the next one.
+      #
+      # Scope is every tracked `.rs`/`.toml` in the repo, listed by `git
+      # ls-files` rather than enumerated. An enumerated list is the thing that
+      # rots: the first version named only rig-core and rig-agent, leaving
+      # rig-candle, the other members, and every `tests/` directory unguarded,
+      # and a later one still missed `examples/` — where `candle_wasm_chat`, the
+      # one package in the wasm CI matrix that exercises the browser-wasm facade,
+      # actually lives. Sweeping everything removes the failure mode instead of
+      # patching its latest instance; nothing outside the normalized gates names
+      # `target_arch` today, so the breadth costs nothing. `git ls-files` also
+      # inherits `.gitignore`, keeping the walk out of `target/`, and the
+      # `.rs`/`.toml` filter — the only file types a gate can live in — keeps it
+      # off the cassette fixtures under `tests/`. Only *tracked* files are
+      # listed, which is exactly right for CI but means running this locally
+      # before `git add` will not see a brand-new file.
       - name: Check wasm gates name a target_os
         run: |
-          files=$(
-            find crates/*/src crates/*/tests src tests -type f \
-              \( -name '*.rs' -o -name '*.toml' \) 2>/dev/null
-            ls -1 crates/*/Cargo.toml Cargo.toml
-          )
+          files=$(git ls-files -- '*.rs' '*.toml')
           if ! echo "$files" | xargs perl -e '
             my $bad = 0;
             for my $f (@ARGV) {
