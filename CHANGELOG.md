@@ -15,6 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* The WASM support matrix is now explicit: `wasm32-unknown-unknown`
+  (browser) is the supported wasm target, WASI is documented as unsupported, and
+  the `rmcp` feature is native-only. **Nothing that previously worked stops
+  working** — `rmcp` never compiled for any wasm target (rmcp's `ClientHandler`
+  requires `Send + Sync` unconditionally, which rig's wasm tool registry cannot
+  satisfy; rmcp's `local` feature relaxes only its future bounds), and WASI never
+  built at all (`rig-core` depends unconditionally on `reqwest`, which pulls
+  `hyper`/`socket2` and a tokio feature set WASI rejects). What changes is the
+  failure mode and the honesty of the gates: requesting `rmcp` on wasm now fails
+  with one explanatory `compile_error!` instead of a wall of `dyn ErasedTool`
+  trait errors; browser-only dependencies are scoped to
+  `cfg(all(target_arch = "wasm32", target_os = "unknown"))` instead of every
+  `wasm32` target, so WASI builds no longer pull a JS-host shim they cannot use;
+  and `wasm-bindgen-futures` is no longer a `rig-agent` dependency at all, since
+  its only user was the now-native-only MCP cancellation dispatch. CI asserts the
+  diagnostic fires and is the *only* error, so an ungated
+  `#[cfg(feature = "rmcp")]` cannot silently reintroduce the trait-error wall.
+
+### Changed
+
 - *(core)* The telemetry completion-parent contract has one declarative
   source: the new `rig_core::telemetry::completion_parent_span!` macro
   declares the adoption marker and every required `gen_ai.*` field. `tracing`
