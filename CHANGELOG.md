@@ -21,9 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wasm32-unknown-unknown` is the entire opt-in. The feature was a pure `cfg`
   switch that every consumer already flipped from a target table, and its one
   optional dependency was never referenced. Relaxing the bounds cannot break
-  user code — the relaxed markers are blanket-implemented
-  (`impl<T> WasmCompatSend for T {}`). Dependents passing `features = ["wasm"]`
-  should drop it; nothing replaces it.
+  implementors — the relaxed markers are blanket-implemented
+  (`impl<T> WasmCompatSend for T {}`), so every type that satisfied the strict
+  form satisfies the relaxed one. (Generic *consumers* on browser wasm that
+  wrote `T: WasmCompatSend` and then relied on `T: Send` internally are the one
+  exception, and only if they were previously building with the feature off.)
+  Dependents passing `features = ["wasm"]` should drop it; nothing replaces it.
 
 - *(agent)* [**breaking**] The `rmcp` feature is native-only. It never compiled
   for wasm — rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
@@ -41,8 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(core)* Fix `rig-core`'s SSE `ResponseFuture`/`EventStream` aliases, whose
   `cfg` arms did not partition and left some targets matching neither, so the
   types were undefined there. Both arms now share one predicate.
-
-### Changed
 
 - *(core)* The telemetry completion-parent contract has one declarative
   source: the new `rig_core::telemetry::completion_parent_span!` macro

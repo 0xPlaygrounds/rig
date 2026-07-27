@@ -37,10 +37,9 @@ use crate::{
 use rig_core::message::{Message, Text};
 
 // The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
-// go no-op — browser wasm, where this crate's manifest auto-enables
-// `rig-core/wasm`. Keep this predicate in step with that target table: a bare
-// `target_arch = "wasm32"` would also drop `Send` on WASI, where `rig-core`
-// still requires it.
+// go no-op — browser wasm. `rig-core` keys those markers on this same
+// predicate, so keep the two in step: a bare `target_arch = "wasm32"` would
+// also drop `Send` on WASI, where `rig-core` still requires it.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
