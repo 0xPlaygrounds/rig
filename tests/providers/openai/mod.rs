@@ -1,5 +1,7 @@
 mod support;
 
+mod regressions;
+
 mod cassette {
     mod agent;
     mod chat_history;
