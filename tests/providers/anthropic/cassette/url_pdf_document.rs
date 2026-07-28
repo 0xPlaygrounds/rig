@@ -1,13 +1,13 @@
 //! Cassette-backed Anthropic coverage for URL-backed PDF documents.
 //!
-//! Regression coverage for sending a `DocumentSourceKind::Url` PDF through
-//! the request-side message conversion: the document must map to a
-//! `"source": {"type": "url", ...}` content block.
+//! Regression coverage for sending a `DocumentSourceKind::Url` PDF without an
+//! explicit media type through the request-side message conversion: the
+//! document must map to a `"source": {"type": "url", ...}` content block.
 //! See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>.
 
 use rig::OneOrMany;
 use rig::completion::Prompt;
-use rig::message::{DocumentMediaType, Message, UserContent};
+use rig::message::{Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
@@ -30,7 +30,7 @@ async fn url_pdf_document_prompt() {
             let response = agent
                 .prompt(Message::User {
                     content: OneOrMany::many(vec![
-                        UserContent::document_url(PDF_URL, Some(DocumentMediaType::PDF)),
+                        UserContent::document_url(PDF_URL, None),
                         UserContent::text(
                             "What is the title of this paper? Answer in one short sentence.",
                         ),
