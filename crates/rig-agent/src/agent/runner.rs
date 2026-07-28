@@ -1640,7 +1640,7 @@ mod migrated_tests {
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{
-        CompletionError, CompletionModel, Document, Message, Prompt, PromptError, Usage,
+        CompletionError, CompletionModel, Message, Prompt, PromptError, Usage,
     };
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
@@ -1656,8 +1656,7 @@ mod migrated_tests {
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
     use rig_core::vector_store::{
-        VectorSearchRequest, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::Filter,
+        VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
     };
     use rig_core::wasm_compat::WasmCompatSend;
 
@@ -7471,42 +7470,32 @@ mod migrated_tests {
         }
     }
 
-    struct RetrievalHook<I> {
-        index: I,
+    #[derive(Clone)]
+    struct RecordingContextIndex {
+        id: &'static str,
+        queries: Arc<Mutex<Vec<(String, u64)>>>,
     }
 
-    impl<I> AgentHook for RetrievalHook<I>
-    where
-        I: VectorStoreIndexDyn,
-    {
-        async fn on_completion_call(
+    impl VectorStoreIndex for RecordingContextIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
             &self,
-            _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            let Message::User { content } = event.prompt else {
-                return CompletionCallAction::continue_run();
-            };
-            let Some(query) = content.iter().find_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.clone()),
-                _ => None,
-            }) else {
-                return CompletionCallAction::continue_run();
-            };
-            let request = VectorSearchRequest::builder()
-                .query(query)
-                .samples(1)
-                .build();
-            match self.index.top_n(request).await {
-                Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                    results.into_iter().map(|(_, id, value)| Document {
-                        id,
-                        text: value.to_string(),
-                        additional_props: Default::default(),
-                    }),
-                )),
-                Err(error) => CompletionCallAction::stop(format!("retrieval failed: {error}")),
-            }
+            req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            self.queries
+                .lock()
+                .expect("context query recorder lock")
+                .push((req.query().to_string(), req.samples()));
+            let value = serde_json::from_value(json!({ "source": self.id }))?;
+            Ok(vec![(1.0, self.id.to_string(), value)])
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            Ok(vec![(1.0, self.id.to_string())])
         }
     }
 
@@ -7655,13 +7644,173 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn retrieval_failure_stops_before_provider_io_on_both_surfaces() {
+    async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_surfaces() {
+        fn assert_documents(request: &crate::completion::CompletionRequest) {
+            let documents = request
+                .documents
+                .iter()
+                .map(|document| (document.id.as_str(), document.text.as_str()))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                documents,
+                vec![
+                    ("static_doc_0", "static context"),
+                    ("blocking", "{\n  \"source\": \"blocking\"\n}"),
+                ]
+            );
+        }
+
+        let blocking_queries = Arc::new(Mutex::new(Vec::new()));
+        let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let blocking_probe = blocking_model.clone();
+        AgentBuilder::new(blocking_model)
+            .context("static context")
+            .dynamic_context(
+                2,
+                RecordingContextIndex {
+                    id: "blocking",
+                    queries: blocking_queries.clone(),
+                },
+            )
+            .build()
+            .runner("current blocking query")
+            .history(vec![Message::user("ignored history query")])
+            .run()
+            .await
+            .expect("blocking dynamic-context run should succeed");
+        assert_eq!(
+            *blocking_queries.lock().expect("blocking queries"),
+            vec![("current blocking query".to_string(), 2)]
+        );
+        assert_documents(blocking_probe.requests().first().expect("one request"));
+
+        let streaming_queries = Arc::new(Mutex::new(Vec::new()));
+        let streaming_model =
+            MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
+        let streaming_probe = streaming_model.clone();
+        let mut stream = AgentBuilder::new(streaming_model)
+            .dynamic_context(
+                3,
+                RecordingContextIndex {
+                    id: "streaming",
+                    queries: streaming_queries.clone(),
+                },
+            )
+            .build()
+            .runner(Message::User {
+                content: OneOrMany::one(UserContent::image_url(
+                    "https://example.com/prompt.png",
+                    None,
+                    None,
+                )),
+            })
+            .history(vec![
+                Message::user("older history query"),
+                Message::user("latest history query"),
+            ])
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("streaming dynamic-context run should succeed");
+        }
+        assert_eq!(
+            *streaming_queries.lock().expect("streaming queries"),
+            vec![("latest history query".to_string(), 3)]
+        );
+        let streaming_requests = streaming_probe.requests();
+        let request = streaming_requests.first().expect("one request");
+        assert_eq!(request.documents.len(), 1);
+        assert_eq!(request.documents[0].id, "streaming");
+        assert_eq!(
+            request.documents[0].text,
+            "{\n  \"source\": \"streaming\"\n}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dynamic_context_and_application_hooks_follow_registration_order() {
+        let queries = Arc::new(Mutex::new(Vec::new()));
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let probe = model.clone();
+        AgentBuilder::new(model)
+            .context("static")
+            .add_hook(ExtraContextHook {
+                id: "before",
+                text: "before dynamic context",
+            })
+            .dynamic_context(
+                1,
+                RecordingContextIndex {
+                    id: "first",
+                    queries: queries.clone(),
+                },
+            )
+            .add_hook(ExtraContextHook {
+                id: "between",
+                text: "between dynamic contexts",
+            })
+            .dynamic_context(
+                2,
+                RecordingContextIndex {
+                    id: "second",
+                    queries: queries.clone(),
+                },
+            )
+            .add_hook(ExtraContextHook {
+                id: "after",
+                text: "after dynamic context",
+            })
+            .build()
+            .runner("query")
+            .run()
+            .await
+            .expect("run should succeed");
+
+        assert_eq!(
+            probe.requests()[0]
+                .documents
+                .iter()
+                .map(|document| document.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "static_doc_0",
+                "before",
+                "first",
+                "between",
+                "second",
+                "after",
+            ]
+        );
+        assert_eq!(
+            *queries.lock().expect("context queries"),
+            vec![("query".to_string(), 1), ("query".to_string(), 2)]
+        );
+
+        let skipped_queries = Arc::new(Mutex::new(Vec::new()));
+        let error = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("unused")]))
+            .add_hook(TerminateOn(StepEventKind::CompletionCall))
+            .dynamic_context(
+                1,
+                RecordingContextIndex {
+                    id: "skipped",
+                    queries: skipped_queries.clone(),
+                },
+            )
+            .build()
+            .runner("query")
+            .run()
+            .await
+            .expect_err("an earlier stop hook should terminate before retrieval");
+        assert!(matches!(error, PromptError::PromptCancelled { .. }));
+        assert!(skipped_queries.lock().expect("skipped queries").is_empty());
+    }
+
+    #[tokio::test]
+    async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surfaces() {
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("unused")]);
         let blocking_probe = blocking_model.clone();
         let error = AgentBuilder::new(blocking_model)
-            .add_hook(RetrievalHook {
-                index: FailingContextIndex,
-            })
+            .dynamic_context(1, FailingContextIndex)
             .build()
             .runner("retrieve this")
             .run()
@@ -7678,9 +7827,7 @@ mod migrated_tests {
             MockCompletionModel::from_stream_turns([one_text_stream_turn("unused")]);
         let streaming_probe = streaming_model.clone();
         let mut stream = AgentBuilder::new(streaming_model)
-            .add_hook(RetrievalHook {
-                index: FailingContextIndex,
-            })
+            .dynamic_context(1, FailingContextIndex)
             .build()
             .runner("retrieve this")
             .stream()

@@ -3,11 +3,15 @@ use std::{collections::HashMap, sync::Arc};
 use schemars::{JsonSchema, Schema, schema_for};
 
 use rig_core::{
-    memory::ConversationMemory, message::ToolChoice, vector_store::VectorStoreIndexDyn,
+    memory::ConversationMemory,
+    message::ToolChoice,
+    vector_store::{VectorSearchRequest, VectorStoreIndexDyn},
 };
 
 use crate::{
-    agent::hook::{AgentHook, HookStack},
+    agent::hook::{
+        AgentHook, CompletionCall, CompletionCallAction, HookContext, HookStack, RequestPatch,
+    },
     completion::{CompletionModel, Document},
     tool::{
         DynamicTool, PortableDynamicTool, Tool, ToolSet,
@@ -20,6 +24,51 @@ use crate::{
 use crate::tool::rmcp::McpTool as RmcpTool;
 
 use super::{Agent, OutputMode};
+
+struct DynamicContext<I> {
+    samples: usize,
+    index: I,
+}
+
+impl<I> AgentHook for DynamicContext<I>
+where
+    I: VectorStoreIndexDyn,
+{
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCall<'_>,
+    ) -> CompletionCallAction {
+        let query = event.prompt.rag_text().or_else(|| {
+            event
+                .history
+                .iter()
+                .rev()
+                .find_map(|message| message.rag_text())
+        });
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let request = VectorSearchRequest::builder()
+            .query(query)
+            .samples(self.samples as u64)
+            .build();
+        match self.index.top_n(request).await {
+            Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                results.into_iter().map(|(_, id, value)| Document {
+                    id,
+                    text:
+                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+                    additional_props: Default::default(),
+                }),
+            )),
+            Err(error) => {
+                CompletionCallAction::stop(format!("failed to retrieve dynamic context: {error}"))
+            }
+        }
+    }
+}
 
 /// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
 /// timeout to each (`None` disables it; see issue #1914). Returns
@@ -178,6 +227,22 @@ where
             additional_props: HashMap::new(),
         });
         self
+    }
+
+    /// Add dynamic context retrieved from a vector store on every model call.
+    ///
+    /// This is a convenience wrapper around an internal completion-call hook.
+    /// The hook searches with the current prompt's first text part, falling back
+    /// to the latest textual history message, and appends the retrieved documents
+    /// to the request after static context. Retrieval and injected documents
+    /// follow registration order relative to application hooks, so register a
+    /// stop policy before this helper when it should prevent retrieval. A
+    /// retrieval failure stops the run before provider I/O.
+    pub fn dynamic_context<I>(self, samples: usize, index: I) -> Self
+    where
+        I: VectorStoreIndexDyn + 'static,
+    {
+        self.add_hook(DynamicContext { samples, index })
     }
 
     /// Set the tool choice for the agent

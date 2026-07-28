@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::{
     message::{Message, ToolChoice},
+    vector_store::VectorStoreIndexDyn,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -294,6 +295,18 @@ where
         self
     }
 
+    /// Add dynamic context retrieved from a vector store on every extraction attempt.
+    ///
+    /// This delegates to [`AgentBuilder::dynamic_context`] and therefore uses the
+    /// same completion-call hook lifecycle as an agent.
+    pub fn dynamic_context<I>(mut self, samples: usize, index: I) -> Self
+    where
+        I: VectorStoreIndexDyn + 'static,
+    {
+        self.agent_builder = self.agent_builder.dynamic_context(samples, index);
+        self
+    }
+
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.agent_builder = self.agent_builder.additional_params(params);
         self
@@ -349,12 +362,12 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::agent::{
-        CompletionCallAction, CompletionResponseEvent, HookContext, ModelTurnAction,
-        ObservationAction, RequestPatch,
-    };
+    use crate::agent::{CompletionResponseEvent, HookContext, ModelTurnAction, ObservationAction};
     use crate::test_utils::{MockCompletionModel, MockTurn};
     use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
+    use rig_core::vector_store::{
+        VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+    };
 
     #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
     struct Person {
@@ -467,19 +480,30 @@ mod tests {
         }
     }
 
-    struct ExtractorRetrievalHook;
+    struct ExtractorContextIndex {
+        queries: Arc<Mutex<Vec<(String, u64)>>>,
+    }
 
-    impl AgentHook for ExtractorRetrievalHook {
-        async fn on_completion_call(
+    impl VectorStoreIndex for ExtractorContextIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
             &self,
-            _ctx: &HookContext,
-            _event: crate::agent::CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            CompletionCallAction::patch(RequestPatch::new().context(crate::completion::Document {
-                id: "application-retrieval".to_string(),
-                text: "retrieved extractor context".to_string(),
-                additional_props: Default::default(),
-            }))
+            req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            self.queries
+                .lock()
+                .expect("extractor query recorder")
+                .push((req.query().to_string(), req.samples()));
+            let value = serde_json::from_value(json!({ "question": "retrieved" }))?;
+            Ok(vec![(1.0, "extractor-context".to_string(), value)])
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            Ok(vec![(1.0, "extractor-context".to_string())])
         }
     }
 
@@ -618,25 +642,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn extractor_accepts_application_defined_retrieval_hook() {
+    async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
         let model = MockCompletionModel::new([submit_turn("John")]);
         let probe = model.clone();
+        let queries = Arc::new(Mutex::new(Vec::new()));
         let response = ExtractorBuilder::<_, Person>::new(model)
-            .add_hook(ExtractorRetrievalHook)
+            .dynamic_context(
+                2,
+                ExtractorContextIndex {
+                    queries: queries.clone(),
+                },
+            )
             .build()
             .extract("John")
             .await
             .expect("extraction should succeed");
 
         assert_eq!(response.name, "John");
+        assert_eq!(
+            *queries.lock().expect("extractor queries"),
+            vec![("John".to_string(), 2)]
+        );
         let requests = probe.requests();
         let request = requests.first().expect("one extractor request");
         assert!(
             request
                 .documents
                 .iter()
-                .any(|document| document.id == "application-retrieval"
-                    && document.text == "retrieved extractor context")
+                .any(|document| document.id == "extractor-context"
+                    && document.text == "{\n  \"question\": \"retrieved\"\n}")
         );
     }
 

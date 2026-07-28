@@ -45,69 +45,22 @@
 //! # }
 //! ```
 //!
-//! Passive RAG is application-defined: a completion-call hook chooses the query,
-//! retrieves documents, and injects them with [`RequestPatch::extra_context`].
-//! Active RAG instead exposes a vector index or custom retriever as a tool so the
-//! model decides when and how to search.
+//! [`AgentBuilder::dynamic_context`] provides passive RAG through the same
+//! completion-call hook lifecycle as every other request policy. For custom
+//! query selection, filtering, reranking, caching, formatting, or failure
+//! handling, applications can instead implement [`AgentHook`] and inject
+//! documents with [`RequestPatch::extra_context`]. Active RAG exposes a vector
+//! index or custom retriever as a tool so the model decides when to search.
 //!
 //! Passive RAG agent example
 //! ```no_run
-//! use rig_agent::{
-//!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
-//!     prelude::*,
-//!     completion::Prompt,
-//! };
+//! use rig_agent::{completion::Prompt, prelude::*};
 //! use rig_core::{
 //!     client::{EmbeddingsClient, ProviderClient},
-//!     completion::{Document, Message},
 //!     embeddings::EmbeddingsBuilder,
-//!     message::UserContent,
 //!     providers::openai,
-//!     vector_store::{
-//!         VectorStoreIndexDyn,
-//!         in_memory_store::InMemoryVectorStore,
-//!         request::VectorSearchRequest,
-//!     },
+//!     vector_store::in_memory_store::InMemoryVectorStore,
 //! };
-//!
-//! struct DictionaryRag<I>(I);
-//!
-//! impl<I> AgentHook for DictionaryRag<I>
-//! where
-//!     I: VectorStoreIndexDyn,
-//! {
-//!     async fn on_completion_call(
-//!         &self,
-//!         _ctx: &HookContext,
-//!         event: CompletionCallEvent<'_>,
-//!     ) -> CompletionCallAction {
-//!         let message_text = |message: &Message| match message {
-//!             Message::User { content } => content.iter().find_map(|item| match item {
-//!                 UserContent::Text(text) => Some(text.text.clone()),
-//!                 _ => None,
-//!             }),
-//!             _ => None,
-//!         };
-//!         let Some(query) = message_text(event.prompt)
-//!             .or_else(|| event.history.iter().rev().find_map(message_text))
-//!         else {
-//!             return CompletionCallAction::continue_run();
-//!         };
-//!
-//!         let request = VectorSearchRequest::builder().query(query).samples(1).build();
-//!         match self.0.top_n(request).await {
-//!             Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-//!                 results.into_iter().map(|(_, id, value)| Document {
-//!                     id,
-//!                     text: serde_json::to_string_pretty(&value)
-//!                         .unwrap_or_else(|_| value.to_string()),
-//!                     additional_props: Default::default(),
-//!                 }),
-//!             )),
-//!             Err(error) => CompletionCallAction::stop(format!("retrieval failed: {error}")),
-//!         }
-//!     }
-//! }
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize OpenAI client
@@ -138,7 +91,7 @@
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
 //!     ")
-//!     .add_hook(DictionaryRag(index))
+//!     .dynamic_context(1, index)
 //!     .build();
 //!
 //! // Prompt the agent and print the response
