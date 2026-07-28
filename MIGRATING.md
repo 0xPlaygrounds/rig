@@ -31,22 +31,13 @@ something different — the ones a compiler upgrade will not point at.
 
 ## Silent behavior changes
 
-Nothing in this section produces a compile error. Check each one against your
-code before upgrading. Entries are ordered oldest-first, so you can skip
-everything below the version you are on.
+Nothing in this section produces a compile error. Grouped by the release that
+introduced it, oldest-first — read from the version you are on upwards, and
+check each entry against your code before upgrading.
 
-| Release | Silent changes |
-| --- | --- |
-| 0.31 | [TLS backend](#the-default-tls-backend-is-now-rustls-031), [reasoning JSON shape](#persisted-reasoning-json-no-longer-round-trips-031) |
-| 0.32 | [gemini embedding model id](#geminiembedding_001-points-at-a-different-model-032), [proxy env vars](#proxy-environment-variables-are-now-honored-032) |
-| 0.33 | [preamble is a system message](#preamble-is-now-a-system-message-and-completionrequestpreamble-is-empty-033), [`max_tokens` forwarded](#max_tokens-is-forwarded-on-chat-completions-033) |
-| 0.35 | [string tool outputs](#string-tool-outputs-are-no-longer-json-encoded-035) |
-| 0.36 | [rustls everywhere](#rustls-became-the-default-for-websockets-middleware-and-companion-crates-036) |
-| 0.38 | [hallucinated tool calls](#hallucinated-tool-calls-now-fail-the-run-038), [`#[rig_tool]` schemas](#rig_tool-advertises-a-different-schema-038) |
-| 0.40 | [`max_turns`](#max_turns-counts-differently-040), [empty text](#providers-that-used-to-return-empty-text-now-error-040), [moonshot](#moonshot-drops-reasoning-only-history-turns-040), [request contents](#request-contents-changed-for-several-providers-040), [video](#rig-video-content-now-serializes-instead-of-erroring-040), [telemetry](#telemetry-span-names-and-fields-040) |
-| 0.41 | [Ollama `max_tokens`](#ollama-now-honors-max_tokens-041), [multipart tool results](#multipart-tool-results-reach-openai-intact-041), [`if_wasm!`](#if_wasm--if_not_wasm-key-on-the-target-041) |
+### 0.31
 
-### The default TLS backend is now rustls (0.31)
+#### The default TLS backend is now rustls
 
 `rig-core`'s default feature switched from `reqwest-tls` (native TLS) to
 `reqwest-rustls`, alongside the upgrade to reqwest 0.13. Unless you opt back in
@@ -57,7 +48,7 @@ CAs installed in the macOS Keychain or the Windows certificate store, corporate
 TLS-inspecting proxies, and servers still on legacy cipher suites can start
 failing handshakes on a build that changed nothing but the Rig version.
 
-### Persisted `Reasoning` JSON no longer round-trips (0.31)
+#### Persisted `Reasoning` JSON no longer round-trips
 
 `Reasoning` changed from `{ id, reasoning: [String], signature: Option<String> }`
 to `{ id, content: [ReasoningContent] }`, where each block is typed (`Text` with
@@ -69,7 +60,9 @@ If you store conversation history as JSON, records written by 0.30 or earlier
 that contain reasoning blocks fail to deserialize on 0.31. Migrate the stored
 rows, or drop reasoning content from history you replay.
 
-### `gemini::EMBEDDING_001` points at a different model (0.32)
+### 0.32
+
+#### `gemini::EMBEDDING_001` points at a different model
 
 The constant kept its name and changed its value from `"embedding-001"` to
 `"gemini-embedding-001"`. Embeddings written before and after the upgrade come
@@ -79,14 +72,16 @@ literal `"embedding-001"` if the old model is what you want.
 See also [gemini embedding dimensions](#4-gemini-embedding-dimensions-come-from-the-model)
 in 0.32 → 0.33, which moves the reported dimension count for this model.
 
-### Proxy environment variables are now honored (0.32)
+#### Proxy environment variables are now honored
 
 reqwest's `system-proxy` feature was enabled (#1442). `HTTP_PROXY`,
 `HTTPS_PROXY`, and `NO_PROXY` in the environment now route provider traffic;
 previously they were ignored. On machines that set those variables for unrelated
 reasons, provider calls start going through the proxy.
 
-### Preamble is now a system message, and `CompletionRequest.preamble` is empty (0.33)
+### 0.33
+
+#### Preamble is now a system message, and `CompletionRequest.preamble` is empty
 
 `CompletionRequestBuilder::build` no longer populates `CompletionRequest.preamble`.
 It inserts the preamble as a leading `Message::System` in `chat_history` and
@@ -97,13 +92,15 @@ callers that construct `CompletionRequest` by hand.
 system prompt silently vanishes.** Read the leading `Message::System` from
 `chat_history` instead. Bundled providers were all updated.
 
-### `max_tokens` is forwarded on Chat Completions (0.33)
+#### `max_tokens` is forwarded on Chat Completions
 
 `max_tokens` was dropped when building Chat Completions requests (#1495) and is
 now sent. A limit your code has been setting with no effect starts applying, so
 responses that ran to their natural stop can begin truncating.
 
-### String tool outputs are no longer JSON-encoded (0.35)
+### 0.35
+
+#### String tool outputs are no longer JSON-encoded
 
 A tool whose `Output` serializes to a JSON string used to be handed to the model
 as `serde_json::to_string(&output)` — wrapped in quotes, with newlines escaped
@@ -114,7 +111,9 @@ This is the intended behavior, but a tool returning `String` now presents to the
 model as raw text rather than a quoted JSON literal. Prompts and few-shot
 examples tuned against the quoted form are worth re-checking.
 
-### rustls became the default for websockets, middleware, and companion crates (0.36)
+### 0.36
+
+#### rustls became the default for websockets, middleware, and companion crates
 
 0.31 switched `rig-core`'s own HTTP client to rustls; 0.36 finished the job
 (#1682). `websocket` is now an alias for `websocket-rustls`,
@@ -122,11 +121,13 @@ examples tuned against the quoted form are worth re-checking.
 `native-tls` features on the workspace fan out to the companion crates.
 
 If you were relying on those paths still using native TLS, the trust-store
-caveat from [0.31](#the-default-tls-backend-is-now-rustls-031) now applies to
+caveat from [0.31](#the-default-tls-backend-is-now-rustls) now applies to
 them as well. Opt back in with `websocket-native-tls` /
 `reqwest-middleware-native-tls`.
 
-### Hallucinated tool calls now fail the run (0.38)
+### 0.38
+
+#### Hallucinated tool calls now fail the run
 
 Tool calls are validated against the registered tools and against `tool_choice`
 before dispatch (#1823). A call naming a tool that does not exist — or any tool
@@ -139,7 +140,7 @@ now stop. 0.38 also adds the recovery path: implement
 `InvalidToolCallHookAction::{Retry, Repair, Skip, Fail}`, and bound the retries
 with `.max_invalid_tool_call_retries(n)`.
 
-### `#[rig_tool]` advertises a different schema (0.38)
+#### `#[rig_tool]` advertises a different schema
 
 Parameter schemas are generated by schemars instead of the previous hand-rolled
 type mapping (#1576). The macro's surface is unchanged, but what reaches the
@@ -158,9 +159,11 @@ Better schemas usually mean better tool calls, but they are different input to
 the model. There is also a compile-time consequence — see
 [section 1 of 0.37 → 0.38](#1-rig_tool-parameters-must-implement-jsonschema).
 
-### `max_turns` counts differently (0.40)
+### 0.40
 
-The highest-impact change in either release. `max_turns` and
+#### `max_turns` counts differently
+
+The highest-impact change in this release. `max_turns` and
 `default_max_turns` now bound the **exact total number of model calls**,
 including the initial call, tool continuations, and retries.
 
@@ -177,20 +180,20 @@ old effective `n + 2`; otherwise set the literal total you actually intend.
 If you set `max_turns` at all, re-derive the number. A budget that used to
 permit a tool round-trip may now stop after the first model call.
 
-### Providers that used to return empty text now error (0.40)
+#### Providers that used to return empty text now error
 
 Responses with empty assistant content and no tool calls surface the shared
 path's "empty response" error on **hyperbolic, perplexity, and huggingface**.
 Previously each returned an empty text completion. Code that treated an empty
 string as a normal outcome now takes an error branch.
 
-### Moonshot drops reasoning-only history turns (0.40)
+#### Moonshot drops reasoning-only history turns
 
 The shared conversion drops assistant messages carrying neither text nor tool
 calls. Reasoning attached to a text or tool-call turn still round-trips via
 `reasoning_content`; reasoning-only turns no longer survive in history.
 
-### Request contents changed for several providers (0.40)
+#### Request contents changed for several providers
 
 Consequences of the `GenericCompletionModel` consolidation. None of these
 change your source, all of them change what goes over the wire:
@@ -209,14 +212,14 @@ change your source, all of them change what goes over the wire:
 - groq's streaming usage no longer falls back to the legacy `x_groq.usage`
   envelope.
 
-### Rig `Video` content now serializes instead of erroring (0.40)
+#### Rig `Video` content now serializes instead of erroring
 
 On the shared conversion, `Video` user content serializes a `video_url` content
 part (an OpenRouter/gateway extension) rather than returning a client-side
 conversion error. Providers without video support now reject it **server-side**
 — the failure moved from your process to theirs, and moved later.
 
-### Telemetry span names and fields (0.40)
+#### Telemetry span names and fields
 
 - Migrated providers' streaming spans are named `chat` with
   `gen_ai.operation.name = "chat"`, previously `chat_streaming`. Dashboards and
@@ -228,7 +231,9 @@ conversion error. Providers without video support now reject it **server-side**
 - minimax, zai, and xiaomimimo spans stop reporting as `"openai"` and report
   their own provider name.
 
-### Ollama now honors `max_tokens` (0.41)
+### 0.41
+
+#### Ollama now honors `max_tokens`
 
 Ollama's native `/api/chat` has no top-level `max_tokens` field, so the value
 was serialized into a field the server does not define and silently discarded.
@@ -242,7 +247,7 @@ budget you configured, possibly long ago. Check the value is one you still want.
 `temperature` is unaffected: it was already being sent inside `options` and only
 a redundant top-level copy was removed.
 
-### Multipart tool results reach OpenAI intact (0.41)
+#### Multipart tool results reach OpenAI intact
 
 Tool results carrying several `ToolResultContent` blocks were flattened before
 being sent to the Responses and Chat Completions APIs. Individual blocks are now
@@ -254,7 +259,7 @@ distinct blocks rather than one merged blob. That is the intended behavior, but
 it does change what the model sees, so prompts tuned against the flattened shape
 are worth re-checking.
 
-### `if_wasm!` / `if_not_wasm!` key on the target (0.41)
+#### `if_wasm!` / `if_not_wasm!` key on the target
 
 These macros are `#[macro_export]`ed, and a `cfg` inside a macro expansion is
 evaluated in the **calling** crate. The old expansion therefore tested whether
@@ -542,7 +547,7 @@ never built. See `crates/rig-agent/README.md` for the full target matrix.
 
 ## 0.39 → 0.40
 
-### 1. `max_turns` — see [Silent behavior changes](#max_turns-counts-differently-040)
+### 1. `max_turns` — see [Silent behavior changes](#max_turns-counts-differently)
 
 The single most likely change to alter your program's behavior without a
 compile error.
@@ -703,7 +708,7 @@ You do not need a direct `schemars` dependency — the macro refers to
 `rig_core::schemars`.
 
 For what the model now sees, see
-[`#[rig_tool]` advertises a different schema](#rig_tool-advertises-a-different-schema-038).
+[`#[rig_tool]` advertises a different schema](#rig_tool-advertises-a-different-schema).
 
 ### 2. Invalid tool calls are validated and recoverable
 
@@ -1088,7 +1093,7 @@ does.
 
 `Message` gained a `System` variant (#1527) — it is not `#[non_exhaustive]`, so
 exhaustive matches need the arm. See
-[Preamble is now a system message](#preamble-is-now-a-system-message-and-completionrequestpreamble-is-empty-033)
+[Preamble is now a system message](#preamble-is-now-a-system-message-and-completionrequestpreamble-is-empty)
 for the behavioral half of this change.
 
 Separately, `ProviderToolDefinition` and
@@ -1254,7 +1259,7 @@ Constructors and accessors cover the common cases: `Reasoning::new`,
 `display_text` / `first_text` / `first_signature` / `encrypted_content`.
 
 Stored histories need attention — see
-[Persisted `Reasoning` JSON no longer round-trips](#persisted-reasoning-json-no-longer-round-trips-031).
+[Persisted `Reasoning` JSON no longer round-trips](#persisted-reasoning-json-no-longer-round-trips).
 
 ### 4. Structured outputs and per-request model override
 
@@ -1289,7 +1294,7 @@ The HTTP stack moved to reqwest 0.13 (#1218). Feature names moved with it:
 `reqwest/macos-system-configuration` is no longer pulled in. If you pass a
 `reqwest::Client` into a Rig client, it has to be a 0.13 one. For the runtime
 consequences, see
-[The default TLS backend is now rustls](#the-default-tls-backend-is-now-rustls-031).
+[The default TLS backend is now rustls](#the-default-tls-backend-is-now-rustls).
 
 ### 7. Anthropic source types became enums
 
