@@ -48,6 +48,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Contributors
 
 * [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.40.0...rig-gemini-grpc-v0.41.0) - 2026-07-28
+
+### Added
+
+- [**breaking**] split rig-core and rig-agent behind the rig facade ([#2197](https://github.com/0xPlaygrounds/rig/pull/2197)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2197
+- *(telemetry)* make sensitive span content opt-in ([#2151](https://github.com/0xPlaygrounds/rig/pull/2151)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- release v0.41.0 ([#2100](https://github.com/0xPlaygrounds/rig/pull/2100)) (by [github-actions[bot]](https://github.com/github-actions[bot])) - #2100
+- Simplify tool execution and hook APIs ([#2132](https://github.com/0xPlaygrounds/rig/pull/2132)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2132
+
+### Contributors
+
+* [github-actions[bot]](https://github.com/github-actions[bot])
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.39.0...rig-gemini-grpc-v0.40.0) - 2026-07-10
 

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.40.0...rig-qdrant-v0.41.0) - 2026-07-28
+
+### Other
+
+- release v0.41.0 ([#2100](https://github.com/0xPlaygrounds/rig/pull/2100)) (by [github-actions[bot]](https://github.com/github-actions[bot])) - #2100
+
+### Contributors
+
+* [github-actions[bot]](https://github.com/github-actions[bot])
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.2.7...rig-qdrant-v0.38.1) - 2026-06-02
 
 ### Other
