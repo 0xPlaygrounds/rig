@@ -25,8 +25,8 @@ fastrand = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 indexmap = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
-rig-derive = { path = "../rig-derive", version = "0.40.0", optional = true }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
+rig-derive = { path = "../rig-derive", version = "0.41.0", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

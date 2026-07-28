@@ -22,7 +22,7 @@ thiserror = { workspace = true }
 web-time = { workspace = true }
 # `rig-core` relaxes its portable async bounds automatically on browser wasm, so
 # both targets take the same dependency line.
-rig-core = { path = "../rig-core", version = "0.40.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true, features = ["rt", "sync"] }
@@ -33,5 +33,5 @@ tokenizers = { workspace = true, default-features = false, features = ["unstable
 
 [dev-dependencies]
 rig-agent = { workspace = true, features = ["test-utils"] }
-rig-core = { path = "../rig-core", version = "0.40.0", default-features = false, features = ["test-utils"] }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = ["test-utils"] }
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

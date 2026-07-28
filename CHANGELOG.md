@@ -6,6 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/v0.40.0...v0.41.0) - 2026-07-28
+
+### Added
+
+- *(agent)* restore dynamic context helper ([#2219](https://github.com/0xPlaygrounds/rig/pull/2219)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] split rig-core and rig-agent behind the rig facade ([#2197](https://github.com/0xPlaygrounds/rig/pull/2197)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2197
+- *(agent)* add response retry hooks ([#2182](https://github.com/0xPlaygrounds/rig/pull/2182)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(doubleword)* add provider with cassette coverage ([#2163](https://github.com/0xPlaygrounds/rig/pull/2163)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* make sensitive span content opt-in ([#2151](https://github.com/0xPlaygrounds/rig/pull/2151)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* expose complete Responses reasoning metadata ([#2112](https://github.com/0xPlaygrounds/rig/pull/2112)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* support GPT-5.6 models and reasoning controls ([#2106](https://github.com/0xPlaygrounds/rig/pull/2106)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(ollama)* send max_tokens as options.num_predict in native requests ([#2185](https://github.com/0xPlaygrounds/rig/pull/2185)) (by [bugprone](https://github.com/bugprone))
+- *(openai)* omit filename for URL-backed PDFs in Responses API requests ([#2166](https://github.com/0xPlaygrounds/rig/pull/2166)) (by [dgrijalva](https://github.com/dgrijalva))
+- *(anthropic)* support URL-backed PDF documents in requests ([#2215](https://github.com/0xPlaygrounds/rig/pull/2215)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* omit empty non-streaming encrypted reasoning ([#2209](https://github.com/0xPlaygrounds/rig/pull/2209)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(anthropic)* support code execution tool results ([#2158](https://github.com/0xPlaygrounds/rig/pull/2158)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(aws)* remove legacy rustls connector ([#2152](https://github.com/0xPlaygrounds/rig/pull/2152)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(release)* avoid contributor mention notifications ([#2110](https://github.com/0xPlaygrounds/rig/pull/2110)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(openai)* cover nullable strict extractor responses ([#2218](https://github.com/0xPlaygrounds/rig/pull/2218)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(candle)* harden local model runtime ([#2214](https://github.com/0xPlaygrounds/rig/pull/2214)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core,agent)* [**breaking**] make the WASM support matrix explicit and true ([#2213](https://github.com/0xPlaygrounds/rig/pull/2213)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* single declarative completion-parent contract ([#2208](https://github.com/0xPlaygrounds/rig/pull/2208)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(derive)* [**breaking**] single resolution authority, coherent required semantics, dependency hygiene ([#2207](https://github.com/0xPlaygrounds/rig/pull/2207)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] remove premature runtime-conformance crate, backfill gaps ([#2206](https://github.com/0xPlaygrounds/rig/pull/2206)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(client)* [**breaking**] single canonical CompletionClient + AgentClientExt ([#2205](https://github.com/0xPlaygrounds/rig/pull/2205)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- Make managed agent hooks provider-independent ([#2176](https://github.com/0xPlaygrounds/rig/pull/2176)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2176
+- Remove built-in agent dynamic context ([#2174](https://github.com/0xPlaygrounds/rig/pull/2174)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2174
+- Make AgentRunner the only Agent execution path ([#2161](https://github.com/0xPlaygrounds/rig/pull/2161)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2161
+- Add rig-candle local inference and WASM chat ([#2155](https://github.com/0xPlaygrounds/rig/pull/2155)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2155
+- remove AI assistance policy ([#2159](https://github.com/0xPlaygrounds/rig/pull/2159)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2159
+- Simplify tool execution and hook APIs ([#2132](https://github.com/0xPlaygrounds/rig/pull/2132)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2132
+- *(telemetry)* centralize completion span lifecycle ([#2115](https://github.com/0xPlaygrounds/rig/pull/2115)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* [**breaking**] make core errors non-exhaustive ([#2114](https://github.com/0xPlaygrounds/rig/pull/2114)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- bump rmcp depency to latest ([#2103](https://github.com/0xPlaygrounds/rig/pull/2103)) (by [ThomasMarches](https://github.com/ThomasMarches)) - #2103
+- update README links to new rig.rs/docs URL structure ([#2105](https://github.com/0xPlaygrounds/rig/pull/2105)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2105
+
+### Contributors
+
+* [bugprone](https://github.com/bugprone)
+* [dgrijalva](https://github.com/dgrijalva)
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [ThomasMarches](https://github.com/ThomasMarches)
 
 ### Added
 

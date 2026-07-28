@@ -6,6 +6,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.40.0...rig-core-v0.41.0) - 2026-07-28
+
+### Added
+
+- *(agent)* restore dynamic context helper ([#2219](https://github.com/0xPlaygrounds/rig/pull/2219)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] split rig-core and rig-agent behind the rig facade ([#2197](https://github.com/0xPlaygrounds/rig/pull/2197)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2197
+- *(agent)* add response retry hooks ([#2182](https://github.com/0xPlaygrounds/rig/pull/2182)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(doubleword)* add provider with cassette coverage ([#2163](https://github.com/0xPlaygrounds/rig/pull/2163)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* make sensitive span content opt-in ([#2151](https://github.com/0xPlaygrounds/rig/pull/2151)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* expose complete Responses reasoning metadata ([#2112](https://github.com/0xPlaygrounds/rig/pull/2112)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* support GPT-5.6 models and reasoning controls ([#2106](https://github.com/0xPlaygrounds/rig/pull/2106)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(ollama)* send max_tokens as options.num_predict in native requests ([#2185](https://github.com/0xPlaygrounds/rig/pull/2185)) (by [bugprone](https://github.com/bugprone))
+- *(openai)* omit filename for URL-backed PDFs in Responses API requests ([#2166](https://github.com/0xPlaygrounds/rig/pull/2166)) (by [dgrijalva](https://github.com/dgrijalva))
+- *(openai)* preserve multipart tool result content ([#2217](https://github.com/0xPlaygrounds/rig/pull/2217)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(anthropic)* support URL-backed PDF documents in requests ([#2215](https://github.com/0xPlaygrounds/rig/pull/2215)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* omit empty non-streaming encrypted reasoning ([#2209](https://github.com/0xPlaygrounds/rig/pull/2209)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* accept nullable strict tool definitions ([#2178](https://github.com/0xPlaygrounds/rig/pull/2178)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(anthropic)* support code execution tool results ([#2158](https://github.com/0xPlaygrounds/rig/pull/2158)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* prevent structured-output tools from shadowing real tools ([#2146](https://github.com/0xPlaygrounds/rig/pull/2146)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* preserve image generation error envelopes ([#2147](https://github.com/0xPlaygrounds/rig/pull/2147)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* make Extractor usage accounting match its docs, drop per-attempt clones, fix retry log ([#2109](https://github.com/0xPlaygrounds/rig/pull/2109)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(core,agent)* [**breaking**] make the WASM support matrix explicit and true ([#2213](https://github.com/0xPlaygrounds/rig/pull/2213)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* single declarative completion-parent contract ([#2208](https://github.com/0xPlaygrounds/rig/pull/2208)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- openai Responses API: Filter empty encrypted reasoning content to prevent duplicate reasoning events from being emitted ([#2196](https://github.com/0xPlaygrounds/rig/pull/2196)) (by [boondocklabs](https://github.com/boondocklabs)) - #2196
+- *(derive)* [**breaking**] single resolution authority, coherent required semantics, dependency hygiene ([#2207](https://github.com/0xPlaygrounds/rig/pull/2207)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- Make managed agent hooks provider-independent ([#2176](https://github.com/0xPlaygrounds/rig/pull/2176)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2176
+- Remove built-in agent dynamic context ([#2174](https://github.com/0xPlaygrounds/rig/pull/2174)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2174
+- Make AgentRunner the only Agent execution path ([#2161](https://github.com/0xPlaygrounds/rig/pull/2161)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2161
+- Add rig-candle local inference and WASM chat ([#2155](https://github.com/0xPlaygrounds/rig/pull/2155)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2155
+- *(providers)* share embedding transport ([#2157](https://github.com/0xPlaygrounds/rig/pull/2157)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- Simplify tool execution and hook APIs ([#2132](https://github.com/0xPlaygrounds/rig/pull/2132)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2132
+- *(telemetry)* centralize completion span lifecycle ([#2115](https://github.com/0xPlaygrounds/rig/pull/2115)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* [**breaking**] make core errors non-exhaustive ([#2114](https://github.com/0xPlaygrounds/rig/pull/2114)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* deduplicate HttpClientExt implementations ([#2113](https://github.com/0xPlaygrounds/rig/pull/2113)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- bump rmcp depency to latest ([#2103](https://github.com/0xPlaygrounds/rig/pull/2103)) (by [ThomasMarches](https://github.com/ThomasMarches)) - #2103
+- *(core)* collapse Extractor's four retry loops into one private helper ([#2107](https://github.com/0xPlaygrounds/rig/pull/2107)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [bugprone](https://github.com/bugprone)
+* [dgrijalva](https://github.com/dgrijalva)
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [boondocklabs](https://github.com/boondocklabs)
+* [ThomasMarches](https://github.com/ThomasMarches)
 
 ### Added
 
