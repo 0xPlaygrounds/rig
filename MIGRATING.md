@@ -1,8 +1,7 @@
 # Migrating Rig
 
-This guide covers every breaking change from 0.38 through the current
-unreleased version. Releases 0.39 and 0.40 were large, and 0.40 in particular
-carried 31 breaking changes.
+This guide covers every breaking change from 0.38 through 0.41. Releases 0.39
+and 0.40 were large, and 0.40 in particular carried 31 breaking changes.
 
 ## Which sections apply to you
 
@@ -10,8 +9,8 @@ Work upwards from the version you are on. Each section is self-contained.
 
 | You are on | Read |
 | --- | --- |
-| 0.40 | [0.40 → unreleased](#040--unreleased) |
-| 0.39 | [0.39 → 0.40](#039--040), then [0.40 → unreleased](#040--unreleased) |
+| 0.40 | [0.40 → 0.41](#040--041) |
+| 0.39 | [0.39 → 0.40](#039--040), then [0.40 → 0.41](#040--041) |
 | 0.38 or earlier | [0.38 → 0.39](#038--039), then both sections above |
 
 **Everyone should read [Silent behavior changes](#silent-behavior-changes)
@@ -95,7 +94,7 @@ conversion error. Providers without video support now reject it **server-side**
 - minimax, zai, and xiaomimimo spans stop reporting as `"openai"` and report
   their own provider name.
 
-### Ollama now honors `max_tokens` (unreleased)
+### Ollama now honors `max_tokens` (0.41)
 
 Ollama's native `/api/chat` has no top-level `max_tokens` field, so the value
 was serialized into a field the server does not define and silently discarded.
@@ -109,7 +108,7 @@ budget you configured, possibly long ago. Check the value is one you still want.
 `temperature` is unaffected: it was already being sent inside `options` and only
 a redundant top-level copy was removed.
 
-### Multipart tool results reach OpenAI intact (unreleased)
+### Multipart tool results reach OpenAI intact (0.41)
 
 Tool results carrying several `ToolResultContent` blocks were flattened before
 being sent to the Responses and Chat Completions APIs. Individual blocks are now
@@ -121,7 +120,7 @@ distinct blocks rather than one merged blob. That is the intended behavior, but
 it does change what the model sees, so prompts tuned against the flattened shape
 are worth re-checking.
 
-### `if_wasm!` / `if_not_wasm!` key on the target (unreleased)
+### `if_wasm!` / `if_not_wasm!` key on the target (0.41)
 
 These macros are `#[macro_export]`ed, and a `cfg` inside a macro expansion is
 evaluated in the **calling** crate. The old expansion therefore tested whether
@@ -136,7 +135,7 @@ association.
 
 ---
 
-## 0.40 → unreleased
+## 0.40 → 0.41
 
 ### 1. The crate split
 
@@ -428,10 +427,10 @@ truth for advertised and dispatched tool names.
 Two large additions that also broke existing surfaces (#2015, #2012). Hooks
 became composable middleware; tool execution gained structured results. If you
 implemented hooks or tools against 0.39, expect to rewrite against the new
-shapes — and note that both were reworked *again* before the unreleased version
-([section 4](#4-tool-authoring-and-dispatch-reworked) and
-[section 5](#5-hooks-are-event-specific-and-provider-independent) above). If you
-are jumping 0.39 → unreleased, migrate straight to the newer shape and skip this
+shapes — and note that both were reworked *again* in 0.41 ([section
+4](#4-tool-authoring-and-dispatch-reworked) and [section
+5](#5-hooks-are-event-specific-and-provider-independent) above). If you are
+jumping 0.39 → 0.41, migrate straight to the newer shape and skip this
 intermediate form.
 
 ### 4. `PromptResponse` and `FinalResponse` are one type
@@ -542,10 +541,10 @@ Only two breaking changes.
 ### 1. Sans-I/O `AgentRun` state machine (#1899)
 
 Both agent loops became thin drivers over a sans-I/O `AgentRun` state machine.
-If you drove the agent loop yourself rather than calling `prompt` / `chat`,
-you are affected. Note that the surrounding execution API changed again in the
-unreleased version — see
-[`AgentRunner` is the only execution path](#6-agentrunner-is-the-only-execution-path).
+If you drove the agent loop yourself rather than calling `prompt` / `chat`, you
+are affected. Note that the surrounding execution API changed again in 0.41 —
+see [`AgentRunner` is the only execution
+path](#6-agentrunner-is-the-only-execution-path).
 
 ### 2. Deterministic, duplicate-safe tool registration (#1913)
 
@@ -561,22 +560,22 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
-| `rig_core::tool::Tool` (portable) | `rig_core::tool::PortableTool` | unreleased |
-| `rig_agent::<item>` (portable re-export) | `rig_agent::core::<item>` | unreleased |
-| `client.agent(...)` inherent method | `AgentClientExt::agent` (via `rig::prelude::*`) | unreleased |
-| `ToolCallExtensions` / `ToolResultExtensions` | `ToolContext` | unreleased |
-| `.tool_extensions(...)` | `.tool_context(...)` | unreleased |
-| `ToolDyn` (public) | `DynamicTool` | unreleased |
-| `ToolSet::{call, call_with_extensions, call_structured}` | `ToolSet::execute` | unreleased |
-| `ToolServerHandle::call_tool*` | `ToolServerHandle::execute` | unreleased |
-| `ToolError` / `ToolFailure` / `ToolReturn` / `ToolOutcome` / `ToolExecutionResult` | `ToolExecutionError` / `ToolErrorKind` / `ToolResult` | unreleased |
-| `AgentHook::on_event` + `StepEvent` + `Flow` | event-specific `AgentHook` methods + action types | unreleased |
-| `agent.completion(...)` / `agent.stream_completion(...)` | `agent.runner(...).run()` / `.stream()` | unreleased |
-| `AgentBuilder::dynamic_context` | unchanged call, now hook-backed (removed in #2174, restored in #2219) | unreleased |
-| `DynamicContextStore` | none — the side retrieval pipeline is gone for good | unreleased |
-| `dynamic_tools(sample, index, toolset)` | `retrieved_tools` | unreleased |
-| `ToolSetBuilder::dynamic_tool(ToolEmbedding)` | `retrieved_tool` | unreleased |
-| `features = ["wasm"]` | nothing — target is the opt-in | unreleased |
+| `rig_core::tool::Tool` (portable) | `rig_core::tool::PortableTool` | 0.41 |
+| `rig_agent::<item>` (portable re-export) | `rig_agent::core::<item>` | 0.41 |
+| `client.agent(...)` inherent method | `AgentClientExt::agent` (via `rig::prelude::*`) | 0.41 |
+| `ToolCallExtensions` / `ToolResultExtensions` | `ToolContext` | 0.41 |
+| `.tool_extensions(...)` | `.tool_context(...)` | 0.41 |
+| `ToolDyn` (public) | `DynamicTool` | 0.41 |
+| `ToolSet::{call, call_with_extensions, call_structured}` | `ToolSet::execute` | 0.41 |
+| `ToolServerHandle::call_tool*` | `ToolServerHandle::execute` | 0.41 |
+| `ToolError` / `ToolFailure` / `ToolReturn` / `ToolOutcome` / `ToolExecutionResult` | `ToolExecutionError` / `ToolErrorKind` / `ToolResult` | 0.41 |
+| `AgentHook::on_event` + `StepEvent` + `Flow` | event-specific `AgentHook` methods + action types | 0.41 |
+| `agent.completion(...)` / `agent.stream_completion(...)` | `agent.runner(...).run()` / `.stream()` | 0.41 |
+| `AgentBuilder::dynamic_context` | unchanged call, now hook-backed (removed in #2174, restored in #2219) | 0.41 |
+| `DynamicContextStore` | none — the side retrieval pipeline is gone for good | 0.41 |
+| `dynamic_tools(sample, index, toolset)` | `retrieved_tools` | 0.41 |
+| `ToolSetBuilder::dynamic_tool(ToolEmbedding)` | `retrieved_tool` | 0.41 |
+| `features = ["wasm"]` | nothing — target is the opt-in | 0.41 |
 | `Tool::definition(prompt)` | `description()` + `parameters()` | 0.40 |
 | `FinalResponse` | `PromptResponse` | 0.40 |
 | `streaming::stream_completion_to_stdout` | `agent::stream_to_stdout` | 0.40 |
