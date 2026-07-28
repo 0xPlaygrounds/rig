@@ -50,10 +50,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Contributors
 
+* [alshdavid](https://github.com/alshdavid)
+* [arnold-jr](https://github.com/arnold-jr)
+* [BANG404](https://github.com/BANG404)
+* [boondocklabs](https://github.com/boondocklabs)
 * [bugprone](https://github.com/bugprone)
+* [christoph-wulf](https://github.com/christoph-wulf)
 * [dgrijalva](https://github.com/dgrijalva)
 * [gold-silver-copper](https://github.com/gold-silver-copper)
+* [hacctarr](https://github.com/hacctarr)
+* [joshua-mo-143](https://github.com/joshua-mo-143)
+* [KaasPeer1](https://github.com/KaasPeer1)
+* [macaujack](https://github.com/macaujack)
+* [Niedzwiedzw](https://github.com/Niedzwiedzw)
+* [suxiaoshao](https://github.com/suxiaoshao)
+* [Sytten](https://github.com/Sytten)
 * [ThomasMarches](https://github.com/ThomasMarches)
+* [xiao-e-yun](https://github.com/xiao-e-yun)
 
 ### Added
 
