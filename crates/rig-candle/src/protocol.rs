@@ -825,18 +825,30 @@ fn parse_qwen3_assistant(
     if items.is_empty() {
         items.push(AssistantContent::text(""));
     }
-    let visible_text = items
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
+    let visible_text = canonicalize_visible_text(&mut items);
     Ok(ParsedAssistant {
         items,
         visible_text,
     })
+}
+
+/// Normalizes text split by control envelopes once, then stores that exact
+/// representation in both the parsed items and final response. Streaming can
+/// therefore emit the items verbatim without reconstructing separators.
+fn canonicalize_visible_text(items: &mut [AssistantContent]) -> String {
+    let mut visible_text = String::new();
+    let mut has_visible_text = false;
+    for item in items {
+        let AssistantContent::Text(text) = item else {
+            continue;
+        };
+        if has_visible_text {
+            text.text.insert(0, ' ');
+        }
+        visible_text.push_str(&text.text);
+        has_visible_text = true;
+    }
+    visible_text
 }
 
 fn validate_qwen_visible_segment(text: &str) -> Result<(), CandleError> {
@@ -1043,6 +1055,36 @@ mod tests {
             2
         );
         assert_eq!(parsed.visible_text, "Before after");
+        let streamed_text = parsed
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        assert_eq!(streamed_text, parsed.visible_text);
+    }
+
+    #[test]
+    fn qwen_visible_text_is_canonical_across_multiple_tool_boundaries() {
+        let parsed = parse_assistant(
+            "first<tool_call>{\"name\":\"calculate\",\"arguments\":{\"value\":1}}</tool_call>second<tool_call>{\"name\":\"lookup\",\"arguments\":{\"value\":2}}</tool_call>third",
+            &request(vec![Message::user("calculate")]),
+            ModelFamily::Qwen3,
+        )
+        .expect("parse interleaved text and calls");
+
+        let streamed_text = parsed
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        assert_eq!(parsed.visible_text, "first second third");
+        assert_eq!(streamed_text, parsed.visible_text);
     }
 
     #[test]

@@ -70,19 +70,21 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package rig-core --target wasm32-unknown-unknown
 
-  # The runtime split adds wasm-sensitive code to rig-agent and feature
-  # forwarding in the `rig` facade, so check both on the wasm target too. These
-  # are plain checks with no feature flags: the relaxed async bounds now follow
-  # from the target alone, so building for `wasm32-unknown-unknown` is the whole
-  # opt-in.
+  # The runtime split adds wasm-sensitive code to rig-agent, feature forwarding
+  # in the `rig` facade, and explicit feature wiring in the Candle runtime and
+  # browser example, so check each on the wasm target too. These are plain
+  # checks with no feature flags: the relaxed async bounds now follow from the
+  # target alone, so building for `wasm32-unknown-unknown` is the whole opt-in.
+  # None of them download a model.
   #
-  # `candle_wasm_chat` is here because it is the only consumer that exercises the
-  # browser-wasm *facade* path, and each package must be checked **on its own**:
-  # cargo unifies features across packages built in one invocation, so a
-  # workspace-wide `--all-features` build (the doctest job) silently supplies
-  # features an individual manifest forgot to declare. That is precisely how this
-  # example came to declare `default-features = false` without `agent` while
-  # importing `rig::agent` — green in CI, broken standalone.
+  # Each package must be checked **on its own**: cargo unifies features across
+  # packages built in one invocation, so a workspace-wide `--all-features` build
+  # (the doctest job) silently supplies features an individual manifest forgot to
+  # declare. That is precisely how `candle_wasm_chat` came to declare
+  # `default-features = false` without `agent` while importing `rig::agent` —
+  # green in CI, broken standalone. It is also the only consumer that exercises
+  # the browser-wasm *facade* path, and compiling it here means a
+  # JavaScript-only worker test cannot hide a Rust build regression.
   #
   # `wasm32-unknown-unknown` (browser) is the only supported wasm target. See
   # crates/rig-agent/README.md for the matrix.
@@ -91,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [rig-agent, rig, candle_wasm_chat]
+        package: [rig-agent, rig, rig-candle, candle_wasm_chat]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
