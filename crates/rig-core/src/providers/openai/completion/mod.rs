@@ -2305,11 +2305,11 @@ mod tests {
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::json(serde_json::json!({
-                "status": "ok"
-            })),
+                    "status": "ok"
+                })),
                 message::ToolResultContent::text("second"),
             ])
-                .expect("tool-result content should be non-empty"),
+            .expect("tool-result content should be non-empty"),
         };
 
         let converted = Message::try_from(result).expect("tool result should convert");
