@@ -2177,6 +2177,79 @@ mod tests {
         assert_eq!(serialized.get("max_tokens"), None);
     }
 
+    // The plain path: `max_tokens` with no `additional_params` at all, which
+    // skips the merge and serializes `base_options` directly. Every other
+    // `max_tokens` test also sets `additional_params`, so without this one the
+    // branch the fix exists for is never exercised.
+    #[test]
+    fn test_completion_request_num_predict_without_additional_params() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: Some(0.7),
+            max_tokens: Some(1024),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
+            .expect("Failed to create Ollama request");
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert_eq!(
+            serialized["options"],
+            json!({ "temperature": 0.7, "num_predict": 1024 })
+        );
+        // Neither belongs at the top level of a native `/api/chat` payload.
+        assert_eq!(serialized.get("max_tokens"), None);
+        assert_eq!(serialized.get("temperature"), None);
+    }
+
+    // With nothing to put in it, `options` is an empty object rather than
+    // carrying `"temperature": null` as it did when temperature was seeded
+    // unconditionally.
+    #[test]
+    fn test_completion_request_options_omit_unset_parameters() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
+            .expect("Failed to create Ollama request");
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert_eq!(serialized["options"], json!({}));
+    }
+
     #[test]
     fn test_completion_request_with_output_schema() {
         use crate::OneOrMany;
