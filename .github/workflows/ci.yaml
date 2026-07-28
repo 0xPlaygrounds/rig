@@ -242,6 +242,12 @@ jobs:
       - name: Test telemetry completion-parent contract
         run: cargo nextest run -p rig-core -p rig-agent --all-features -E 'test(telemetry::) + test(span_safety_net::)'
 
+      # This compiles a standalone downstream consumer that renames rig-core
+      # and has no direct tracing dependency. Keep it outside the workspace so
+      # release tooling cannot discover it as a publishable package.
+      - name: Test telemetry macro hygiene
+        run: cargo test -p rig-core --test macro_hygiene
+
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
         with:
@@ -276,12 +282,6 @@ jobs:
       # No API keys needed: the doctests that actually execute are pure (the
       # provider examples are all `no_run`/compile-only), so this job stays
       # hermetic and non-flaky.
-      #
-      # Keep `--workspace`: it is also the only thing in CI that compiles
-      # `rig-core-macro-hygiene` (a bare root invocation selects just the `rig`
-      # package). A dedicated `cargo check -p` step would resolve rig-core with
-      # `default-features = false` and rebuild its whole tree; here feature
-      # unification makes the tripwire free.
       - name: Run doctests
         run: cargo test --doc --workspace --all-features
 

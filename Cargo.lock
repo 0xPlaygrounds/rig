@@ -9950,13 +9950,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-core-macro-hygiene"
-version = "0.0.0"
-dependencies = [
- "rig-core",
-]
-
-[[package]]
 name = "rig-derive"
 version = "0.41.0"
 dependencies = [
