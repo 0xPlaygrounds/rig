@@ -12,9 +12,9 @@ use crate::{
 use bytes::Bytes;
 use eventsource_stream::{Event as MessageEvent, EventStreamError, Eventsource};
 use futures::Stream;
-#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use futures::{future::BoxFuture, stream::BoxStream};
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use futures::{future::LocalBoxFuture, stream::LocalBoxStream};
 use futures_timer::Delay;
 use http::Response;
@@ -29,14 +29,14 @@ use std::{
 
 pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type ResponseFuture = BoxFuture<'static, Result<Response<BoxedStream>, super::Error>>;
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 type ResponseFuture = LocalBoxFuture<'static, Result<Response<BoxedStream>, super::Error>>;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type EventStream = BoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 type EventStream = LocalBoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
 
 pin_project! {

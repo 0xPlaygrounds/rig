@@ -150,7 +150,12 @@ pub mod tool {
     // Classic contextual tool API (default runtime). `Tool`/`ToolContext` are
     // the classic contextual trait and its mutable context; none of these
     // collide with the portable exports above.
-    #[cfg(all(feature = "agent", feature = "rmcp"))]
+    // Native-only, matching every other `rmcp` gate: the module does not exist
+    // on wasm. Reaching this re-export there needs `rig-agent` to have compiled
+    // first, which its own `compile_error!` prevents, so the predicate is
+    // belt-and-braces — but the CI error-count assertion only builds
+    // `-p rig-agent`, so nothing else would catch this one drifting.
+    #[cfg(all(feature = "agent", feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub use rig_agent::tool::rmcp;
     #[cfg(feature = "agent")]

@@ -124,7 +124,26 @@ use rig_core::{
 use crate::completion::{self, ToolDefinition};
 
 pub(crate) mod extensions;
-#[cfg(feature = "rmcp")]
+
+// MCP is native-only. rmcp's `ClientHandler` is declared
+// `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
+// the future bounds (`MaybeSendFuture`) but not the handler itself — and this
+// crate's handler owns the tool registry, whose `Arc<dyn ErasedTool>` is
+// deliberately neither `Send` nor `Sync` on wasm because `rig-core`'s
+// `WasmCompatSend`/`WasmCompatSync` are no-op markers there. The two
+// maybe-`Send` abstractions cannot be reconciled from this side.
+//
+// Raise that as one sentence instead of a page of `dyn ErasedTool` trait errors.
+// Upstream fix would be making rmcp's handler bound conditional on `local`, as
+// its future bound already is.
+#[cfg(all(feature = "rmcp", target_family = "wasm"))]
+compile_error!(
+    "the `rmcp` feature is native-only: rmcp's `ClientHandler` requires \
+     `Send + Sync` unconditionally (its `local` feature relaxes only futures), \
+     which rig's wasm tool registry cannot satisfy. Disable `rmcp` for wasm targets."
+);
+
+#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 pub mod rmcp;
 pub mod server;
@@ -278,7 +297,7 @@ pub(crate) trait ErasedTool: WasmCompatSend + WasmCompatSync {
     ///
     /// In-process tools are always live. Remote adapters override this so the
     /// registry can retire disconnected owners without probing by execution.
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     fn is_live(&self) -> bool {
         true
     }
@@ -519,7 +538,7 @@ impl RegisteredTool {
         definition_with_name(name, self.erased())
     }
 
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     pub(crate) fn is_live(&self) -> bool {
         self.erased().is_live()
     }
@@ -636,7 +655,7 @@ impl ToolSet {
         self.add_dynamic_tool(DynamicTool::from_portable(tool))
     }
 
-    #[cfg(feature = "rmcp")]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     pub(crate) fn add_erased(&mut self, tool: Arc<dyn ErasedTool>) -> String {
         self.insert(RegisteredTool::Static(tool))
     }

@@ -560,7 +560,7 @@ mod tests {
     use async_stream::stream;
     use futures::StreamExt;
 
-    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
         stream: impl futures::Stream<
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
@@ -570,7 +570,7 @@ mod tests {
         Box::pin(stream)
     }
 
-    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn to_stream_result(
         stream: impl futures::Stream<
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,

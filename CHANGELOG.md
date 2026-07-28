@@ -15,6 +15,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(core, agent)* [**breaking**] Remove every wasm feature flag in the workspace
+  — `rig-core`'s `wasm`, `rig-agent`'s `wasm`, and the `rig` facade's `wasm`.
+  Browser wasm needs **no feature flags at all**: `cargo build --target
+  wasm32-unknown-unknown` is the entire opt-in. The feature was a pure `cfg`
+  switch that every consumer already flipped from a target table, and its one
+  optional dependency was never referenced. Relaxing the bounds cannot break
+  implementors — the relaxed markers are blanket-implemented
+  (`impl<T> WasmCompatSend for T {}`), so every type that satisfied the strict
+  form satisfies the relaxed one. (Generic *consumers* on browser wasm that
+  wrote `T: WasmCompatSend` and then relied on `T: Send` internally are the one
+  exception, and only if they were previously building with the feature off.)
+  Dependents passing `features = ["wasm"]` should drop it; nothing replaces it.
+
+- *(core)* `if_wasm!`/`if_not_wasm!` now key on the target rather than a feature.
+  These are `#[macro_export]`ed, and a `cfg` inside a macro expansion is
+  evaluated in the *calling* crate — so the old expansion tested whether the
+  **caller** had a feature named `wasm`, not `rig-core`. Any caller without one
+  took the `if_not_wasm!` branch on every target, browser wasm included. Called
+  out separately because unlike the feature removal, which Cargo rejects at
+  resolution, this one changes behavior with nothing to fail on: a downstream
+  crate that did define a `wasm` feature and expected it to drive these macros
+  gets the target's answer now, silently. Gate on the target directly if you
+  need the old association.
+
+- *(agent)* [**breaking**] The `rmcp` feature is native-only. It never compiled
+  for wasm — rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
+  which rig's wasm tool registry cannot satisfy — but it failed with a wall of
+  `dyn ErasedTool` trait errors. It now fails with one sentence naming the cause,
+  and CI asserts that stays true.
+
+- *(agent)* Document the supported target matrix: native is fully supported,
+  `wasm32-unknown-unknown` (browser) is supported, and WASI is not — its
+  dependency graph has never built. Browser-only dependencies and `Send`-relaxed
+  aliases are scoped accordingly, and `wasm-bindgen-futures` is no longer a
+  `rig-agent` dependency, its only user having been the now-native-only MCP
+  cancellation dispatch.
+
+- *(core)* Fix `rig-core`'s SSE `ResponseFuture`/`EventStream` aliases, whose
+  `cfg` arms did not partition and left some targets matching neither, so the
+  types were undefined there. Both arms now share one predicate.
+
 - *(core)* The telemetry completion-parent contract has one declarative
   source: the new `rig_core::telemetry::completion_parent_span!` macro
   declares the adoption marker and every required `gen_ai.*` field. `tracing`
@@ -84,6 +125,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second runtime exists.
 
 ### Fixed
+
+- *(examples)* `candle_wasm_chat` now declares the `agent` feature it actually
+  imports (`rig::agent::{Agent, AgentBuilder}`, `rig::completion::Chat`), so it
+  builds standalone rather than only inside a workspace-wide `--all-features`
+  build that happened to unify the feature onto the shared `rig`. The wasm CI
+  matrix now checks the example on its own, so a manifest that under-declares its
+  features fails instead of being masked by feature unification.
 
 - *(openai)* Treat empty `encrypted_content` in non-streaming Responses API
   reasoning items as absent, matching streaming behavior and avoiding empty

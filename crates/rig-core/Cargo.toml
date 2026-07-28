@@ -48,7 +48,6 @@ fastrand = { workspace = true }
 eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
-wasm-bindgen-futures = { workspace = true, optional = true }
 mime = { workspace = true }
 reqwest-middleware = { workspace = true, optional = true, features = [
   "json",
@@ -106,9 +105,6 @@ test-utils = []
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-wasm = [
-  "dep:wasm-bindgen-futures",
-]
 socks = ["reqwest/socks"]
 reqwest = [
   "reqwest/charset",

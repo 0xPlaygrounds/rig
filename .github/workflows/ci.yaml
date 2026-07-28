@@ -68,20 +68,30 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Run cargo check wasm target
-        run: cargo check --package rig-core --features wasm --target wasm32-unknown-unknown
+        run: cargo check --package rig-core --target wasm32-unknown-unknown
 
-  # The runtime split adds wasm-sensitive code to rig-agent (the target-gated
-  # MCP cancellation dispatch) and feature forwarding in the `rig` facade, so
-  # check both on the wasm target too. These are bare (default-feature) checks:
-  # rig-agent's async bounds are relaxed on `target_arch = "wasm32"` and its
-  # `[target.'cfg(wasm32)']` deps pull in `rig-core/wasm` automatically, so a
-  # standalone `--target wasm32` build must compile without opting into `wasm`.
+  # The runtime split adds wasm-sensitive code to rig-agent and feature
+  # forwarding in the `rig` facade, so check both on the wasm target too. These
+  # are plain checks with no feature flags: the relaxed async bounds now follow
+  # from the target alone, so building for `wasm32-unknown-unknown` is the whole
+  # opt-in.
+  #
+  # `candle_wasm_chat` is here because it is the only consumer that exercises the
+  # browser-wasm *facade* path, and each package must be checked **on its own**:
+  # cargo unifies features across packages built in one invocation, so a
+  # workspace-wide `--all-features` build (the doctest job) silently supplies
+  # features an individual manifest forgot to declare. That is precisely how this
+  # example came to declare `default-features = false` without `agent` while
+  # importing `rig::agent` — green in CI, broken standalone.
+  #
+  # `wasm32-unknown-unknown` (browser) is the only supported wasm target. See
+  # crates/rig-agent/README.md for the matrix.
   check-wasm-runtimes:
     name: stable / check ${{ matrix.package }} wasm target
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [rig-agent, rig]
+        package: [rig-agent, rig, candle_wasm_chat]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -94,6 +104,55 @@ jobs:
 
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
+
+  # `rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
+  # unconditionally, which rig's wasm tool registry cannot satisfy. Asking for it
+  # on wasm must fail with exactly one actionable sentence rather than a wall of
+  # `dyn ErasedTool` trait errors, so assert both the message *and* the error
+  # count — a new ungated `#[cfg(feature = "rmcp")]` would leak follow-on errors
+  # and is the regression this guards.
+  check-rmcp-native-only:
+    name: stable / rmcp rejected on wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Assert the native-only diagnostic is the only error
+        run: |
+          set +e
+          out=$(cargo check --package rig-agent --features rmcp \
+                  --target wasm32-unknown-unknown 2>&1)
+          status=$?
+          set -e
+          echo "$out"
+          # Parse a decolorized copy. The workflow sets CARGO_TERM_COLOR=always,
+          # so rustc prefixes every diagnostic with SGR escapes and an anchored
+          # `^error` matches nothing — the count came out 0 and the step failed
+          # claiming the gate had leaked. The log above keeps its colors.
+          plain=$(printf '%s\n' "$out" | perl -pe 's/\e\[[0-9;]*[a-zA-Z]//g')
+          if [ $status -eq 0 ]; then
+            echo "::error::expected the rmcp native-only compile_error, but the build succeeded — the gate is gone"
+            exit 1
+          fi
+          if ! printf '%s\n' "$plain" | grep -q 'the `rmcp` feature is native-only'; then
+            echo "::error::build failed for the wrong reason; the native-only compile_error did not fire"
+            exit 1
+          fi
+          # Exclude cargo's trailing "could not compile ..." summary, which is
+          # itself printed as an `error:` line.
+          count=$(printf '%s\n' "$plain" | grep -E '^error(\[|:)' | grep -cv 'could not compile' || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly 1 error, got $count — an ungated \`#[cfg(feature = \"rmcp\")]\` is leaking follow-on errors"
+            exit 1
+          fi
+          echo "ok: rmcp on wasm fails with exactly one actionable error"
 
   clippy:
     name: stable / clippy
