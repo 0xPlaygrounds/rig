@@ -16,6 +16,7 @@ git_tag_name = "v{{ version }}"
 [[package]]
 name = "rig-core-macro-hygiene"
 release = false
+publish = false
 
 [changelog]
 body = """
