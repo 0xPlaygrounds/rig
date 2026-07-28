@@ -1269,26 +1269,34 @@ impl TryFrom<message::Message> for Message {
                             });
                         }
 
-                        let media_type = media_type.ok_or(MessageError::ConversionError(
-                            "Document media type is required".to_string(),
-                        ))?;
+                        let media_type = match media_type {
+                            Some(media_type) => media_type,
+                            // Anthropic's URL document source has no media-type field and is
+                            // defined specifically for PDFs, so the source itself is sufficient.
+                            None if matches!(&data, DocumentSourceKind::Url(_)) => {
+                                DocumentMediaType::PDF
+                            }
+                            None => {
+                                return Err(MessageError::ConversionError(
+                                    "Document media type is required".to_string(),
+                                ));
+                            }
+                        };
 
                         let source = match media_type {
-                            DocumentMediaType::PDF => {
-                                let data = match data {
-                                    DocumentSourceKind::Base64(data)
-                                    | DocumentSourceKind::String(data) => data,
-                                    _ => {
-                                        return Err(MessageError::ConversionError(
-                                            "Only base64 encoded data is supported for PDF documents".into(),
-                                        ));
-                                    }
-                                };
-                                DocumentSource::Base64 {
+                            DocumentMediaType::PDF => match data {
+                                DocumentSourceKind::Base64(data)
+                                | DocumentSourceKind::String(data) => DocumentSource::Base64 {
                                     data,
                                     media_type: DocumentFormat::PDF,
+                                },
+                                DocumentSourceKind::Url(url) => DocumentSource::Url { url },
+                                _ => {
+                                    return Err(MessageError::ConversionError(
+                                        "Only base64 encoded data or URLs are supported for PDF documents".into(),
+                                    ));
                                 }
-                            }
+                            },
                             DocumentMediaType::TXT => {
                                 let data = match data {
                                     DocumentSourceKind::String(data)
@@ -6000,5 +6008,35 @@ mod tests {
         assert_eq!(coerce_tool_input(json!([1, 2, 3])), json!({}));
         assert_eq!(coerce_tool_input(json!(42)), json!({}));
         assert_eq!(coerce_tool_input(json!(true)), json!({}));
+    }
+
+    // Regression test for issue #1429: PR #1431 added the `DocumentSource::Url`
+    // wire variant and response-side parsing, but the request-side
+    // `UserContent::Document` conversion still rejected URL-backed PDFs even
+    // though the Anthropic Messages API supports
+    // `"source": {"type": "url", ...}` for PDFs.
+    // The media type is optional because Anthropic's URL source is implicitly a
+    // PDF and does not include a media-type field on the wire.
+    //
+    // See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>
+    // for URL-sourced PDF documents.
+    #[test]
+    fn url_pdf_with_or_without_media_type_converts_to_url_document_source() {
+        let pdf_url = "https://example.com/resume.pdf";
+
+        for media_type in [Some(message::DocumentMediaType::PDF), None] {
+            let msg = message::Message::User {
+                content: OneOrMany::one(message::UserContent::document_url(pdf_url, media_type)),
+            };
+
+            let converted = Message::try_from(msg).expect("URL PDF should convert");
+            let json = serde_json::to_value(&converted).expect("message should serialize");
+
+            assert_eq!(
+                json.pointer("/content/0/source"),
+                Some(&json!({ "type": "url", "url": pdf_url })),
+                "URL PDF should map to a url document source: {json:#}"
+            );
+        }
     }
 }
