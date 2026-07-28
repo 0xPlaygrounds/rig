@@ -95,6 +95,32 @@ conversion error. Providers without video support now reject it **server-side**
 - minimax, zai, and xiaomimimo spans stop reporting as `"openai"` and report
   their own provider name.
 
+### Ollama now honors `max_tokens` (unreleased)
+
+Ollama's native `/api/chat` has no top-level `max_tokens` field, so the value
+was serialized into a field the server does not define and silently discarded.
+It is now sent as the `num_predict` model parameter inside `options`, where
+Ollama actually reads it.
+
+Nothing to change — but if you set `max_tokens` on an Ollama agent at any point
+and moved on when it appeared to do nothing, **it starts applying now**.
+Responses that had been running to their natural stop will truncate at the
+budget you configured, possibly long ago. Check the value is one you still want.
+`temperature` is unaffected: it was already being sent inside `options` and only
+a redundant top-level copy was removed.
+
+### Multipart tool results reach OpenAI intact (unreleased)
+
+Tool results carrying several `ToolResultContent` blocks were flattened before
+being sent to the Responses and Chat Completions APIs. Individual blocks are now
+preserved — retained as multipart when array-form tool results are enabled, and
+flattened only where string-form content is required.
+
+Tools that return mixed text/JSON/rich output now present to the model as
+distinct blocks rather than one merged blob. That is the intended behavior, but
+it does change what the model sees, so prompts tuned against the flattened shape
+are worth re-checking.
+
 ### `if_wasm!` / `if_not_wasm!` key on the target (unreleased)
 
 These macros are `#[macro_export]`ed, and a `cfg` inside a macro expansion is
@@ -286,15 +312,36 @@ raw request API, or construct a separate `Agent`.
 
 `Extractor` now routes through the full hook lifecycle.
 
-### 7. `dynamic_context` is removed
+### 7. `dynamic_context` is back, but it is a hook now
 
-`AgentBuilder::dynamic_context`, `ExtractorBuilder::dynamic_context`, and the
-internal `DynamicContextStore` passive-retrieval pipeline are gone. Static
-builder context remains.
+`AgentBuilder::dynamic_context` and `ExtractorBuilder::dynamic_context` were
+removed in #2174 and **restored in #2219**. If you are tracking `main`, you may
+have seen the gap; if you are upgrading from a release, the call still exists
+and **your `.dynamic_context(samples, index)` calls need no change**.
 
-For passive RAG, applications now own query selection, retrieval, filtering,
-reranking, formatting, caching, failure handling, and per-turn policy in a local
-`AgentHook`.
+What changed underneath: the separate retrieval pipeline in agent request
+construction is gone for good, and the internal `DynamicContextStore` with it.
+The helper is now a thin wrapper over a private `AgentHook` on the ordinary
+completion-call lifecycle. Behavior that is deliberately preserved: retrieval on
+every model call, current-prompt query selection with latest-textual-history
+fallback, sample-count forwarding, pretty-JSON document formatting,
+static-context-before-retrieved-context ordering, failure raised before provider
+I/O, and support across blocking, streaming, and extractor execution.
+
+Two consequences of it being an ordinary hook are worth checking:
+
+- **Registration order matters.** Retrieval and the injected documents now
+  follow hook registration order relative to your own hooks. Register a stop
+  policy *before* `dynamic_context` if it should be able to suppress retrieval —
+  previously the side pipeline ran regardless.
+- **Multiple registrations run sequentially.** Several `dynamic_context` calls
+  now execute in order through `HookStack` rather than concurrently through the
+  former side pipeline. If you registered several against independent indexes
+  and depended on the concurrency, expect added latency.
+
+If you want control beyond that — filtering, reranking, caching, per-turn policy
+— write your own `AgentHook`; that is the only passive-RAG execution path now,
+and `dynamic_context` is simply a prepackaged one.
 
 ### 8. `#[rig_tool]` required-ness follows the parameter types
 
@@ -525,7 +572,8 @@ Renamed or relocated items, for searching.
 | `ToolError` / `ToolFailure` / `ToolReturn` / `ToolOutcome` / `ToolExecutionResult` | `ToolExecutionError` / `ToolErrorKind` / `ToolResult` | unreleased |
 | `AgentHook::on_event` + `StepEvent` + `Flow` | event-specific `AgentHook` methods + action types | unreleased |
 | `agent.completion(...)` / `agent.stream_completion(...)` | `agent.runner(...).run()` / `.stream()` | unreleased |
-| `AgentBuilder::dynamic_context` | own it in an `AgentHook` | unreleased |
+| `AgentBuilder::dynamic_context` | unchanged call, now hook-backed (removed in #2174, restored in #2219) | unreleased |
+| `DynamicContextStore` | none — the side retrieval pipeline is gone for good | unreleased |
 | `dynamic_tools(sample, index, toolset)` | `retrieved_tools` | unreleased |
 | `ToolSetBuilder::dynamic_tool(ToolEmbedding)` | `retrieved_tool` | unreleased |
 | `features = ["wasm"]` | nothing — target is the opt-in | unreleased |
