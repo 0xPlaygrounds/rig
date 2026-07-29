@@ -134,3 +134,29 @@ unary paths keep wire access via provider structs):
 **Verification**: rig-agent 505 tests green; rig-core 1008; full facade
 cassette suite **1214 passed, 0 failed** with untouched cassettes — the
 pure path provably produces byte-identical requests.
+
+## P3 — Provider pilot: openai as config + free functions (COMPLETE)
+
+- `providers/descriptor.rs` (new): `ProviderDescriptor` — the capability
+  sheet as one `const` value per provider — and `ApiKeyLocation`
+  (`Env`/`Inline`/`None`) with environment resolution.
+- `http_runtime.rs` (new): `HttpRuntime` — the concrete HTTP executor
+  replacing the `H` type parameter; transport variation is an enum
+  (`reqwest` + a `test-utils` recording arm), never a generic. Non-success
+  statuses return as `(status, body)` values for uniform provider-side
+  error shaping.
+- `providers/openai/functions.rs` (new): serde `Config`, `DESCRIPTOR`,
+  pure `build_request_body`/`build_request` (data → HTTP request, no IO),
+  pure `parse_response` (bytes → normalized response), async
+  `complete`/`open_stream` over `HttpRuntime`. The pure functions
+  transitionally delegate to the same typed conversion the generic path
+  uses, guaranteeing byte-identical bodies until the generic path retires.
+- **Proof**: `completions_api_pure_functions_replay_recorded_request`
+  replays the exchange recorded by the classic agent path through
+  `functions::complete` — the cassette server only serves on a request
+  match, so a green test IS the byte-identity proof. Plus in-crate unit
+  tests for body shape, URL/auth assembly, and response normalization.
+- **Deviation (deferred, not dropped)**: the sans-IO `SseParser` push
+  parser and `HttpModelStream` move to P5, where `ModelStream`'s
+  no-`Box<dyn>` shape actually requires them; P3's `open_stream` rides the
+  (already concrete) compat streaming machinery via a transport match.

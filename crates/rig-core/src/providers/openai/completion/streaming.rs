@@ -211,8 +211,14 @@ where
     }
 }
 
+/// The concrete OpenAI profile for the free-function streaming path.
+pub(crate) fn openai_stream_profile()
+-> OpenAICompatibleProfile<crate::providers::openai::OpenAICompletionsExt, Usage> {
+    OpenAICompatibleProfile::default()
+}
+
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletionsExt, U = Usage> {
+pub(crate) struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletionsExt, U = Usage> {
     provider: Ext,
     emits_complete_single_chunk_tool_calls: bool,
     usage: std::marker::PhantomData<U>,

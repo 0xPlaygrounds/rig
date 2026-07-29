@@ -151,6 +151,7 @@ pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod http_client;
+pub mod http_runtime;
 pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]

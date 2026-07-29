@@ -1,0 +1,91 @@
+//! Provider capability descriptors and provider configuration primitives.
+//!
+//! A [`ProviderDescriptor`] is a provider's compile-time capability sheet as
+//! plain data — the replacement for capability `const`s scattered across
+//! provider traits. Fulfilment code consults it at request-build time, which
+//! is how capability mismatches fail fast without a provider round-trip.
+
+use serde::{Deserialize, Serialize};
+
+/// A provider's capability sheet, as one `const` value per provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ProviderDescriptor {
+    /// Canonical provider name (telemetry `gen_ai.provider.name`, the
+    /// `provider` field on normalized responses).
+    pub name: &'static str,
+    /// Whether the provider supports tool calling. When false, tools and
+    /// tool_choice are dropped with a warning during request conversion.
+    pub supports_tools: bool,
+    /// Whether `output_schema` maps to a native structured-output request
+    /// parameter.
+    pub supports_response_format: bool,
+    /// Whether streaming requests ask for usage on the final chunk
+    /// (OpenAI-style `stream_options.include_usage`).
+    pub stream_include_usage: bool,
+    /// Whether the backend can emit a whole tool call in a single streaming
+    /// chunk (llama.cpp-style servers).
+    pub emits_complete_single_chunk_tool_calls: bool,
+    /// Whether native structured output composes with tool calls in the same
+    /// request (see issue #1928).
+    pub composes_native_output_with_tools: bool,
+    /// Maximum documents per embedding request, for providers with an
+    /// embeddings API.
+    pub max_embedding_documents: Option<usize>,
+}
+
+impl ProviderDescriptor {
+    /// A descriptor with every capability off — a starting point for
+    /// provider modules to override with their real capabilities.
+    pub const fn named(name: &'static str) -> Self {
+        Self {
+            name,
+            supports_tools: false,
+            supports_response_format: false,
+            stream_include_usage: false,
+            emits_complete_single_chunk_tool_calls: false,
+            composes_native_output_with_tools: false,
+            max_embedding_documents: None,
+        }
+    }
+}
+
+/// Where a provider credential comes from.
+///
+/// A serialized provider config can reference the environment instead of
+/// embedding secrets; `Inline` supports the explicit-key path (serializing
+/// an inline key is the caller's deliberate choice).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApiKeyLocation {
+    /// Read the key from this environment variable at use time.
+    Env(String),
+    /// The key itself, carried inline.
+    Inline(String),
+    /// No credential (local or unauthenticated endpoints).
+    None,
+}
+
+impl ApiKeyLocation {
+    /// Resolve the credential to a key string, if one is configured.
+    ///
+    /// # Errors
+    /// [`ApiKeyError::MissingEnv`] when an `Env` variable is unset or empty.
+    pub fn resolve(&self) -> Result<Option<String>, ApiKeyError> {
+        match self {
+            Self::Env(var) => match std::env::var(var) {
+                Ok(value) if !value.is_empty() => Ok(Some(value)),
+                _ => Err(ApiKeyError::MissingEnv(var.clone())),
+            },
+            Self::Inline(key) => Ok(Some(key.clone())),
+            Self::None => Ok(None),
+        }
+    }
+}
+
+/// Credential resolution failure.
+#[derive(Debug, thiserror::Error)]
+pub enum ApiKeyError {
+    /// The configured environment variable is unset or empty.
+    #[error("environment variable `{0}` is unset or empty")]
+    MissingEnv(String),
+}

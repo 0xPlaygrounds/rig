@@ -282,3 +282,66 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
     )
     .await;
 }
+
+
+#[tokio::test]
+async fn completions_api_pure_functions_replay_recorded_request() {
+    // Replays the exchange recorded by `completions_api_agent_prompt`
+    // through the pure free-function path (functions::complete over
+    // HttpRuntime). The cassette server only serves the recorded response
+    // when the incoming request matches the recording — so a passing test
+    // proves `functions::build_request_body` emits byte-identical request
+    // bytes to the classic agent path, and exercises parse_response
+    // end to end.
+    use std::panic::AssertUnwindSafe;
+
+    use futures::FutureExt;
+    use rig::OneOrMany;
+    use rig::completion::CompletionRequest;
+    use rig::http_runtime::HttpRuntime;
+    use rig::message::Message;
+
+    use crate::cassettes::ProviderCassette;
+
+    let cassette = ProviderCassette::start(
+        "openai",
+        "completions_api/completions_api_agent_prompt",
+        "https://api.openai.com/v1",
+    )
+    .await;
+    let config = openai::functions::Config::new(openai::GPT_4O)
+        .with_api_key(cassette.api_key("OPENAI_API_KEY"))
+        .with_base_url(cassette.base_url());
+    let runtime = HttpRuntime::new();
+
+    let request = CompletionRequest {
+        model: None,
+        preamble: None,
+        chat_history: OneOrMany::many(vec![
+            Message::system("You are a helpful assistant."),
+            Message::user("Hello world!"),
+        ])
+        .expect("history should be non-empty"),
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let result = AssertUnwindSafe(async {
+        let response = openai::functions::complete(&config, &runtime, request)
+            .await
+            .expect("pure-function completion should replay the recording");
+        assert_eq!(response.provider, "openai");
+        let text = assistant_text_response(&response.choice)
+            .expect("response should contain assistant text");
+        assert_nonempty_response(&text);
+    })
+    .catch_unwind()
+    .await;
+    cassette.finish_after_test(result).await;
+}

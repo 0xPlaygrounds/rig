@@ -91,6 +91,8 @@
 //! # Ok(())
 //! # }
 //! ```
+pub mod descriptor;
+
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;
