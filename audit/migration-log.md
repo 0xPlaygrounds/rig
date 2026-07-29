@@ -388,3 +388,18 @@ rig-memory 65; cassettes untouched.
 green (rig-core 1096+, rig-agent 484+13 doc, full facade suite incl. all
 cassette suites single-threaded, sqlite 50/50, all store crates); cassettes
 untouched.
+
+## Scope decision — trait retirement (final)
+
+P7 deferred retiring `CompletionModel`/`GenericCompletionModel`/
+`Client<Ext,H>`/`Capabilities` to "the tail of P8". Resolution: **they are
+kept, deliberately.** Revision 2 keeps the classic runtime and its
+ergonomics, and those are exactly what these types carry now:
+`client.agent(model)` bridges through `Client<Ext,H>` +
+`ToProviderConfig`, and `EmbeddingsBuilder`/`EmbeddingModel` power every
+kept RAG recipe. Retiring them would delete kept surface, contradicting
+the maintainer's direction. The data-oriented path (`ProviderConfig`/
+`EmbedderConfig` + free functions + `AgentRun`) never touches them: the
+traits are now purely the classic convenience layer, single-sourced
+through the extracted functions. If the classic layer is ever sunset,
+the retirement is mechanical.
