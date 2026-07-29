@@ -218,6 +218,41 @@ macro_rules! define_provider_config {
 
 for_each_builtin_provider!(define_provider_config);
 
+/// List the models available to `provider`'s credentials.
+///
+/// Model listing is an *optional* provider capability: only the arms whose
+/// upstream API exposes a listing endpoint (and whose `functions` face has a
+/// `list_models` free function) are dispatched; every other provider returns
+/// a [`ModelListingError::RequestError`](rig_core::model::ModelListingError)
+/// naming itself. Unlike [`complete`]/[`open_stream`], the wildcard arm is
+/// deliberate — a newly added provider defaults to "listing unsupported"
+/// rather than failing to compile.
+pub async fn list_models(
+    provider: &ProviderConfig,
+    rt: &Runtime,
+) -> Result<rig_core::model::ModelList, rig_core::model::ModelListingError> {
+    use rig_core::providers as p;
+    match provider {
+        ProviderConfig::Anthropic(cfg) => p::anthropic::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::Copilot(cfg) => p::copilot::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::DeepSeek(cfg) => p::deepseek::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::Gemini(cfg) => p::gemini::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::Mistral(cfg) => p::mistral::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::Ollama(cfg) => p::ollama::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::OpenAi(cfg) => p::openai::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::OpenRouter(cfg) => {
+            p::openrouter::functions::list_models(cfg, &rt.http).await
+        }
+        ProviderConfig::XiaomiMimo(cfg) => {
+            p::xiaomimimo::functions::list_models(cfg, &rt.http).await
+        }
+        other => Err(rig_core::model::ModelListingError::request_error(format!(
+            "provider `{}` does not support model listing",
+            other.descriptor().name
+        ))),
+    }
+}
+
 /// One row per bundled in-core embedding provider:
 /// `(Variant, module)` where the module's `functions` face carries an
 /// `EmbeddingConfig` plus free `embed`/`embed_batches` functions.

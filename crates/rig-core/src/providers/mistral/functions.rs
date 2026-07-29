@@ -153,9 +153,60 @@ pub async fn complete(
     parse_response(status, &body)
 }
 
+/// Build the `GET /v1/models` request for [`list_models`].
+///
+/// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+/// environment).
+pub fn build_list_models_request(
+    cfg: &Config,
+) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+    let url = format!(
+        "{}{}",
+        cfg.base_url.trim_end_matches('/'),
+        super::model_listing::LIST_MODELS_PATH
+    );
+    openai_functions::bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+}
+
+/// Parse a `GET /v1/models` response body into a
+/// [`ModelList`](crate::model::ModelList). Pure.
+pub fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+    super::model_listing::parse_list_models_response(status, body)
+}
+
+/// List the models available to `cfg`'s credentials.
+///
+/// The classic `ModelListingClient` path parses through the same pure
+/// [`parse_list_models_response`].
+pub async fn list_models(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+    let req = build_list_models_request(cfg)?;
+    let (status, body) = rt.send_bytes(req).await?;
+    parse_list_models_response(status, &body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_list_models_request_sets_url_and_bearer_auth() {
+        let cfg = Config::new("test-model").with_api_key("secret");
+        let req = build_list_models_request(&cfg).expect("build");
+        assert_eq!(req.method(), http::Method::GET);
+        assert_eq!(req.uri(), "https://api.mistral.ai/v1/models");
+        assert_eq!(
+            req.headers()
+                .get(http::header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("Bearer secret")
+        );
+    }
     use crate::OneOrMany;
 
     fn sample_request() -> CompletionRequest {

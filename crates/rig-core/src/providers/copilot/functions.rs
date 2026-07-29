@@ -456,9 +456,74 @@ pub async fn embed_batches(
     Ok((groups, response.usage))
 }
 
+/// Build the `GET /models` request for [`list_models`].
+///
+/// Resolves the credential, applies token-derived base-URL routing, and
+/// attaches the same Copilot editor/session headers as [`build_request`]
+/// (including a generated `x-request-id`, so the request is pure up to that
+/// identifier and credential resolution).
+pub fn build_list_models_request(
+    cfg: &Config,
+) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+    use crate::model::ModelListingError;
+
+    let key = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| ModelListingError::request_error(e.to_string()))?
+        .ok_or_else(|| {
+            ModelListingError::request_error("Copilot requires an API key or chat token")
+        })?;
+
+    let base_url = if cfg.base_url == DEFAULT_BASE_URL {
+        base_url_from_token(&key).unwrap_or_else(|| cfg.base_url.clone())
+    } else {
+        cfg.base_url.clone()
+    };
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+
+    let headers = default_headers(&key, "user", false, CopilotIntent::Panel);
+    let mut builder = apply_headers(http::Request::get(url), &headers);
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(Vec::new())
+        .map_err(|e| ModelListingError::request_error(e.to_string()))
+}
+
+/// List the models available to `cfg`'s credentials.
+///
+/// The classic `ModelListingClient` path parses through the same pure
+/// parser (`super::parse_list_models_response`).
+pub async fn list_models(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+    let req = build_list_models_request(cfg)?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::parse_list_models_response(status, &body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_list_models_request_sets_url_auth_and_copilot_headers() {
+        let cfg = Config::new("gpt-4o").with_api_key("secret");
+        let req = build_list_models_request(&cfg).expect("build");
+        assert_eq!(req.method(), http::Method::GET);
+        assert_eq!(req.uri(), "https://api.githubcopilot.com/models");
+        assert_eq!(
+            req.headers()
+                .get(http::header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("Bearer secret")
+        );
+        assert!(req.headers().get("copilot-integration-id").is_some());
+        assert!(req.headers().get("x-request-id").is_some());
+    }
     use crate::OneOrMany;
     use crate::message::Message;
 

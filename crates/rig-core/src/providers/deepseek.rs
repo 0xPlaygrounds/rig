@@ -466,26 +466,36 @@ where
                 other => ModelListingError::from(other),
             })?;
 
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "DeepSeek",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
+        let status = response.status();
         let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("DeepSeek", path, &error, &body)
-        })?;
-
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
+        parse_list_models_response(status, &body)
     }
+}
+
+/// Path of the model-listing endpoint, relative to the API base URL.
+pub(crate) const LIST_MODELS_PATH: &str = "/models";
+
+/// Parse a `GET /models` response into a [`ModelList`]. Pure.
+///
+/// Shared by the classic [`DeepSeekModelLister`] and
+/// [`functions::list_models`].
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            "DeepSeek",
+            LIST_MODELS_PATH,
+            status.as_u16(),
+            body,
+        ));
+    }
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("DeepSeek", LIST_MODELS_PATH, &error, body)
+    })?;
+    let models = api_resp.data.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
 
 // ================================================================
@@ -1072,6 +1082,34 @@ pub mod functions {
         let req = build_request(cfg, &request, false)?;
         let (status, body) = rt.send(req).await?;
         parse_response(status, &body)
+    }
+
+    /// Build the `GET /models` request for [`list_models`].
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads
+    /// the environment).
+    pub fn build_list_models_request(
+        cfg: &Config,
+    ) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+        let url = format!(
+            "{}{}",
+            cfg.base_url.trim_end_matches('/'),
+            super::LIST_MODELS_PATH
+        );
+        openai_functions::bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+    }
+
+    /// List the models available to `cfg`'s credentials.
+    ///
+    /// The classic `ModelListingClient` path parses through the same pure
+    /// parser (`super::parse_list_models_response`).
+    pub async fn list_models(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+        let req = build_list_models_request(cfg)?;
+        let (status, body) = rt.send_bytes(req).await?;
+        super::parse_list_models_response(status, &body)
     }
 
     #[cfg(test)]

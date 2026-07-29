@@ -413,9 +413,94 @@ pub async fn embed_batches(
     Ok((groups, response.usage))
 }
 
+/// Build one `GET /v1beta/models` page request for [`list_models`].
+///
+/// Pure except for credential resolution; the resolved key rides as `key=`
+/// in the query string, matching the classic client's URL shape.
+pub fn build_list_models_request(
+    cfg: &Config,
+    page_token: Option<&str>,
+) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+    use crate::model::ModelListingError;
+
+    let path = super::model_listing::list_models_path(page_token);
+    let key = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| ModelListingError::request_error(e.to_string()))?;
+    let url = match key {
+        Some(key) => format!("{}{}&key={}", cfg.base_url.trim_end_matches('/'), path, key),
+        None => format!("{}{}", cfg.base_url.trim_end_matches('/'), path),
+    };
+    let mut builder = http::Request::get(url);
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(Vec::new())
+        .map_err(|e| ModelListingError::request_error(e.to_string()))
+}
+
+/// List the models available to `cfg`'s credentials, following page-token
+/// pagination through all pages.
+///
+/// The classic `ModelListingClient` path parses through the same pure
+/// page parser (`model_listing::parse_models_page`).
+pub async fn list_models(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+    use crate::model::{ModelList, ModelListingError};
+
+    let mut all_models = Vec::new();
+    let mut page_token: Option<String> = None;
+
+    loop {
+        let path = super::model_listing::list_models_path(page_token.as_deref());
+        let req = build_list_models_request(cfg, page_token.as_deref())?;
+        let (status, body) = rt.send_bytes(req).await?;
+
+        if !status.is_success() {
+            return Err(ModelListingError::api_error_with_context(
+                "Gemini",
+                &path,
+                status.as_u16(),
+                &body,
+            ));
+        }
+
+        let (models, next_page_token) = super::model_listing::parse_models_page(&body, &path)?;
+        all_models.extend(models);
+
+        match next_page_token {
+            Some(token) => page_token = Some(token),
+            None => break,
+        }
+    }
+
+    Ok(ModelList::new(all_models))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_list_models_request_puts_key_and_page_token_in_query() {
+        let cfg = Config::new("gemini-2.0-flash").with_api_key("secret");
+        let req = build_list_models_request(&cfg, None).expect("build");
+        assert_eq!(req.method(), http::Method::GET);
+        assert_eq!(
+            req.uri(),
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=secret"
+        );
+
+        let paged = build_list_models_request(&cfg, Some("tok")).expect("build");
+        assert_eq!(
+            paged.uri(),
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&pageToken=tok&key=secret"
+        );
+    }
     use crate::OneOrMany;
     use crate::message::Message;
 

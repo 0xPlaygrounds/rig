@@ -185,6 +185,7 @@ async fn surfaced_turns_can_be_retried_with_feedback() {
     .with_policy(SessionPolicy {
         surface_model_turns: true,
         surface_completion_calls: false,
+        ..SessionPolicy::default()
     });
 
     let content = match session.advance().await.expect("first advance") {
@@ -394,6 +395,7 @@ async fn unanswered_before_model_call_is_a_protocol_violation() {
     let mut session = session(script).with_policy(SessionPolicy {
         surface_model_turns: false,
         surface_completion_calls: true,
+        ..SessionPolicy::default()
     });
 
     match session.advance().await.expect("first advance") {
@@ -459,6 +461,54 @@ async fn extract_retry_history_starts_with_the_original_prompt() {
         *first_conversation_message,
         rig::message::Message::user("extract the number")
     );
+}
+
+#[tokio::test]
+async fn extract_with_usage_sums_usage_across_failed_and_successful_attempts() {
+    // Attempt 1 fails deserialization after a billed response (5 tokens);
+    // attempt 2 succeeds (7 tokens). The outcome reports the sum.
+    let script = MockScript::from_responses(vec![
+        text_response("not json", 5),
+        text_response(r#"{"n": 7}"#, 7),
+    ]);
+    let outcome = rig::extract::extract_with_usage::<ExtractedNumber>(
+        AgentConfig::new(),
+        mock_provider(script),
+        Arc::new(Runtime::new()),
+        "extract the number",
+        1,
+    )
+    .await
+    .expect("extraction should succeed on the retry");
+    assert_eq!(outcome.value.n, 7);
+    assert_eq!(outcome.usage.total_tokens, 12);
+}
+
+#[tokio::test]
+async fn extract_native_parses_json_wrapped_in_prose() {
+    // Native mode: no synthetic output tool; the model's final text carries
+    // the JSON wrapped in prose, and the balanced-JSON fallback finds it.
+    let script = MockScript::from_responses(vec![text_response(
+        r#"Sure! Here is the result: {"n": 42} — hope that helps."#,
+        9,
+    )]);
+    let outcome = rig::extract::extract_native::<ExtractedNumber>(
+        AgentConfig::new(),
+        mock_provider(script.clone()),
+        Arc::new(Runtime::new()),
+        "extract the number",
+        0,
+    )
+    .await
+    .expect("native extraction should succeed");
+    assert_eq!(outcome.value.n, 42);
+    assert_eq!(outcome.usage.total_tokens, 9);
+
+    // The request carried the schema natively (no synthetic output tool).
+    let requests = script.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].tools.is_empty());
+    assert!(requests[0].output_schema.is_some());
 }
 
 #[tokio::test]

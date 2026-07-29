@@ -189,6 +189,7 @@ async fn turn_finished_usage_is_per_turn_not_run_aggregate() {
     .with_policy(SessionPolicy {
         surface_model_turns: true,
         surface_completion_calls: false,
+        ..SessionPolicy::default()
     });
 
     let mut turn_usages = Vec::new();
@@ -282,6 +283,7 @@ async fn policy_surfaced_turns_pause_the_stream() {
     .with_policy(SessionPolicy {
         surface_model_turns: true,
         surface_completion_calls: true,
+        ..SessionPolicy::default()
     });
 
     let mut saw_before_call = false;

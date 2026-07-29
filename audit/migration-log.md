@@ -484,3 +484,54 @@ fixed with regression tests:
 - `test-utils` gates widened to `any(test, feature)` across
   http_runtime/provider functions so ungated `cargo clippy -p rig-core
   --all-targets` is clean.
+
+## R1 — Single-architecture plan: gap closure (COMPLETE, additive)
+
+Everything the classic runtime does that the session layer lacked now
+exists beside it (nothing deleted):
+
+- **`ToolExecutor`** (`executor.rs`): automatic tool execution over
+  `PortableDynamicTool` records with full `drive_tool_calls` parity —
+  bounded concurrency, atomic batch commit, lowest-call-index error,
+  preresolved/skip passthrough, registry not_found shaping, per-tool
+  spans; `AgentSession::run_with_tools` + `AgentStream::next_item_with_tools`.
+- **`Hooks`** (`hooks.rs`): the concrete attach-and-forget hook layer
+  (maintainer direction) — `HookEvent` (owned), `HookDecision` (serde over
+  the existing action vocabulary), `HookEntry` callback records on the
+  `PortableDynamicCallback` pattern, per-event dispatchers reusing the
+  `HookStack` fold helpers exactly (patch-merge, first-Stop, chained
+  rewrites with skip salvage).
+- **Event parity**: `SessionPolicy.surface_tool_calls/results` +
+  `SessionEvent::ToolCallPending/ToolResultReady` with
+  `reply_tool_call`/`reply_tool_result` inboxes (run_single_tool
+  semantics: rewrite/skip/stop), mirrored on `AgentStream`; the fold
+  vocabulary re-exported from `agent::mod`.
+- **`SessionAgent`** (`agent_api.rs`): the thin concrete agent (config +
+  provider + rt + catalog + executor + hooks) with inherent
+  `prompt`/`chat`/`run`/`run_with_history`/`stream`; classic memory
+  semantics documented as the host recipe (no dyn field). Telemetry
+  parity: `invoke_agent` adoption/creation, `chat`/`chat_streaming`
+  spans via the classic span macros (no drift possible), usage recording.
+- **Serde**: `AgentStreamItem` and `StreamedTurnAssembler` round-trip
+  (durable mid-turn stream suspension); `RequestPatch` gained
+  `model`/`output_schema` (merge law preserved); `extract_with_usage`
+  (classic cross-attempt usage accounting) + `extract_native`
+  (Native-mode balanced-JSON parse).
+- **`list_models` free functions** for all 9 listing providers +
+  `provider::list_models` dispatch (wildcard "unsupported" arm —
+  deliberate, documented); **rig-vertexai functions face** (Config with
+  CredentialSource, DESCRIPTOR, complete/open_stream, trait rewired).
+- **model_conformance**: 13 `_session` scenario twins over a plain-data
+  `ScenarioOverrides` struct; **5 doubleword cassette twins replayed the
+  classic cassettes byte-identically on first run** — the byte-fidelity
+  proof that the session drivers assemble identical requests.
+
+**Logged gap for R4**: classic `ExtractorBuilder` pins output-tool name
+`submit` + bespoke preamble; `extract_*` uses the default `final_result`
+tool — reconcile when the classic extractor dies (public output-tool-name
+pinning on AgentSession, or cassette re-record).
+
+**Verification**: fmt ok; clippy 0 warnings (`--all-features
+--all-targets`); workspace check 0 errors; 41 test targets green incl.
+full facade suite single-threaded + bedrock replay; doctests green;
+cassettes untouched.

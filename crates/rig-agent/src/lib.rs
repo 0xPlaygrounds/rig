@@ -61,8 +61,10 @@ pub mod core {
 }
 
 pub mod agent;
+pub mod agent_api;
 pub mod client;
 pub mod completion;
+pub mod executor;
 pub mod extractor;
 pub mod integrations;
 // Shared JSON helpers live in rig-core; re-export so call sites stay
@@ -70,6 +72,8 @@ pub mod integrations;
 pub(crate) use rig_core::json_utils;
 /// Structured extraction over the session runtime.
 pub mod extract;
+/// Concrete, attach-and-forget hooks for the session drivers.
+pub mod hooks;
 pub mod prelude;
 /// The bundled provider set as plain configuration, plus the live-handle
 /// runtime — the data-oriented fulfilment layer.

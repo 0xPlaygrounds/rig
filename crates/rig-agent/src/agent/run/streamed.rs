@@ -289,12 +289,13 @@ pub enum StreamedTurnEvent {
     },
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct ToolCallDeltaState {
     name_validated: bool,
     buffered_arguments: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum PendingInvalid {
     /// A complete tool call with a disallowed name.
     FullCall {
@@ -310,6 +311,11 @@ enum PendingInvalid {
 
 /// Sans-IO accumulator that assembles one streamed model turn. See the
 /// [module docs](self) for the driving protocol.
+///
+/// Serializable: a partially-assembled turn can be suspended durably
+/// mid-stream and resumed later, feeding the restored assembler the
+/// remaining provider items.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedTurnAssembler {
     executable_tool_names: BTreeSet<String>,
     allowed_tool_names: BTreeSet<String>,
@@ -319,8 +325,34 @@ pub struct StreamedTurnAssembler {
     pending_reasoning_delta_text: String,
     pending_reasoning_delta_id: Option<String>,
     pending_tool_calls: Vec<(ToolCall, String)>,
+    #[serde(with = "delta_states_serde")]
     delta_states: HashMap<(String, String), ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
+}
+
+/// Serialize `delta_states` as a sequence of `((id, internal_call_id), state)`
+/// pairs: JSON map keys must be strings, so the tuple-keyed map cannot use the
+/// default map representation.
+mod delta_states_serde {
+    use super::ToolCallDeltaState;
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::collections::HashMap;
+
+    type Key = (String, String);
+
+    pub(super) fn serialize<S: Serializer>(
+        map: &HashMap<Key, ToolCallDeltaState>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(map.iter())
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<HashMap<Key, ToolCallDeltaState>, D::Error> {
+        Vec::<(Key, ToolCallDeltaState)>::deserialize(deserializer)
+            .map(|entries| entries.into_iter().collect())
+    }
 }
 
 impl StreamedTurnAssembler {
@@ -1218,6 +1250,96 @@ mod tests {
             .expect_err("second record for the same turn must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
         assert_eq!(run.completion_calls().len(), 1);
+    }
+
+    #[test]
+    fn assembler_serde_round_trips_a_partially_assembled_turn() {
+        // Partially assemble: text, reasoning deltas, one validated tool
+        // call, and buffered argument deltas whose name has not arrived yet.
+        let mut asm = assembler();
+        asm.ingest(&text_item("thinking ")).expect("ingest text");
+        asm.ingest(&StreamedAssistantContent::ReasoningDelta {
+            id: Some("rs_1".to_string()),
+            reasoning: "hmm".to_string(),
+        })
+        .expect("ingest reasoning");
+        asm.ingest(&tool_call_item("tc_0", "add"))
+            .expect("ingest tool call");
+        asm.ingest(&args_delta("tc_1", "{\"x\""))
+            .expect("ingest buffered args");
+
+        // Suspend mid-turn and restore.
+        let serialized = serde_json::to_string(&asm).expect("serialize assembler");
+        let mut restored: StreamedTurnAssembler =
+            serde_json::from_str(&serialized).expect("deserialize assembler");
+
+        // The restored assembler carries the aggregated text and still
+        // replays the buffered argument delta once the name validates.
+        assert_eq!(restored.aggregated_text(), "thinking ");
+        let events = restored
+            .ingest(&name_delta("tc_1", "add"))
+            .expect("ingest name after resume");
+        let contents: Vec<_> = events
+            .iter()
+            .map(|event| match event {
+                StreamedTurnEvent::EmitToolCallDelta { content, .. } => content.clone(),
+                other => panic!("expected EmitToolCallDelta, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            contents,
+            vec![
+                ToolCallDeltaContent::Name("add".to_string()),
+                ToolCallDeltaContent::Delta("{\"x\"".to_string()),
+            ]
+        );
+
+        // Finishing yields the canonical order with both tool calls and the
+        // resumed reasoning intact.
+        let final_choice = OneOrMany::one(AssistantContent::text("thinking "));
+        let turn = restored.finish(Some("msg_1".to_string()), &final_choice);
+        let kinds: Vec<&'static str> = turn
+            .choice
+            .iter()
+            .map(|item| match item {
+                AssistantContent::Reasoning(_) => "reasoning",
+                AssistantContent::Text(_) => "text",
+                AssistantContent::ToolCall(_) => "tool_call",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(kinds, vec!["reasoning", "text", "tool_call"]);
+        assert_eq!(
+            turn.internal_call_ids,
+            vec![("tc_0".to_string(), "internal_tc_0".to_string())]
+        );
+    }
+
+    #[test]
+    fn assembler_serde_round_trips_a_pending_invalid_call() {
+        let mut asm = assembler();
+        let invalid = expect_invalid(
+            asm.ingest(&tool_call_item("tc_1", "default_api"))
+                .expect("ingest invalid call"),
+        );
+        assert_eq!(invalid.tool_call.function.name, "default_api");
+
+        let serialized = serde_json::to_string(&asm).expect("serialize assembler");
+        let mut restored: StreamedTurnAssembler =
+            serde_json::from_str(&serialized).expect("deserialize assembler");
+
+        // The pending invalid survives: ingesting is still rejected until it
+        // is resolved, and a repair lands the corrected call.
+        assert!(restored.ingest(&text_item("more")).is_err());
+        restored.resolve_pending_invalid(&StreamedResolution::Repaired {
+            tool_name: "add".to_string(),
+        });
+        let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
+        let turn = restored.finish(None, &final_choice);
+        assert_eq!(
+            turn.internal_call_ids,
+            vec![("tc_1".to_string(), "internal_tc_1".to_string())]
+        );
     }
 
     #[test]

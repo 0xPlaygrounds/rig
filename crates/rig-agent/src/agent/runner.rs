@@ -169,6 +169,9 @@ pub(crate) fn tool_result_decision(action: ToolResultAction) -> ToolResultDecisi
     }
 }
 
+// `RequestPatch` grew an output-schema payload; these are transient
+// decision values, never stored in bulk, so the size skew is fine.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum CompletionCallDecision {
     Proceed,
     Patch(RequestPatch),
@@ -566,7 +569,50 @@ pub(crate) fn acquire_agent_span(
     }
 }
 
+/// The name/content-recording pair the session drivers feed into
+/// [`build_chat_span!`]. The macro reads `record_telemetry_content` and calls
+/// `agent_name_or_default()` on its first argument, so this adapter lets the
+/// session drivers reuse the exact classic chat-span shape without an
+/// [`AgentRunner`].
+pub(crate) struct SessionSpanParams<'a> {
+    pub(crate) record_telemetry_content: bool,
+    pub(crate) agent_name: Option<&'a str>,
+}
+
+impl SessionSpanParams<'_> {
+    pub(crate) fn agent_name_or_default(&self) -> &str {
+        self.agent_name.unwrap_or(UNKNOWN_AGENT_NAME)
+    }
+}
+
+/// Build the per-model-call `chat` span for [`AgentSession`]'s unary calls —
+/// identical name/target/fields to the classic blocking driver's span, so
+/// dashboards split on the same series.
+///
+/// [`AgentSession`]: crate::session::AgentSession
+pub(crate) fn new_session_chat_span(
+    params: &SessionSpanParams<'_>,
+    effective_preamble: Option<&str>,
+) -> tracing::Span {
+    build_chat_span!(params, effective_preamble, "chat", "chat")
+}
+
+/// Build the per-model-call `chat_streaming` span for [`AgentStream`]'s
+/// streamed calls — identical name/target/fields to the classic streaming
+/// driver's span.
+///
+/// [`AgentStream`]: crate::stream::AgentStream
+pub(crate) fn new_session_chat_streaming_span(
+    params: &SessionSpanParams<'_>,
+    effective_preamble: Option<&str>,
+) -> tracing::Span {
+    build_chat_span!(params, effective_preamble, "chat_streaming", "chat")
+}
+
 /// Outcome of firing the `CompletionCall` hook for a turn.
+// `RequestPatch` grew an output-schema payload; these are transient
+// decision values, never stored in bulk, so the size skew is fine.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum CompletionCallOutcome {
     /// Proceed, optionally applying a per-turn request patch (the merged patch
     /// from every hook that contributed one).

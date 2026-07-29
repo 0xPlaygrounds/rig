@@ -77,7 +77,7 @@ impl TryFrom<ListModelEntry> for Model {
     }
 }
 
-fn list_models_path(page_token: Option<&str>) -> String {
+pub(crate) fn list_models_path(page_token: Option<&str>) -> String {
     let mut serializer = url::form_urlencoded::Serializer::new(String::new());
     serializer.append_pair("pageSize", &MAX_PAGE_SIZE.to_string());
 
@@ -88,7 +88,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
     format!("/v1beta/models?{}", serializer.finish())
 }
 
-fn parse_models_page(
+pub(crate) fn parse_models_page(
     body: &[u8],
     path: &str,
 ) -> Result<(Vec<Model>, Option<String>), ModelListingError> {

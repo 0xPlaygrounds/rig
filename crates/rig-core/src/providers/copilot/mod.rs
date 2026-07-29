@@ -1565,31 +1565,38 @@ where
         .body(http_client::NoBody)?;
 
         let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                MODEL_LISTING_PROVIDER,
-                MODEL_LISTING_PATH,
-                status_code,
-                &body,
-            ));
-        }
-
+        let status = response.status();
         let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context(
-                MODEL_LISTING_PROVIDER,
-                MODEL_LISTING_PATH,
-                &error,
-                &body,
-            )
-        })?;
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
+        parse_list_models_response(status, &body)
     }
+}
+
+/// Parse a `GET /models` response into a [`ModelList`]. Pure.
+///
+/// Shared by the classic [`CopilotModelLister`] and
+/// [`functions::list_models`].
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            MODEL_LISTING_PROVIDER,
+            MODEL_LISTING_PATH,
+            status.as_u16(),
+            body,
+        ));
+    }
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context(
+            MODEL_LISTING_PROVIDER,
+            MODEL_LISTING_PATH,
+            &error,
+            body,
+        )
+    })?;
+    let models = api_resp.data.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
 
 #[derive(Deserialize, Debug)]

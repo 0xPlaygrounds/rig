@@ -1,9 +1,6 @@
 //! All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
 
 use super::Client;
-use crate::types::{
-    completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
-};
 use rig_core::completion::{
     CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
 };
@@ -46,15 +43,6 @@ impl CompletionModel {
             model: model.into(),
         }
     }
-
-    fn model_path(&self) -> Result<String, CompletionError> {
-        let project = self.client.project();
-        let location = self.client.location();
-        Ok(format!(
-            "projects/{project}/locations/{location}/publishers/google/models/{}",
-            self.model
-        ))
-    }
 }
 
 impl CompletionModelTrait for CompletionModel {
@@ -68,65 +56,14 @@ impl CompletionModelTrait for CompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        tracing::debug!(
-            target: "rig_core::vertexai",
-            "Vertex AI completion request: {request:?}"
-        );
-
-        let vertex_request = VertexCompletionRequest(request);
-
-        let contents = vertex_request.contents()?;
-        let generation_config = vertex_request.generation_config()?;
-        let system_instruction = vertex_request.system_instruction();
-        let tools = vertex_request.tools();
-        let tool_config = vertex_request.tool_config();
-        let model_path = self.model_path()?;
-
-        let mut request_builder = self
-            .client
-            .get_inner()
-            .await
-            .map_err(|error| CompletionError::ProviderError(error.to_string()))?
-            .generate_content()
-            .set_model(&model_path)
-            .set_contents(contents);
-
-        if let Some(config) = generation_config {
-            request_builder = request_builder.set_generation_config(config);
-        }
-
-        if let Some(system_instruction) = system_instruction {
-            request_builder = request_builder.set_system_instruction(system_instruction);
-        }
-
-        if let Some(tools) = tools {
-            request_builder = request_builder.set_tools([tools]);
-        }
-
-        if let Some(tool_config) = tool_config {
-            request_builder = request_builder.set_tool_config(tool_config);
-        }
-
-        let response = request_builder.send().await.map_err(rpc_error)?;
-
-        tracing::debug!(
-            target: "rig_core::vertexai",
-            "Vertex AI completion response: {response:?}"
-        );
-
-        let vertex_output = VertexGenerateContentOutput(response);
-        let completion_response = vertex_output.try_into()?;
-
-        Ok(completion_response)
+        crate::functions::complete(&self.client, &self.model, request).await
     }
 
     async fn stream(
         &self,
-        _request: CompletionRequest,
+        request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        Err(CompletionError::ProviderError(
-            "Streaming is not supported for Vertex AI in this integration".to_string(),
-        ))
+        crate::functions::open_stream(&self.client, &self.model, request).await
     }
 }
 
@@ -144,7 +81,7 @@ impl CompletionModelTrait for CompletionModel {
 /// transport/connection failure, so a pure connection error is also preserved
 /// here (`status: None`) rather than gated out as a Rig diagnostic the way
 /// Bedrock's typed service errors are.
-fn rpc_error(error: impl std::fmt::Display) -> CompletionError {
+pub(crate) fn rpc_error(error: impl std::fmt::Display) -> CompletionError {
     CompletionError::from_provider_body(error.to_string())
 }
 

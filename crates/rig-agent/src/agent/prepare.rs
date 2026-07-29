@@ -139,6 +139,11 @@ pub fn prepare_request(
         (base, patch) => patch.or(base).cloned(),
     };
     let active_tools = patch.and_then(|o| o.active_tools.as_deref());
+    let model_override = patch.and_then(|o| o.model.clone());
+    // A patched output schema replaces the configured one for this turn only.
+    let output_schema = patch
+        .and_then(|o| o.output_schema.as_ref())
+        .or(config.output_schema.as_ref());
 
     let mut catalog = catalog.clone();
 
@@ -177,11 +182,11 @@ pub fn prepare_request(
 
     // Resolve the effective output mode (#1928); once a run commits to a
     // Tool-mode output tool, stay pinned (see the classic path's comments).
-    let resolved_mode = if committed_output_tool.is_some() && config.output_schema.is_some() {
+    let resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
         OutputMode::Tool
     } else {
         resolve_output_mode(
-            config.output_schema.is_some(),
+            output_schema.is_some(),
             !executable_tool_names.is_empty(),
             tool_choice_permits_output_tool(tool_choice),
             composes_native_output_with_tools,
@@ -240,7 +245,7 @@ pub fn prepare_request(
                 })
             }
             OutputMode::Tool => None,
-            OutputMode::Prompted => config.output_schema.as_ref().map(|schema| {
+            OutputMode::Prompted => output_schema.map(|schema| {
                 let schema_json = serde_json::to_string(schema.as_value()).unwrap_or_default();
                 format!(
                     "Respond with ONLY a single JSON object that conforms to this JSON Schema. \
@@ -272,7 +277,7 @@ pub fn prepare_request(
 
     // In Tool mode, advertise the synthetic output tool (allowed below, never
     // executable).
-    if let (Some(name), Some(schema)) = (&output_tool_name, config.output_schema.as_ref()) {
+    if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
         tooldefs.push(ToolDefinition {
             name: name.clone(),
             description: config
@@ -297,11 +302,11 @@ pub fn prepare_request(
     // Only Native mode sets the provider's native structured-output
     // constraint.
     let output_schema = matches!(resolved_mode, OutputMode::Native)
-        .then(|| config.output_schema.clone())
+        .then(|| output_schema.cloned())
         .flatten();
 
     let request = CompletionRequest {
-        model: None,
+        model: model_override,
         preamble: None,
         chat_history,
         documents,

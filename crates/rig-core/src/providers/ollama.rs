@@ -903,29 +903,41 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/api/tags";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
+        let req = self
+            .client
+            .get(LIST_MODELS_PATH)?
+            .body(http_client::NoBody)?;
         let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "Ollama",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
+        let status = response.status();
         let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("Ollama", path, &error, &body)
-        })?;
-        let models = api_resp.models.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
+        parse_list_models_response(status, &body)
     }
+}
+
+/// Path of the model-listing endpoint, relative to the API base URL.
+pub(crate) const LIST_MODELS_PATH: &str = "/api/tags";
+
+/// Parse a `GET /api/tags` response into a [`ModelList`]. Pure.
+///
+/// Shared by the classic [`OllamaModelLister`] and
+/// [`functions::list_models`].
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            "Ollama",
+            LIST_MODELS_PATH,
+            status.as_u16(),
+            body,
+        ));
+    }
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("Ollama", LIST_MODELS_PATH, &error, body)
+    })?;
+    let models = api_resp.models.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
 
 // ---------- Tool Definition Conversion ----------
@@ -1636,6 +1648,34 @@ pub mod functions {
         let response = embed(cfg, rt, flat).await?;
         let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
         Ok((groups, response.usage))
+    }
+
+    /// Build the `GET /api/tags` request for [`list_models`].
+    ///
+    /// Pure except for credential resolution ([`ApiKeyLocation::None`] by
+    /// default sends no auth header, matching a local Ollama).
+    pub fn build_list_models_request(
+        cfg: &Config,
+    ) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+        let url = format!(
+            "{}{}",
+            cfg.base_url.trim_end_matches('/'),
+            super::LIST_MODELS_PATH
+        );
+        crate::providers::openai::functions::bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+    }
+
+    /// List the locally available models.
+    ///
+    /// The classic `ModelListingClient` path parses through the same pure
+    /// parser (`super::parse_list_models_response`).
+    pub async fn list_models(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+        let req = build_list_models_request(cfg)?;
+        let (status, body) = rt.send_bytes(req).await?;
+        super::parse_list_models_response(status, &body)
     }
 
     #[cfg(test)]

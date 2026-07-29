@@ -185,8 +185,9 @@ pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
     HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction, ModelTurnFinished,
     ObservationAction, RequestPatch, RetryRequest, RunId, Scratchpad, StepEventKind,
-    StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
-    ToolResultEvent,
+    StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolCallResolution,
+    ToolResultAction, ToolResultEvent, ToolResultResolution, fold_completion_actions,
+    fold_invalid_resolutions, fold_observation_actions,
 };
 pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use prompt_request::streaming::{

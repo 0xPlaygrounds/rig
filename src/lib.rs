@@ -113,10 +113,31 @@ pub use rig_agent::session;
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::stream;
 
+/// Automatic tool execution over the session drivers.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::executor;
+
 /// Structured extraction over the session runtime.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::extract;
+
+/// Concrete, attach-and-forget hooks for the session drivers.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::hooks;
+
+/// The thin, forward-looking agent over the session drivers.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::agent_api;
+
+/// The forward-looking concrete agent type (renamed to `Agent` once the
+/// classic runtime is retired).
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::agent_api::SessionAgent;
 
 /// Common portable imports plus additive classic-runtime conveniences.
 pub mod prelude {

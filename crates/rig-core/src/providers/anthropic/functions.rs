@@ -263,9 +263,90 @@ pub async fn complete(
     parse_response(status, &body)
 }
 
+/// Build one `GET /v1/models` page request for [`list_models`].
+///
+/// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+/// environment). Sets the same `x-api-key` / `anthropic-version` /
+/// `anthropic-beta` headers as [`build_request`].
+pub fn build_list_models_request(
+    cfg: &Config,
+    after_id: Option<&str>,
+) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+    use crate::model::ModelListingError;
+
+    let path = super::model_listing::list_models_path(after_id);
+    let url = format!("{}{}", cfg.base_url.trim_end_matches('/'), path);
+    let mut builder =
+        http::Request::get(url).header("anthropic-version", cfg.anthropic_version.as_str());
+    if !cfg.anthropic_betas.is_empty() {
+        builder = builder.header("anthropic-beta", cfg.anthropic_betas.join(","));
+    }
+    if let Some(key) = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| ModelListingError::request_error(e.to_string()))?
+    {
+        builder = builder.header("x-api-key", key);
+    }
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(Vec::new())
+        .map_err(|e| ModelListingError::request_error(e.to_string()))
+}
+
+/// List the models available to `cfg`'s credentials, following cursor
+/// pagination through all pages.
+///
+/// The classic `ModelListingClient` path parses through the same pure
+/// page parser (`model_listing::parse_models_page`).
+pub async fn list_models(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+    let mut all_models = Vec::new();
+    let mut after_id: Option<String> = None;
+
+    loop {
+        let path = super::model_listing::list_models_path(after_id.as_deref());
+        let req = build_list_models_request(cfg, after_id.as_deref())?;
+        let (status, body) = rt.send_bytes(req).await?;
+        let (models, next_after_id) =
+            super::model_listing::parse_models_page(&path, status, &body)?;
+        all_models.extend(models);
+
+        match next_after_id {
+            Some(cursor) => after_id = Some(cursor),
+            None => break,
+        }
+    }
+
+    Ok(crate::model::ModelList::new(all_models))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_list_models_request_sets_url_headers_and_cursor() {
+        let cfg = Config::new("claude-sonnet-4-6").with_api_key("secret");
+        let req = build_list_models_request(&cfg, None).expect("build");
+        assert_eq!(req.method(), http::Method::GET);
+        assert_eq!(req.uri(), "https://api.anthropic.com/v1/models");
+        assert_eq!(
+            req.headers().get("x-api-key").and_then(|v| v.to_str().ok()),
+            Some("secret")
+        );
+        assert!(req.headers().get("anthropic-version").is_some());
+
+        let paged = build_list_models_request(&cfg, Some("model-cursor")).expect("build");
+        assert_eq!(
+            paged.uri(),
+            "https://api.anthropic.com/v1/models?after_id=model-cursor"
+        );
+    }
     use crate::OneOrMany;
     use crate::message::Message;
 

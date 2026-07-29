@@ -575,9 +575,21 @@ pub enum StepEventKind {
 ///
 /// The merged patch does not mutate the agent's configured baseline and is not
 /// carried into subsequent turns.
+///
+/// A patch carries **request-shaped** data only: fields that change what one
+/// completion request looks like (model, preamble, sampling, tools, schema,
+/// context, history). Run *policy* — `max_turns`, tool concurrency,
+/// invalid-tool-call retry budgets, memory/conversation wiring, telemetry
+/// recording — is configuration scoped to the whole run and deliberately has
+/// no patch field.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RequestPatch {
+    /// Provider model identifier to use instead of the configured model for
+    /// this turn (honored by providers that accept a per-request model
+    /// override).
+    #[serde(default)]
+    pub model: Option<String>,
     /// Preamble to use instead of the agent's configured preamble for this turn.
     pub preamble: Option<String>,
     /// Sampling temperature to use for this turn.
@@ -594,6 +606,10 @@ pub struct RequestPatch {
     pub extra_context: Vec<Document>,
     /// Conversation history to use instead of the current history for this turn.
     pub history: Option<Vec<Message>>,
+    /// Structured-output JSON Schema to use instead of the configured
+    /// `output_schema` for this turn.
+    #[serde(default)]
+    pub output_schema: Option<rig_core::schemars::Schema>,
 }
 
 fn merge_last_wins<T>(earlier: Option<T>, later: Option<T>, field: &str) -> Option<T> {
@@ -613,6 +629,18 @@ impl RequestPatch {
     /// Creates an empty request patch.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Replaces the configured provider model for this turn.
+    pub fn model(mut self, value: impl Into<String>) -> Self {
+        self.model = Some(value.into());
+        self
+    }
+
+    /// Replaces the configured structured-output schema for this turn.
+    pub fn output_schema(mut self, value: rig_core::schemars::Schema) -> Self {
+        self.output_schema = Some(value);
+        self
     }
 
     /// Replaces the agent's configured preamble for this turn.
@@ -683,7 +711,9 @@ impl RequestPatch {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.preamble.is_none()
+        self.model.is_none()
+            && self.output_schema.is_none()
+            && self.preamble.is_none()
             && self.temperature.is_none()
             && self.max_tokens.is_none()
             && self.tool_choice.is_none()
@@ -704,6 +734,9 @@ impl RequestPatch {
             }
             (base, patch) => patch.or(base),
         };
+        self.model = merge_last_wins(self.model, later.model, "model");
+        self.output_schema =
+            merge_last_wins(self.output_schema, later.output_schema, "output_schema");
         self.preamble = merge_last_wins(self.preamble, later.preamble, "preamble");
         self.temperature = merge_last_wins(self.temperature, later.temperature, "temperature");
         self.max_tokens = merge_last_wins(self.max_tokens, later.max_tokens, "max_tokens");
@@ -727,6 +760,9 @@ impl RequestPatch {
 
 /// Action for completion-call hooks.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+// `RequestPatch` grew an output-schema payload; these are transient
+// decision values, never stored in bulk, so the size skew is fine.
+#[allow(clippy::large_enum_variant)]
 pub enum CompletionCallAction {
     /// Send the baseline request.
     Continue,
@@ -2279,6 +2315,56 @@ mod migrated_tests {
                 .merge(RequestPatch::new().temperature(0.9))
                 .temperature,
             Some(0.9)
+        );
+    }
+
+    #[test]
+    fn merge_model_last_writer_wins() {
+        assert_eq!(
+            RequestPatch::new()
+                .model("gpt-4o")
+                .merge(RequestPatch::new().model("gpt-4o-mini"))
+                .model,
+            Some("gpt-4o-mini".to_string())
+        );
+        // An unset later field inherits the earlier value.
+        assert_eq!(
+            RequestPatch::new()
+                .model("gpt-4o")
+                .merge(RequestPatch::new())
+                .model,
+            Some("gpt-4o".to_string())
+        );
+    }
+
+    #[test]
+    fn merge_output_schema_last_writer_wins() {
+        let earlier = rig_core::schemars::json_schema!({"type": "string"});
+        let later = rig_core::schemars::json_schema!({"type": "number"});
+        assert_eq!(
+            RequestPatch::new()
+                .output_schema(earlier.clone())
+                .merge(RequestPatch::new().output_schema(later.clone()))
+                .output_schema,
+            Some(later)
+        );
+        assert_eq!(
+            RequestPatch::new()
+                .output_schema(earlier.clone())
+                .merge(RequestPatch::new())
+                .output_schema,
+            Some(earlier)
+        );
+    }
+
+    #[test]
+    fn new_patch_fields_participate_in_is_empty() {
+        assert!(RequestPatch::new().is_empty());
+        assert!(!RequestPatch::new().model("gpt-4o").is_empty());
+        assert!(
+            !RequestPatch::new()
+                .output_schema(rig_core::schemars::json_schema!({"type": "string"}))
+                .is_empty()
         );
     }
 

@@ -23,6 +23,7 @@ use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_runtime::HttpRuntime;
 use crate::json_utils::merge;
+use crate::model::{ModelList, ModelListingError};
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
 
 /// Default OpenAI API base URL.
@@ -205,6 +206,65 @@ pub async fn complete(
     let req = build_request(cfg, &request, false)?;
     let (status, body) = rt.send(req).await?;
     parse_response(status, &body)
+}
+
+// ================================================================
+// Model listing
+// ================================================================
+
+/// A GET request with Bearer auth and extra headers, shared by the
+/// model-listing free functions of Bearer-authenticated providers.
+pub(crate) fn bearer_get(
+    url: String,
+    api_key: &ApiKeyLocation,
+    extra_headers: &[(String, String)],
+) -> Result<http::Request<Vec<u8>>, ModelListingError> {
+    let mut builder = http::Request::get(url);
+    if let Some(key) = api_key
+        .resolve()
+        .map_err(|e| ModelListingError::request_error(e.to_string()))?
+    {
+        builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+    }
+    for (name, value) in extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(Vec::new())
+        .map_err(|e| ModelListingError::request_error(e.to_string()))
+}
+
+/// Build the `GET /models` request for [`list_models`].
+///
+/// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+/// environment).
+pub fn build_list_models_request(
+    cfg: &Config,
+) -> Result<http::Request<Vec<u8>>, ModelListingError> {
+    let url = format!(
+        "{}{}",
+        cfg.base_url.trim_end_matches('/'),
+        super::model_listing::LIST_MODELS_PATH
+    );
+    bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+}
+
+/// Parse a `GET /models` response body into a [`ModelList`]. Pure.
+pub fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    super::model_listing::parse_list_models_response(status, body)
+}
+
+/// List the models available to `cfg`'s credentials.
+///
+/// The classic `ModelListingClient` path parses through the same pure
+/// [`parse_list_models_response`].
+pub async fn list_models(cfg: &Config, rt: &HttpRuntime) -> Result<ModelList, ModelListingError> {
+    let req = build_list_models_request(cfg)?;
+    let (status, body) = rt.send_bytes(req).await?;
+    parse_list_models_response(status, &body)
 }
 
 // ================================================================
@@ -772,6 +832,31 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_list_models_request_sets_url_and_bearer_auth() {
+        let cfg = Config::new("gpt-4o").with_api_key("secret");
+        let req = build_list_models_request(&cfg).expect("build");
+        assert_eq!(req.method(), http::Method::GET);
+        assert_eq!(req.uri(), "https://api.openai.com/v1/models");
+        assert_eq!(
+            req.headers()
+                .get(http::header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("Bearer secret")
+        );
+    }
+
+    #[test]
+    fn parse_list_models_response_maps_entries() {
+        let body = serde_json::json!({
+            "data": [{"id": "gpt-4o", "created": 1, "owned_by": "openai"}]
+        })
+        .to_string();
+        let models =
+            parse_list_models_response(http::StatusCode::OK, body.as_bytes()).expect("parse");
+        assert_eq!(models.len(), 1);
+    }
     use crate::OneOrMany;
     use crate::message::Message;
 

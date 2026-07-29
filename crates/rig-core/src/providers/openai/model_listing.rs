@@ -45,27 +45,40 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
+        let req = self
+            .client
+            .get(LIST_MODELS_PATH)?
+            .body(http_client::NoBody)?;
         let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "OpenAI",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
+        let status = response.status();
         let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("OpenAI", path, &error, &body)
-        })?;
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
+        parse_list_models_response(status, &body)
     }
+}
+
+/// Path of the model-listing endpoint, relative to the API base URL.
+pub(crate) const LIST_MODELS_PATH: &str = "/models";
+
+/// Parse a `GET /models` response into a [`ModelList`]. Pure.
+///
+/// The single source of truth for OpenAI model-listing parsing: both the
+/// classic [`OpenAIModelLister`] and
+/// [`functions::list_models`](super::functions::list_models) go through it.
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            "OpenAI",
+            LIST_MODELS_PATH,
+            status.as_u16(),
+            body,
+        ));
+    }
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("OpenAI", LIST_MODELS_PATH, &error, body)
+    })?;
+    let models = api_resp.data.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
