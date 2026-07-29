@@ -6,6 +6,7 @@ use syn::{DeriveInput, parse_macro_input};
 mod embed;
 mod resolve;
 mod tool;
+mod tool_router;
 
 //References:
 //<https://doc.rust-lang.org/book/ch19-06-macros.html#how-to-write-a-custom-derive-macro>
@@ -148,6 +149,39 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(input as syn::ItemFn);
 
     tool::expand::expand_rig_tool(args, input_fn)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Derive an inherent tool router on a struct whose named fields each
+/// implement the classic contextual `rig::tool::Tool` trait.
+///
+/// ```text
+/// use rig::tool_router::ToolRouter;
+///
+/// #[derive(ToolRouter)]
+/// struct MyTools {
+///     add: Add,       // each field implements `Tool`
+///     search: Search,
+/// }
+/// ```
+///
+/// Generates, in field-declaration order:
+///
+/// - `fn catalog(&self) -> rig::agent::prepare::ToolCatalog` — provider-facing
+///   definitions for every field, all executable;
+/// - `async fn dispatch(&self, call: &rig::message::ToolCall) -> ToolResult` —
+///   routes one model call to the matching field by `Tool::NAME` with the
+///   classic argument parsing, error normalization, and not-found shape;
+/// - `async fn dispatch_all(&self, calls: &[PendingToolCall], concurrency: usize)
+///   -> Vec<UserContent>` — batch execution honoring preresolved results,
+///   bounded concurrency, and call-order result shaping, infallible like the
+///   classic loop (tool errors become model-visible results).
+#[proc_macro_derive(ToolRouter)]
+pub fn derive_tool_router(item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+
+    tool_router::expand_tool_router(&input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

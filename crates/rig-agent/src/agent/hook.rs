@@ -693,7 +693,10 @@ impl RequestPatch {
             && self.history.is_none()
     }
 
-    pub(crate) fn merge(mut self, later: Self) -> Self {
+    /// Merge `later` into `self` with the documented per-field rules —
+    /// the combine step of [`fold_completion_actions`] and of any host
+    /// composing patches itself.
+    pub fn merge(mut self, later: Self) -> Self {
         self.extra_context.extend(later.extra_context);
         self.additional_params = match (self.additional_params.take(), later.additional_params) {
             (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {

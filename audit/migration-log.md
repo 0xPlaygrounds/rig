@@ -200,3 +200,46 @@ naming discrepancy noted for unification.
 **Verification**: workspace check 0 errors; clippy clean; rig-core 1079
 tests (68 new provider-function tests); full facade cassette suite green
 (totals below); cassettes untouched.
+
+## P5 — Facade runtime: ProviderConfig, Runtime, AgentSession, AgentStream (COMPLETE)
+
+The facade crate (`rig`) gained the data-oriented runtime surface:
+
+- **`src/provider.rs`**: `for_each_builtin_provider!` x-macro (24 rows) →
+  `ProviderConfig` enum (deliberately NOT `non_exhaustive`) with cfg-gated
+  `Bedrock`/`GeminiGrpc`/`Mock` arms; free `complete`/`open_stream` with
+  exhaustive matches; `Runtime` holding `HttpRuntime` plus monomorphic
+  config-keyed `BedrockCache`/`GeminiGrpcCache` slots; `MockScript`
+  (serde-skipped shared cursor: clone shares, deserialize resets) with
+  unary and streamed scripts — scripted streams without a hand-authored
+  terminal now inherit a `StreamFinal` from the paired response, matching
+  the unary branch.
+- **`src/session.rs`**: `AgentSession` — pull-based blocking driver over
+  `AgentRun` (`advance()` → exhaustive `SessionEvent`; decision inboxes
+  `reply_before_call`/`reply_turn`/`resolve_invalid`/`provide_tool_results`;
+  `SessionPolicy` gates surfacing; `resume()` restores from a serialized
+  `AgentRun`; `run()` is the no-tools convenience).
+- **`src/stream.rs`**: `AgentStream` — the streaming driver;
+  `AgentStreamItem` is exhaustive; complete tool calls surface in call
+  order *before* `ToolCallsReady` (announce-before-execute), committed
+  results surface post-batch; abandoned turns drain usage.
+- **`src/extract.rs`**: `extract<T>` — the `Extractor<M, T>` successor as
+  a free function over `schemars::JsonSchema + DeserializeOwned` bounds;
+  Tool output mode, schema from `schema_for!(T)`, corrective-feedback
+  retry loop carrying the previous raw output.
+- **`#[derive(ToolRouter)]`** (rig-derive) + `rig_agent::tool::router_support`:
+  monomorphic per-field dispatch (no boxing), catalog in field order,
+  classic-loop error shaping shared via `parse_tool_args`/
+  `tool_result_output`, `dispatch_all` with order-preserving bounded
+  concurrency and preresolved passthrough. 8 integration tests.
+- **rig-mcp**: new agent-built crate (`McpToolset`/`McpCallOutcome`) wired
+  into the facade as the `mcp` feature (`rig::tool::mcp`).
+
+**Documented deferrals**: `ToolOutput`/`ToolResultAction` serde (blocked on
+the `IntoToolOutput` blanket impl — P7); sans-IO `ModelStream`/`SseParser`
+extraction (P7); candle `ProviderConfig` arm (P7, needs artifact plumbing).
+
+**Verification**: clippy clean incl. `--all-features`; facade suite green
+single-threaded (incl. 6 new `agent_session` + 3 new `agent_stream` tests);
+rig-agent 492 + rig-core 1079 + rig-derive (8 router) + rig-mcp all green;
+cassettes untouched.

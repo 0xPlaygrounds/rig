@@ -167,6 +167,12 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.41.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+aws-sdk-bedrockruntime = { workspace = true, optional = true }
 rig-agent = { path = "crates/rig-agent", version = "0.41.0", optional = true, default-features = false }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.41.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.41.0", optional = true, default-features = false }
@@ -174,6 +180,7 @@ rig-fastembed = { path = "crates/rig-fastembed", version = "0.41.0", optional = 
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.41.0", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.41.0", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.41.0", optional = true, default-features = false }
+rig-mcp = { path = "crates/rig-mcp", version = "0.41.0", optional = true, default-features = false }
 rig-memory = { path = "crates/rig-memory", version = "0.41.0", optional = true, default-features = false }
 rig-derive = { path = "crates/rig-derive", version = "0.41.0", optional = true }
 rig-milvus = { path = "crates/rig-milvus", version = "0.41.0", optional = true, default-features = false }
@@ -267,7 +274,7 @@ test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
 # lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.
 facade-build-tests = []
-bedrock = ["dep:rig-bedrock"]
+bedrock = ["dep:rig-bedrock", "dep:aws-sdk-bedrockruntime"]
 candle = ["dep:rig-candle"]
 fastembed = [
   "dep:rig-fastembed",
@@ -279,6 +286,7 @@ fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-downl
 gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
 lancedb = ["dep:rig-lancedb"]
+mcp = ["agent", "dep:rig-mcp"]
 memory = ["dep:rig-memory"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]

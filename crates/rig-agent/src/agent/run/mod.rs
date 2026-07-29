@@ -112,7 +112,7 @@ fn unknown_tool_call_error(
 /// Default number of times Tool output mode re-prompts the model for valid
 /// structured output before finalizing best-effort (see #1928). Mirrors
 /// pydantic-ai's default output-retry budget of 1.
-pub(crate) const DEFAULT_OUTPUT_RETRIES: usize = 1;
+pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
 
 /// What a driver must do next to advance an [`AgentRun`].
 ///
@@ -157,6 +157,25 @@ pub struct PendingToolCall {
     /// tool-call deltas. Drivers generate a fresh ID when absent.
     #[serde(default)]
     pub internal_call_id: Option<String>,
+}
+
+impl PendingToolCall {
+    /// A pending call for `tool_call` with no preresolved result and no
+    /// streamed internal call ID.
+    pub fn new(tool_call: ToolCall) -> Self {
+        Self {
+            tool_call,
+            preresolved_result: None,
+            internal_call_id: None,
+        }
+    }
+
+    /// Attach a preresolved result the driver must return as this call's tool
+    /// result without executing the tool.
+    pub fn with_preresolved_result(mut self, result: UserContent) -> Self {
+        self.preresolved_result = Some(result);
+        self
+    }
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -449,7 +468,7 @@ impl AgentRun {
     /// Set (or clear) the output-tool name in place. The driver resolves the
     /// name from the prepared request inside the run loop, where the agent's
     /// tool set (and thus the resolved output mode) is known.
-    pub(crate) fn set_output_tool_name(&mut self, name: Option<String>) {
+    pub fn set_output_tool_name(&mut self, name: Option<String>) {
         // The name is committed once and pinned for the whole run, so the
         // request the driver builds each turn stays consistent with the
         // intercept (and a tool set that shifts mid-run cannot flip the mode).
@@ -461,7 +480,7 @@ impl AgentRun {
     /// The synthetic output-tool name committed for this run, if any. The driver
     /// passes this back when preparing later turns so Tool output mode stays
     /// pinned even if the per-turn tool set changes (see #1928).
-    pub(crate) fn output_tool_name(&self) -> Option<&str> {
+    pub fn output_tool_name(&self) -> Option<&str> {
         self.output_tool_name.as_deref()
     }
 
@@ -487,7 +506,11 @@ impl AgentRun {
     }
 
     /// Canonical content for the accepted model turn awaiting advancement.
-    pub(crate) fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
+    ///
+    /// `Some` only between [`AgentRun::model_response`] accepting a turn and
+    /// the next [`AgentRun::next_step`] — the window where a driver surfaces
+    /// its model-turn-finished decision point.
+    pub fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
         let RunState::AwaitingAdvance(turn) = &self.state else {
             return None;
         };

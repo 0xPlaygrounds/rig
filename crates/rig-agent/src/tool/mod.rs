@@ -124,6 +124,7 @@ use rig_core::{
 use crate::completion::{self, ToolDefinition};
 
 pub(crate) mod extensions;
+pub mod router_support;
 
 // MCP is native-only. rmcp's `ClientHandler` is declared
 // `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes

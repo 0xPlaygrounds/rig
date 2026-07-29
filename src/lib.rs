@@ -98,6 +98,22 @@ pub mod integrations {
 }
 
 /// Common portable imports plus additive classic-runtime conveniences.
+/// The bundled provider set as plain configuration, plus the live-handle
+/// runtime — the data-oriented fulfilment layer.
+pub mod provider;
+
+/// The blocking session driver over the sans-IO run protocol.
+#[cfg(feature = "agent")]
+pub mod session;
+
+/// The streaming session driver over the sans-IO run protocol.
+#[cfg(feature = "agent")]
+pub mod stream;
+
+/// Structured extraction over the session runtime.
+#[cfg(feature = "agent")]
+pub mod extract;
+
 pub mod prelude {
     // The classic contextual `Tool` and its mutable `ToolContext` — the same
     // prelude surface as before the runtime split, so `use rig::prelude::*;
@@ -158,12 +174,22 @@ pub mod tool {
     #[cfg(all(feature = "agent", feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub use rig_agent::tool::rmcp;
+    /// Session-flavoured MCP toolset: [`McpToolset`](mcp::McpToolset) pairs a
+    /// [`ToolCatalog`](rig_agent::agent::prepare::ToolCatalog) with MCP-backed
+    /// execution for the data-oriented runtime.
+    #[cfg(all(feature = "mcp", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
+    pub use rig_mcp as mcp;
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
     pub use rig_agent::tool::{
         DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, ToolSetBuilder,
         server, tool_definition,
     };
+    // Runtime support the `#[derive(ToolRouter)]` expansion calls into.
+    #[cfg(feature = "agent")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+    pub use rig_agent::tool::router_support;
 
     /// The complete portable `rig-core` tool surface, under one explicit path.
     pub mod portable {
@@ -183,6 +209,15 @@ pub use rig_derive::rig_tool;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::rig_tool as tool_macro;
+
+/// The `#[derive(ToolRouter)]` macro: an inherent catalog/dispatch router
+/// over a struct of typed tools. Requires the classic runtime
+/// (`agent` feature) at expansion time.
+#[cfg(all(feature = "derive", feature = "agent"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "agent"))))]
+pub mod tool_router {
+    pub use rig_derive::ToolRouter;
+}
 
 /// Conversation memory APIs and optional memory policy helpers.
 ///
