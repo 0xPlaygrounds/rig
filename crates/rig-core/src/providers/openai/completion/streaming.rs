@@ -135,7 +135,7 @@ where
     Ext: crate::client::Provider
         + OpenAICompatibleProvider
         + Clone
-        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::MaybeSend
         + 'static,
 {
     pub(crate) async fn stream(
@@ -241,12 +241,12 @@ struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletions
 
 impl<Ext, U> CompatibleStreamProfile for OpenAICompatibleProfile<Ext, U>
 where
-    Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::WasmCompatSend,
+    Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::MaybeSend,
     U: Clone
         + Default
         + GetTokenUsage
         + serde::de::DeserializeOwned
-        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::MaybeSend
         + Unpin
         + 'static,
 {

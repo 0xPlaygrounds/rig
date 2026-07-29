@@ -17,7 +17,7 @@ use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use std::collections::HashMap;
 
 /// Build the Anthropic streaming request body.
@@ -217,7 +217,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
 impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + MaybeSend + MaybeSync + 'static,
 {
     pub(crate) async fn stream(
         &self,

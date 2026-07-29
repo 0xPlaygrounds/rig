@@ -13,6 +13,7 @@ use crate::{
         Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse,
         embed::TextEmbedder,
     },
+    wasm_compat::MaybeSend,
 };
 
 /// Builder for creating embeddings from one or more documents of type `T`.
@@ -96,7 +97,7 @@ where
 impl<M, T> EmbeddingsBuilder<M, T>
 where
     M: EmbeddingModel,
-    T: Embed + Send,
+    T: Embed + MaybeSend,
 {
     /// Generate embeddings for all documents in the builder.
     ///

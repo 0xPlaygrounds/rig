@@ -8,7 +8,7 @@ use std::sync::{
 use crate::{
     completion::Message,
     memory::{ConversationMemory, InMemoryConversationMemory, MemoryError},
-    wasm_compat::WasmBoxedFuture,
+    wasm_compat::BoxFuture,
 };
 
 /// Memory backend that records load and append calls while delegating storage to
@@ -41,7 +41,7 @@ impl ConversationMemory for CountingMemory {
     fn load<'a>(
         &'a self,
         conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
         self.loads.fetch_add(1, Ordering::SeqCst);
         self.inner.load(conversation_id)
     }
@@ -50,15 +50,12 @@ impl ConversationMemory for CountingMemory {
         &'a self,
         conversation_id: &'a str,
         messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         self.appends.fetch_add(1, Ordering::SeqCst);
         self.inner.append(conversation_id, messages)
     }
 
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    fn clear<'a>(&'a self, conversation_id: &'a str) -> BoxFuture<'a, Result<(), MemoryError>> {
         self.inner.clear(conversation_id)
     }
 }
@@ -88,7 +85,7 @@ impl ConversationMemory for FailingMemory {
     fn load<'a>(
         &'a self,
         _conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
         let message = self.message.clone();
         Box::pin(async move { Err(MemoryError::backend(std::io::Error::other(message))) })
     }
@@ -97,14 +94,11 @@ impl ConversationMemory for FailingMemory {
         &'a self,
         _conversation_id: &'a str,
         _messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async { Ok(()) })
     }
 
-    fn clear<'a>(
-        &'a self,
-        _conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    fn clear<'a>(&'a self, _conversation_id: &'a str) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async { Ok(()) })
     }
 }
@@ -134,7 +128,7 @@ impl ConversationMemory for AppendFailingMemory {
     fn load<'a>(
         &'a self,
         _conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async { Ok(Vec::new()) })
     }
 
@@ -142,15 +136,12 @@ impl ConversationMemory for AppendFailingMemory {
         &'a self,
         _conversation_id: &'a str,
         _messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         let message = self.message.clone();
         Box::pin(async move { Err(MemoryError::backend(std::io::Error::other(message))) })
     }
 
-    fn clear<'a>(
-        &'a self,
-        _conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    fn clear<'a>(&'a self, _conversation_id: &'a str) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async { Ok(()) })
     }
 }

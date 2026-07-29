@@ -47,7 +47,7 @@ impl<T> ImageGenerationModel<T> {
 
 impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
 where
-    T: HttpClientExt + Send + Clone + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     type Response = ImageGenerationResponse;
 

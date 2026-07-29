@@ -49,7 +49,7 @@ impl TryFrom<GenerateContentResponse>
 
 impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
     type Response = GenerateContentResponse;
 

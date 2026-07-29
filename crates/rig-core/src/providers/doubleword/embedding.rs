@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::{
     embeddings::{self, EmbeddingError},
     http_client::{self, HttpClientExt},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 use super::{Client, client::doubleword_api_types::ApiResponse};
@@ -48,7 +48,7 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: HttpClientExt + Default + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    T: HttpClientExt + Default + Clone + MaybeSend + MaybeSync + 'static,
 {
     // Conservative default; adjust to Doubleword's documented limit if it differs.
     const MAX_DOCUMENTS: usize = 1024;

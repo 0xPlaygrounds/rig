@@ -18,7 +18,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
-use crate::wasm_compat::WasmCompatSend;
+use crate::wasm_compat::MaybeSend;
 
 fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
@@ -155,10 +155,10 @@ where
         .collect()
 }
 
-pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
-    type Detail: WasmCompatSend + 'static;
-    type FinalResponse: Clone + Unpin + GetTokenUsage + WasmCompatSend + 'static;
+pub(crate) trait CompatibleStreamProfile: MaybeSend {
+    type Usage: Clone + Default + GetTokenUsage + MaybeSend + 'static;
+    type Detail: MaybeSend + 'static;
+    type FinalResponse: Clone + Unpin + GetTokenUsage + MaybeSend + 'static;
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 

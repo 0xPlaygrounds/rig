@@ -1,8 +1,9 @@
 # Migrating Rig
 
-This guide covers every breaking change from 0.30 through 0.41. Releases 0.36,
-0.37, 0.40 and 0.41 were the disruptive ones; 0.40 alone carried 31 breaking
-changes, and 0.37 renamed `rig-core`'s library target.
+This guide covers every breaking change from 0.30 through the current
+unreleased version. Releases 0.36, 0.37, 0.40 and 0.41 were the disruptive
+ones; 0.40 alone carried 31 breaking changes, and 0.37 renamed `rig-core`'s
+library target.
 
 ## Which sections apply to you
 
@@ -11,6 +12,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.41 | [0.41 → Unreleased](#041--unreleased) |
 | 0.40 | [0.40 → 0.41](#040--041) |
 | 0.39 | [0.39 → 0.40](#039--040) |
 | 0.38 | [0.38 → 0.39](#038--039) |
@@ -271,6 +273,45 @@ They now key on `all(target_arch = "wasm32", target_os = "unknown")`. If you
 defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
+
+---
+
+## 0.41 → Unreleased
+
+### Target-conditional compatibility types were renamed
+
+Rig now uses conventional “maybe thread-safe” vocabulary:
+
+```rust
+use rig_core::wasm_compat::{BoxFuture, MaybeSend, MaybeSync};
+```
+
+Update imports and bounds as follows:
+
+| 0.41 name | Unreleased name |
+| --- | --- |
+| `WasmCompatSend` | `MaybeSend` |
+| `WasmCompatSync` | `MaybeSync` |
+| `WasmBoxedFuture` | `BoxFuture` |
+
+The old aliases are removed. “Maybe” is target-conditional, not
+runtime-optional. On exactly browser WASM
+(`all(target_arch = "wasm32", target_os = "unknown")`), `MaybeSend` and
+`MaybeSync` are no-op marker traits and `BoxFuture` is
+`futures::future::LocalBoxFuture`. On every other target, including WASI, the
+markers require `Send`/`Sync` and `BoxFuture` is
+`futures::future::BoxFuture`.
+
+The HTTP-specific `WasmCompatSendStream` marker was removed rather than renamed.
+Code naming Rig's HTTP byte stream should use
+`rig_core::http_client::sse::BoxedStream`; code boxing an unrelated stream
+should select `futures::stream::BoxStream` or `LocalBoxStream` with the same
+browser-WASM predicate.
+
+Browser-portable image/audio generation, image embeddings, embedding builders,
+in-memory vector indexes, classic-agent retrieval indexes, and device-code
+callbacks now consistently use the target-conditional bounds. Native-only and
+inherently multithreaded integrations continue to require raw `Send`/`Sync`.
 
 ---
 

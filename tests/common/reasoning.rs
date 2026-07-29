@@ -17,7 +17,7 @@ use rig::message::{
 };
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
-use rig::wasm_compat::WasmCompatSend;
+use rig::wasm_compat::MaybeSend;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -54,7 +54,7 @@ where
 pub(crate) async fn run_reasoning_roundtrip_streaming<M>(agent: ReasoningRoundtripAgent<M>)
 where
     M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
+    M::StreamingResponse: MaybeSend,
 {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
@@ -64,7 +64,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     mut inspect_final: F,
 ) where
     M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
+    M::StreamingResponse: MaybeSend,
     F: FnMut(&M::StreamingResponse),
 {
     let turn1_prompt = Message::User {

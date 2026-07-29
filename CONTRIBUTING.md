@@ -93,7 +93,7 @@ As with every open source repo, not every contribution is within the scope of th
 - Changes that would force model provider integrations to diverge from the original API (eg attempting to add a field to the OpenAI API that does not actually exist within the OpenAI API for the sake of satisfying another model provider)
 - Lazy workarounds such as `String` error types, scattered `.unwrap()` calls, stubbed error handling, or incomplete edge-case handling
 - TODO comments, placeholder implementations, or `unimplemented!()` in submitted code
-- Missing WASM compatibility where `WasmCompatSend` or `WasmCompatSync` should be used instead of raw `Send` or `Sync`
+- Missing WASM compatibility where `MaybeSend` or `MaybeSync` should be used instead of raw `Send` or `Sync`
 - Unclear code that needs comments to explain what it is doing instead of being refactored for readability
 - Major architectural changes, new abstractions, or public API reshaping without prior discussion
 - PRs with arbitrary markdown files. The only markdown files we currently allow are ones that are already traditional convention (DEVELOPING.md, CONTRIBUTIONS.md, ARCHITECTURE.md, ... etc)

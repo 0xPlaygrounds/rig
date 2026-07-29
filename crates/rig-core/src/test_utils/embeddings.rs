@@ -7,7 +7,7 @@ use crate::{
         Embedding, EmbeddingError, EmbeddingModel,
         embed::{EmbedError, TextEmbedder},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 
 /// A deterministic [`EmbeddingModel`] that returns a fixed vector for each input document.
@@ -29,7 +29,7 @@ impl EmbeddingModel for MockEmbeddingModel {
 
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + MaybeSend,
     ) -> Result<Vec<Embedding>, EmbeddingError> {
         Ok(documents
             .into_iter()

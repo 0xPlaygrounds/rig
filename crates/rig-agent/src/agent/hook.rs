@@ -122,7 +122,7 @@ use crate::tool::extensions::TypeMap;
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, Message, ToolChoice},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{BoxFuture, MaybeSend, MaybeSync},
 };
 
 use crate::{
@@ -166,7 +166,7 @@ impl Scratchpad {
     /// Insert a value.
     pub fn insert<T>(&self, value: T) -> Option<T>
     where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + MaybeSend + MaybeSync + 'static,
     {
         self.lock().insert(value)
     }
@@ -174,7 +174,7 @@ impl Scratchpad {
     /// Get a cloned value.
     pub fn get<T>(&self) -> Option<T>
     where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + MaybeSend + MaybeSync + 'static,
     {
         self.lock().get::<T>().cloned()
     }
@@ -182,7 +182,7 @@ impl Scratchpad {
     /// Whether a type is present.
     pub fn contains<T>(&self) -> bool
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: MaybeSend + MaybeSync + 'static,
     {
         self.lock().contains::<T>()
     }
@@ -190,7 +190,7 @@ impl Scratchpad {
     /// Remove a value.
     pub fn remove<T>(&self) -> Option<T>
     where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + MaybeSend + MaybeSync + 'static,
     {
         self.lock().remove::<T>()
     }
@@ -198,7 +198,7 @@ impl Scratchpad {
     /// Atomically update a value, starting at `Default`.
     pub fn update<T, R>(&self, update: impl FnOnce(&mut T) -> R) -> R
     where
-        T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + Default + MaybeSend + MaybeSync + 'static,
     {
         let mut guard = self.lock();
         let mut value = guard.remove::<T>().unwrap_or_default();
@@ -914,7 +914,7 @@ impl ObservationAction {
 }
 
 /// Per-run lifecycle observer and steerer.
-pub trait AgentHook: WasmCompatSend + WasmCompatSync {
+pub trait AgentHook: MaybeSend + MaybeSync {
     /// Runs before a completion request is sent.
     ///
     /// Return a per-turn patch, continue without one, or stop the run. Patches
@@ -923,7 +923,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: CompletionCall<'_>,
-    ) -> impl Future<Output = CompletionCallAction> + WasmCompatSend {
+    ) -> impl Future<Output = CompletionCallAction> + MaybeSend {
         async { CompletionCallAction::Continue }
     }
 
@@ -934,7 +934,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: CompletionResponse<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+    ) -> impl Future<Output = ObservationAction> + MaybeSend {
         async { ObservationAction::Continue }
     }
 
@@ -946,7 +946,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
-    ) -> impl Future<Output = ModelTurnAction> + WasmCompatSend {
+    ) -> impl Future<Output = ModelTurnAction> + MaybeSend {
         async { ModelTurnAction::Continue }
     }
 
@@ -960,7 +960,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: &InvalidToolCallContext,
-    ) -> impl Future<Output = Option<InvalidToolCallAction>> + WasmCompatSend {
+    ) -> impl Future<Output = Option<InvalidToolCallAction>> + MaybeSend {
         async { None }
     }
 
@@ -973,7 +973,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: ToolCall<'_>,
-    ) -> impl Future<Output = ToolCallAction> + WasmCompatSend {
+    ) -> impl Future<Output = ToolCallAction> + MaybeSend {
         async { ToolCallAction::Run }
     }
 
@@ -988,7 +988,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: ToolResultEvent<'_>,
-    ) -> impl Future<Output = ToolResultAction> + WasmCompatSend {
+    ) -> impl Future<Output = ToolResultAction> + MaybeSend {
         async { ToolResultAction::Keep }
     }
 
@@ -999,7 +999,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: TextDelta<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+    ) -> impl Future<Output = ObservationAction> + MaybeSend {
         async { ObservationAction::Continue }
     }
 
@@ -1010,7 +1010,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: ToolCallDelta<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+    ) -> impl Future<Output = ObservationAction> + MaybeSend {
         async { ObservationAction::Continue }
     }
 
@@ -1021,7 +1021,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: StreamResponseFinish<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+    ) -> impl Future<Output = ObservationAction> + MaybeSend {
         async { ObservationAction::Continue }
     }
 
@@ -1037,52 +1037,52 @@ impl AgentHook for () {
     }
 }
 
-trait DynAgentHook: WasmCompatSend + WasmCompatSync {
+trait DynAgentHook: MaybeSend + MaybeSync {
     fn completion_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction>;
+    ) -> BoxFuture<'a, CompletionCallAction>;
     fn completion_response<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    ) -> BoxFuture<'a, ObservationAction>;
     fn model_turn_finished<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction>;
+    ) -> BoxFuture<'a, ModelTurnAction>;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>;
+    ) -> BoxFuture<'a, Option<InvalidToolCallAction>>;
     fn tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCall<'a>,
-    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
+    ) -> BoxFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
     fn tool_result<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction>;
+    ) -> BoxFuture<'a, ToolResultAction>;
     fn text_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    ) -> BoxFuture<'a, ObservationAction>;
     fn tool_call_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    ) -> BoxFuture<'a, ObservationAction>;
     fn stream_response_finish<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    ) -> BoxFuture<'a, ObservationAction>;
     fn observes(&self, kind: StepEventKind) -> bool;
 }
 
@@ -1094,35 +1094,35 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction> {
+    ) -> BoxFuture<'a, CompletionCallAction> {
         Box::pin(self.on_completion_call(ctx, event))
     }
     fn completion_response<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
+    ) -> BoxFuture<'a, ObservationAction> {
         Box::pin(self.on_completion_response(ctx, event))
     }
     fn model_turn_finished<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction> {
+    ) -> BoxFuture<'a, ModelTurnAction> {
         Box::pin(self.on_model_turn_finished(ctx, event))
     }
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>> {
+    ) -> BoxFuture<'a, Option<InvalidToolCallAction>> {
         Box::pin(self.on_invalid_tool_call(ctx, event))
     }
     fn tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCall<'a>,
-    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)> {
+    ) -> BoxFuture<'a, (ToolCallAction, Option<serde_json::Value>)> {
         Box::pin(async move {
             // Only `on_tool_call` is public dispatch. A nested `HookStack`
             // records terminal-path rewrite state into this private frame.
@@ -1135,28 +1135,28 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction> {
+    ) -> BoxFuture<'a, ToolResultAction> {
         Box::pin(self.on_tool_result(ctx, event))
     }
     fn text_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
+    ) -> BoxFuture<'a, ObservationAction> {
         Box::pin(self.on_text_delta(ctx, event))
     }
     fn tool_call_delta<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
+    ) -> BoxFuture<'a, ObservationAction> {
         Box::pin(self.on_tool_call_delta(ctx, event))
     }
     fn stream_response_finish<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
+    ) -> BoxFuture<'a, ObservationAction> {
         Box::pin(self.on_stream_response_finish(ctx, event))
     }
     fn observes(&self, kind: StepEventKind) -> bool {

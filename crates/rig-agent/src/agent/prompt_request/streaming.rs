@@ -1,7 +1,7 @@
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, UserContent},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+    wasm_compat::{BoxFuture, MaybeSend},
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
 };
 use futures::{Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, pin::Pin, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse, forward_prompt_setters};
@@ -36,17 +36,17 @@ use crate::{
 };
 use rig_core::message::{Message, Text};
 
-// The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
-// go no-op — browser wasm. `rig-core` keys those markers on this same
+// The `Send` bound is dropped exactly where `rig-core`'s `MaybeSend` and
+// `MaybeSync` markers go no-op — browser wasm. `rig-core` keys them on this same
 // predicate, so keep the two in step: a bare `target_arch = "wasm32"` would
 // also drop `Send` on WASI, where `rig-core` still requires it.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
+    futures::stream::BoxStream<'static, Result<MultiTurnStreamItem<R>, StreamingError>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>>>;
+    futures::stream::LocalBoxStream<'static, Result<MultiTurnStreamItem<R>, StreamingError>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -299,7 +299,7 @@ where
 impl<M> StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+    <M as CompletionModel>::StreamingResponse: MaybeSend + GetTokenUsage,
 {
     /// Create a new `StreamingPromptRequest` from an agent, including its
     /// default hooks.
@@ -367,11 +367,11 @@ where
 // Same browser-wasm predicate as `StreamingResult` above, for the same reason.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub(crate) type DriveStream<'a, R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send + 'a>>;
+    futures::stream::BoxStream<'a, Result<MultiTurnStreamItem<R>, StreamingError>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub(crate) type DriveStream<'a, R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + 'a>>;
+    futures::stream::LocalBoxStream<'a, Result<MultiTurnStreamItem<R>, StreamingError>>;
 
 /// One item emitted by the shared engine [`drive_agent`].
 ///
@@ -402,12 +402,12 @@ pub(crate) enum DriveItem<R> {
 /// genuinely divergent pieces are behind this trait. Invalid-tool-call recovery
 /// is one of them — it lives inside each source's `run_model_turn` (end-of-turn
 /// for blocking, mid-stream for streaming), not in `drive_agent`.
-pub(crate) trait TurnSource<M>: WasmCompatSend
+pub(crate) trait TurnSource<M>: MaybeSend
 where
     M: CompletionModel,
 {
     /// The raw provider response carried on per-delta stream items.
-    type Raw: WasmCompatSend;
+    type Raw: MaybeSend;
 
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
@@ -706,8 +706,8 @@ pub(crate) fn drive_tool_calls<'a, M, R, F>(
 ) -> DriveStream<'a, R>
 where
     M: CompletionModel,
-    R: WasmCompatSend + 'a,
-    F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
+    R: MaybeSend + 'a,
+    F: Fn(tracing::Span) -> tracing::Span + MaybeSend + 'a,
 {
     // Per-call working state: a stable internal_call_id and the execute span,
     // paired with the model's tool call. `span` is `Span::none()` for a
@@ -1026,7 +1026,7 @@ impl StreamingTurnSource {
 impl<M> TurnSource<M> for StreamingTurnSource
 where
     M: CompletionModel,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+    <M as CompletionModel>::StreamingResponse: MaybeSend + GetTokenUsage,
 {
     type Raw = M::StreamingResponse;
 
@@ -1493,7 +1493,7 @@ where
 impl<M> AgentRunner<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
+    <M as CompletionModel>::StreamingResponse: MaybeSend + GetTokenUsage,
 {
     /// Drive the agent loop, streaming assistant content, tool activity, and a
     /// final response. Hooks fire at every observable point, including streamed
@@ -1573,10 +1573,10 @@ where
 impl<M> IntoFuture for StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend,
+    <M as CompletionModel>::StreamingResponse: MaybeSend,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
+    type IntoFuture = BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         // Wrap send() in a future, because send() returns a stream immediately

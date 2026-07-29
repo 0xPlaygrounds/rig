@@ -12,7 +12,7 @@ use crate::{
     streaming::{StreamingChat, StreamingPrompt},
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
-use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
+use rig_core::{message::ToolChoice, wasm_compat::MaybeSend};
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
@@ -647,7 +647,7 @@ where
 {
     fn prompt(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
     ) -> PromptRequest<prompt_request::Standard, M> {
         PromptRequest::from_agent(self, prompt)
     }
@@ -661,7 +661,7 @@ where
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name_or_default()))]
     fn prompt(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
     ) -> PromptRequest<prompt_request::Standard, M> {
         PromptRequest::from_agent(*self, prompt)
     }
@@ -675,7 +675,7 @@ where
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     async fn chat(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
         chat_history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
         let response = PromptRequest::from_agent(self, prompt)
@@ -696,10 +696,7 @@ where
     M: CompletionModel + 'static,
     M::StreamingResponse: GetTokenUsage,
 {
-    fn stream_prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest<M> {
+    fn stream_prompt(&self, prompt: impl Into<Message> + MaybeSend) -> StreamingPromptRequest<M> {
         StreamingPromptRequest::<M>::from_agent(self, prompt)
     }
 }
@@ -711,7 +708,7 @@ where
 {
     fn stream_chat<I, T>(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
         chat_history: I,
     ) -> StreamingPromptRequest<M>
     where
@@ -734,7 +731,7 @@ where
     type TypedRequest<T>
         = TypedPromptRequest<T, prompt_request::Standard, M>
     where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
+        T: JsonSchema + DeserializeOwned + MaybeSend + 'static;
 
     /// Send a prompt and receive a typed structured response.
     ///
@@ -770,10 +767,10 @@ where
     /// ```
     fn prompt_typed<T>(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
     ) -> TypedPromptRequest<T, prompt_request::Standard, M>
     where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend,
+        T: JsonSchema + DeserializeOwned + MaybeSend,
     {
         TypedPromptRequest::from_agent(self, prompt)
     }
@@ -787,14 +784,14 @@ where
     type TypedRequest<T>
         = TypedPromptRequest<T, prompt_request::Standard, M>
     where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
+        T: JsonSchema + DeserializeOwned + MaybeSend + 'static;
 
     fn prompt_typed<T>(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
     ) -> TypedPromptRequest<T, prompt_request::Standard, M>
     where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend,
+        T: JsonSchema + DeserializeOwned + MaybeSend,
     {
         TypedPromptRequest::from_agent(*self, prompt)
     }

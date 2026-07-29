@@ -7,7 +7,7 @@
 use crate::{
     completion::Usage,
     http_client, provider_response,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -41,7 +41,7 @@ pub enum RerankError {
 crate::provider_response::impl_provider_response_helpers!(RerankError);
 
 /// Trait for reranking models that score documents by relevance to a query.
-pub trait RerankModel: WasmCompatSend + WasmCompatSync {
+pub trait RerankModel: MaybeSend + MaybeSync {
     /// The maximum number of documents that can be reranked in a single request.
     const MAX_DOCUMENTS: usize;
 
@@ -56,7 +56,7 @@ pub trait RerankModel: WasmCompatSend + WasmCompatSync {
         &self,
         query: &str,
         documents: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<RerankResponse, RerankError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<RerankResponse, RerankError>> + MaybeSend;
 }
 
 /// A single reranked document result.

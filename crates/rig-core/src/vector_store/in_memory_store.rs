@@ -12,6 +12,7 @@ use crate::{
     OneOrMany,
     embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
     vector_store::request::Filter,
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 use super::lsh::LSHIndex;
@@ -489,7 +490,7 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
     }
 }
 
-impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
+impl<M: EmbeddingModel + MaybeSync, D: Serialize + MaybeSync + MaybeSend + Eq> VectorStoreIndex
     for InMemoryVectorIndex<M, D>
 {
     type Filter = Filter<serde_json::Value>;

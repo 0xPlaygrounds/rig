@@ -27,7 +27,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -435,7 +435,7 @@ pub struct DeepSeekModelLister<H = reqwest::Client> {
 
 impl<H> ModelLister<H> for DeepSeekModelLister<H>
 where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + MaybeSend + MaybeSync + 'static,
 {
     type Client = Client<H>;
 

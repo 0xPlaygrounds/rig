@@ -16,7 +16,7 @@ use rig_core::{
         InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
         request::{Filter, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
+    wasm_compat::BoxFuture,
 };
 use serde::{Deserialize, Serialize};
 
@@ -480,7 +480,7 @@ where
     fn top_n<'a>(
         &'a self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
+    ) -> BoxFuture<'a, TopNResults> {
         let req = req.map_filter(MongoDbSearchFilter::from);
 
         Box::pin(async move {
@@ -494,7 +494,7 @@ where
     fn top_n_ids<'a>(
         &'a self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
         let req = req.map_filter(MongoDbSearchFilter::from);
         Box::pin(async move {
             let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;

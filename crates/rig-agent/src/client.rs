@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 
 /// Classic-runtime construction sugar layered on any portable completion client.
 ///
@@ -30,12 +30,7 @@ pub trait AgentClientExt: rig_core::client::completion::CompletionClient {
     /// Construct a classic typed extractor builder for `model`.
     fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<Self::CompletionModel, T>
     where
-        T: JsonSchema
-            + for<'de> Deserialize<'de>
-            + Serialize
-            + WasmCompatSend
-            + WasmCompatSync
-            + 'static,
+        T: JsonSchema + for<'de> Deserialize<'de> + Serialize + MaybeSend + MaybeSync + 'static,
     {
         ExtractorBuilder::new(self.completion_model(model))
     }

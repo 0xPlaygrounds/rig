@@ -38,6 +38,26 @@
 
 pub use rig_core::*;
 
+// Compile this through the public facade on browser WASM. The equivalent
+// rig-core contract lives beside the compatibility definitions themselves.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+mod browser_wasm_compatibility_contract {
+    use std::rc::Rc;
+
+    use crate::wasm_compat::{BoxFuture, MaybeSend, MaybeSync};
+
+    fn accepts_maybe_thread_safe<T: MaybeSend + MaybeSync>(_: &T) {}
+
+    #[allow(dead_code)]
+    fn facade_accepts_rc_and_local_future() {
+        let state = Rc::new(());
+        accepts_maybe_thread_safe(&state);
+
+        let future: BoxFuture<'static, Rc<()>> = Box::pin(async move { state });
+        drop(future);
+    }
+}
+
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};

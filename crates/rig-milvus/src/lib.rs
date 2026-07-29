@@ -16,7 +16,7 @@ use rig_core::{
         InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
         request::{Filter as CoreFilter, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
+    wasm_compat::{BoxFuture, MaybeSend, MaybeSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -171,9 +171,9 @@ where
 
 impl<Model> InsertDocuments for MilvusVectorStore<Model>
 where
-    Model: EmbeddingModel + Send + Sync,
+    Model: EmbeddingModel + MaybeSend + MaybeSync,
 {
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -238,7 +238,7 @@ where
 
     /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -321,12 +321,12 @@ where
 
 impl<M> VectorStoreIndexDyn for MilvusVectorStore<M>
 where
-    M: EmbeddingModel + Sync + Send,
+    M: EmbeddingModel + MaybeSync + MaybeSend,
 {
     fn top_n<'a>(
         &'a self,
         req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
+    ) -> BoxFuture<'a, TopNResults> {
         Box::pin(async move {
             let req = req.try_map_filter(Filter::try_from)?;
             let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
@@ -339,7 +339,7 @@ where
     fn top_n_ids<'a>(
         &'a self,
         req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+    ) -> BoxFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
         Box::pin(async move {
             let req = req.try_map_filter(Filter::try_from)?;
             let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;

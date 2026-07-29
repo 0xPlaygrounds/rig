@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::wasm_compat::{MaybeSend, MaybeSync};
+
 #[cfg(not(target_family = "wasm"))]
 mod native;
 #[cfg(target_family = "wasm")]
@@ -21,13 +23,18 @@ pub struct DeviceCodePrompt {
     pub user_code: String,
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+type DeviceCodeCallback = dyn Fn(DeviceCodePrompt) + Send + Sync;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+type DeviceCodeCallback = dyn Fn(DeviceCodePrompt);
+
 #[derive(Clone, Default)]
-pub struct DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>);
+pub struct DeviceCodeHandler(Option<Arc<DeviceCodeCallback>>);
 
 impl DeviceCodeHandler {
     pub fn new<F>(handler: F) -> Self
     where
-        F: Fn(DeviceCodePrompt) + Send + Sync + 'static,
+        F: Fn(DeviceCodePrompt) + MaybeSend + MaybeSync + 'static,
     {
         Self(Some(Arc::new(handler)))
     }

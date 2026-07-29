@@ -13,7 +13,6 @@ reqwest = { workspace = true, features = ["json"] }
 rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }

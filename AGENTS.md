@@ -70,10 +70,10 @@ Providers declare capabilities explicitly with `Capable<T>` and `Nothing`.
 
 Rig supports WebAssembly targets.
 
-Use `WasmCompatSend` and `WasmCompatSync` in trait bounds instead of raw `Send`
+Use `MaybeSend` and `MaybeSync` in trait bounds instead of raw `Send`
 and `Sync`.
 
-Use `WasmBoxedFuture` for boxed futures.
+Use `BoxFuture` for boxed futures.
 
 When an error type stores boxed errors, use platform-specific bounds:
 
@@ -148,7 +148,7 @@ Use an appropriate backend-specific filter type.
 
 Return `VectorStoreError` variants instead of ad hoc string errors.
 
-Use `WasmCompatSend` and `WasmCompatSync` bounds.
+Use `MaybeSend` and `MaybeSync` bounds.
 
 ## Agent Hook Changes
 

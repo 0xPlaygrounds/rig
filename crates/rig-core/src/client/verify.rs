@@ -1,4 +1,4 @@
-use crate::{http_client, provider_response, wasm_compat::WasmCompatSend};
+use crate::{http_client, provider_response, wasm_compat::MaybeSend};
 use thiserror::Error;
 
 /// Errors from provider client verification.
@@ -34,7 +34,7 @@ crate::provider_response::impl_provider_response_helpers!(VerifyError);
 /// Clone is required for conversions between client types.
 pub trait VerifyClient {
     /// Verify the configuration.
-    fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + WasmCompatSend;
+    fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + MaybeSend;
 }
 
 #[cfg(test)]

@@ -116,7 +116,7 @@ pub struct WithToolServerHandle {
 /// will be created with all the configured tools.
 pub struct WithBuilderTools {
     tools: ToolSet,
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn>)>,
 }
 
 /// A builder for creating an agent
@@ -605,7 +605,7 @@ where
     pub fn retrieved_tools(
         self,
         sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        index: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
     ) -> AgentBuilder<M, WithBuilderTools> {
         let mut tools = ToolSet::default();
@@ -766,7 +766,7 @@ where
     pub fn retrieved_tools(
         mut self,
         sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        index: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
     ) -> Self {
         self.tool_state

@@ -5,7 +5,7 @@ use crate::{
         ProviderClient,
     },
     http_client::{self, HttpClientExt},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::Deserialize;
 use std::fmt::Debug;
@@ -139,13 +139,7 @@ impl ProviderBuilder for OpenAICompletionsExtBuilder {
 
 impl<H> Client<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + std::fmt::Debug + Default + MaybeSend + MaybeSync + 'static,
 {
     /// Sets where Rig system instructions are placed in Responses requests for
     /// every completion model created from this client. Models capture the
@@ -209,13 +203,7 @@ impl Client<reqwest::Client> {
 
 impl<H> CompletionsClient<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + std::fmt::Debug + Default + MaybeSend + MaybeSync + 'static,
 {
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API. A system-instructions

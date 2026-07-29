@@ -3,7 +3,7 @@
 use crate::markers::{Missing, Provided};
 use crate::{
     http_client, provider_response,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -28,9 +28,15 @@ pub enum AudioGenerationError {
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 
-    /// Error building the audio generation request
+    #[cfg(not(target_family = "wasm"))]
+    /// Error building the audio generation request.
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
+
+    #[cfg(target_family = "wasm")]
+    /// Error building the audio generation request.
+    #[error("RequestError: {0}")]
+    RequestError(#[from] Box<dyn std::error::Error + 'static>),
 
     /// Error parsing the audio generation response
     #[error("ResponseError: {0}")]
@@ -52,8 +58,8 @@ pub struct AudioGenerationResponse<T> {
     pub response: T,
 }
 
-pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync {
-    type Response: Send + Sync;
+pub trait AudioGenerationModel: Sized + Clone + MaybeSend + MaybeSync {
+    type Response: MaybeSend + MaybeSync;
 
     type Client;
 
@@ -64,7 +70,7 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
         request: AudioGenerationRequest,
     ) -> impl std::future::Future<
         Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
-    > + Send;
+    > + MaybeSend;
 
     fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing> {
         AudioGenerationRequestBuilder::new(self.clone())

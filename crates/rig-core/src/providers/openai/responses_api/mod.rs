@@ -26,7 +26,7 @@ use crate::message::{
 use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -2204,16 +2204,15 @@ pub enum OutputRole {
 
 impl<Ext, H> completion::CompletionModel for GenericResponsesCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static,
     Ext: crate::client::Provider
         + ResponsesProviderExt
         + crate::client::DebugExt
         + Clone
-        + WasmCompatSend
-        + WasmCompatSync
+        + MaybeSend
+        + MaybeSync
         + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + Default + std::fmt::Debug + MaybeSend + MaybeSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;

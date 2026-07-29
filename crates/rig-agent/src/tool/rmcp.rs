@@ -77,7 +77,7 @@ use crate::tool::server::{ManagedToolToken, ToolServerHandle};
 use crate::tool::{ToolContext, ToolExecutionError, ToolOutput, ToolResult};
 use rig_core::OneOrMany;
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
-use rig_core::wasm_compat::WasmBoxedFuture;
+use rig_core::wasm_compat::BoxFuture;
 
 /// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolContext`] to have
 /// Rig's MCP registration methods forward it as a call's `_meta`.
@@ -291,7 +291,7 @@ impl McpTool {
         &self,
         args: String,
         meta: Option<rmcp::model::Meta>,
-    ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
+    ) -> BoxFuture<'_, Result<CallToolResult, ToolExecutionError>> {
         let name = self.definition.name.clone();
 
         Box::pin(async move {
@@ -482,7 +482,7 @@ impl ErasedTool for McpTool {
         &'a self,
         args: String,
         context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult> {
+    ) -> BoxFuture<'a, ToolResult> {
         let meta = context.get::<rmcp::model::Meta>().cloned();
         Box::pin(async move {
             match self.execute_mcp(args, meta).await {

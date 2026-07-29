@@ -3,7 +3,7 @@ use crate::{
     http_client::{self, HttpClientExt},
     model::{Model, ModelList, ModelListingError},
     providers::openrouter::Client,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::Deserialize;
 
@@ -43,7 +43,7 @@ pub struct OpenRouterModelLister<H = reqwest::Client> {
 
 impl<H> ModelLister<H> for OpenRouterModelLister<H>
 where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + MaybeSend + MaybeSync + 'static,
 {
     type Client = Client<H>;
 

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use rig_core::{
     memory::MemoryError,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 pub use rig_core::completion::*;
@@ -136,35 +136,35 @@ impl StructuredOutputError {
 }
 
 /// High-level one-shot prompting for the classic runtime.
-pub trait Prompt: WasmCompatSend + WasmCompatSync {
+pub trait Prompt: MaybeSend + MaybeSync {
     /// Send a prompt and return accepted assistant text after runtime orchestration.
     fn prompt(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
+        prompt: impl Into<Message> + MaybeSend,
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: MaybeSend>;
 }
 
 /// High-level prompting with caller-owned canonical chat history.
-pub trait Chat: WasmCompatSend + WasmCompatSync {
+pub trait Chat: MaybeSend + MaybeSync {
     /// Execute one turn and append only committed messages to `chat_history`.
     fn chat(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
         chat_history: &mut Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + MaybeSend;
 }
 
 /// High-level typed structured prompting for the classic runtime.
-pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
+pub trait TypedPrompt: MaybeSend + MaybeSync {
     /// Request type returned for one target output type.
     type TypedRequest<T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
     where
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
+        T: schemars::JsonSchema + DeserializeOwned + MaybeSend + 'static;
 
     /// Send a prompt and deserialize the accepted structured response as `T`.
-    fn prompt_typed<T>(&self, prompt: impl Into<Message> + WasmCompatSend) -> Self::TypedRequest<T>
+    fn prompt_typed<T>(&self, prompt: impl Into<Message> + MaybeSend) -> Self::TypedRequest<T>
     where
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
+        T: schemars::JsonSchema + DeserializeOwned + MaybeSend;
 }
 
 #[cfg(test)]

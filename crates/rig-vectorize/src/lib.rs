@@ -34,6 +34,7 @@ use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
 use rig_core::embeddings::EmbeddingModel;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 use rig_core::{Embed, OneOrMany, embeddings::Embedding};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -79,11 +80,11 @@ impl<M> VectorizeVectorStore<M> {
 
 impl<M> VectorStoreIndex for VectorizeVectorStore<M>
 where
-    M: EmbeddingModel + Sync + Send,
+    M: EmbeddingModel + MaybeSync + MaybeSend,
 {
     type Filter = VectorizeFilter;
 
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -152,9 +153,9 @@ where
 
 impl<M> InsertDocuments for VectorizeVectorStore<M>
 where
-    M: EmbeddingModel + Sync + Send,
+    M: EmbeddingModel + MaybeSync + MaybeSend,
 {
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {

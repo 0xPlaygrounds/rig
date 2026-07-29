@@ -3,7 +3,7 @@
 use crate::{
     client::ModelLister,
     model::{Model, ModelList, ModelListingError},
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 
 /// A [`ModelLister`] that returns a preconfigured list of models.
@@ -27,8 +27,7 @@ impl ModelLister for MockModelLister {
 
     fn list_all(
         &self,
-    ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend
-    {
+    ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + MaybeSend {
         let models = self.models.clone();
         async move { Ok(ModelList::new(models)) }
     }

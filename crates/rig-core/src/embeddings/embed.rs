@@ -9,14 +9,25 @@
 //!
 //! Finally, the module implements [Embed] for many common primitive types.
 
+use crate::wasm_compat::{MaybeSend, MaybeSync};
+
+#[cfg(not(target_family = "wasm"))]
+type BoxedEmbedError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+#[cfg(target_family = "wasm")]
+type BoxedEmbedError = Box<dyn std::error::Error + 'static>;
+
 /// Error type used for when the [Embed::embed] method of the [Embed] trait fails.
 /// Used by default implementations of [Embed] for common types.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
-pub struct EmbedError(#[from] Box<dyn std::error::Error + Send + Sync>);
+pub struct EmbedError(#[from] BoxedEmbedError);
 
 impl EmbedError {
-    pub fn new<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
+    pub fn new<E>(error: E) -> Self
+    where
+        E: std::error::Error + MaybeSend + MaybeSync + 'static,
+    {
         EmbedError(Box::new(error))
     }
 }

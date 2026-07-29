@@ -9,7 +9,6 @@ pub mod sse;
 use crate::wasm_compat::*;
 pub use multipart::MultipartForm;
 pub use reqwest::Client as ReqwestClient;
-use std::pin::Pin;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -75,8 +74,8 @@ async fn non_success_status_error(response: reqwest::Response) -> Error {
     Error::InvalidStatusCodeWithMessage(status, message)
 }
 
-pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
-pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
+pub type LazyBytes = BoxFuture<'static, Result<Bytes>>;
+pub type LazyBody<T> = BoxFuture<'static, Result<T>>;
 
 pub type StreamingResponse = Response<BoxedStream>;
 
@@ -122,40 +121,40 @@ pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
 }
 
 /// A helper trait to make generic requests (both regular and SSE) possible.
-pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
+pub trait HttpClientExt: MaybeSend + MaybeSync {
     /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.
     fn send<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
         T: Into<Bytes>,
-        T: WasmCompatSend,
+        T: MaybeSend,
         U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+        U: MaybeSend + 'static;
 
     /// Send a HTTP request with a multipart body, get a response back (as bytes). Response must be able to be turned back into Bytes (although usually for the response, you will probably want to specify Bytes anyway).
     fn send_multipart<U>(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
         U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+        U: MaybeSend + 'static;
 
     /// Send a HTTP request, get a streamed response back (as a stream of [`bytes::Bytes`].)
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend;
+        T: Into<Bytes> + MaybeSend;
 }
 
 async fn into_lazy_response<U>(response: reqwest::Response) -> Result<Response<LazyBody<U>>>
 where
     U: From<Bytes>,
-    U: WasmCompatSend + 'static,
+    U: MaybeSend + 'static,
 {
     if !response.status().is_success() {
         return Err(non_success_status_error(response).await);
@@ -182,10 +181,10 @@ macro_rules! impl_http_client_ext {
             fn send<T, U>(
                 &self,
                 req: Request<T>,
-            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
             where
                 T: Into<Bytes>,
-                U: From<Bytes> + WasmCompatSend + 'static,
+                U: From<Bytes> + MaybeSend + 'static,
             {
                 let (parts, body) = req.into_parts();
                 let req = self
@@ -202,10 +201,10 @@ macro_rules! impl_http_client_ext {
             fn send_multipart<U>(
                 &self,
                 req: Request<MultipartForm>,
-            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
             where
                 U: From<Bytes>,
-                U: WasmCompatSend + 'static,
+                U: MaybeSend + 'static,
             {
                 let (parts, body) = req.into_parts();
                 let body = reqwest::multipart::Form::from(body);
@@ -224,9 +223,9 @@ macro_rules! impl_http_client_ext {
             fn send_streaming<T>(
                 &self,
                 req: Request<T>,
-            ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
+            ) -> impl Future<Output = Result<StreamingResponse>> + MaybeSend
             where
-                T: Into<Bytes> + WasmCompatSend,
+                T: Into<Bytes> + MaybeSend,
             {
                 let (parts, body) = req.into_parts();
 
@@ -259,9 +258,7 @@ macro_rules! impl_http_client_ext {
 
                     use futures::StreamExt;
 
-                    let mapped_stream: Pin<
-                        Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>,
-                    > = Box::pin(
+                    let mapped_stream: BoxedStream = Box::pin(
                         response
                             .bytes_stream()
                             .map(|chunk| chunk.map_err(|e| Error::Instance(Box::new(e)))),

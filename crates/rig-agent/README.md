@@ -34,7 +34,8 @@ Classic tools that need mutable per-call state implement
 
 **Building for `wasm32-unknown-unknown` is the entire opt-in** — there are no
 wasm feature flags anywhere in the workspace. `rig-core` relaxes its
-`WasmCompat*` bounds from the target alone.
+`MaybeSend`/`MaybeSync` bounds from the target alone; “Maybe” is
+target-conditional, not runtime-optional.
 
 Wasm gates name a `target_os` (`all(target_arch = "wasm32", target_os =
 "unknown")`) rather than a bare `target_arch = "wasm32"`, because the latter

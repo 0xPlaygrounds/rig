@@ -29,7 +29,7 @@ use crate::providers::openai::responses_api::{
 };
 use crate::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use tracing::{Level, enabled};
@@ -266,7 +266,7 @@ impl<H> client::ClientBuilder<ChatGPTBuilder, crate::markers::Missing, H> {
 impl<H> ClientBuilder<H> {
     pub fn on_device_code<F>(self, handler: F) -> Self
     where
-        F: Fn(auth::DeviceCodePrompt) + Send + Sync + 'static,
+        F: Fn(auth::DeviceCodePrompt) + MaybeSend + MaybeSync + 'static,
     {
         self.over_ext(|mut ext| {
             ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
@@ -339,7 +339,7 @@ pub struct ResponsesCompletionModel<H = reqwest::Client> {
 impl<H> ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + Default + Debug + MaybeSend + MaybeSync + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
         Self {
@@ -480,7 +480,7 @@ where
 
 impl<H> Client<H>
 where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + Debug + Default + MaybeSend + MaybeSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
         self.ext().auth.auth_context().await.map(|_| ())
@@ -490,7 +490,7 @@ where
 impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + Default + Debug + MaybeSend + MaybeSync + 'static,
 {
     type Response = responses_api::CompletionResponse;
     type StreamingResponse = responses_api::streaming::StreamingCompletionResponse;
@@ -541,7 +541,7 @@ where
 impl<H> ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + Default + Debug + MaybeSend + MaybeSync + 'static,
 {
     pub async fn stream(
         &self,

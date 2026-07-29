@@ -221,12 +221,12 @@ impl From<RawStreamingToolCall> for ToolCall {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// Provider stream of raw completion chunks on native targets.
 pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
+    futures::stream::BoxStream<'static, Result<RawStreamingChoice<R>, CompletionError>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 /// Provider stream of raw completion chunks on wasm targets.
 pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
+    futures::stream::LocalBoxStream<'static, Result<RawStreamingChoice<R>, CompletionError>>;
 
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the

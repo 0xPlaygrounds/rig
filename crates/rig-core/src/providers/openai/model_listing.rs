@@ -3,7 +3,7 @@ use crate::{
     http_client::{self, HttpClientExt},
     model::{Model, ModelList, ModelListingError},
     providers::openai::Client,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::Deserialize;
 
@@ -36,7 +36,7 @@ pub struct OpenAIModelLister<H = reqwest::Client> {
 
 impl<H> ModelLister<H> for OpenAIModelLister<H>
 where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + MaybeSend + MaybeSync + 'static,
 {
     type Client = Client<H>;
 

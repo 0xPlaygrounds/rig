@@ -9,7 +9,7 @@ use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, ResponseChunk, ResponseChunkKind, StreamingCompletionChunk,
 };
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -237,13 +237,7 @@ impl<H> ResponsesWebSocketSessionBuilder<H> {
 
 impl<H> ResponsesWebSocketSessionBuilder<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + std::fmt::Debug + Default + MaybeSend + MaybeSync + 'static,
 {
     /// Opens the websocket session using the configured builder options.
     pub async fn connect(self) -> Result<ResponsesWebSocketSession<H>, CompletionError> {
@@ -277,13 +271,7 @@ pub struct ResponsesWebSocketSession<H = reqwest::Client> {
 
 impl<H> ResponsesWebSocketSession<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + std::fmt::Debug + Default + MaybeSend + MaybeSync + 'static,
 {
     async fn connect_with_timeouts(
         model: ResponsesCompletionModel<H>,
