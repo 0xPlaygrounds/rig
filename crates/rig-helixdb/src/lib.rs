@@ -1,7 +1,10 @@
 //! HelixDB vector store integration for Rig.
 //!
 //! This crate provides a small HTTP client for HelixDB query endpoints and a
-//! [`HelixDBVectorStore`] implementation of Rig's vector store traits.
+//! [`HelixDBVectorStore`] vector store backend over Rig's vector store data
+//! vocabulary. Queries arrive pre-embedded via
+//! [`rig_core::vector_store::request::VectorSearchRequest`]; the store never
+//! embeds text itself.
 //!
 //! The root `rig` facade re-exports this crate as `rig::helixdb` when the
 //! `helixdb` feature is enabled.
@@ -10,11 +13,15 @@ use std::future::Future;
 
 use reqwest::{Client, StatusCode};
 use rig_core::{
-    embeddings::EmbeddingModel,
-    vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
+    OneOrMany,
+    embeddings::Embedding,
+    vector_store::{
+        SearchHit, StoreRecord, VectorStoreError,
+        request::{Filter, VectorSearchRequest},
+    },
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// A minimal HelixDB HTTP client for running generated Helix queries.
 #[derive(Debug, Clone)]
@@ -133,22 +140,17 @@ where
 ///
 /// Usage:
 /// ```no_run
-/// use rig_core::client::{EmbeddingsClient, ProviderClient};
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
-/// # fn example() -> anyhow::Result<()> {
-/// let openai_model = rig_core::providers::openai::Client::from_env()?
-///     .embedding_model("text-embedding-ada-002");
-///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
-/// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
+/// let vector_store = HelixDBVectorStore::new(helixdb_client);
 /// # let _ = vector_store;
-/// # Ok(())
-/// # }
 /// ```
-pub struct HelixDBVectorStore<C, E> {
+///
+/// Queries and records arrive pre-embedded, so the store holds no embedding
+/// model.
+pub struct HelixDBVectorStore<C> {
     client: C,
-    model: E,
 }
 
 pub type HelixDBFilter = Filter<serde_json::Value>;
@@ -181,14 +183,14 @@ impl QueryInput {
     }
 }
 
-impl<C, E> HelixDBVectorStore<C, E>
+impl<C> HelixDBVectorStore<C>
 where
-    C: HelixDBClient + WasmCompatSend,
-    E: EmbeddingModel,
+    C: HelixDBClient + WasmCompatSend + WasmCompatSync,
+    C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Creates a new HelixDB vector store.
-    pub fn new(client: C, model: E) -> Self {
-        Self { client, model }
+    pub fn new(client: C) -> Self {
+        Self { client }
     }
 
     /// Returns the underlying HelixDB client.
@@ -197,16 +199,17 @@ where
     }
 }
 
-impl<C, E> InsertDocuments for HelixDBVectorStore<C, E>
+impl<C> HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
-    E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
 {
-    async fn insert_documents<Doc: Serialize + rig_core::Embed + WasmCompatSend>(
-        &self,
-        documents: Vec<(Doc, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
-    ) -> Result<(), VectorStoreError> {
+    /// Insert precomputed records into HelixDB.
+    ///
+    /// Each embedding of a record becomes one HelixDB vector carrying the
+    /// record's serialized payload as `json_payload`. HelixDB assigns vector
+    /// ids itself, so [`StoreRecord::id`] is not persisted.
+    pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
         #[derive(Serialize, Deserialize, Clone, Debug, Default)]
         struct QueryInput {
             vector: Vec<f64>,
@@ -219,11 +222,10 @@ where
             doc: String,
         }
 
-        for (document, embeddings) in documents {
-            let json_document = serde_json::to_value(&document)?;
-            let json_document_as_string = serde_json::to_string(&json_document)?;
+        for record in records {
+            let json_document_as_string = serde_json::to_string(&record.payload)?;
 
-            for embedding in embeddings {
+            for embedding in record.embeddings {
                 let embedded_text = embedding.document;
                 let vector: Vec<f64> = embedding.vec;
 
@@ -241,21 +243,28 @@ where
         }
         Ok(())
     }
-}
 
-impl<C, E> VectorStoreIndex for HelixDBVectorStore<C, E>
-where
-    C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
-    E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
-{
-    type Filter = HelixDBFilter;
-
-    async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
+    /// Serializes each document and inserts it. Sugar over [`Self::insert`].
+    pub async fn insert_as<T: Serialize>(
         &self,
-        req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
-    ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {
-        let vector = self.model.embed_text(req.query()).await?.vec;
+        docs: Vec<(String, T, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let records = docs
+            .into_iter()
+            .map(|(id, doc, embeddings)| StoreRecord::new(id, &doc, embeddings))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.insert(records).await
+    }
+
+    /// Returns the top N most similar documents for a pre-embedded query.
+    ///
+    /// The [`SearchHit::payload`] is the stored JSON document; scores are
+    /// cosine similarities.
+    pub async fn top_n(
+        &self,
+        req: VectorSearchRequest<HelixDBFilter>,
+    ) -> Result<Vec<SearchHit>, VectorStoreError> {
+        let vector = req.query().first().vec;
 
         let query_input =
             QueryInput::new(vector, req.samples(), req.threshold().unwrap_or_default());
@@ -293,21 +302,26 @@ where
                         .unwrap_or(true)
             })
             .map(|x| {
-                let doc: T = serde_json::from_str(&x.json_payload)?;
+                let payload: serde_json::Value = serde_json::from_str(&x.json_payload)?;
 
                 // HelixDB gives us the cosine distance, so we need to use `-(cosine_dist - 1)` to get the cosine similarity score.
-                Ok((-(x.score - 1.), x.id, doc))
+                Ok(SearchHit {
+                    id: x.id,
+                    score: -(x.score - 1.),
+                    payload,
+                })
             })
             .collect::<Result<Vec<_>, VectorStoreError>>()?;
 
         Ok(docs)
     }
 
-    async fn top_n_ids(
+    /// Returns the top N most similar document IDs as `(score, id)` tuples.
+    pub async fn top_n_ids(
         &self,
-        req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
-    ) -> Result<Vec<(f64, String)>, rig_core::vector_store::VectorStoreError> {
-        let vector = self.model.embed_text(req.query()).await?.vec;
+        req: VectorSearchRequest<HelixDBFilter>,
+    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        let vector = req.query().first().vec;
 
         let query_input =
             QueryInput::new(vector, req.samples(), req.threshold().unwrap_or_default());
@@ -332,5 +346,21 @@ where
             .collect::<Result<Vec<_>, VectorStoreError>>()?;
 
         Ok(docs)
+    }
+
+    /// Returns the top N most similar documents deserialized into `T` as
+    /// `(score, id, document)` tuples. Sugar over [`Self::top_n`].
+    pub async fn top_n_as<T: DeserializeOwned>(
+        &self,
+        req: VectorSearchRequest<HelixDBFilter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        self.top_n(req)
+            .await?
+            .into_iter()
+            .map(|hit| {
+                let doc = serde_json::from_value(hit.payload)?;
+                Ok((hit.score, hit.id, doc))
+            })
+            .collect()
     }
 }

@@ -21,7 +21,7 @@ use rig_neo4j::Neo4jClient;
 use std::env;
 
 use rig_core::client::EmbeddingsClient;
-use rig_core::{providers::openai::Client, vector_store::VectorStoreIndex};
+use rig_core::{embeddings::EmbeddingModel, providers::openai::Client};
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]
@@ -66,18 +66,19 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.get_index(model, INDEX_NAME).await?;
+    let index = neo4j_client.get_index(INDEX_NAME).await?;
 
     let query = "a historical movie on quebec";
+    // Queries are pre-embedded: embed them with the same model the index was built with.
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(model.embed_text(query).await?)
         .samples(5)
         .filter(SearchFilter::gt("node.year", 1990.into()))
         .build();
 
     // Query the index
     let results = index
-        .top_n::<Movie>(req)
+        .top_n_as::<Movie>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| display::SearchResult {
@@ -92,7 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "A movie where the bad guy wins";
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(model.embed_text(query).await?)
         .samples(1)
         .build();
 

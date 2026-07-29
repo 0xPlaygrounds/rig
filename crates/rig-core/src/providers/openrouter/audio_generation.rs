@@ -58,29 +58,7 @@ where
         &self,
         request: AudioGenerationRequest,
     ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let mut body_map: serde_json::Map<String, serde_json::Value> = [
-            ("model".to_string(), json!(self.model)),
-            ("input".to_string(), json!(request.text)),
-            ("voice".to_string(), json!(request.voice)),
-            ("response_format".to_string(), json!("mp3")),
-            ("speed".to_string(), json!(request.speed)),
-        ]
-        .into_iter()
-        .collect();
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                AudioGenerationError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional audio generation parameters must be a JSON object",
-                )))
-            })?;
-            for (k, v) in params {
-                body_map.insert(k.clone(), v.clone());
-            }
-        }
-
-        let body = serde_json::to_vec(&serde_json::Value::Object(body_map))?;
+        let body = build_audio_generation_body(&self.model, &request)?;
 
         let req = self
             .client
@@ -91,19 +69,58 @@ where
 
         let response = self.client.send(req).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = http_client::text(response).await?;
-            return Err(AudioGenerationError::from_http_response(status, text));
-        }
-
+        let status = response.status();
         let audio: Vec<u8> = response.into_body().await?;
-
-        Ok(AudioGenerationResponse {
-            audio: audio.clone(),
-            response: Bytes::from(audio),
-        })
+        parse_audio_generation_response(status, audio)
     }
+}
+
+/// Build the serialized audio-generation (TTS) request body. Pure.
+pub(crate) fn build_audio_generation_body(
+    model: &str,
+    request: &AudioGenerationRequest,
+) -> Result<Vec<u8>, AudioGenerationError> {
+    let mut body_map: serde_json::Map<String, serde_json::Value> = [
+        ("model".to_string(), json!(model)),
+        ("input".to_string(), json!(request.text)),
+        ("voice".to_string(), json!(request.voice)),
+        ("response_format".to_string(), json!("mp3")),
+        ("speed".to_string(), json!(request.speed)),
+    ]
+    .into_iter()
+    .collect();
+
+    if let Some(ref additional_params) = request.additional_params {
+        let params = additional_params.as_object().ok_or_else(|| {
+            AudioGenerationError::RequestError(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "additional audio generation parameters must be a JSON object",
+            )))
+        })?;
+        for (k, v) in params {
+            body_map.insert(k.clone(), v.clone());
+        }
+    }
+
+    Ok(serde_json::to_vec(&serde_json::Value::Object(body_map))?)
+}
+
+/// Parse an audio-generation response: success bodies are raw audio bytes.
+/// Pure.
+pub(crate) fn parse_audio_generation_response(
+    status: http::StatusCode,
+    body: Vec<u8>,
+) -> Result<AudioGenerationResponse<Bytes>, AudioGenerationError> {
+    if !status.is_success() {
+        return Err(AudioGenerationError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body).into_owned(),
+        ));
+    }
+    Ok(AudioGenerationResponse {
+        audio: body.clone(),
+        response: Bytes::from(body),
+    })
 }
 
 #[cfg(test)]

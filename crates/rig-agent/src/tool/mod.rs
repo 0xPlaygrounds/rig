@@ -549,22 +549,6 @@ impl RegisteredTool {
     }
 }
 
-/// One authoritative registry entry for execution and provider exposure.
-#[derive(Clone)]
-pub(crate) struct ToolRegistration {
-    tool: RegisteredTool,
-    always_exposed: bool,
-}
-
-impl ToolRegistration {
-    fn new(tool: RegisteredTool, always_exposed: bool) -> Self {
-        Self {
-            tool,
-            always_exposed,
-        }
-    }
-}
-
 /// The outcome of one isolated tool dispatch.
 pub(crate) struct ToolDispatch {
     pub(crate) result: ToolResult,
@@ -603,7 +587,7 @@ pub(crate) async fn dispatch_tool(
 /// An ordered collection of tools.
 #[derive(Default)]
 pub struct ToolSet {
-    pub(crate) tools: IndexMap<String, ToolRegistration>,
+    pub(crate) tools: IndexMap<String, RegisteredTool>,
 }
 
 impl ToolSet {
@@ -663,13 +647,12 @@ impl ToolSet {
 
     pub(crate) fn insert(&mut self, tool: RegisteredTool) -> String {
         let name = tool.name();
-        self.insert_registration(name.clone(), ToolRegistration::new(tool, true));
+        self.insert_registration(name.clone(), tool);
         name
     }
 
-    fn insert_registration(&mut self, name: String, mut registration: ToolRegistration) {
+    fn insert_registration(&mut self, name: String, registration: RegisteredTool) {
         if let Some(current) = self.tools.get_mut(&name) {
-            registration.always_exposed |= current.always_exposed;
             *current = registration;
             tracing::warn!(tool_name = %name, "replacing an existing tool registration");
         } else {
@@ -689,29 +672,15 @@ impl ToolSet {
         }
     }
 
-    /// Merge tools that are advertised only when selected by a retrieval index.
-    pub(crate) fn add_retrievable_tools(&mut self, set: ToolSet) {
-        for (name, mut registration) in set.tools {
-            registration.always_exposed = false;
-            self.insert_registration(name, registration);
-        }
-    }
-
     pub(crate) fn get(&self, name: &str) -> Option<&RegisteredTool> {
-        self.tools.get(name).map(|registration| &registration.tool)
-    }
-
-    pub(crate) fn always_exposed_names(&self) -> impl Iterator<Item = &String> {
-        self.tools
-            .iter()
-            .filter_map(|(name, registration)| registration.always_exposed.then_some(name))
+        self.tools.get(name)
     }
 
     /// Provider-facing definitions in registration order.
     pub fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .iter()
-            .map(|(name, registration)| registration.tool.definition_with_name(name.clone()))
+            .map(|(name, registration)| registration.definition_with_name(name.clone()))
             .collect()
     }
 
@@ -739,7 +708,7 @@ impl ToolSet {
     pub fn documents(&self) -> Vec<completion::Document> {
         let mut docs = Vec::new();
         for (name, registration) in &self.tools {
-            let definition = registration.tool.definition_with_name(name.clone());
+            let definition = registration.definition_with_name(name.clone());
             let serialized = serde_json::to_string_pretty(&definition).unwrap_or_else(|error| {
                 tracing::warn!(
                     tool_name = %name,
@@ -764,7 +733,7 @@ impl ToolSet {
     pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
         self.tools
             .iter()
-            .filter_map(|(name, registration)| match &registration.tool {
+            .filter_map(|(name, registration)| match registration {
                 RegisteredTool::Embedding(tool) => Some(
                     tool.serialized_context()
                         .map_err(EmbedError::new)
@@ -1610,7 +1579,7 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
+    async fn portable_embedding_tool_registers_in_classic_registry_without_schema_drift() {
         let tool = PortableEmbeddingFixture::new("shared");
         let portable_schema = ToolSchema::try_from(&tool).unwrap();
         let toolset = ToolSet::builder().retrieved_tool(tool).build();
@@ -1621,17 +1590,12 @@ mod migrated_tests {
         assert_eq!(schemas[0].context, portable_schema.context);
         assert_eq!(schemas[0].embedding_docs, portable_schema.embedding_docs);
 
-        let handle = server::ToolServer::new()
-            .retrieved_tools(
-                1,
-                crate::test_utils::MockToolIndex::new([portable_schema.name.as_str()]),
-                toolset,
-            )
-            .run();
-        let definitions = handle
-            .get_tool_defs(Some("find the shared portable tool".to_string()))
-            .await
-            .unwrap();
+        // Index-backed retrieval is gone; the embedding tool registers like any
+        // other tool and hosts narrow exposure per turn via
+        // `RequestPatch::active_tools`.
+        let handle = server::ToolServer::new().run();
+        handle.append_toolset(toolset).await;
+        let definitions = handle.get_tool_defs().await;
 
         assert_eq!(definitions.len(), 1);
         assert_eq!(definitions[0].name, portable_schema.name);

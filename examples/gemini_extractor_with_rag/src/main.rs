@@ -1,8 +1,11 @@
+use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
+use rig::completion::Document;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::client::Client;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingsBuilder, vector_store::VectorSearchRequest,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,6 +36,46 @@ struct Answer {
 struct QuestionnaireResponses {
     /// The list of responses to the questionnaire
     responses: Vec<Answer>,
+}
+
+/// Passive RAG for the extractor: on every extraction attempt, embed the
+/// input text, search the questionnaire store, and inject the best-matching
+/// questions as per-turn context documents.
+struct QuestionnaireRagHook {
+    embedding_model: gemini::embedding::EmbeddingModel,
+    store: InMemoryVectorStore,
+    samples: u64,
+}
+
+impl AgentHook for QuestionnaireRagHook {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let Some(query) = event.prompt.rag_text() else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let embedded = match self.embedding_model.embed_text(&query).await {
+            Ok(embedding) => embedding,
+            Err(error) => return CompletionCallAction::stop(error.to_string()),
+        };
+        let request = VectorSearchRequest::builder()
+            .query(embedded)
+            .samples(self.samples)
+            .build();
+        match self.store.top_n(request).await {
+            Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                hits.into_iter().map(|hit| Document {
+                    id: hit.id,
+                    text: hit.payload.to_string(),
+                    additional_props: Default::default(),
+                }),
+            )),
+            Err(error) => CompletionCallAction::stop(error.to_string()),
+        }
+    }
 }
 
 const APPLICANT_INFO: &str = r#"
@@ -91,16 +134,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
-    // Create vector store index
-    let index = vector_store.index(embedding_model);
+    let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
+
     let rag_extractor = gemini_client.extractor::<QuestionnaireResponses>("gemini-2.5-flash")
         .preamble("
             You are a questionnaire assistant provided by the procurement department to assist the user in answering the questions.
             You are provided with the questions and based on the information available, you must answer the questions with the right format.
             Use the answer ID field to map the answer to the right question ID. Answer as much as possible without inventing information.
             ")
-        .dynamic_context(3, index) // Samples should match the number of questions
+        // Samples should match the number of questions
+        .add_hook(QuestionnaireRagHook {
+            embedding_model,
+            store: vector_store,
+            samples: 3,
+        })
         .build();
 
     // Prompt the agent and print the response

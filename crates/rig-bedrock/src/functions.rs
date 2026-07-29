@@ -204,6 +204,149 @@ pub async fn open_stream_with_options(
     crate::streaming::stream_converse(client, model, prompt_caching, request).await
 }
 
+// ================================================================
+// Embeddings
+// ================================================================
+
+/// Plain-data Bedrock embeddings configuration.
+///
+/// A sibling of [`Config`]: the same client-construction fields plus the
+/// embedding model identifier and its optional dimension count.
+/// [`Self::client_config`] projects the connection half so the host runtime
+/// can share its cached AWS client machinery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct EmbeddingConfig {
+    /// AWS region (`None` defers to the SDK's default region resolution).
+    pub region: Option<String>,
+    /// Named AWS profile to load credentials from.
+    pub profile: Option<String>,
+    /// Custom endpoint URL override (local stacks, VPC endpoints).
+    pub endpoint_url: Option<String>,
+    /// Embedding model identifier requests are built for.
+    pub model: String,
+    /// Requested embedding dimensions, forwarded as the Titan `dimensions`
+    /// field (`None` sends the classic path's zero-valued default).
+    pub ndims: Option<usize>,
+}
+
+impl EmbeddingConfig {
+    /// Config for `model` using the SDK's default credential chain and
+    /// region resolution.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            region: None,
+            profile: None,
+            endpoint_url: None,
+            model: model.into(),
+            ndims: None,
+        }
+    }
+
+    /// Pin the AWS region.
+    pub fn with_region(mut self, region: impl Into<String>) -> Self {
+        self.region = Some(region.into());
+        self
+    }
+
+    /// Load credentials from a named AWS profile.
+    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
+        self.profile = Some(profile.into());
+        self
+    }
+
+    /// Override the endpoint URL.
+    pub fn with_endpoint_url(mut self, endpoint_url: impl Into<String>) -> Self {
+        self.endpoint_url = Some(endpoint_url.into());
+        self
+    }
+
+    /// Request `ndims`-sized embeddings.
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
+    }
+
+    /// The client-construction half of this config as a [`Config`], for
+    /// sharing a host runtime's cached [`client_from_config`] machinery.
+    pub fn client_config(&self) -> Config {
+        Config {
+            region: self.region.clone(),
+            profile: self.profile.clone(),
+            endpoint_url: self.endpoint_url.clone(),
+            model: self.model.clone(),
+        }
+    }
+}
+
+/// Embed `texts` with `model`, one `InvokeModel` call per document (the
+/// Bedrock embedding API is single-document), summing reported input token
+/// counts into usage.
+///
+/// Extracted from the `EmbeddingModel::embed_texts` trait impl, which is
+/// rewired through this function; per-document error handling is unchanged
+/// (all documents are attempted, the first failure is reported).
+pub async fn embed(
+    client: &aws_sdk_bedrockruntime::Client,
+    model: &str,
+    ndims: Option<usize>,
+    texts: Vec<String>,
+) -> Result<rig_core::embeddings::EmbeddingResponse, rig_core::embeddings::EmbeddingError> {
+    use rig_core::embeddings::{Embedding, EmbeddingError};
+
+    let mut results = Vec::with_capacity(texts.len());
+    let mut errors: Vec<EmbeddingError> = Vec::new();
+    let mut usage = rig_core::completion::Usage::new();
+
+    for doc in texts {
+        let request = crate::embedding::EmbeddingRequest {
+            input_text: doc.clone(),
+            dimensions: ndims.unwrap_or_default(),
+            normalize: true,
+        };
+        match crate::embedding::invoke_embedding(client, model, request).await {
+            Ok(response) => {
+                usage.input_tokens += response.input_text_token_count as u64;
+                usage.total_tokens += response.input_text_token_count as u64;
+                results.push(Embedding {
+                    document: doc,
+                    vec: response.embedding,
+                });
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    match errors.as_slice() {
+        [] => Ok(rig_core::embeddings::EmbeddingResponse {
+            embeddings: results,
+            usage,
+        }),
+        [err, ..] => Err(EmbeddingError::ResponseError(err.to_string())),
+    }
+}
+
+/// Embed caller-defined batches, returning one order-aligned
+/// [`rig_core::OneOrMany`] group per input batch plus summed usage.
+pub async fn embed_batches(
+    client: &aws_sdk_bedrockruntime::Client,
+    model: &str,
+    ndims: Option<usize>,
+    texts: Vec<Vec<String>>,
+) -> Result<
+    (
+        Vec<rig_core::OneOrMany<rig_core::embeddings::Embedding>>,
+        rig_core::completion::Usage,
+    ),
+    rig_core::embeddings::EmbeddingError,
+> {
+    let counts: Vec<usize> = texts.iter().map(Vec::len).collect();
+    let flat: Vec<String> = texts.into_iter().flatten().collect();
+    let response = embed(client, model, ndims, flat).await?;
+    let groups = rig_core::embeddings::batching::group_batches(&counts, response.embeddings)?;
+    Ok((groups, response.usage))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

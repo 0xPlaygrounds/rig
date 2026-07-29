@@ -198,6 +198,73 @@ pub async fn open_stream(
     }
 }
 
+/// The keyed `generateContent` URL for `cfg`'s model.
+fn generate_content_url(cfg: &Config) -> Result<String, crate::http_client::Error> {
+    let path = format!("/v1beta/models/{}:generateContent", cfg.model);
+    let key = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| crate::http_client::Error::Instance(e.into()))?;
+    let query = match key {
+        Some(key) => format!("?key={key}"),
+        None => String::new(),
+    };
+    Ok(format!(
+        "{}/{}{}",
+        cfg.base_url.trim_end_matches('/'),
+        path.trim_start_matches('/'),
+        query
+    ))
+}
+
+fn modality_request(
+    cfg: &Config,
+    body: Vec<u8>,
+) -> Result<http::Request<Vec<u8>>, crate::http_client::Error> {
+    let url = generate_content_url(cfg)?;
+    let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder.body(body).map_err(crate::http_client::Error::from)
+}
+
+/// Transcribe `request` via Gemini's `generateContent` endpoint (audio rides
+/// inline as base64).
+pub async fn transcribe(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::transcription::TranscriptionRequest,
+) -> Result<
+    crate::transcription::TranscriptionResponse<GenerateContentResponse>,
+    crate::transcription::TranscriptionError,
+> {
+    let body = super::transcription::build_transcription_body(request)?;
+    let req = modality_request(cfg, body)?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::transcription::parse_transcription_response(status, &body)
+}
+
+/// Generate an image via Gemini's `generateContent` endpoint.
+#[cfg(feature = "image")]
+pub async fn generate_image(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::image_generation::ImageGenerationRequest,
+) -> Result<
+    crate::image_generation::ImageGenerationResponse<GenerateContentResponse>,
+    crate::image_generation::ImageGenerationError,
+> {
+    let typed = super::image_generation::create_request_body(request)?;
+    let body = serde_json::to_vec(&typed)?;
+    let req = modality_request(cfg, body)?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::image_generation::parse_image_generation_response(
+        status,
+        &String::from_utf8_lossy(&body),
+    )
+}
+
 /// Send `request` to Gemini and return the normalized response.
 pub async fn complete(
     cfg: &Config,
@@ -207,6 +274,143 @@ pub async fn complete(
     let req = build_request(cfg, &request, false)?;
     let (status, body) = rt.send(req).await?;
     parse_response(status, &body)
+}
+
+// ================================================================
+// Embeddings
+// ================================================================
+
+/// Plain-data Gemini embeddings configuration.
+///
+/// A sibling of [`Config`]: embeddings target their own model identifier
+/// plus an optional `output_dimensionality`, which do not belong on the
+/// completion configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct EmbeddingConfig {
+    /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
+    pub base_url: String,
+    /// Credential location; sent as a `key` query parameter.
+    pub api_key: ApiKeyLocation,
+    /// Embedding model identifier requests are built for.
+    pub model: String,
+    /// Requested embedding dimensions, sent per entry as
+    /// `output_dimensionality` when set.
+    pub dimensions: Option<usize>,
+    /// Extra headers attached to every request.
+    pub extra_headers: Vec<(String, String)>,
+}
+
+impl EmbeddingConfig {
+    /// Config for `model` reading `GEMINI_API_KEY` from the environment.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+            api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
+            model: model.into(),
+            dimensions: None,
+            extra_headers: Vec::new(),
+        }
+    }
+
+    /// Config for `model` with an explicit API key.
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = ApiKeyLocation::Inline(key.into());
+        self
+    }
+
+    /// Override the API base URL.
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    /// Request `dimensions`-sized embeddings.
+    pub fn with_dimensions(mut self, dimensions: usize) -> Self {
+        self.dimensions = Some(dimensions);
+        self
+    }
+}
+
+/// Build the complete HTTP `batchEmbedContents` request for one chunk of
+/// `texts`.
+///
+/// Pure except for credential resolution; the resolved key rides as `key=`
+/// in the query string, matching the classic client's URL shape.
+pub fn build_embedding_request(
+    cfg: &EmbeddingConfig,
+    texts: &[String],
+) -> Result<http::Request<Vec<u8>>, crate::embeddings::EmbeddingError> {
+    use crate::embeddings::EmbeddingError;
+
+    let body = super::embedding::build_embedding_body(&cfg.model, texts, cfg.dimensions)?;
+    let key = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
+    let query = match key {
+        Some(key) => format!("?key={key}"),
+        None => String::new(),
+    };
+    let url = format!(
+        "{}/v1beta/models/{}:batchEmbedContents{}",
+        cfg.base_url.trim_end_matches('/'),
+        cfg.model,
+        query
+    );
+    let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(body)
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+}
+
+/// Parse a `batchEmbedContents` response into the normalized
+/// [`crate::embeddings::EmbeddingResponse`]. Pure.
+pub fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    super::embedding::parse_embedding_response(status, body, documents)
+}
+
+/// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
+/// `max_embedding_documents`; embeddings are returned in input order.
+pub async fn embed(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    crate::embeddings::batching::embed_chunked(
+        rt,
+        texts,
+        DESCRIPTOR.max_embedding_documents,
+        |chunk| build_embedding_request(cfg, chunk),
+        parse_embedding_response,
+    )
+    .await
+}
+
+/// Embed caller-defined batches, returning one order-aligned
+/// [`OneOrMany`](crate::OneOrMany) group per input batch plus summed usage.
+pub async fn embed_batches(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<Vec<String>>,
+) -> Result<
+    (
+        Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+        crate::completion::Usage,
+    ),
+    crate::embeddings::EmbeddingError,
+> {
+    let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+    let response = embed(cfg, rt, flat).await?;
+    let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+    Ok((groups, response.usage))
 }
 
 #[cfg(test)]

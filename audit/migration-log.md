@@ -347,3 +347,44 @@ work was recovered from a stash, reconciled, and verified — no work lost.
 **Verification**: workspace check + clippy 0 warnings; full facade suite
 green single-threaded (all targets); rig-core 1081 + rig-agent 490 +
 rig-memory 65; cassettes untouched.
+
+## P8 — Modalities + store de-genericization (COMPLETE)
+
+- **Embeddings**: per-provider `EmbeddingConfig` + free `embed`/`embed_batches`
+  for all 8 in-core embedding providers (pure body/parse helpers extracted,
+  trait impls rewired — single source of truth); shared chunk/regroup
+  machinery (`embeddings/batching.rs`) honoring
+  `DESCRIPTOR.max_embedding_documents`, order-aligned, usage summed.
+  `EmbedderConfig` x-macro enum in rig-agent (+ cfg-gated Bedrock/GeminiGrpc
+  arms reusing the Runtime client caches, serde `MockEmbedder` with shared
+  cursor). fastembed keeps a functions face but no enum arm (local weights
+  aren't honest serde config — documented).
+- **Minor modalities**: all 19 provider×modality impls (transcription,
+  image, audio, rerank) extracted to free functions and rewired;
+  `HttpRuntime` gained binary-safe `send_bytes`/`send_multipart`.
+- **Vector vocabulary** (rig-core): `VectorSearchRequest` is pre-embedded
+  (`OneOrMany<Embedding>`); new `SearchHit`/`StoreRecord`;
+  `VectorStoreIndex`/`VectorStoreIndexDyn`/`InsertDocuments` DELETED — no
+  shared trait replaces them. `InMemoryVectorStore` collapsed to one
+  concrete embedder-free store (LSH preserved).
+- **All 12 store crates de-genericized** (lancedb, qdrant, mongodb, neo4j,
+  postgres, sqlite, scylladb, surrealdb, milvus, s3vectors, helixdb,
+  vectorize): no `EmbeddingModel` parameter, inherent
+  `top_n`/`top_n_ids`/`top_n_as<T>`/`insert`/`insert_as<T>`, concrete
+  per-store filters kept. Notable: `StoreRecord.id` now round-trips where
+  stores previously minted opaque UUIDs (qdrant, s3vectors, vectorize —
+  idempotent upserts); lancedb `top_n_ids` distance bug fixed
+  (`"distance"` → `"_distance"`).
+- **rig-agent**: `dynamic_context`/`retrieved_tools` deleted; passive RAG
+  is a documented hook recipe (embed → `top_n` → `RequestPatch::
+  extra_context`); dynamic tool retrieval is per-turn
+  `RequestPatch::active_tools` — the gemini dynamic_tools cassettes replay
+  byte-identically under the new pattern. Tool-server retrieval plumbing
+  and `ToolServerError` deleted; `ToolEmbedding` vocabulary kept.
+- Examples/READMEs across the workspace rewritten to the pre-embedded
+  patterns (examples/custom_vector_store is the canonical template).
+
+**Verification**: workspace check + clippy 0 warnings; 71 test targets
+green (rig-core 1096+, rig-agent 484+13 doc, full facade suite incl. all
+cassette suites single-threaded, sqlite 50/50, all store crates); cassettes
+untouched.

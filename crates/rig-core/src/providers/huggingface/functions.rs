@@ -109,6 +109,69 @@ pub fn parse_response(
     openai_functions::compatible_parse_response::<Ext>(status, body)
 }
 
+/// The HF Inference modality URL: `{base}/hf-inference/models/{model}`.
+///
+/// The classic client routes minor modalities through the `hf-inference`
+/// sub-provider only; the other sub-providers do not support them.
+fn hf_inference_url(cfg: &Config) -> String {
+    format!(
+        "{}/hf-inference/models/{}",
+        cfg.base_url.trim_end_matches('/'),
+        cfg.model.trim_start_matches('/')
+    )
+}
+
+/// Transcribe `request` with the HF Inference sub-provider.
+pub async fn transcribe(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::transcription::TranscriptionRequest,
+) -> Result<
+    crate::transcription::TranscriptionResponse<super::transcription::TranscriptionResponse>,
+    crate::transcription::TranscriptionError,
+> {
+    use crate::transcription::TranscriptionError;
+
+    let body = super::transcription::build_transcription_body(&request.data)?;
+    let req = openai_functions::bearer_post(
+        hf_inference_url(cfg),
+        &cfg.api_key,
+        &cfg.extra_headers,
+        true,
+    )?
+    .body(body)
+    .map_err(|e| TranscriptionError::RequestError(Box::new(e)))?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::transcription::parse_transcription_response(status, &body)
+}
+
+/// Generate an image with the HF Inference sub-provider.
+#[cfg(feature = "image")]
+pub async fn generate_image(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::image_generation::ImageGenerationRequest,
+) -> Result<
+    crate::image_generation::ImageGenerationResponse<
+        super::image_generation::ImageGenerationResponse,
+    >,
+    crate::image_generation::ImageGenerationError,
+> {
+    use crate::image_generation::ImageGenerationError;
+
+    let body = super::image_generation::build_image_generation_body(&request)?;
+    let req = openai_functions::bearer_post(
+        hf_inference_url(cfg),
+        &cfg.api_key,
+        &cfg.extra_headers,
+        true,
+    )?
+    .body(body)
+    .map_err(|e| ImageGenerationError::RequestError(Box::new(e)))?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::image_generation::parse_image_generation_response(status, body)
+}
+
 /// Open a streaming completion for `request`.
 pub async fn open_stream(
     cfg: &Config,

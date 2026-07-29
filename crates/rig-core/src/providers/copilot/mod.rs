@@ -1317,6 +1317,105 @@ struct CopilotEmbeddingData {
     embedding: Vec<serde_json::Number>,
 }
 
+/// Build the serialized `/embeddings` request body. Pure; shared by the
+/// trait path and [`functions::embed`].
+pub(crate) fn build_embedding_body(
+    model: &str,
+    texts: &[String],
+    dimensions: Option<usize>,
+    encoding_format: Option<&openai::EncodingFormat>,
+    user: Option<&str>,
+) -> Result<Vec<u8>, EmbeddingError> {
+    let mut body = json!({
+        "model": model,
+        "input": texts,
+    });
+
+    let body_object = body.as_object_mut().ok_or_else(|| {
+        EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
+    })?;
+
+    if let Some(dimensions) = dimensions {
+        body_object.insert("dimensions".to_owned(), json!(dimensions));
+    }
+    if let Some(encoding_format) = encoding_format {
+        body_object.insert("encoding_format".to_owned(), json!(encoding_format));
+    }
+    if let Some(user) = user {
+        body_object.insert("user".to_owned(), json!(user));
+    }
+    Ok(serde_json::to_vec(&body)?)
+}
+
+/// Parse an `/embeddings` response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure; shared by the trait path and [`functions::embed`].
+/// Copilot reports no embedding usage.
+pub(crate) fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
+    }
+
+    #[derive(Deserialize)]
+    struct NestedApiError {
+        error: NestedApiErrorMessage,
+    }
+
+    #[derive(Deserialize)]
+    struct NestedApiErrorMessage {
+        message: String,
+    }
+
+    let parsed: CopilotEmbeddingResponse = match serde_json::from_str(body) {
+        Ok(parsed) => parsed,
+        Err(parse_error) => {
+            if let Ok(err) = serde_json::from_str::<NestedApiError>(body) {
+                tracing::warn!(message = %err.error.message, "provider returned an error response");
+                return Err(EmbeddingError::from_http_response(status, body.to_string()));
+            }
+
+            let preview = if body.len() > 512 {
+                let truncated: String = body.chars().take(512).collect();
+                format!("{truncated}...")
+            } else {
+                body.to_string()
+            };
+
+            return Err(EmbeddingError::ProviderError(format!(
+                "Failed to parse Copilot embeddings response: {parse_error}; body: {preview}"
+            )));
+        }
+    };
+
+    if parsed.data.len() != documents.len() {
+        return Err(EmbeddingError::ResponseError(
+            "Response data length does not match input length".into(),
+        ));
+    }
+
+    let embeddings = parsed
+        .data
+        .into_iter()
+        .zip(documents)
+        .map(|(embedding, document)| embeddings::Embedding {
+            document,
+            vec: embedding
+                .embedding
+                .into_iter()
+                .filter_map(|n| n.as_f64())
+                .collect(),
+        })
+        .collect();
+    Ok(embeddings::EmbeddingResponse {
+        embeddings,
+        usage: crate::completion::Usage::new(),
+    })
+}
+
 impl<H> EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
@@ -1369,87 +1468,32 @@ where
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
         let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
-        let mut body = json!({
-            "model": self.model,
-            "input": documents,
-        });
-
-        let body_object = body.as_object_mut().ok_or_else(|| {
-            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
-        })?;
-
-        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
-            body_object.insert("dimensions".to_owned(), json!(self.ndims));
-        }
-        if let Some(encoding_format) = &self.encoding_format {
-            body_object.insert("encoding_format".to_owned(), json!(encoding_format));
-        }
-        if let Some(user) = &self.user {
-            body_object.insert("user".to_owned(), json!(user));
-        }
+        let dimensions = (self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002)
+            .then_some(self.ndims);
+        let body = build_embedding_body(
+            &self.model,
+            &documents,
+            dimensions,
+            self.encoding_format.as_ref(),
+            self.user.as_deref(),
+        )?;
 
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/embeddings", Transport::Http)?,
             &headers,
         )
-        .body(serde_json::to_vec(&body)?)
+        .body(body)
         .map_err(|err| EmbeddingError::HttpError(err.into()))?;
 
         let response = self.client.send(req).await?;
         let status = response.status();
-        if status.is_success() {
+        let body = if status.is_success() {
             let body: Vec<u8> = response.into_body().await?;
-            #[derive(Deserialize)]
-            struct NestedApiError {
-                error: NestedApiErrorMessage,
-            }
-
-            #[derive(Deserialize)]
-            struct NestedApiErrorMessage {
-                message: String,
-            }
-
-            let body: CopilotEmbeddingResponse = match serde_json::from_slice(&body) {
-                Ok(parsed) => parsed,
-                Err(parse_error) => {
-                    if let Ok(err) = serde_json::from_slice::<NestedApiError>(&body) {
-                        tracing::warn!(message = %err.error.message, "provider returned an error response");
-                        return Err(EmbeddingError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&body).into_owned(),
-                        ));
-                    }
-
-                    let preview = String::from_utf8_lossy(&body);
-                    let preview = if preview.len() > 512 {
-                        format!("{}...", &preview[..512])
-                    } else {
-                        preview.into_owned()
-                    };
-
-                    return Err(EmbeddingError::ProviderError(format!(
-                        "Failed to parse Copilot embeddings response: {parse_error}; body: {preview}"
-                    )));
-                }
-            };
-
-            Ok(body
-                .data
-                .into_iter()
-                .zip(documents.into_iter())
-                .map(|(embedding, document)| embeddings::Embedding {
-                    document,
-                    vec: embedding
-                        .embedding
-                        .into_iter()
-                        .filter_map(|n| n.as_f64())
-                        .collect(),
-                })
-                .collect())
+            String::from_utf8_lossy(&body).into_owned()
         } else {
-            let text = http_client::text(response).await?;
-            Err(EmbeddingError::from_http_response(status, text))
-        }
+            http_client::text(response).await?
+        };
+        parse_embedding_response(status, &body, documents).map(|response| response.embeddings)
     }
 }
 

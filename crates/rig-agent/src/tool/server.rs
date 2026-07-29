@@ -10,14 +10,11 @@ use tokio::sync::RwLock;
 use crate::tool::ErasedTool;
 
 use crate::{
-    completion::{CompletionError, ToolDefinition},
+    completion::ToolDefinition,
     tool::{
         DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolContext, ToolDispatch,
         ToolResult, ToolSet, dispatch_tool,
     },
-};
-use rig_core::vector_store::{
-    VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter,
 };
 
 /// One turn's provider definitions and the exact registry entries behind them.
@@ -66,8 +63,6 @@ impl ToolRegistrySnapshot {
 
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
-    /// Vector indexes used to select retrieval-only tools for each prompt.
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The authoritative ordered registry for execution and exposure.
     toolset: ToolSet,
     /// Generation tokens for registrations managed by MCP client handlers.
@@ -125,8 +120,12 @@ impl Eq for ManagedToolToken {}
 ///
 /// Accumulates tools and configuration, then produces a shared handle via
 /// [`run()`](ToolServer::run).
+///
+/// Every registered tool is advertised to the provider. To narrow the
+/// advertised set per turn (the successor of index-backed dynamic tool
+/// retrieval), patch the request from a completion-call hook with
+/// [`RequestPatch::active_tools`](crate::agent::hook::RequestPatch::active_tools).
 pub struct ToolServer {
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     toolset: ToolSet,
 }
 
@@ -139,21 +138,12 @@ impl Default for ToolServer {
 impl ToolServer {
     pub fn new() -> Self {
         Self {
-            retrieval_indexes: Vec::new(),
             toolset: ToolSet::default(),
         }
     }
 
     pub(crate) fn add_tools(mut self, tools: ToolSet) -> Self {
         self.toolset = tools;
-        self
-    }
-
-    pub(crate) fn add_retrieval_indexes(
-        mut self,
-        indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    ) -> Self {
-        self.retrieval_indexes = indexes;
         self
     }
 
@@ -206,22 +196,9 @@ impl ToolServer {
         self
     }
 
-    /// Configure tools retrieved from a vector index for each prompt.
-    pub fn retrieved_tools(
-        mut self,
-        sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
-        toolset: ToolSet,
-    ) -> Self {
-        self.retrieval_indexes.push((sample, Arc::new(index)));
-        self.toolset.add_retrievable_tools(toolset);
-        self
-    }
-
     /// Consume the builder and return a shared [`ToolServerHandle`].
     pub fn run(self) -> ToolServerHandle {
         ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
-            retrieval_indexes: self.retrieval_indexes,
             toolset: self.toolset,
             #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
             managed_generations: HashMap::new(),
@@ -456,129 +433,33 @@ impl ToolServerHandle {
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
 
-    /// Retrieve tool definitions, optionally using a prompt to select
-    /// dynamic tools from configured vector stores.
-    pub async fn get_tool_defs(
-        &self,
-        prompt: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        Ok(self.snapshot_tool_defs(prompt).await?.definitions.clone())
+    /// Retrieve the provider-facing tool definitions in registration order.
+    pub async fn get_tool_defs(&self) -> Vec<ToolDefinition> {
+        self.snapshot_tool_defs().await.definitions.clone()
     }
 
     /// Resolve one ordered provider/dispatch snapshot for an agent turn.
     ///
-    /// Retrieval runs without holding the registry lock. Once the selected IDs
-    /// are known, one read lock resolves every dynamic and always-exposed name
-    /// to an exact implementation. That single instant is the turn boundary:
-    /// later replacements are visible only to the next snapshot.
-    pub(crate) async fn snapshot_tool_defs(
-        &self,
-        prompt: Option<String>,
-    ) -> Result<ToolRegistrySnapshot, ToolServerError> {
-        let retrieval_indexes = {
-            let state = self.0.read().await;
-            state.retrieval_indexes.clone()
-        };
-
-        let dynamic_tool_ids = if let Some(ref text) = prompt {
-            // Create a future for each dynamic tool index
-            let search_futures = retrieval_indexes.iter().map(|(num_sample, index)| {
-                let text = text.clone();
-                let num_sample = *num_sample;
-                let index = index.clone();
-
-                async move {
-                    let req = VectorSearchRequest::builder()
-                        .query(text)
-                        .samples(num_sample as u64)
-                        .build();
-
-                    let ids = index
-                        .as_ref()
-                        .top_n_ids(req.map_filter(Filter::interpret))
-                        .await?
-                        .into_iter()
-                        .map(|(_, id)| id)
-                        .collect::<Vec<String>>();
-
-                    Ok::<_, VectorStoreError>(ids)
-                }
-            });
-
-            // Execute searches concurrently and collect/flatten the IDs
-            futures::future::try_join_all(search_futures)
-                .await
-                .map_err(|e| {
-                    ToolServerError::DefinitionError(CompletionError::RequestError(Box::new(e)))
-                })?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<String>>()
-        } else {
-            Vec::new()
-        };
-
+    /// One read lock resolves every registered name to an exact
+    /// implementation. That single instant is the turn boundary: later
+    /// replacements are visible only to the next snapshot. Per-turn narrowing
+    /// happens afterwards through
+    /// [`RequestPatch::active_tools`](crate::agent::hook::RequestPatch::active_tools).
+    pub(crate) async fn snapshot_tool_defs(&self) -> ToolRegistrySnapshot {
         #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         let tools = {
             let mut state = self.0.write().await;
             state.retire_disconnected_tools();
-            snapshot_registered_tools(&state, dynamic_tool_ids)
+            state.toolset.tools.clone()
         };
         #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
         let tools = {
             let state = self.0.read().await;
-            snapshot_registered_tools(&state, dynamic_tool_ids)
+            state.toolset.tools.clone()
         };
 
-        Ok(ToolRegistrySnapshot::new(tools))
+        ToolRegistrySnapshot::new(tools)
     }
-}
-
-fn snapshot_registered_tools(
-    state: &ToolServerState,
-    dynamic_tool_ids: Vec<String>,
-) -> IndexMap<String, RegisteredTool> {
-    let mut tools = IndexMap::new();
-
-    // Retrieved tools remain first, in index/result order. Duplicate IDs and
-    // dynamic/static overlap retain the first provider declaration.
-    for name in dynamic_tool_ids {
-        if tools.contains_key(&name) {
-            tracing::debug!(
-                tool_name = %name,
-                "dropping duplicate tool definition from the request"
-            );
-            continue;
-        }
-        match state.toolset.get(&name).cloned() {
-            Some(tool) => {
-                tools.insert(name, tool);
-            }
-            None => {
-                tracing::warn!("Tool implementation not found in toolset: {name}");
-            }
-        }
-    }
-
-    for name in state.toolset.always_exposed_names() {
-        if tools.contains_key(name) {
-            tracing::debug!(
-                tool_name = %name,
-                "dropping duplicate tool definition from the request"
-            );
-            continue;
-        }
-        if let Some(tool) = state.toolset.get(name).cloned() {
-            tools.insert(name.clone(), tool);
-        }
-    }
-    tools
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ToolServerError {
-    #[error("Failed to retrieve tool definitions: {0}")]
-    DefinitionError(CompletionError),
 }
 #[cfg(test)]
 mod tests {
@@ -594,11 +475,10 @@ mod tests {
 
     use crate::{
         test_utils::{
-            BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockControlledTool,
-            MockSubtractTool, MockToolIndex,
+            MockAddTool, MockBarrierTool, MockControlledTool, MockSubtractTool,
         },
         tool::{
-            Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolSet,
+            Tool, ToolContext, ToolExecutionError, ToolSet,
             server::{ToolServer, ToolServerHandle},
         },
     };
@@ -683,26 +563,6 @@ mod tests {
         }
     }
 
-    #[derive(Debug, thiserror::Error)]
-    #[error("init error")]
-    struct InitError;
-
-    impl ToolEmbedding for NamedTool {
-        type InitError = InitError;
-        type Context = ();
-        type State = ();
-
-        fn embedding_docs(&self) -> Vec<String> {
-            vec!["named retrieved tool".to_string()]
-        }
-
-        fn context(&self) -> Self::Context {}
-
-        fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-            Ok(Self::new())
-        }
-    }
-
     #[tokio::test]
     pub async fn test_toolserver() {
         let server = ToolServer::new();
@@ -710,7 +570,7 @@ mod tests {
         let handle = server.run();
 
         handle.add_tool(MockAddTool).await;
-        let res = handle.get_tool_defs(None).await.unwrap();
+        let res = handle.get_tool_defs().await;
 
         assert_eq!(res.len(), 1);
 
@@ -722,7 +582,7 @@ mod tests {
         assert_eq!(res, "7");
 
         handle.remove_tool("add").await;
-        let res = handle.get_tool_defs(None).await.unwrap();
+        let res = handle.get_tool_defs().await;
 
         assert_eq!(res.len(), 0);
     }
@@ -735,7 +595,7 @@ mod tests {
                 output: "first implementation",
             })
             .run();
-        let snapshot = handle.snapshot_tool_defs(None).await.unwrap();
+        let snapshot = handle.snapshot_tool_defs().await;
 
         handle
             .add_tool(ReplacementTool {
@@ -755,7 +615,7 @@ mod tests {
             .await;
         assert_eq!(live.result.output().render(), "second implementation");
 
-        let next_snapshot = handle.snapshot_tool_defs(None).await.unwrap();
+        let next_snapshot = handle.snapshot_tool_defs().await;
         assert_eq!(next_snapshot.definitions()[0].description, "second schema");
         let dispatch = next_snapshot
             .dispatch(ReplacementTool::NAME, "{}", &ToolContext::new())
@@ -769,7 +629,7 @@ mod tests {
             let handle = ToolServer::new().run();
             handle.add_tool(MockAddTool).await;
             handle.add_tool(MockSubtractTool).await;
-            handle.get_tool_defs(None).await.unwrap()
+            handle.get_tool_defs().await
         };
         via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -779,7 +639,7 @@ mod tests {
             toolset.add_tool(MockAddTool);
             toolset.add_tool(MockSubtractTool);
             handle.append_toolset(toolset).await;
-            handle.get_tool_defs(None).await.unwrap()
+            handle.get_tool_defs().await
         };
         via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -797,7 +657,7 @@ mod tests {
     pub async fn builder_tool_uses_canonical_static_name() {
         let handle = ToolServer::new().tool(NamedTool::new()).run();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, NamedTool::NAME);
     }
@@ -807,22 +667,7 @@ mod tests {
         let handle = ToolServer::new().run();
         handle.add_tool(NamedTool::new()).await;
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name, NamedTool::NAME);
-    }
-
-    #[tokio::test]
-    pub async fn retrieval_resolves_canonical_key() {
-        let toolset = ToolSet::builder().retrieved_tool(NamedTool::new()).build();
-        let handle = ToolServer::new()
-            .retrieved_tools(1, MockToolIndex::new([NamedTool::NAME]), toolset)
-            .run();
-
-        let defs = handle
-            .get_tool_defs(Some("use the changing tool".to_string()))
-            .await
-            .unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, NamedTool::NAME);
     }
@@ -833,53 +678,10 @@ mod tests {
         handle.add_tool(MockSubtractTool).await;
         handle.add_tool(MockAddTool).await;
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(
             defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
             vec!["subtract", "add"]
-        );
-    }
-
-    #[tokio::test]
-    pub async fn get_tool_defs_dedupes_dynamic_and_static_overlap() {
-        // One shared toolset backs both lists, so a dynamically retrieved
-        // name that is also static must yield a single definition.
-        let handle = ToolServer::new()
-            .tool(MockAddTool)
-            .retrieved_tools(1, MockToolIndex::new(["add"]), ToolSet::default())
-            .run();
-
-        let defs = handle
-            .get_tool_defs(Some("add two numbers".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(
-            defs.len(),
-            1,
-            "dynamic/static name overlap must not produce duplicate declarations: {:?}",
-            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
-        );
-        assert_eq!(defs[0].name, "add");
-    }
-
-    #[tokio::test]
-    async fn retrieval_registration_preserves_existing_always_exposure() {
-        let handle = ToolServer::new()
-            .tool(MockAddTool)
-            .retrieved_tools(
-                1,
-                MockToolIndex::new(["add"]),
-                ToolSet::from_tools(vec![MockAddTool]),
-            )
-            .run();
-
-        let defs = handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(
-            defs.iter()
-                .map(|definition| definition.name.as_str())
-                .collect::<Vec<_>>(),
-            vec!["add"],
-            "merging a retrieval implementation must not demote an always-exposed registration"
         );
     }
 
@@ -892,72 +694,13 @@ mod tests {
         toolset.add_tool(MockAddTool);
         handle.append_toolset(toolset).await;
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(
             defs.len(),
             1,
             "re-registering a name must not advertise duplicate declarations"
         );
         assert_eq!(defs[0].name, "add");
-    }
-
-    #[tokio::test]
-    pub async fn test_toolserver_retrieved_tools() {
-        // Create a toolset with both tools
-        let mut toolset = ToolSet::default();
-        toolset.add_tool(MockAddTool);
-        toolset.add_tool(MockSubtractTool);
-
-        // Create a mock index that will return "subtract" as the dynamic tool
-        let mock_index = MockToolIndex::new(["subtract"]);
-
-        // Build server with static tool "add" and dynamic tools from the mock index
-        let server = ToolServer::new().tool(MockAddTool).retrieved_tools(
-            1,
-            mock_index,
-            ToolSet::from_tools(vec![MockSubtractTool]),
-        );
-
-        let handle = server.run();
-
-        // Test with None prompt - should only return static tools
-        let res = handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0].name, "add");
-
-        // Test with Some prompt - should return both static and dynamic tools
-        let res = handle
-            .get_tool_defs(Some("calculate difference".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(res.len(), 2);
-
-        // Check that both tools are present (order may vary)
-        let tool_names: Vec<&str> = res.iter().map(|t| t.name.as_str()).collect();
-        assert!(tool_names.contains(&"add"));
-        assert!(tool_names.contains(&"subtract"));
-    }
-
-    #[tokio::test]
-    pub async fn test_toolserver_retrieved_tools_missing_implementation() {
-        // Create a mock index that returns a tool ID that doesn't exist in the toolset
-        let mock_index = MockToolIndex::new(["nonexistent_tool"]);
-
-        // Build server with only static tool, but dynamic index references missing tool
-        let server =
-            ToolServer::new()
-                .tool(MockAddTool)
-                .retrieved_tools(1, mock_index, ToolSet::default());
-
-        let handle = server.run();
-
-        // Test with Some prompt - should only return static tool since dynamic tool is missing
-        let res = handle
-            .get_tool_defs(Some("some query".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0].name, "add");
     }
 
     #[tokio::test]
@@ -1023,46 +766,6 @@ mod tests {
         allow_finish.notify_one();
         let call_result = call_task.await.unwrap();
         assert_eq!(call_result.unwrap(), "42");
-    }
-
-    #[tokio::test]
-    pub async fn test_toolserver_parallel_retrieval() {
-        // We expect exactly 2 parallel searches to hit the barrier at the same time
-        let barrier = Arc::new(tokio::sync::Barrier::new(2));
-
-        let index1 = BarrierMockToolIndex::new(barrier.clone(), "add");
-        let index2 = BarrierMockToolIndex::new(barrier.clone(), "subtract");
-
-        // Put both tools in the toolset so they resolve correctly
-        let mut toolset = ToolSet::default();
-        toolset.add_tool(MockAddTool);
-        toolset.add_tool(MockSubtractTool);
-
-        let server = ToolServer::new()
-            .retrieved_tools(1, index1, ToolSet::default())
-            .retrieved_tools(1, index2, toolset);
-
-        let handle = server.run();
-
-        // This will trigger a search across both indices.
-        // If fetched sequentially, the first index will wait at the barrier forever.
-        let get_defs = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            handle.get_tool_defs(Some("do math".to_string())),
-        )
-        .await;
-
-        assert!(
-            get_defs.is_ok(),
-            "Dynamic tools were fetched sequentially! The first query deadlocked waiting for the second query to start."
-        );
-
-        let defs = get_defs.unwrap().unwrap();
-        assert_eq!(defs.len(), 2);
-
-        let tool_names: Vec<&str> = defs.iter().map(|t| t.name.as_str()).collect();
-        assert!(tool_names.contains(&"add"));
-        assert!(tool_names.contains(&"subtract"));
     }
 
     #[derive(Clone)]

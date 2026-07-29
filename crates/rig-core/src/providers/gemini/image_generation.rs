@@ -76,26 +76,42 @@ where
 
         let status = response.status();
         let text = http_client::text(response).await?;
+        parse_image_generation_response(status, &text)
+    }
+}
 
-        if !status.is_success() {
-            return Err(ImageGenerationError::from_http_response(status, text));
-        }
+/// Parse a `generateContent` image-generation response body. Pure.
+pub(crate) fn parse_image_generation_response(
+    status: http::StatusCode,
+    text: &str,
+) -> Result<
+    image_generation::ImageGenerationResponse<GenerateContentResponse>,
+    ImageGenerationError,
+> {
+    if !status.is_success() {
+        return Err(ImageGenerationError::from_http_response(
+            status,
+            text.to_string(),
+        ));
+    }
 
-        match serde_json::from_str::<ApiResponse<GenerateContentResponse>>(&text)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.error.message, "provider returned an error response");
-                Err(ImageGenerationError::from_http_response(status, text))
-            }
+    match serde_json::from_str::<ApiResponse<GenerateContentResponse>>(text)? {
+        ApiResponse::Ok(response) => response.try_into(),
+        ApiResponse::Err(err) => {
+            tracing::warn!(message = %err.error.message, "provider returned an error response");
+            Err(ImageGenerationError::from_http_response(
+                status,
+                text.to_string(),
+            ))
         }
     }
 }
 
-fn generate_content_path(model: &str) -> String {
+pub(crate) fn generate_content_path(model: &str) -> String {
     format!("/v1beta/models/{model}:generateContent")
 }
 
-fn create_request_body(
+pub(crate) fn create_request_body(
     generation_request: ImageGenerationRequest,
 ) -> Result<Value, ImageGenerationError> {
     let request = GenerateContentRequest {

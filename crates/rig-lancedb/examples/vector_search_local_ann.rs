@@ -6,7 +6,6 @@ use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::Client,
-    vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
@@ -67,16 +66,19 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
-    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
+    let vector_store_index = LanceDbVectorIndex::new(table, "id", search_params).await?;
 
+    // Queries are pre-embedded: embed the query text with the embedding model
+    // and pass the embedding to the search request.
     let query = "My boss says I zindle too much, what does that mean?";
+    let query_embedding = model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
     // Query the index
-    let results = vector_store_index.top_n::<Word>(req).await?;
+    let results = vector_store_index.top_n_as::<Word>(req).await?;
 
     println!("Results: {results:?}");
 

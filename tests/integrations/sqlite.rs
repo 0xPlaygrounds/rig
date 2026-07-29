@@ -13,7 +13,7 @@ use rig::client::EmbeddingsClient;
 use rig::sqlite::{
     Column, ColumnValue, SqliteSearchFilter, SqliteVectorStore, SqliteVectorStoreTable,
 };
-use rig::vector_store::{InsertDocuments, VectorStoreIndex};
+use rig::embeddings::EmbeddingModel as _;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingsBuilder},
@@ -164,7 +164,7 @@ async fn vector_search_test() {
     let embeddings = create_embeddings(model.clone()).await;
 
     // Initialize SQLite vector store
-    let vector_store = SqliteVectorStore::new(conn, &model)
+    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn, model.ndims())
         .await
         .expect("Could not initialize SQLite vector store");
 
@@ -174,18 +174,21 @@ async fn vector_search_test() {
         .await
         .expect("Could not add embeddings to vector store");
 
-    // Create a vector index on our vector store
-    let index = vector_store.index(model);
+    // Embed the query, then send the pre-embedded request
     let query = "What is a glarb?";
+    let query_embedding = model.embed_text(query).await.expect("");
     let samples = 1;
     let req = VectorSearchRequest::builder()
         .samples(samples)
-        .query(query)
+        .query(query_embedding)
         .filter(SqliteSearchFilter::eq("id", "doc1".into()))
         .build();
 
-    // Query the index
-    let results = index.top_n::<serde_json::Value>(req).await.expect("");
+    // Query the store
+    let results = vector_store
+        .top_n_as::<serde_json::Value>(req)
+        .await
+        .expect("");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].1, "doc1");
 }
@@ -247,12 +250,18 @@ async fn insert_documents_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = create_embeddings(model.clone()).await;
 
-    let vector_store: SqliteVectorStore<_, Word> = SqliteVectorStore::new(conn.clone(), &model)
-        .await
-        .expect("Could not initialize SQLite vector store");
+    let vector_store: SqliteVectorStore<Word> =
+        SqliteVectorStore::new(conn.clone(), model.ndims())
+            .await
+            .expect("Could not initialize SQLite vector store");
 
     vector_store
-        .insert_documents(embeddings)
+        .insert_as(
+            embeddings
+                .into_iter()
+                .map(|(doc, embeddings)| (doc.id.clone(), doc, embeddings))
+                .collect(),
+        )
         .await
         .expect("Could not add embeddings to vector store");
 

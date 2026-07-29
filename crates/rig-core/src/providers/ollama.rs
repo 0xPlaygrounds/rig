@@ -258,10 +258,7 @@ where
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let docs: Vec<String> = documents.into_iter().collect();
 
-        let body = serde_json::to_vec(&json!({
-            "model": self.model,
-            "input": docs
-        }))?;
+        let body = build_embedding_body(&self.model, &docs)?;
 
         let req = self
             .client
@@ -272,27 +269,57 @@ where
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
         let status = response.status();
-        if !status.is_success() {
-            let text = http_client::text(response).await?;
-            return Err(EmbeddingError::from_http_response(status, text));
-        }
-
-        let bytes: Vec<u8> = response.into_body().await?;
-
-        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
-
-        if api_resp.embeddings.len() != docs.len() {
-            return Err(EmbeddingError::ResponseError(
-                "Number of returned embeddings does not match input".into(),
-            ));
-        }
-        Ok(api_resp
-            .embeddings
-            .into_iter()
-            .zip(docs.into_iter())
-            .map(|(vec, document)| embeddings::Embedding { document, vec })
-            .collect())
+        let body = if status.is_success() {
+            let bytes: Vec<u8> = response.into_body().await?;
+            String::from_utf8_lossy(&bytes).into_owned()
+        } else {
+            http_client::text(response).await?
+        };
+        parse_embedding_response(status, &body, docs).map(|response| response.embeddings)
     }
+}
+
+/// Build the serialized `/api/embed` request body. Pure; shared by the
+/// trait path and [`functions::embed`].
+pub(crate) fn build_embedding_body(model: &str, texts: &[String]) -> Result<Vec<u8>, EmbeddingError> {
+    Ok(serde_json::to_vec(&json!({
+        "model": model,
+        "input": texts
+    }))?)
+}
+
+/// Parse an `/api/embed` response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure; shared by the trait path and [`functions::embed`].
+/// Usage is taken from `prompt_eval_count` when present.
+pub(crate) fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
+    }
+
+    let api_resp: EmbeddingResponse = serde_json::from_str(body)?;
+
+    if api_resp.embeddings.len() != documents.len() {
+        return Err(EmbeddingError::ResponseError(
+            "Number of returned embeddings does not match input".into(),
+        ));
+    }
+    let mut usage = crate::completion::Usage::new();
+    if let Some(prompt_eval_count) = api_resp.prompt_eval_count {
+        usage.input_tokens = prompt_eval_count;
+        usage.total_tokens = prompt_eval_count;
+    }
+    let embeddings = api_resp
+        .embeddings
+        .into_iter()
+        .zip(documents)
+        .map(|(vec, document)| embeddings::Embedding { document, vec })
+        .collect();
+    Ok(embeddings::EmbeddingResponse { embeddings, usage })
 }
 
 // ---------- Completion API ----------
@@ -1487,6 +1514,127 @@ pub mod functions {
         let req = build_request(cfg, &request, false)?;
         let (status, body) = rt.send(req).await?;
         parse_response(status, &body)
+    }
+
+    // ================================================================
+    // Embeddings
+    // ================================================================
+
+    /// Plain-data Ollama embeddings configuration.
+    ///
+    /// A sibling of [`Config`]: embeddings target their own model
+    /// identifier.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct EmbeddingConfig {
+        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
+        pub base_url: String,
+        /// Credential location ([`ApiKeyLocation::None`] by default).
+        pub api_key: ApiKeyLocation,
+        /// Embedding model identifier requests are built for.
+        pub model: String,
+        /// Extra headers attached to every request.
+        pub extra_headers: Vec<(String, String)>,
+    }
+
+    impl EmbeddingConfig {
+        /// Config for `model` against a local unauthenticated Ollama.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                base_url: DEFAULT_BASE_URL.to_string(),
+                api_key: ApiKeyLocation::None,
+                model: model.into(),
+                extra_headers: Vec::new(),
+            }
+        }
+
+        /// Config for `model` with an explicit Bearer token (proxied
+        /// deployments).
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Build the complete HTTP `/api/embed` request for one chunk of
+    /// `texts`.
+    ///
+    /// Pure except for credential resolution.
+    pub fn build_embedding_request(
+        cfg: &EmbeddingConfig,
+        texts: &[String],
+    ) -> Result<http::Request<Vec<u8>>, crate::embeddings::EmbeddingError> {
+        use crate::embeddings::EmbeddingError;
+
+        let body = super::build_embedding_body(&cfg.model, texts)?;
+        let url = format!("{}/api/embed", cfg.base_url.trim_end_matches('/'));
+        let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
+        {
+            builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        builder
+            .body(body)
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+    }
+
+    /// Parse an `/api/embed` response into the normalized
+    /// [`crate::embeddings::EmbeddingResponse`]. Pure.
+    pub fn parse_embedding_response(
+        status: http::StatusCode,
+        body: &str,
+        documents: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+        super::parse_embedding_response(status, body, documents)
+    }
+
+    /// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
+    /// `max_embedding_documents`; embeddings are returned in input order.
+    pub async fn embed(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+        crate::embeddings::batching::embed_chunked(
+            rt,
+            texts,
+            DESCRIPTOR.max_embedding_documents,
+            |chunk| build_embedding_request(cfg, chunk),
+            parse_embedding_response,
+        )
+        .await
+    }
+
+    /// Embed caller-defined batches, returning one order-aligned
+    /// [`OneOrMany`](crate::OneOrMany) group per input batch plus summed
+    /// usage.
+    pub async fn embed_batches(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<Vec<String>>,
+    ) -> Result<
+        (
+            Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+            crate::completion::Usage,
+        ),
+        crate::embeddings::EmbeddingError,
+    > {
+        let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+        let response = embed(cfg, rt, flat).await?;
+        let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+        Ok((groups, response.usage))
     }
 
     #[cfg(test)]

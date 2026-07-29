@@ -2,16 +2,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use schemars::{JsonSchema, Schema, schema_for};
 
-use rig_core::{
-    memory::ConversationMemory,
-    message::ToolChoice,
-    vector_store::{VectorSearchRequest, VectorStoreIndexDyn},
-};
+use rig_core::{memory::ConversationMemory, message::ToolChoice};
 
 use crate::{
-    agent::hook::{
-        AgentHook, CompletionCall, CompletionCallAction, HookContext, HookStack, RequestPatch,
-    },
+    agent::hook::{AgentHook, HookStack},
     completion::Document,
     provider::{ProviderConfig, Runtime},
     tool::{
@@ -25,51 +19,6 @@ use crate::{
 use crate::tool::rmcp::McpTool as RmcpTool;
 
 use super::{Agent, OutputMode};
-
-struct DynamicContext<I> {
-    samples: usize,
-    index: I,
-}
-
-impl<I> AgentHook for DynamicContext<I>
-where
-    I: VectorStoreIndexDyn,
-{
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCall<'_>,
-    ) -> CompletionCallAction {
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
-            return CompletionCallAction::continue_run();
-        };
-
-        let request = VectorSearchRequest::builder()
-            .query(query)
-            .samples(self.samples as u64)
-            .build();
-        match self.index.top_n(request).await {
-            Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                results.into_iter().map(|(_, id, value)| Document {
-                    id,
-                    text:
-                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
-                    additional_props: Default::default(),
-                }),
-            )),
-            Err(error) => {
-                CompletionCallAction::stop(format!("failed to retrieve dynamic context: {error}"))
-            }
-        }
-    }
-}
 
 /// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
 /// timeout to each (`None` disables it; see issue #1914). Returns
@@ -94,8 +43,8 @@ fn build_rmcp_tools(
 ///
 /// This is the default state for a new `AgentBuilder`. From this state,
 /// you can either:
-/// - Add tools via `.tool()`, `.dynamic_tool()`, `.dynamic_tools()`, or
-///   `.retrieved_tools()` (transitions to `WithBuilderTools`)
+/// - Add tools via `.tool()`, `.dynamic_tool()`, or `.dynamic_tools()`
+///   (transitions to `WithBuilderTools`)
 /// - Set a pre-existing `ToolServerHandle` via `.tool_server_handle()` (transitions to `WithToolServerHandle`)
 /// - Call `.build()` to create an agent with no tools
 #[derive(Default)]
@@ -112,12 +61,11 @@ pub struct WithToolServerHandle {
 /// Typestate indicating tools are being configured via the builder API.
 ///
 /// In this state, you can continue adding tools via `.tool()`,
-/// `.dynamic_tool()`, `.dynamic_tools()`, and `.retrieved_tools()`. When
+/// `.dynamic_tool()`, and `.dynamic_tools()`. When
 /// `.build()` is called, a new `ToolServer`
 /// will be created with all the configured tools.
 pub struct WithBuilderTools {
     tools: ToolSet,
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
 }
 
 /// A builder for creating an agent
@@ -233,22 +181,6 @@ impl<ToolState> AgentBuilder<ToolState> {
             additional_props: HashMap::new(),
         });
         self
-    }
-
-    /// Add dynamic context retrieved from a vector store on every model call.
-    ///
-    /// This is a convenience wrapper around an internal completion-call hook.
-    /// The hook searches with the current prompt's first text part, falling back
-    /// to the latest textual history message, and appends the retrieved documents
-    /// to the request after static context. Retrieval and injected documents
-    /// follow registration order relative to application hooks, so register a
-    /// stop policy before this helper when it should prevent retrieval. A
-    /// retrieval failure stops the run before provider I/O.
-    pub fn dynamic_context<I>(self, samples: usize, index: I) -> Self
-    where
-        I: VectorStoreIndexDyn + 'static,
-    {
-        self.add_hook(DynamicContext { samples, index })
     }
 
     /// Set the tool choice for the agent
@@ -442,10 +374,7 @@ impl AgentBuilder<NoToolConfig> {
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
-            tool_state: WithBuilderTools {
-                tools,
-                retrieval_indexes: vec![],
-            },
+            tool_state: WithBuilderTools { tools },
             hooks: self.hooks,
             output_schema: self.output_schema,
             output_mode: self.output_mode,
@@ -492,10 +421,7 @@ impl AgentBuilder<NoToolConfig> {
             output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                tools,
-                retrieval_indexes: vec![],
-            },
+            tool_state: WithBuilderTools { tools },
         }
     }
 
@@ -596,43 +522,6 @@ impl AgentBuilder<NoToolConfig> {
                     }
                     set
                 },
-                retrieval_indexes: vec![],
-            },
-        }
-    }
-
-    /// Configure tools retrieved from a vector index for each prompt.
-    ///
-    /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn retrieved_tools(
-        self,
-        sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
-        toolset: ToolSet,
-    ) -> AgentBuilder<WithBuilderTools> {
-        let mut tools = ToolSet::default();
-        tools.add_retrievable_tools(toolset);
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            provider: self.provider,
-            runtime: self.runtime,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                tools,
-                retrieval_indexes: vec![(sample, Arc::new(index))],
             },
         }
     }
@@ -761,30 +650,12 @@ impl AgentBuilder<WithBuilderTools> {
         self
     }
 
-    /// Configure tools retrieved from a vector index for each prompt.
-    pub fn retrieved_tools(
-        mut self,
-        sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
-        toolset: ToolSet,
-    ) -> Self {
-        self.tool_state
-            .retrieval_indexes
-            .push((sample, Arc::new(index)));
-        self.tool_state.tools.add_retrievable_tools(toolset);
-        self
-    }
-
     /// Build the agent with the configured tools.
     ///
     /// A new `ToolServer` will be created containing all tools added via
-    /// `.tool()`, `.dynamic_tool()`, `.dynamic_tools()`, and
-    /// `.retrieved_tools()`.
+    /// `.tool()`, `.dynamic_tool()`, and `.dynamic_tools()`.
     pub fn build(self) -> Agent {
-        let tool_server_handle = ToolServer::new()
-            .add_tools(self.tool_state.tools)
-            .add_retrieval_indexes(self.tool_state.retrieval_indexes)
-            .run();
+        let tool_server_handle = ToolServer::new().add_tools(self.tool_state.tools).run();
 
         Agent {
             name: self.name,
@@ -812,7 +683,7 @@ impl AgentBuilder<WithBuilderTools> {
 mod tests {
     use super::*;
     use crate::provider::MockScript;
-    use crate::test_utils::{MockAddTool, MockSubtractTool, MockToolIndex};
+    use crate::test_utils::MockAddTool;
     use crate::tool::{ToolContext, ToolExecutionError};
     use rig_core::OneOrMany;
     use rig_core::completion::{CompletionResponse, Usage};
@@ -882,7 +753,7 @@ mod tests {
                 .tool(NamedTool::new())
                 .build(),
         ] {
-            let definitions = agent.tool_server_handle.get_tool_defs(None).await.unwrap();
+            let definitions = agent.tool_server_handle.get_tool_defs().await;
             assert!(
                 definitions
                     .iter()
@@ -898,56 +769,6 @@ mod tests {
             assert!(result.is_success());
             assert_eq!(result.output().as_text(), Some("ok"));
         }
-    }
-
-    #[tokio::test]
-    async fn retrieved_tools_are_exposed_only_for_prompted_retrieval() {
-        let retrieval_only = AgentBuilder::new(mock_text("ok"))
-            .retrieved_tools(
-                1,
-                MockToolIndex::new(["add"]),
-                ToolSet::from_tools(vec![MockAddTool]),
-            )
-            .build();
-        assert!(
-            retrieval_only
-                .tool_server_handle
-                .get_tool_defs(None)
-                .await
-                .unwrap()
-                .is_empty()
-        );
-
-        let agent = AgentBuilder::new(mock_text("ok"))
-            .tool(MockSubtractTool)
-            .retrieved_tools(
-                1,
-                MockToolIndex::new(["add"]),
-                ToolSet::from_tools(vec![MockAddTool]),
-            )
-            .build();
-
-        let always = agent.tool_server_handle.get_tool_defs(None).await.unwrap();
-        assert_eq!(
-            always
-                .iter()
-                .map(|definition| definition.name.as_str())
-                .collect::<Vec<_>>(),
-            vec!["subtract"]
-        );
-
-        let with_retrieval = agent
-            .tool_server_handle
-            .get_tool_defs(Some("add two numbers".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(
-            with_retrieval
-                .iter()
-                .map(|definition| definition.name.as_str())
-                .collect::<Vec<_>>(),
-            vec!["add", "subtract"]
-        );
     }
 
     /// The builder's shared MCP helper threads the configured timeout (default,

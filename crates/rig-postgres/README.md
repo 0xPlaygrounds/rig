@@ -120,14 +120,26 @@ Example usage
         .build()
         .await?;
 
-    // Create your index
-    let vector_store = PostgresVectorStore::default(model, pool);
+    // Create your vector store; queries arrive pre-embedded
+    let vector_store = PostgresVectorStore::with_defaults(pool);
 
-    // store documents
-    vector_store.insert_documents(documents).await?;
+    // store documents (the table id column is a UUID)
+    vector_store
+        .insert_as(
+            documents
+                .into_iter()
+                .map(|(doc, embeddings)| (uuid::Uuid::new_v4().to_string(), doc, embeddings))
+                .collect(),
+        )
+        .await?;
 
-    // retrieve embeddings
-    let results = vector_store.top_n::<Product>("Which phones have more than 16Gb and support 5G", 50).await?
+    // embed the query, then retrieve matches
+    let query_embedding = model.embed_text("Which phones have more than 16Gb and support 5G").await?;
+    let req = VectorSearchRequest::builder()
+        .query(query_embedding)
+        .samples(50)
+        .build();
+    let results = vector_store.top_n_as::<Product>(req).await?;
 
     ...
 

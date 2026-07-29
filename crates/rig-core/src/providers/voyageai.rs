@@ -204,12 +204,7 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
-        let request = json!({
-            "model": self.model,
-            "input": documents,
-        });
-
-        let body = serde_json::to_vec(&request)?;
+        let body = build_embedding_body(&self.model, &documents)?;
 
         let req = self
             .client
@@ -220,57 +215,388 @@ where
         let response = self.client.send::<_, Bytes>(req).await?;
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();
+        let body = String::from_utf8_lossy(&response_body).into_owned();
 
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<EmbeddingResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "VoyageAI embedding token usage: {}",
-                        response.usage.total_tokens
-                    );
+        parse_embedding_response(status, &body, documents)
+    }
+}
 
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
+/// Build the serialized `/embeddings` request body. Pure; shared by the
+/// trait path and [`functions::embed`].
+pub(crate) fn build_embedding_body(model: &str, texts: &[String]) -> Result<Vec<u8>, EmbeddingError> {
+    Ok(serde_json::to_vec(&json!({
+        "model": model,
+        "input": texts,
+    }))?)
+}
 
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.total_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    };
+/// Parse an `/embeddings` response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure; shared by the trait path and [`functions::embed`].
+pub(crate) fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
+    }
+    match serde_json::from_str::<ApiResponse<EmbeddingResponse>>(body)? {
+        ApiResponse::Ok(response) => {
+            tracing::info!(target: "rig",
+                "VoyageAI embedding token usage: {}",
+                response.usage.total_tokens
+            );
 
-                    let embeddings = response
-                        .data
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding.embedding,
-                        })
-                        .collect();
-
-                    Ok(embeddings::EmbeddingResponse { embeddings, usage })
-                }
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(EmbeddingError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
+            if response.data.len() != documents.len() {
+                return Err(EmbeddingError::ResponseError(
+                    "Response data length does not match input length".into(),
+                ));
             }
-        } else {
-            Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body),
-            ))
+
+            let usage = crate::completion::Usage {
+                input_tokens: response.usage.total_tokens as u64,
+                output_tokens: 0,
+                total_tokens: response.usage.total_tokens as u64,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            };
+
+            let embeddings = response
+                .data
+                .into_iter()
+                .zip(documents)
+                .map(|(embedding, document)| embeddings::Embedding {
+                    document,
+                    vec: embedding.embedding,
+                })
+                .collect();
+
+            Ok(embeddings::EmbeddingResponse { embeddings, usage })
         }
+        ApiResponse::Err(err) => {
+            tracing::warn!(message = %err.message, "provider returned an error response");
+            Err(EmbeddingError::from_http_response(status, body.to_string()))
+        }
+    }
+}
+
+pub mod functions {
+    //! Voyage AI embeddings as config + pure functions.
+    //!
+    //! Voyage AI is an embeddings/rerank provider with no completion
+    //! surface, so unlike its siblings this `functions` module carries only
+    //! the embedding face: a serde [`EmbeddingConfig`], a [`DESCRIPTOR`]
+    //! capability sheet, pure [`build_embedding_request`] /
+    //! [`parse_embedding_response`] free functions, and the async
+    //! [`embed`]/[`embed_batches`] wrappers over
+    //! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
+
+    use http::header::{AUTHORIZATION, CONTENT_TYPE};
+    use serde::{Deserialize, Serialize};
+
+    use crate::embeddings::EmbeddingError;
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+
+    /// Default Voyage AI API base URL.
+    pub const DEFAULT_BASE_URL: &str = "https://api.voyageai.com/v1";
+
+    /// Voyage AI's capability sheet (embeddings only; the completion flags
+    /// stay at their `named` defaults because there is no chat surface).
+    pub const DESCRIPTOR: ProviderDescriptor =
+        ProviderDescriptor::named("voyageai").with_max_embedding_documents(1024);
+
+    /// Plain-data Voyage AI embeddings configuration.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct EmbeddingConfig {
+        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
+        pub base_url: String,
+        /// Credential location.
+        pub api_key: ApiKeyLocation,
+        /// Embedding model identifier requests are built for.
+        pub model: String,
+        /// Extra headers attached to every request.
+        pub extra_headers: Vec<(String, String)>,
+    }
+
+    impl EmbeddingConfig {
+        /// Config for `model` reading `VOYAGE_API_KEY` from the environment.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                base_url: DEFAULT_BASE_URL.to_string(),
+                api_key: ApiKeyLocation::Env("VOYAGE_API_KEY".to_string()),
+                model: model.into(),
+                extra_headers: Vec::new(),
+            }
+        }
+
+        /// Config for `model` with an explicit API key.
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Build the complete HTTP `/embeddings` request for one chunk of
+    /// `texts`.
+    ///
+    /// Pure except for credential resolution.
+    pub fn build_embedding_request(
+        cfg: &EmbeddingConfig,
+        texts: &[String],
+    ) -> Result<http::Request<Vec<u8>>, EmbeddingError> {
+        let body = super::build_embedding_body(&cfg.model, texts)?;
+        let url = format!("{}/embeddings", cfg.base_url.trim_end_matches('/'));
+        let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
+        {
+            builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        builder
+            .body(body)
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+    }
+
+    /// Parse an `/embeddings` response into the normalized
+    /// [`crate::embeddings::EmbeddingResponse`]. Pure.
+    pub fn parse_embedding_response(
+        status: http::StatusCode,
+        body: &str,
+        documents: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, EmbeddingError> {
+        super::parse_embedding_response(status, body, documents)
+    }
+
+    /// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
+    /// `max_embedding_documents`; embeddings are returned in input order.
+    pub async fn embed(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, EmbeddingError> {
+        crate::embeddings::batching::embed_chunked(
+            rt,
+            texts,
+            DESCRIPTOR.max_embedding_documents,
+            |chunk| build_embedding_request(cfg, chunk),
+            parse_embedding_response,
+        )
+        .await
+    }
+
+    /// Embed caller-defined batches, returning one order-aligned
+    /// [`OneOrMany`](crate::OneOrMany) group per input batch plus summed
+    /// usage.
+    pub async fn embed_batches(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<Vec<String>>,
+    ) -> Result<
+        (
+            Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+            crate::completion::Usage,
+        ),
+        EmbeddingError,
+    > {
+        let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+        let response = embed(cfg, rt, flat).await?;
+        let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+        Ok((groups, response.usage))
+    }
+
+    // ================================================================
+    // Rerank
+    // ================================================================
+
+    /// Plain-data Voyage AI rerank configuration: model + rerank options +
+    /// connection fields (the rerank sibling of [`EmbeddingConfig`]).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct RerankConfig {
+        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
+        pub base_url: String,
+        /// Credential location.
+        pub api_key: ApiKeyLocation,
+        /// Reranker model identifier requests are built for.
+        pub model: String,
+        /// Extra headers attached to every request.
+        pub extra_headers: Vec<(String, String)>,
+        /// Number of top results to return (provider default when `None`).
+        pub top_k: Option<usize>,
+        /// Whether reranked documents ride back in the response.
+        pub return_documents: bool,
+        /// Provider-side input truncation toggle.
+        pub truncation: Option<bool>,
+    }
+
+    impl RerankConfig {
+        /// Config for `model` reading `VOYAGE_API_KEY` from the environment.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                base_url: DEFAULT_BASE_URL.to_string(),
+                api_key: ApiKeyLocation::Env("VOYAGE_API_KEY".to_string()),
+                model: model.into(),
+                extra_headers: Vec::new(),
+                top_k: None,
+                return_documents: false,
+                truncation: None,
+            }
+        }
+
+        /// Config with an explicit API key.
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Build the serialized rerank request body. Pure.
+    pub fn build_rerank_body(
+        model: &str,
+        top_k: Option<usize>,
+        return_documents: bool,
+        truncation: Option<bool>,
+        query: &str,
+        documents: &[String],
+    ) -> Result<Vec<u8>, crate::rerank::RerankError> {
+        use serde_json::json;
+
+        let mut body = json!({
+            "query": query,
+            "documents": documents,
+            "model": model,
+        });
+
+        let body_obj = body.as_object_mut().ok_or_else(|| {
+            crate::rerank::RerankError::ResponseError(
+                "rerank request body must be a JSON object".into(),
+            )
+        })?;
+
+        if let Some(top_k) = top_k {
+            body_obj.insert("top_k".to_owned(), json!(top_k));
+        }
+
+        body_obj.insert("return_documents".to_owned(), json!(return_documents));
+
+        if let Some(truncation) = truncation {
+            body_obj.insert("truncation".to_owned(), json!(truncation));
+        }
+
+        Ok(serde_json::to_vec(&body)?)
+    }
+
+    /// Parse a rerank response body into the normalized
+    /// [`crate::rerank::RerankResponse`]. Pure.
+    pub fn parse_rerank_response(
+        status: http::StatusCode,
+        body: &[u8],
+    ) -> Result<crate::rerank::RerankResponse, crate::rerank::RerankError> {
+        use crate::rerank::RerankError;
+
+        if !status.is_success() {
+            return Err(RerankError::from_http_response(
+                status,
+                String::from_utf8_lossy(body),
+            ));
+        }
+
+        match serde_json::from_slice::<super::ApiResponse<super::RerankApiResponse>>(body)? {
+            super::ApiResponse::Ok(response) => {
+                tracing::info!(target: "rig",
+                    "VoyageAI rerank token usage: {}",
+                    response.usage.total_tokens
+                );
+
+                let usage = crate::completion::Usage {
+                    input_tokens: response.usage.total_tokens as u64,
+                    output_tokens: 0,
+                    total_tokens: response.usage.total_tokens as u64,
+                    cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                    reasoning_tokens: 0,
+                    tool_use_prompt_tokens: 0,
+                };
+
+                let results = response
+                    .data
+                    .into_iter()
+                    .map(|d| crate::rerank::RerankResult {
+                        index: d.index,
+                        document: d.document,
+                        relevance_score: d.relevance_score,
+                    })
+                    .collect();
+
+                Ok(crate::rerank::RerankResponse {
+                    results,
+                    model: response.model,
+                    usage,
+                })
+            }
+            super::ApiResponse::Err(err) => {
+                tracing::warn!(message = %err.message, "provider returned an error response");
+                Err(RerankError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(body),
+                ))
+            }
+        }
+    }
+
+    /// Rerank `documents` against `query` with Voyage AI's `/rerank`
+    /// endpoint.
+    ///
+    /// Rerank has no request struct in the classic trait either; the query
+    /// and documents ride as arguments, and the remaining knobs live on
+    /// [`RerankConfig`].
+    pub async fn rerank(
+        cfg: &RerankConfig,
+        rt: &HttpRuntime,
+        query: &str,
+        documents: Vec<String>,
+    ) -> Result<crate::rerank::RerankResponse, crate::rerank::RerankError> {
+        let body = build_rerank_body(
+            &cfg.model,
+            cfg.top_k,
+            cfg.return_documents,
+            cfg.truncation,
+            query,
+            &documents,
+        )?;
+        let url = format!("{}/rerank", cfg.base_url.trim_end_matches('/'));
+        let req = crate::providers::openai::functions::bearer_post(
+            url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            true,
+        )?
+        .body(body)
+        .map_err(crate::http_client::Error::from)?;
+        let (status, body) = rt.send_bytes(req).await?;
+        parse_rerank_response(status, &body)
     }
 }
 
@@ -364,27 +690,14 @@ where
         query: &str,
         documents: Vec<String>,
     ) -> Result<rerank::RerankResponse, RerankError> {
-        let mut body = json!({
-            "query": query,
-            "documents": documents,
-            "model": self.model,
-        });
-
-        let body_obj = body.as_object_mut().ok_or_else(|| {
-            RerankError::ResponseError("rerank request body must be a JSON object".into())
-        })?;
-
-        if let Some(top_k) = self.top_k {
-            body_obj.insert("top_k".to_owned(), json!(top_k));
-        }
-
-        body_obj.insert("return_documents".to_owned(), json!(self.return_documents));
-
-        if let Some(truncation) = self.truncation {
-            body_obj.insert("truncation".to_owned(), json!(truncation));
-        }
-
-        let body = serde_json::to_vec(&body)?;
+        let body = functions::build_rerank_body(
+            &self.model,
+            self.top_k,
+            self.return_documents,
+            self.truncation,
+            query,
+            &documents,
+        )?;
 
         let req = self
             .client
@@ -395,60 +708,50 @@ where
         let response = self.client.send::<_, Bytes>(req).await?;
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();
-
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<RerankApiResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "VoyageAI rerank token usage: {}",
-                        response.usage.total_tokens
-                    );
-
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.total_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        reasoning_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                    };
-
-                    let results = response
-                        .data
-                        .into_iter()
-                        .map(|d| rerank::RerankResult {
-                            index: d.index,
-                            document: d.document,
-                            relevance_score: d.relevance_score,
-                        })
-                        .collect();
-
-                    Ok(rerank::RerankResponse {
-                        results,
-                        model: response.model,
-                        usage,
-                    })
-                }
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(RerankError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
-            }
-        } else {
-            Err(RerankError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body),
-            ))
-        }
+        functions::parse_rerank_response(status, &response_body)
     }
 }
 
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn rerank_body_carries_query_documents_and_options() {
+        let body = super::functions::build_rerank_body(
+            super::RERANK_2_5,
+            Some(3),
+            true,
+            Some(false),
+            "best pizza",
+            &["doc a".to_string(), "doc b".to_string()],
+        )
+        .expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["model"], super::RERANK_2_5);
+        assert_eq!(value["query"], "best pizza");
+        assert_eq!(value["documents"], serde_json::json!(["doc a", "doc b"]));
+        assert_eq!(value["top_k"], 3);
+        assert_eq!(value["return_documents"], true);
+        assert_eq!(value["truncation"], false);
+    }
+
+    #[test]
+    fn rerank_body_omits_unset_options() {
+        let body = super::functions::build_rerank_body(
+            super::RERANK_2,
+            None,
+            false,
+            None,
+            "q",
+            &[],
+        )
+        .expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert!(value.get("top_k").is_none());
+        assert_eq!(value["return_documents"], false);
+        assert!(value.get("truncation").is_none());
+    }
+
     #[test]
     fn test_client_initialization() {
         let _client =

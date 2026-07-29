@@ -120,6 +120,31 @@ pub async fn open_stream(
 }
 
 /// Send `request` to Mistral and return the normalized response.
+/// Transcribe `request` with Mistral's `/v1/audio/transcriptions` endpoint.
+pub async fn transcribe(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::transcription::TranscriptionRequest,
+) -> Result<
+    crate::transcription::TranscriptionResponse<
+        super::transcription::MistralTranscriptionResponse,
+    >,
+    crate::transcription::TranscriptionError,
+> {
+    use crate::transcription::TranscriptionError;
+
+    let form = super::transcription::build_transcription_form(&cfg.model, request)?;
+    let url = format!(
+        "{}/v1/audio/transcriptions",
+        cfg.base_url.trim_end_matches('/')
+    );
+    let req = openai_functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, false)?
+        .body(form)
+        .map_err(|e| TranscriptionError::RequestError(Box::new(e)))?;
+    let (status, body) = rt.send_multipart(req).await?;
+    super::transcription::parse_transcription_response(status, &body)
+}
+
 pub async fn complete(
     cfg: &Config,
     rt: &HttpRuntime,

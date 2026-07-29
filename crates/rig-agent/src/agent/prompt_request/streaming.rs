@@ -2220,13 +2220,7 @@ mod migrated_tests {
         let runner = agent_builder(MockCompletionModel::default())
             .build()
             .runner("go");
-        let tool_snapshot = Arc::new(
-            runner
-                .tool_server_handle
-                .snapshot_tool_defs(None)
-                .await
-                .expect("empty tool snapshot should build"),
-        );
+        let tool_snapshot = Arc::new(runner.tool_server_handle.snapshot_tool_defs().await);
 
         let mut run = AgentRun::new("go").max_turns(2);
         assert!(matches!(

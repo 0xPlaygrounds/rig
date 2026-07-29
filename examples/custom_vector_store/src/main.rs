@@ -1,123 +1,79 @@
 //! Example: Implementing a custom vector store backend
 //!
-//! This demonstrates how to implement `VectorStoreIndex` for any
-//! vector database. Use this as a template for your own backend.
+//! This demonstrates how to implement a vector store backend over rig's shared
+//! vector store data vocabulary (`VectorSearchRequest`, `SearchHit`,
+//! `StoreRecord`). There is no store trait: a backend exposes concrete
+//! inherent async methods (`top_n`, `top_n_ids`, `insert`, ...) and receives
+//! pre-embedded queries. Use this as a template for your own backend.
 use redis::{
     AsyncCommands, Client,
     aio::MultiplexedConnection,
     vector_sets::{VAddOptions, VSimOptions, VectorAddInput, VectorSimilaritySearchInput},
 };
 use rig::{
+    OneOrMany,
     client::{EmbeddingsClient, ProviderClient},
-    embeddings::EmbeddingModel,
+    embeddings::{Embedding, EmbeddingModel},
     providers::openai,
-    vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
+    vector_store::{SearchHit, StoreRecord, VectorSearchRequest, VectorStoreError},
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 
-// This is the struct representing our vector store backend
-struct RedisVectorStore<E> {
+// This is the struct representing our vector store backend.
+//
+// Note that it holds no embedding model: queries and records arrive
+// pre-embedded, so the backend only stores and searches vectors.
+struct RedisVectorStore {
     conn: MultiplexedConnection,
     key: String,
-    embedding_model: E,
 }
 
-impl<E: EmbeddingModel> RedisVectorStore<E> {
-    async fn new(
-        redis_url: &str,
-        key: &str,
-        embedding_model: E,
-    ) -> Result<Self, redis::RedisError> {
+impl RedisVectorStore {
+    async fn new(redis_url: &str, key: &str) -> Result<Self, redis::RedisError> {
         let client = Client::open(redis_url)?;
 
         Ok(Self {
             conn: client.get_multiplexed_async_connection().await?,
             key: key.to_string(),
-            embedding_model,
         })
     }
 
-    // Add a single document
-    async fn add_document<T: Serialize>(
-        &mut self,
-        id: &str,
-        content: &str,
-        metadata: &T,
-    ) -> Result<(), VectorStoreError> {
-        // Get the embedding vector for your content
-        let embedding = self
-            .embedding_model
-            .embed_text(content)
-            .await
-            .map_err(VectorStoreError::EmbeddingError)?;
+    /// Insert precomputed records.
+    async fn insert(&mut self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
+        for record in records {
+            // Index every embedding of the record under the record's id.
+            for embedding in record.embeddings.iter() {
+                // Convert it to Vec<f32> for Redis
+                let vec_f32: Vec<f32> = embedding.vec.iter().map(|&x| x as f32).collect();
 
-        // Convert it to Vec<f32> for Redis
-        let vec_f32: Vec<f32> = embedding.vec.iter().map(|&x| x as f32).collect();
-
-        // Serialize metadata as JSON
-        let attrs = serde_json::to_value(metadata)
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let _: bool = self
-            .conn
-            .vadd_options(
-                &self.key,
-                VectorAddInput::Fp32(&vec_f32),
-                id,
-                &VAddOptions::default().set_attributes(attrs),
-            )
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+                let _: bool = self
+                    .conn
+                    .vadd_options(
+                        &self.key,
+                        VectorAddInput::Fp32(&vec_f32),
+                        &record.id,
+                        &VAddOptions::default().set_attributes(record.payload.clone()),
+                    )
+                    .await
+                    .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            }
+        }
 
         Ok(())
     }
-}
 
-impl<E: EmbeddingModel + Send + Sync> VectorStoreIndex for RedisVectorStore<E> {
-    // Irrelevant for our program, but if we wanted to filter out query results
-    // creating a simple 'RedisSearchFilter' would be the easiest way.
-    // Alternatively, you can use vector_store::request::Filter as your filter DSL.
-    //
-    // For example, to filter out results with a distance >= 0.2 from our query:
-    // ```rust
-    // let req = VectorSearchRequest::builder()
-    //      .query(query)
-    //      .samples(2)
-    //      .filter(Filter::lt("Distance", 0.2))
-    //      .build()?;
-    // ```
-    type Filter = Filter<serde_json::Value>;
+    // If we wanted to filter query results, creating a simple
+    // 'RedisSearchFilter' would be the easiest way. Alternatively, you can use
+    // vector_store::request::Filter as your filter DSL and keep a `filter`
+    // field on the request.
 
-    async fn top_n<T: DeserializeOwned + Send>(
-        &self,
-        req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        // Get the embedding vector for your content
-        let embedding = self
-            .embedding_model
-            .embed_text(req.query())
-            .await
-            .map_err(VectorStoreError::EmbeddingError)?;
-
-        // Convert to Vec<f32> for Redis
-        let vec_f32: Vec<f32> = embedding.vec.iter().map(|&x| x as f32).collect();
-
-        let results: Vec<(String, f64)> = self
-            .conn
-            .clone()
-            .vsim_options(
-                &self.key,
-                VectorSimilaritySearchInput::Fp32(&vec_f32),
-                &VSimOptions::default()
-                    .set_count(req.samples() as usize)
-                    .set_with_scores(true),
-            )
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+    /// Returns the top N most similar documents for a pre-embedded query.
+    async fn top_n(&self, req: VectorSearchRequest) -> Result<Vec<SearchHit>, VectorStoreError> {
+        let ids = self.top_n_ids(req).await?;
 
         // For each result, fetch the attributes
-        let mut output = Vec::with_capacity(results.len());
-        for (id, score) in results {
+        let mut output = Vec::with_capacity(ids.len());
+        for (score, id) in ids {
             let attrs: Option<String> = self
                 .conn
                 .clone()
@@ -125,30 +81,27 @@ impl<E: EmbeddingModel + Send + Sync> VectorStoreIndex for RedisVectorStore<E> {
                 .await
                 .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-            let metadata: T = attrs
+            let payload: serde_json::Value = attrs
                 .as_deref()
                 .map(serde_json::from_str)
                 .transpose()
                 .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-                .map_or_else(|| serde_json::from_str("{}"), Ok)
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+                .unwrap_or_default();
 
-            output.push((score, id, metadata));
+            output.push(SearchHit { id, score, payload });
         }
 
         Ok(output)
     }
 
+    /// Returns the top N most similar document IDs as `(score, id)` tuples.
     async fn top_n_ids(
         &self,
-        req: VectorSearchRequest<Self::Filter>,
+        req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let embedding = self
-            .embedding_model
-            .embed_text(req.query())
-            .await
-            .map_err(VectorStoreError::EmbeddingError)?;
-
+        // Search with the first query embedding. (A backend can also merge
+        // results across all query embeddings.)
+        let embedding = req.query().first();
         let vec_f32: Vec<f32> = embedding.vec.iter().map(|&x| x as f32).collect();
 
         let opts = VSimOptions::default()
@@ -158,11 +111,7 @@ impl<E: EmbeddingModel + Send + Sync> VectorStoreIndex for RedisVectorStore<E> {
         let results: Vec<(String, f64)> = self
             .conn
             .clone()
-            .vsim_options(
-                &self.key,
-                VectorSimilaritySearchInput::Fp32(&vec_f32),
-                &opts,
-            )
+            .vsim_options(&self.key, VectorSimilaritySearchInput::Fp32(&vec_f32), &opts)
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
@@ -186,8 +135,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Create the Redis vector store
-    let mut store =
-        RedisVectorStore::new("redis://127.0.0.1:6379", "test_vectors", embedding_model).await?;
+    let mut store = RedisVectorStore::new("redis://127.0.0.1:6379", "test_vectors").await?;
 
     // Sample documents to index
     let documents = [
@@ -212,31 +160,39 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    // Add documents to the vector store
+    // Embed the documents and add them to the vector store. Embedding happens
+    // *outside* the store: it only ever sees precomputed vectors.
     println!("Adding documents to Redis vector store...");
+    let mut records = Vec::new();
     for (i, doc) in documents.iter().enumerate() {
-        store
-            .add_document(&format!("doc_{}", i), &doc.content, doc)
-            .await?;
+        let embedding: Embedding = embedding_model.embed_text(&doc.content).await?;
+        records.push(StoreRecord::new(
+            format!("doc_{i}"),
+            doc,
+            OneOrMany::one(embedding),
+        )?);
         println!("  Added: '{}'", doc.title);
     }
+    store.insert(records).await?;
 
     // Query the vector store
     let query = "What programming language is best for systems programming?";
     println!("\nQuery: '{}'", query);
 
-    // Create a query
+    // Embed the query, then create a pre-embedded request
+    let query_embedding = embedding_model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(2)
         .build();
 
     // Execute the query
-    let results: Vec<(f64, String, Document)> = store.top_n(req).await?;
+    let results = store.top_n(req).await?;
 
     println!("\nResults:");
-    for (score, id, doc) in results {
-        println!("  [{:.4}] {} - '{}'", score, id, doc.title);
+    for hit in results {
+        let doc: Document = hit.payload_as()?;
+        println!("  [{:.4}] {} - '{}'", hit.score, hit.id, doc.title);
     }
 
     Ok(())

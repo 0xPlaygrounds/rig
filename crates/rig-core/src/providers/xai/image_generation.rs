@@ -80,18 +80,8 @@ where
         generation_request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
-        let mut request = json!({
-            "model": self.model,
-            "prompt": generation_request.prompt,
-            "response_format": "b64_json",
-            "aspect_ratio": "1:1",
-        });
-
-        if let Some(additional_params) = generation_request.additional_params {
-            merge_inplace(&mut request, additional_params);
-        }
-
-        let body = serde_json::to_vec(&request)?;
+        let body =
+            build_image_generation_body(&self.model, &generation_request)?;
 
         let request = self
             .client
@@ -103,17 +93,52 @@ where
 
         let status = response.status();
         let text = http_client::text(response).await?;
+        parse_image_generation_response(status, &text)
+    }
+}
 
-        if !status.is_success() {
-            return Err(ImageGenerationError::from_http_response(status, text));
-        }
+/// Build the serialized image-generation request body. Pure.
+pub(crate) fn build_image_generation_body(
+    model: &str,
+    request: &ImageGenerationRequest,
+) -> Result<Vec<u8>, ImageGenerationError> {
+    let mut body = json!({
+        "model": model,
+        "prompt": request.prompt,
+        "response_format": "b64_json",
+        "aspect_ratio": "1:1",
+    });
 
-        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Error(err) => {
-                tracing::warn!(message = %err.message(), "provider returned an error response");
-                Err(ImageGenerationError::from_http_response(status, text))
-            }
+    if let Some(additional_params) = request.additional_params.clone() {
+        merge_inplace(&mut body, additional_params);
+    }
+
+    Ok(serde_json::to_vec(&body)?)
+}
+
+/// Parse an image-generation response body. Pure.
+pub(crate) fn parse_image_generation_response(
+    status: http::StatusCode,
+    text: &str,
+) -> Result<
+    image_generation::ImageGenerationResponse<ImageGenerationResponse>,
+    ImageGenerationError,
+> {
+    if !status.is_success() {
+        return Err(ImageGenerationError::from_http_response(
+            status,
+            text.to_string(),
+        ));
+    }
+
+    match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(text)? {
+        ApiResponse::Ok(response) => response.try_into(),
+        ApiResponse::Error(err) => {
+            tracing::warn!(message = %err.message(), "provider returned an error response");
+            Err(ImageGenerationError::from_http_response(
+                status,
+                text.to_string(),
+            ))
         }
     }
 }
@@ -131,6 +156,23 @@ mod tests {
             height: 256,
             additional_params: None,
         }
+    }
+
+    #[test]
+    fn image_generation_body_merges_additional_params() {
+        let mut generation_request = request();
+        generation_request.additional_params = Some(serde_json::json!({
+            "aspect_ratio": "16:9",
+            "n": 2,
+        }));
+        let body =
+            build_image_generation_body(GROK_IMAGINE_IMAGE, &generation_request).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["model"], GROK_IMAGINE_IMAGE);
+        assert_eq!(value["prompt"], "draw a cat");
+        assert_eq!(value["response_format"], "b64_json");
+        assert_eq!(value["aspect_ratio"], "16:9");
+        assert_eq!(value["n"], 2);
     }
 
     #[tokio::test]

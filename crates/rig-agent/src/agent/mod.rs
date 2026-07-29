@@ -1,8 +1,9 @@
 //! This module contains the implementation of the [Agent] struct and its builder.
 //!
 //! The [Agent] struct represents an LLM agent, which combines an LLM model with a preamble (system prompt),
-//! a set of static context documents, and a set of tools. Tools can be always
-//! available or selected from a retrieval index at prompt time.
+//! a set of static context documents, and a set of tools. Every registered
+//! tool is advertised; hooks can narrow the advertised set per turn with
+//! [`RequestPatch::active_tools`].
 //!
 //! The [Agent] struct is highly configurable, allowing the user to define anything from
 //! a simple bot with a specific system prompt to a complex RAG system.
@@ -45,53 +46,116 @@
 //! # }
 //! ```
 //!
-//! [`AgentBuilder::dynamic_context`] provides passive RAG through the same
-//! completion-call hook lifecycle as every other request policy. For custom
-//! query selection, filtering, reranking, caching, formatting, or failure
-//! handling, applications can instead implement [`AgentHook`] and inject
-//! documents with [`RequestPatch::extra_context`]. Active RAG exposes a vector
-//! index or custom retriever as a tool so the model decides when to search.
+//! Passive RAG is a hook recipe: implement [`AgentHook`], embed the prompt on
+//! every completion call, query a concrete vector store, and inject the hits
+//! with [`RequestPatch::extra_context`]. Because it is an ordinary hook, custom
+//! query selection, filtering, reranking, caching, formatting, and failure
+//! handling are all in the application's hands, and it composes with other
+//! hooks in registration order. Active RAG instead exposes the store as a
+//! custom tool so the model decides when to search (see the
+//! `complex_agentic_loop_claude` example).
 //!
 //! Passive RAG agent example
 //! ```no_run
-//! use rig_agent::{completion::Prompt, prelude::*};
-//! use rig_core::{
-//!     client::{EmbeddingsClient, ProviderClient},
-//!     embeddings::EmbeddingsBuilder,
-//!     providers::openai,
-//!     vector_store::in_memory_store::InMemoryVectorStore,
+//! use rig_agent::{
+//!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+//!     completion::{Document, Prompt},
+//!     prelude::*,
+//!     provider::{EmbedderConfig, Runtime, embed},
 //! };
+//! use rig_core::{
+//!     client::ProviderClient,
+//!     providers::openai,
+//!     vector_store::{StoreRecord, VectorSearchRequest, in_memory_store::InMemoryVectorStore},
+//! };
+//! use std::sync::Arc;
+//!
+//! /// Embeds each prompt, searches the store, and appends the hits as
+//! /// per-turn context documents. A retrieval failure stops the run before
+//! /// provider I/O.
+//! struct RagHook {
+//!     embedder: EmbedderConfig,
+//!     rt: Arc<Runtime>,
+//!     store: InMemoryVectorStore,
+//!     samples: u64,
+//! }
+//!
+//! impl AgentHook for RagHook {
+//!     async fn on_completion_call(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         event: CompletionCallEvent<'_>,
+//!     ) -> CompletionCallAction {
+//!         // Search with the prompt's text, falling back to the latest
+//!         // textual history message.
+//!         let query = event.prompt.rag_text().or_else(|| {
+//!             event.history.iter().rev().find_map(|message| message.rag_text())
+//!         });
+//!         let Some(query) = query else {
+//!             return CompletionCallAction::continue_run();
+//!         };
+//!
+//!         // Embed the query, then run a pre-embedded search.
+//!         let embedded = match embed(&self.embedder, &self.rt, vec![query]).await {
+//!             Ok(response) => response.embeddings.into_iter().next(),
+//!             Err(error) => return CompletionCallAction::stop(error.to_string()),
+//!         };
+//!         let Some(embedded) = embedded else {
+//!             return CompletionCallAction::stop("empty embedding response");
+//!         };
+//!         let request = VectorSearchRequest::builder()
+//!             .query(embedded)
+//!             .samples(self.samples)
+//!             .build();
+//!         match self.store.top_n(request).await {
+//!             Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+//!                 hits.into_iter().map(|hit| Document {
+//!                     id: hit.id,
+//!                     text: hit.payload.to_string(),
+//!                     additional_props: Default::default(),
+//!                 }),
+//!             )),
+//!             Err(error) => CompletionCallAction::stop(error.to_string()),
+//!         }
+//!     }
+//! }
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize OpenAI client
-//! let openai = openai::Client::from_env()?;
+//! let rt = Arc::new(Runtime::new());
+//! let embedder = EmbedderConfig::OpenAi(openai::functions::EmbeddingConfig::new(
+//!     openai::TEXT_EMBEDDING_3_SMALL,
+//! ));
 //!
-//! // Initialize OpenAI embedding model
-//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
-//!
-//! // Create vector store, compute embeddings and load them in the store
-//! let mut vector_store = InMemoryVectorStore::default();
-//!
-//! let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-//!     .documents(vec![
-//!         "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
-//!         "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-//!         "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
-//!     ])?
-//!     .build()
+//! // Embed the corpus up front and load it into a concrete store.
+//! let corpus = vec![
+//!     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+//!     "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+//!     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+//! ];
+//! let embedded = embed(&embedder, &rt, corpus.clone()).await?;
+//! let store = InMemoryVectorStore::new();
+//! store
+//!     .insert(
+//!         corpus
+//!             .iter()
+//!             .zip(embedded.embeddings)
+//!             .enumerate()
+//!             .map(|(i, (text, embedding))| StoreRecord {
+//!                 id: format!("doc{i}"),
+//!                 payload: serde_json::Value::String(text.clone()),
+//!                 embeddings: rig_core::OneOrMany::one(embedding),
+//!             })
+//!             .collect(),
+//!     )
 //!     .await?;
 //!
-//! vector_store.add_documents(embeddings);
-//!
-//! // Create vector store index
-//! let index = vector_store.index(embedding_model);
-//!
+//! let openai = openai::Client::from_env()?;
 //! let agent = openai.agent(openai::GPT_5_2)
 //!     .preamble("
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
 //!     ")
-//!     .dynamic_context(1, index)
+//!     .add_hook(RagHook { embedder, rt, store, samples: 1 })
 //!     .build();
 //!
 //! // Prompt the agent and print the response

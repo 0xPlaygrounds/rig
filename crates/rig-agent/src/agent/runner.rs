@@ -1973,7 +1973,6 @@ mod migrated_tests {
     };
 
     use futures::StreamExt;
-    use serde::Deserialize;
     use serde_json::json;
     use tokio::sync::Barrier;
 
@@ -1988,17 +1987,17 @@ mod migrated_tests {
         MockAddTool, MockBarrierTool, MockOperationArgs, MockSubtractTool, MockToolError,
     };
     use crate::tool::{
-        Tool, ToolContext, ToolExecutionError, ToolSet,
+        Tool, ToolContext, ToolExecutionError,
         server::{ToolServer, ToolServerHandle},
     };
     use rig_core::OneOrMany;
     use rig_core::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
+    use rig_core::embeddings::Embedding;
     use rig_core::vector_store::{
-        VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+        VectorSearchRequest, in_memory_store::InMemoryVectorStore,
     };
-    use rig_core::wasm_compat::WasmCompatSend;
 
     /// Records the kind of every hook event (and every tool-result payload) so a
     /// run() and a stream() of the same scenario can be compared.
@@ -7623,82 +7622,114 @@ mod migrated_tests {
         }
     }
 
-    #[derive(Clone)]
-    struct RecordingContextIndex {
-        id: &'static str,
+    /// The passive-RAG hook recipe under test: embed the query, search a
+    /// concrete store, and inject the hits as per-turn context documents.
+    struct RagContextHook {
+        embedder: crate::provider::EmbedderConfig,
+        rt: Arc<crate::provider::Runtime>,
+        store: InMemoryVectorStore,
+        samples: u64,
         queries: Arc<Mutex<Vec<(String, u64)>>>,
     }
 
-    impl VectorStoreIndex for RecordingContextIndex {
-        type Filter = Filter<serde_json::Value>;
+    impl RagContextHook {
+        /// A hook whose store answers every query with `{"source": id}`.
+        fn with_source(
+            id: &str,
+            samples: u64,
+            queries: Arc<Mutex<Vec<(String, u64)>>>,
+        ) -> Self {
+            let store = InMemoryVectorStore::from_documents_with_ids(vec![(
+                id,
+                json!({ "source": id }),
+                rig_core::OneOrMany::one(Embedding {
+                    document: id.to_string(),
+                    vec: vec![1.0, 0.0],
+                }),
+            )])
+            .expect("in-memory store should build");
+            Self {
+                embedder: crate::provider::EmbedderConfig::Mock(
+                    crate::provider::MockEmbedder::from_responses(vec![
+                        vec![vec![1.0, 0.0]];
+                        8
+                    ]),
+                ),
+                rt: Arc::new(crate::provider::Runtime::new()),
+                store,
+                samples,
+                queries,
+            }
+        }
+    }
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    impl AgentHook for RagContextHook {
+        async fn on_completion_call(
             &self,
-            req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            _ctx: &HookContext,
+            event: CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            let query = event.prompt.rag_text().or_else(|| {
+                event
+                    .history
+                    .iter()
+                    .rev()
+                    .find_map(|message| message.rag_text())
+            });
+            let Some(query) = query else {
+                return CompletionCallAction::continue_run();
+            };
             self.queries
                 .lock()
                 .expect("context query recorder lock")
-                .push((req.query().to_string(), req.samples()));
-            let value = serde_json::from_value(json!({ "source": self.id }))?;
-            Ok(vec![(1.0, self.id.to_string(), value)])
-        }
+                .push((query.clone(), self.samples));
 
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            Ok(vec![(1.0, self.id.to_string())])
+            let embedded =
+                match crate::provider::embed(&self.embedder, &self.rt, vec![query]).await {
+                    Ok(response) => response.embeddings.into_iter().next(),
+                    Err(error) => {
+                        return CompletionCallAction::stop(format!(
+                            "failed to retrieve dynamic context: {error}"
+                        ));
+                    }
+                };
+            let Some(embedded) = embedded else {
+                return CompletionCallAction::stop(
+                    "failed to retrieve dynamic context: empty embedding response",
+                );
+            };
+
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(self.samples)
+                .build();
+            match self.store.top_n(request).await {
+                Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                    hits.into_iter().map(|hit| crate::completion::Document {
+                        id: hit.id,
+                        text: serde_json::to_string_pretty(&hit.payload)
+                            .unwrap_or_else(|_| hit.payload.to_string()),
+                        additional_props: Default::default(),
+                    }),
+                )),
+                Err(error) => CompletionCallAction::stop(format!(
+                    "failed to retrieve dynamic context: {error}"
+                )),
+            }
         }
     }
 
-    struct FailingContextIndex;
-
-    impl VectorStoreIndex for FailingContextIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            Err(VectorStoreError::BuilderError(
-                "context index unavailable".to_string(),
-            ))
-        }
-
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            Err(VectorStoreError::BuilderError(
-                "context index unavailable".to_string(),
-            ))
-        }
-    }
-
-    struct QueryRecordingToolIndex {
-        queries: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl VectorStoreIndex for QueryRecordingToolIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            Ok(Vec::new())
-        }
-
-        async fn top_n_ids(
-            &self,
-            req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            self.queries
-                .lock()
-                .expect("query recorder lock")
-                .push(req.query().to_string());
-            Ok(vec![(1.0, MockAddTool::NAME.to_string())])
+    /// A RAG hook whose embedder script is empty, so retrieval fails before
+    /// any provider I/O and the hook stops the run.
+    fn failing_rag_hook() -> RagContextHook {
+        RagContextHook {
+            embedder: crate::provider::EmbedderConfig::Mock(
+                crate::provider::MockEmbedder::from_responses(Vec::new()),
+            ),
+            rt: Arc::new(crate::provider::Runtime::new()),
+            store: InMemoryVectorStore::new(),
+            samples: 1,
+            queries: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -7797,7 +7828,7 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_surfaces() {
+    async fn rag_hook_preserves_query_selection_formatting_and_order_on_both_surfaces() {
         fn assert_documents(request: &crate::completion::CompletionRequest) {
             let documents = request
                 .documents
@@ -7818,13 +7849,11 @@ mod migrated_tests {
         let blocking_probe = blocking_model.clone();
         AgentBuilder::new(blocking_model.provider())
             .context("static context")
-            .dynamic_context(
+            .add_hook(RagContextHook::with_source(
+                "blocking",
                 2,
-                RecordingContextIndex {
-                    id: "blocking",
-                    queries: blocking_queries.clone(),
-                },
-            )
+                blocking_queries.clone(),
+            ))
             .build()
             .runner("current blocking query")
             .history(vec![Message::user("ignored history query")])
@@ -7842,13 +7871,11 @@ mod migrated_tests {
             MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
         let streaming_probe = streaming_model.clone();
         let mut stream = AgentBuilder::new(streaming_model.provider())
-            .dynamic_context(
+            .add_hook(RagContextHook::with_source(
+                "streaming",
                 3,
-                RecordingContextIndex {
-                    id: "streaming",
-                    queries: streaming_queries.clone(),
-                },
-            )
+                streaming_queries.clone(),
+            ))
             .build()
             .runner(Message::User {
                 content: OneOrMany::one(UserContent::image_url(
@@ -7881,7 +7908,7 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn dynamic_context_and_application_hooks_follow_registration_order() {
+    async fn rag_hook_and_application_hooks_follow_registration_order() {
         let queries = Arc::new(Mutex::new(Vec::new()));
         let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let probe = model.clone();
@@ -7891,24 +7918,12 @@ mod migrated_tests {
                 id: "before",
                 text: "before dynamic context",
             })
-            .dynamic_context(
-                1,
-                RecordingContextIndex {
-                    id: "first",
-                    queries: queries.clone(),
-                },
-            )
+            .add_hook(RagContextHook::with_source("first", 1, queries.clone()))
             .add_hook(ExtraContextHook {
                 id: "between",
                 text: "between dynamic contexts",
             })
-            .dynamic_context(
-                2,
-                RecordingContextIndex {
-                    id: "second",
-                    queries: queries.clone(),
-                },
-            )
+            .add_hook(RagContextHook::with_source("second", 2, queries.clone()))
             .add_hook(ExtraContextHook {
                 id: "after",
                 text: "after dynamic context",
@@ -7942,13 +7957,11 @@ mod migrated_tests {
         let skipped_queries = Arc::new(Mutex::new(Vec::new()));
         let error = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("unused")]).provider())
             .add_hook(TerminateOn(StepEventKind::CompletionCall))
-            .dynamic_context(
+            .add_hook(RagContextHook::with_source(
+                "skipped",
                 1,
-                RecordingContextIndex {
-                    id: "skipped",
-                    queries: skipped_queries.clone(),
-                },
-            )
+                skipped_queries.clone(),
+            ))
             .build()
             .runner("query")
             .run()
@@ -7959,11 +7972,11 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surfaces() {
+    async fn rag_hook_retrieval_failure_stops_before_provider_io_on_both_surfaces() {
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("unused")]);
         let blocking_probe = blocking_model.clone();
         let error = AgentBuilder::new(blocking_model.provider())
-            .dynamic_context(1, FailingContextIndex)
+            .add_hook(failing_rag_hook())
             .build()
             .runner("retrieve this")
             .run()
@@ -7972,7 +7985,7 @@ mod migrated_tests {
         assert!(matches!(
             error,
             PromptError::PromptCancelled { reason, .. }
-                if reason.contains("context index unavailable")
+                if reason.contains("failed to retrieve dynamic context")
         ));
         assert_eq!(blocking_probe.request_count(), 0);
 
@@ -7980,7 +7993,7 @@ mod migrated_tests {
             MockCompletionModel::from_stream_turns([one_text_stream_turn("unused")]);
         let streaming_probe = streaming_model.clone();
         let mut stream = AgentBuilder::new(streaming_model.provider())
-            .dynamic_context(1, FailingContextIndex)
+            .add_hook(failing_rag_hook())
             .build()
             .runner("retrieve this")
             .stream()
@@ -7996,110 +8009,10 @@ mod migrated_tests {
                 if matches!(
                     prompt_error.as_ref(),
                     PromptError::PromptCancelled { reason, .. }
-                        if reason.contains("context index unavailable")
+                        if reason.contains("failed to retrieve dynamic context")
                 )
         ));
         assert_eq!(streaming_probe.request_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
-        let queries = Arc::new(Mutex::new(Vec::new()));
-        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]).provider())
-            .retrieved_tools(
-                1,
-                QueryRecordingToolIndex {
-                    queries: queries.clone(),
-                },
-                ToolSet::from_tools(vec![MockAddTool]),
-            )
-            .build()
-            .runner("blocking retrieval query")
-            .history(vec![Message::user("blocking history query")])
-            .run()
-            .await
-            .expect("blocking run should succeed");
-
-        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]).provider())
-            .retrieved_tools(
-                1,
-                QueryRecordingToolIndex {
-                    queries: queries.clone(),
-                },
-                ToolSet::from_tools(vec![MockAddTool]),
-            )
-            .build()
-            .runner(Message::User {
-                content: OneOrMany::one(UserContent::image_url(
-                    "https://example.com/blocking.png",
-                    None,
-                    None,
-                )),
-            })
-            .history(vec![
-                Message::user("older blocking history query"),
-                Message::user("latest blocking history query"),
-            ])
-            .run()
-            .await
-            .expect("blocking history fallback should succeed");
-
-        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
-            one_text_stream_turn("done"),
-        ]).provider())
-        .retrieved_tools(
-            1,
-            QueryRecordingToolIndex {
-                queries: queries.clone(),
-            },
-            ToolSet::from_tools(vec![MockAddTool]),
-        )
-        .build()
-        .runner("streaming retrieval query")
-        .history(vec![Message::user("streaming history query")])
-        .stream()
-        .await;
-        while let Some(item) = stream.next().await {
-            item.expect("stream item should succeed");
-        }
-
-        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
-            one_text_stream_turn("done"),
-        ]).provider())
-        .retrieved_tools(
-            1,
-            QueryRecordingToolIndex {
-                queries: queries.clone(),
-            },
-            ToolSet::from_tools(vec![MockAddTool]),
-        )
-        .build()
-        .runner(Message::User {
-            content: OneOrMany::one(UserContent::image_url(
-                "https://example.com/streaming.png",
-                None,
-                None,
-            )),
-        })
-        .history(vec![
-            Message::user("older streaming history query"),
-            Message::user("latest streaming history query"),
-        ])
-        .stream()
-        .await;
-        while let Some(item) = stream.next().await {
-            item.expect("stream item should succeed");
-        }
-
-        assert_eq!(
-            *queries.lock().expect("query recorder lock"),
-            vec![
-                "blocking retrieval query",
-                "latest blocking history query",
-                "streaming retrieval query",
-                "latest streaming history query",
-            ]
-        );
     }
 
     /// A hook's `extra_context` is per-turn and non-sticky: a document injected on
@@ -8510,35 +8423,6 @@ mod migrated_tests {
         }
     }
 
-    /// Returns no retrieved tool on the first search, then the colliding real
-    /// `final_result` tool on later searches.
-    #[derive(Default)]
-    struct LateFinalResultIndex {
-        searches: AtomicU32,
-    }
-
-    impl VectorStoreIndex for LateFinalResultIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            Ok(Vec::new())
-        }
-
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            if self.searches.fetch_add(1, SeqCst) == 0 {
-                Ok(Vec::new())
-            } else {
-                Ok(vec![(1.0, "final_result".to_string())])
-            }
-        }
-    }
-
     /// Registers a real `final_result` tool after the first model turn, once the
     /// run has already reserved that name for structured output. An optional
     /// second-turn patch lets tests exercise filtering and tool-choice changes
@@ -8841,49 +8725,6 @@ mod migrated_tests {
                  {second_turn_names:?}"
             );
         }
-        assert_structured_output_collision_error(&err.to_string());
-    }
-
-    /// Dynamic retrieval shares the same effective per-turn collision check as
-    /// mutable registration: a name absent on turn one may not shadow the
-    /// already-reserved output tool when retrieval selects it on turn two.
-    #[tokio::test]
-    async fn retrieved_output_tool_collision_fails_before_provider_request() {
-        let mut retrieved_tools = ToolSet::default();
-        retrieved_tools.add_tool(FinalResultTool);
-        let handle = ToolServer::new()
-            .tool(MockAddTool)
-            .retrieved_tools(1, LateFinalResultIndex::default(), retrieved_tools)
-            .run();
-        let model = MockCompletionModel::from_turns([
-            MockTurn::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
-            MockTurn::tool_call(
-                "shadowed",
-                "final_result",
-                json!({ "answer": "wrongly finalized" }),
-            ),
-        ]);
-        let probe = model.clone();
-        let err = AgentBuilder::new(model.provider())
-            .tool_server_handle(handle)
-            .output_schema::<Answer>()
-            .output_mode(OutputMode::Tool)
-            .build()
-            .runner("go")
-            .max_turns(3)
-            .run()
-            .await
-            .expect_err("the retrieved second-turn collision should fail locally");
-
-        assert!(matches!(
-            &err,
-            PromptError::CompletionError(CompletionError::RequestError(_))
-        ));
-        assert_eq!(
-            probe.request_count(),
-            1,
-            "the colliding retrieved tool must prevent the second provider request"
-        );
         assert_structured_output_collision_error(&err.to_string());
     }
 

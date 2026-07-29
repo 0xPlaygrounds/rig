@@ -12,8 +12,7 @@ use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -107,11 +106,16 @@ async fn vector_search_test() {
         .await
         .expect("Failed to create embeddings");
 
-    // insert documents into vector store
-    let vector_store = PostgresVectorStore::with_defaults(model, pg_pool.clone());
+    // insert documents into vector store; embedding happens outside the store
+    let vector_store = PostgresVectorStore::with_defaults(pg_pool.clone());
 
     vector_store
-        .insert_documents(documents)
+        .insert_as(
+            documents
+                .into_iter()
+                .map(|(doc, embeddings)| (doc.id.clone(), doc, embeddings))
+                .collect(),
+        )
         .await
         .expect("Failed to insert documents");
 
@@ -123,14 +127,18 @@ async fn vector_search_test() {
     assert_eq!(documents_count, 3);
 
     let query = "What does \"glarb-glarb\" mean?";
+    let query_embedding = model
+        .embed_text(query)
+        .await
+        .expect("Failed to embed query");
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
     // search for a document
     let results = vector_store
-        .top_n::<Word>(req.clone())
+        .top_n_as::<Word>(req.clone())
         .await
         .expect("Failed to search for document");
 

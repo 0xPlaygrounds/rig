@@ -8,7 +8,7 @@ use crate::{
         Chat, CompletionError, Document, Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     streaming::{StreamingChat, StreamingPrompt},
-    tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
+    tool::server::{ToolRegistrySnapshot, ToolServerHandle},
 };
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
@@ -237,20 +237,10 @@ pub(crate) async fn build_prepared_completion_request(
     augment_output_preamble: bool,
     request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
-    // The async half: resolve the retrieval query and snapshot the tool
-    // server. Everything else is the pure `prepare_request` protocol
-    // function, shared with hand-rolled drivers and future runtimes.
-    let retrieval_query = prompt.rag_text().or_else(|| {
-        chat_history
-            .iter()
-            .rev()
-            .find_map(|message| message.rag_text())
-    });
-
-    let mut tool_snapshot = tool_server_handle
-        .snapshot_tool_defs(retrieval_query)
-        .await
-        .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
+    // The async half: snapshot the tool server. Everything else is the pure
+    // `prepare_request` protocol function, shared with hand-rolled drivers and
+    // future runtimes.
+    let mut tool_snapshot = tool_server_handle.snapshot_tool_defs().await;
 
     let catalog = super::prepare::ToolCatalog::new(tool_snapshot.definitions().to_vec());
 
@@ -389,15 +379,14 @@ impl Agent {
         AgentRunner::from_agent(self, prompt)
     }
 
-    /// Resolve the provider-facing tool definitions available for a prompt.
+    /// Resolve the provider-facing tool definitions registered on the agent.
     ///
     /// This read-only view does not expose tool dispatch. Agent execution and
-    /// tool lifecycle hooks remain owned by [`Self::runner`].
-    pub async fn tool_definitions(
-        &self,
-        prompt: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        self.tool_server_handle.get_tool_defs(prompt).await
+    /// tool lifecycle hooks remain owned by [`Self::runner`]. Per-turn
+    /// narrowing of the advertised set happens through
+    /// [`RequestPatch::active_tools`].
+    pub async fn tool_definitions(&self) -> Vec<ToolDefinition> {
+        self.tool_server_handle.get_tool_defs().await
     }
 }
 

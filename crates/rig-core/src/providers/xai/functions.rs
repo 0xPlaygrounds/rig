@@ -189,6 +189,57 @@ pub async fn open_stream(
     }
 }
 
+/// Generate an image with xAI's `/v1/images/generations` endpoint.
+#[cfg(feature = "image")]
+pub async fn generate_image(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::image_generation::ImageGenerationRequest,
+) -> Result<
+    crate::image_generation::ImageGenerationResponse<
+        super::image_generation::ImageGenerationResponse,
+    >,
+    crate::image_generation::ImageGenerationError,
+> {
+    use crate::image_generation::ImageGenerationError;
+
+    let body = super::image_generation::build_image_generation_body(&cfg.model, &request)?;
+    let url = format!(
+        "{}/v1/images/generations",
+        cfg.base_url.trim_end_matches('/')
+    );
+    let req = crate::providers::openai::functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
+        .body(body)
+        .map_err(|e| ImageGenerationError::RequestError(Box::new(e)))?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::image_generation::parse_image_generation_response(
+        status,
+        &String::from_utf8_lossy(&body),
+    )
+}
+
+/// Generate speech with xAI's `/v1/tts` endpoint. The route has no model
+/// field, so `cfg.model` is unused beyond parity with the other modalities.
+#[cfg(feature = "audio")]
+pub async fn generate_audio(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::audio_generation::AudioGenerationRequest,
+) -> Result<
+    crate::audio_generation::AudioGenerationResponse<bytes::Bytes>,
+    crate::audio_generation::AudioGenerationError,
+> {
+    use crate::audio_generation::AudioGenerationError;
+
+    let body = super::audio_generation::build_audio_generation_body(&request)?;
+    let url = format!("{}/v1/tts", cfg.base_url.trim_end_matches('/'));
+    let req = crate::providers::openai::functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
+        .body(body)
+        .map_err(|e| AudioGenerationError::RequestError(Box::new(e)))?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::audio_generation::parse_audio_generation_response(status, body)
+}
+
 /// Send `request` to xAI and return the normalized response.
 pub async fn complete(
     cfg: &Config,

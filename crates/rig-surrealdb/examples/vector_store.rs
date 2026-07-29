@@ -3,8 +3,7 @@ use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
 };
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
@@ -56,19 +55,29 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let vector_store = SurrealVectorStore::with_defaults(model, surreal);
+    // The store receives precomputed vectors; embedding happens outside it.
+    let vector_store = SurrealVectorStore::with_defaults(surreal);
 
-    vector_store.insert_documents(documents).await?;
+    vector_store
+        .insert_as(
+            documents
+                .into_iter()
+                .enumerate()
+                .map(|(i, (doc, embeddings))| (format!("topic{i}"), doc, embeddings))
+                .collect(),
+        )
+        .await?;
 
     let query = "Which dish is a Roman pasta recipe made with eggs, pecorino romano, black pepper, and guanciale?";
     println!("Attempting vector search with query: {query}");
 
+    let query_embedding = model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query.to_string())
+        .query(query_embedding.clone())
         .samples(3)
         .build();
 
-    let results = vector_store.top_n::<TopicDefinition>(req).await?;
+    let results = vector_store.top_n_as::<TopicDefinition>(req).await?;
 
     anyhow::ensure!(
         results.len() == 3,
@@ -98,12 +107,12 @@ async fn main() -> Result<(), anyhow::Error> {
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
     );
     let req = VectorSearchRequest::builder()
-        .query(query.to_string())
+        .query(query_embedding)
         .samples(1)
         .threshold(midpoint)
         .build();
 
-    let results = vector_store.top_n::<TopicDefinition>(req).await?;
+    let results = vector_store.top_n_as::<TopicDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
     anyhow::ensure!(

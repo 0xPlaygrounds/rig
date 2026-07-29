@@ -119,6 +119,53 @@ pub async fn open_stream(
     openai_functions::compatible_open_stream(Ext, rt, req).await
 }
 
+/// Transcribe `request` with OpenRouter's `/audio/transcriptions` endpoint
+/// (JSON body carrying base64 audio).
+pub async fn transcribe(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::transcription::TranscriptionRequest,
+) -> Result<
+    crate::transcription::TranscriptionResponse<super::transcription::TranscriptionResponse>,
+    crate::transcription::TranscriptionError,
+> {
+    use crate::transcription::TranscriptionError;
+
+    let body = super::transcription::build_transcription_body(&cfg.model, request)?;
+    let url = format!(
+        "{}/audio/transcriptions",
+        cfg.base_url.trim_end_matches('/')
+    );
+    let req =
+        openai_functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
+            .body(body)
+            .map_err(|e| TranscriptionError::RequestError(Box::new(e)))?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::transcription::parse_transcription_response(status, &body)
+}
+
+/// Generate speech with OpenRouter's `/audio/speech` endpoint.
+#[cfg(feature = "audio")]
+pub async fn generate_audio(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: crate::audio_generation::AudioGenerationRequest,
+) -> Result<
+    crate::audio_generation::AudioGenerationResponse<bytes::Bytes>,
+    crate::audio_generation::AudioGenerationError,
+> {
+    use crate::audio_generation::AudioGenerationError;
+
+    let body = super::audio_generation::build_audio_generation_body(&cfg.model, &request)?;
+    let url = format!("{}/audio/speech", cfg.base_url.trim_end_matches('/'));
+    let req =
+        openai_functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
+            .body(body)
+            .map_err(|e| AudioGenerationError::RequestError(Box::new(e)))?;
+    let (status, body) = rt.send_bytes(req).await?;
+    super::audio_generation::parse_audio_generation_response(status, body)
+}
+
 /// Send `request` to OpenRouter and return the normalized response.
 pub async fn complete(
     cfg: &Config,

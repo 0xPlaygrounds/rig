@@ -65,16 +65,17 @@
 //! run-loop API.
 //!
 //! ## Vector stores and indexes
-//! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! trait, which can be implemented to define vector stores and indices respectively.
-//! Indexes can be queried directly by applications or runtimes. For active RAG,
-//! expose the index through its blanket [`PortableTool`](crate::tool::PortableTool)
-//! implementation, or through a custom tool, so the model decides when and how
-//! to retrieve. The classic `rig-agent` runtime can also query indexes from
+//! Rig provides a common data vocabulary for working with vector stores:
+//! [VectorSearchRequest](crate::vector_store::VectorSearchRequest) (pre-embedded queries),
+//! [SearchHit](crate::vector_store::SearchHit), and
+//! [StoreRecord](crate::vector_store::StoreRecord). Store crates expose concrete
+//! inherent async methods (`top_n`, `top_n_ids`, `top_n_as`, `insert`, `insert_as`)
+//! over these types. Stores can be queried directly by applications or runtimes.
+//! For active RAG, expose a store through a custom tool so the model decides when
+//! and how to retrieve. The classic `rig-agent` runtime can also query stores from
 //! hooks and append the resulting documents to a turn's extra context.
 //!
-//! Indexes can also serve custom architectures that use multiple LLMs or agents.
+//! Stores can also serve custom architectures that use multiple LLMs or agents.
 //!
 //! ## Conversation memory
 //! Runtimes can load and persist per-conversation history through the
@@ -131,8 +132,8 @@
 //! - HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
 //! - Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
 //!
-//! You can also implement your own vector store integration by defining types that
-//! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
+//! You can also implement your own vector store integration by exposing the same
+//! inherent methods over the shared vector store data types.
 //!
 //! The following providers are available as separate companion-crates:
 //!

@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
+use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::client::Nothing;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    vector_store::VectorSearchRequest, vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -15,6 +16,52 @@ struct Document {
     id: String,
     #[embed]
     content: String,
+}
+
+/// Passive RAG as a hook: on every model call, embed the latest user text,
+/// search the PDF-chunk store, and inject the hits as per-turn context.
+struct PdfRagHook {
+    embedding_model: ollama::EmbeddingModel,
+    store: InMemoryVectorStore,
+    samples: u64,
+}
+
+impl AgentHook for PdfRagHook {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let query = event.prompt.rag_text().or_else(|| {
+            event
+                .history
+                .iter()
+                .rev()
+                .find_map(|message| message.rag_text())
+        });
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let embedded = match self.embedding_model.embed_text(&query).await {
+            Ok(embedding) => embedding,
+            Err(error) => return CompletionCallAction::stop(error.to_string()),
+        };
+        let request = VectorSearchRequest::builder()
+            .query(embedded)
+            .samples(self.samples)
+            .build();
+        match self.store.top_n(request).await {
+            Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                hits.into_iter().map(|hit| rig::completion::Document {
+                    id: hit.id,
+                    text: hit.payload.to_string(),
+                    additional_props: Default::default(),
+                }),
+            )),
+            Err(error) => CompletionCallAction::stop(error.to_string()),
+        }
+    }
 }
 
 fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
@@ -85,16 +132,19 @@ async fn main() -> Result<()> {
     let embeddings = builder.build().await?;
     println!("Successfully generated embeddings");
 
-    // Create vector store and index
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
-    let index = vector_store.index(model);
-    println!("Successfully created vector store and index");
+    // Create vector store
+    let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
+    println!("Successfully created vector store");
 
-    // Create RAG agent
+    // Create RAG agent with the passive-RAG hook
     let rag_agent = client
         .agent("deepseek-r1")
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
-        .dynamic_context(1, index)
+        .add_hook(PdfRagHook {
+            embedding_model: model,
+            store: vector_store,
+            samples: 1,
+        })
         .build();
 
     println!("Starting CLI chatbot...");

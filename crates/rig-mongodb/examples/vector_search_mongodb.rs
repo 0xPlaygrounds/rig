@@ -12,9 +12,9 @@ use std::env;
 
 use rig_core::client::EmbeddingsClient;
 use rig_core::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
+    Embed, embeddings::EmbeddingModel, embeddings::EmbeddingsBuilder, providers::openai::Client,
 };
-use rig_mongodb::{MongoDbVectorIndex, SearchParams};
+use rig_mongodb::{MongoDbSearchFilter, MongoDbVectorIndex, SearchParams};
 
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
@@ -105,18 +105,18 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index =
-        MongoDbVectorIndex::new(collection, model, "vector_index", SearchParams::new()).await?;
+    let index = MongoDbVectorIndex::new(collection, "vector_index", SearchParams::new()).await?;
 
-    let query = "What is a linglingdong?";
-    let req = VectorSearchRequest::builder()
+    // Embed the query outside the store (reuse the same model that was used to
+    // generate the document embeddings), then search with the pre-embedded query.
+    let query = model.embed_text("What is a linglingdong?").await?;
+    let req = VectorSearchRequest::<MongoDbSearchFilter>::builder()
         .query(query)
         .samples(1)
         .build();
 
     // Query the index
-    let results = index.top_n::<Word>(req.clone()).await?;
+    let results = index.top_n_as::<Word>(req.clone()).await?;
 
     println!("Results: {results:?}");
 

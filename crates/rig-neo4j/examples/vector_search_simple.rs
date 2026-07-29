@@ -13,8 +13,9 @@ use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai::Client,
-    vector_store::VectorStoreIndex as _,
+    Embed,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    providers::openai::Client,
 };
 use rig_neo4j::{Neo4jClient, ToBoltType};
 
@@ -111,7 +112,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.get_index(model, "vector_index").await?;
+    let index = neo4j_client.get_index("vector_index").await?;
 
     // The struct that will represent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
     // ❗IMPORTANT: The field names must match the property names in the database
@@ -125,14 +126,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let query1 = "What is a glarb?";
     let query2 = "What is a linglingdong?";
 
+    // Queries are pre-embedded: embed them with the same model that was used
+    // to generate the document embeddings.
     let req = VectorSearchRequest::builder()
-        .query(query1)
+        .query(model.embed_text(query1).await?)
         .samples(1)
         .build();
 
     // Query the index
     let results = index
-        .top_n::<Document>(req)
+        .top_n_as::<Document>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.document))
@@ -141,7 +144,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Results: {results:?}");
 
     let req = VectorSearchRequest::builder()
-        .query(query2)
+        .query(model.embed_text(query2).await?)
         .samples(1)
         .build();
 

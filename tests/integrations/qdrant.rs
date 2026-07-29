@@ -22,7 +22,9 @@ use qdrant_client::{
 };
 use rig::qdrant::QdrantVectorStore;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex,
+    Embed,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    providers::openai,
 };
 use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 
@@ -178,15 +180,20 @@ async fn vector_search_test() {
         .unwrap();
 
     let query_params = QueryPointsBuilder::new(COLLECTION_NAME).with_payload(true);
-    let vector_store = QdrantVectorStore::new(client, model, query_params.build());
+    let vector_store = QdrantVectorStore::new(client, query_params.build());
 
-    let query = "What is a linglingdong?";
+    // Queries arrive pre-embedded: embed the query text with the (mocked)
+    // embedding model, then pass the embedding to the store.
+    let query_embedding = model.embed_text("What is a linglingdong?").await.unwrap();
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
-    let results = vector_store.top_n::<serde_json::Value>(req).await.unwrap();
+    let results = vector_store
+        .top_n_as::<serde_json::Value>(req)
+        .await
+        .unwrap();
 
     let (_, _, value) = &results.first().unwrap();
 

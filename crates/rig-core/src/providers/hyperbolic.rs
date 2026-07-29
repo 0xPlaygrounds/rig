@@ -189,15 +189,15 @@ pub use image_generation::*;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
-    use super::{ApiResponse, Client};
+    use super::Client;
     use crate::http_client::HttpClientExt;
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-    use crate::json_utils::merge_inplace;
+    
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
     use serde::Deserialize;
-    use serde_json::json;
+    
 
     pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
     pub const SD2: &str = "SD2";
@@ -277,18 +277,10 @@ mod image_generation {
             generation_request: ImageGenerationRequest,
         ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
         {
-            let mut request = json!({
-                "model_name": self.model,
-                "prompt": generation_request.prompt,
-                "height": generation_request.height,
-                "width": generation_request.width,
-            });
-
-            if let Some(params) = generation_request.additional_params {
-                merge_inplace(&mut request, params);
-            }
-
-            let body = serde_json::to_vec(&request)?;
+            let body = crate::providers::hyperbolic::functions::build_image_generation_body(
+                &self.model,
+                &generation_request,
+            )?;
 
             let request = self
                 .client
@@ -301,24 +293,10 @@ mod image_generation {
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(ImageGenerationError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(ImageGenerationError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
-            }
+            crate::providers::hyperbolic::functions::parse_image_generation_response(
+                status,
+                &response_body,
+            )
         }
     }
 }
@@ -332,7 +310,7 @@ pub use audio_generation::*;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod audio_generation {
-    use super::{ApiResponse, Client};
+    use super::Client;
     use crate::audio_generation;
     use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
     use crate::http_client::{self, HttpClientExt};
@@ -340,7 +318,7 @@ mod audio_generation {
     use base64::prelude::BASE64_STANDARD;
     use bytes::Bytes;
     use serde::Deserialize;
-    use serde_json::json;
+    
 
     #[derive(Clone)]
     pub struct AudioGenerationModel<T> {
@@ -389,14 +367,10 @@ mod audio_generation {
             request: AudioGenerationRequest,
         ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
         {
-            let request = json!({
-                "language": self.language,
-                "speaker": request.voice,
-                "text": request.text,
-                "speed": request.speed
-            });
-
-            let body = serde_json::to_vec(&request)?;
+            let body = crate::providers::hyperbolic::functions::build_audio_generation_body(
+                &self.language,
+                &request,
+            )?;
 
             let req = self
                 .client
@@ -407,24 +381,10 @@ mod audio_generation {
             let response = self.client.send::<_, Bytes>(req).await?;
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(AudioGenerationError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<AudioGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(AudioGenerationError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
-            }
+            crate::providers::hyperbolic::functions::parse_audio_generation_response(
+                status,
+                &response_body,
+            )
         }
     }
 }
@@ -818,6 +778,155 @@ pub mod functions {
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
         openai_functions::compatible_open_stream(Ext, rt, req).await
+    }
+
+    /// Build the serialized image-generation request body. Pure.
+    #[cfg(feature = "image")]
+    pub fn build_image_generation_body(
+        model: &str,
+        request: &crate::image_generation::ImageGenerationRequest,
+    ) -> Result<Vec<u8>, crate::image_generation::ImageGenerationError> {
+        let mut body = serde_json::json!({
+            "model_name": model,
+            "prompt": request.prompt,
+            "height": request.height,
+            "width": request.width,
+        });
+        if let Some(params) = request.additional_params.clone() {
+            crate::json_utils::merge_inplace(&mut body, params);
+        }
+        Ok(serde_json::to_vec(&body)?)
+    }
+
+    /// Parse an image-generation response body. Pure.
+    #[cfg(feature = "image")]
+    pub fn parse_image_generation_response(
+        status: http::StatusCode,
+        body: &[u8],
+    ) -> Result<
+        crate::image_generation::ImageGenerationResponse<super::ImageGenerationResponse>,
+        crate::image_generation::ImageGenerationError,
+    > {
+        use crate::image_generation::ImageGenerationError;
+
+        if !status.is_success() {
+            return Err(ImageGenerationError::from_http_response(
+                status,
+                String::from_utf8_lossy(body),
+            ));
+        }
+        match serde_json::from_slice::<super::ApiResponse<super::ImageGenerationResponse>>(body)? {
+            super::ApiResponse::Ok(response) => response.try_into(),
+            super::ApiResponse::Err(err) => {
+                tracing::warn!(message = %err.message, "provider returned an error response");
+                Err(ImageGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(body),
+                ))
+            }
+        }
+    }
+
+    /// Generate an image with Hyperbolic's `/v1/image/generation` endpoint.
+    #[cfg(feature = "image")]
+    pub async fn generate_image(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: crate::image_generation::ImageGenerationRequest,
+    ) -> Result<
+        crate::image_generation::ImageGenerationResponse<super::ImageGenerationResponse>,
+        crate::image_generation::ImageGenerationError,
+    > {
+        use crate::image_generation::ImageGenerationError;
+
+        let body = build_image_generation_body(&cfg.model, &request)?;
+        let url = format!("{}/v1/image/generation", cfg.base_url.trim_end_matches('/'));
+        let req = crate::providers::openai::functions::bearer_post(
+            url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            true,
+        )?
+        .body(body)
+        .map_err(|e| ImageGenerationError::RequestError(Box::new(e)))?;
+        let (status, body) = rt.send_bytes(req).await?;
+        parse_image_generation_response(status, &body)
+    }
+
+    /// Build the serialized audio-generation request body. Pure.
+    ///
+    /// Hyperbolic's TTS routes on a language rather than a model id;
+    /// `language` mirrors the classic model handle's constructor argument.
+    #[cfg(feature = "audio")]
+    pub fn build_audio_generation_body(
+        language: &str,
+        request: &crate::audio_generation::AudioGenerationRequest,
+    ) -> Result<Vec<u8>, crate::audio_generation::AudioGenerationError> {
+        Ok(serde_json::to_vec(&serde_json::json!({
+            "language": language,
+            "speaker": request.voice,
+            "text": request.text,
+            "speed": request.speed,
+        }))?)
+    }
+
+    /// Parse an audio-generation response body (base64 audio in a JSON
+    /// envelope). Pure.
+    #[cfg(feature = "audio")]
+    pub fn parse_audio_generation_response(
+        status: http::StatusCode,
+        body: &[u8],
+    ) -> Result<
+        crate::audio_generation::AudioGenerationResponse<super::AudioGenerationResponse>,
+        crate::audio_generation::AudioGenerationError,
+    > {
+        use crate::audio_generation::AudioGenerationError;
+
+        if !status.is_success() {
+            return Err(AudioGenerationError::from_http_response(
+                status,
+                String::from_utf8_lossy(body),
+            ));
+        }
+        match serde_json::from_slice::<super::ApiResponse<super::AudioGenerationResponse>>(body)? {
+            super::ApiResponse::Ok(response) => response.try_into(),
+            super::ApiResponse::Err(err) => {
+                tracing::warn!(message = %err.message, "provider returned an error response");
+                Err(AudioGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(body),
+                ))
+            }
+        }
+    }
+
+    /// Generate speech with Hyperbolic's `/v1/audio/generation` endpoint.
+    ///
+    /// `cfg.model` carries the language, mirroring the classic
+    /// `AudioGenerationModel` handle.
+    #[cfg(feature = "audio")]
+    pub async fn generate_audio(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: crate::audio_generation::AudioGenerationRequest,
+    ) -> Result<
+        crate::audio_generation::AudioGenerationResponse<super::AudioGenerationResponse>,
+        crate::audio_generation::AudioGenerationError,
+    > {
+        use crate::audio_generation::AudioGenerationError;
+
+        let body = build_audio_generation_body(&cfg.model, &request)?;
+        let url = format!("{}/v1/audio/generation", cfg.base_url.trim_end_matches('/'));
+        let req = crate::providers::openai::functions::bearer_post(
+            url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            true,
+        )?
+        .body(body)
+        .map_err(|e| AudioGenerationError::RequestError(Box::new(e)))?;
+        let (status, body) = rt.send_bytes(req).await?;
+        parse_audio_generation_response(status, &body)
     }
 
     /// Send `request` to Hyperbolic and return the normalized response.

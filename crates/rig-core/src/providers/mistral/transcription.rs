@@ -111,29 +111,7 @@ where
         &self,
         request: transcription::TranscriptionRequest,
     ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
-        let data = request.data;
-
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            for (key, value) in additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(
-                    "Additional Parameters to Mistral Transcription should be a map".into(),
-                )
-            })? {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
+        let body = build_transcription_form(&self.model, request)?;
 
         let req = self
             .client
@@ -149,22 +127,59 @@ where
 
         let status = response.status();
         let response_bytes = response.into_body().await?;
+        parse_transcription_response(status, &response_bytes)
+    }
+}
 
-        if status.is_success() {
-            let response_body: MistralTranscriptionResponse =
-                serde_json::from_slice(&response_bytes)?;
+/// Build the multipart form for a transcription `request`. Pure.
+///
+/// Mistral's form carries no `prompt` field (faithful to the classic path).
+pub(crate) fn build_transcription_form(
+    model: &str,
+    request: transcription::TranscriptionRequest,
+) -> Result<MultipartForm, TranscriptionError> {
+    let mut body = MultipartForm::new()
+        .text("model", model.to_string())
+        .part(Part::bytes("file", request.data).filename(request.filename));
 
-            tracing::info!(target: "rig", "Mistral transcription token usage: {}", &response_body.usage);
+    if let Some(language) = request.language {
+        body = body.text("language", language);
+    }
 
-            Ok(transcription::TranscriptionResponse::try_from(
-                response_body,
-            )?)
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_bytes),
-            ))
+    if let Some(ref temperature) = request.temperature {
+        body = body.text("temperature", temperature.to_string());
+    }
+
+    if let Some(ref additional_params) = request.additional_params {
+        for (key, value) in additional_params.as_object().ok_or_else(|| {
+            TranscriptionError::RequestError(
+                "Additional Parameters to Mistral Transcription should be a map".into(),
+            )
+        })? {
+            body = body.text(key.to_owned(), value.to_string());
         }
+    }
+
+    Ok(body)
+}
+
+/// Parse a transcription response body. Pure.
+pub(crate) fn parse_transcription_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<transcription::TranscriptionResponse<MistralTranscriptionResponse>, TranscriptionError>
+{
+    if status.is_success() {
+        let response_body: MistralTranscriptionResponse = serde_json::from_slice(body)?;
+
+        tracing::info!(target: "rig", "Mistral transcription token usage: {}", &response_body.usage);
+
+        transcription::TranscriptionResponse::try_from(response_body)
+    } else {
+        Err(TranscriptionError::from_http_response(
+            status,
+            String::from_utf8_lossy(body),
+        ))
     }
 }
 

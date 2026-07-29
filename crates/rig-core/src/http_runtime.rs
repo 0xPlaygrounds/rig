@@ -71,6 +71,62 @@ impl HttpRuntime {
         &self.transport
     }
 
+    /// Send a request and return `(status, body bytes)`.
+    ///
+    /// The binary sibling of [`send`](Self::send) for modality endpoints
+    /// whose success bodies are not text (e.g. audio). Non-success statuses
+    /// are returned as values with their body preserved; only
+    /// transport-level failures error.
+    pub(crate) async fn send_bytes(
+        &self,
+        request: http::Request<Vec<u8>>,
+    ) -> Result<(StatusCode, Vec<u8>), http_client::Error> {
+        let sent = match &self.transport {
+            Transport::Reqwest(client) => client.send::<Vec<u8>, bytes::Bytes>(request).await,
+            #[cfg(feature = "test-utils")]
+            Transport::Recording(client) => client.send::<Vec<u8>, bytes::Bytes>(request).await,
+            #[cfg(feature = "test-utils")]
+            Transport::Sequenced(client) => client.send::<Vec<u8>, bytes::Bytes>(request).await,
+        };
+        Self::flatten_bytes_response(sent).await
+    }
+
+    /// Send a multipart request and return `(status, body bytes)`.
+    ///
+    /// Same value-vs-error contract as [`send_bytes`](Self::send_bytes).
+    pub(crate) async fn send_multipart(
+        &self,
+        request: http::Request<http_client::MultipartForm>,
+    ) -> Result<(StatusCode, Vec<u8>), http_client::Error> {
+        let sent = match &self.transport {
+            Transport::Reqwest(client) => client.send_multipart::<bytes::Bytes>(request).await,
+            #[cfg(feature = "test-utils")]
+            Transport::Recording(client) => client.send_multipart::<bytes::Bytes>(request).await,
+            #[cfg(feature = "test-utils")]
+            Transport::Sequenced(client) => client.send_multipart::<bytes::Bytes>(request).await,
+        };
+        Self::flatten_bytes_response(sent).await
+    }
+
+    async fn flatten_bytes_response(
+        sent: http_client::Result<http::Response<http_client::LazyBody<bytes::Bytes>>>,
+    ) -> Result<(StatusCode, Vec<u8>), http_client::Error> {
+        match sent {
+            Ok(response) => {
+                let status = response.status();
+                let body = response.into_body().await?;
+                Ok((status, body.to_vec()))
+            }
+            // The transport layer folds non-success statuses into this error
+            // variant with the body preserved; surface them as values.
+            Err(http_client::Error::InvalidStatusCodeWithMessage(status, body)) => {
+                Ok((status, body.into_bytes()))
+            }
+            Err(http_client::Error::InvalidStatusCode(status)) => Ok((status, Vec::new())),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Send a request and return `(status, body)`.
     ///
     /// Non-success statuses are returned as values (with their body) rather

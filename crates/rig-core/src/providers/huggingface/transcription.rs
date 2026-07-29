@@ -63,55 +63,62 @@ where
         &self,
         request: transcription::TranscriptionRequest,
     ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
-        let data = request.data;
-        let data = BASE64_STANDARD.encode(data);
-
-        let request = json!({
-            "inputs": data
-        });
+        let body = build_transcription_body(&request.data)?;
 
         let route = self
             .client
             .subprovider()
             .transcription_endpoint(&self.model)?;
 
-        let request = serde_json::to_vec(&request)?;
-
         let req = self
             .client
             .post(&route)?
             .header("Content-Type", "application/json")
-            .body(request)
+            .body(body)
             .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
         let response = self.client.send(req).await?;
         let status = response.status();
         let body: Vec<u8> = response.into_body().await?;
+        parse_transcription_response(status, &body)
+    }
+}
 
-        if !status.is_success() {
-            return Err(TranscriptionError::from_http_response(
+/// Build the serialized transcription request body (base64 audio). Pure.
+pub(crate) fn build_transcription_body(data: &[u8]) -> Result<Vec<u8>, TranscriptionError> {
+    Ok(serde_json::to_vec(&json!({
+        "inputs": BASE64_STANDARD.encode(data)
+    }))?)
+}
+
+/// Parse a transcription response body. Pure.
+pub(crate) fn parse_transcription_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<transcription::TranscriptionResponse<TranscriptionResponse>, TranscriptionError> {
+    if !status.is_success() {
+        return Err(TranscriptionError::from_http_response(
+            status,
+            String::from_utf8_lossy(body),
+        ));
+    }
+
+    match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(body)? {
+        ApiResponse::Ok(response) => response.try_into(),
+        ApiResponse::Err(err) => {
+            let message = err
+                .get("error")
+                .and_then(|e| {
+                    e.as_str()
+                        .or_else(|| e.get("message").and_then(|m| m.as_str()))
+                })
+                .or_else(|| err.get("message").and_then(|m| m.as_str()))
+                .unwrap_or_default();
+            tracing::warn!(message = %message, "provider returned an error response");
+            Err(TranscriptionError::from_http_response(
                 status,
-                String::from_utf8_lossy(&body),
-            ));
-        }
-
-        match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&body)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => {
-                let message = err
-                    .get("error")
-                    .and_then(|e| {
-                        e.as_str()
-                            .or_else(|| e.get("message").and_then(|m| m.as_str()))
-                    })
-                    .or_else(|| err.get("message").and_then(|m| m.as_str()))
-                    .unwrap_or_default();
-                tracing::warn!(message = %message, "provider returned an error response");
-                Err(TranscriptionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
+                String::from_utf8_lossy(body),
+            ))
         }
     }
 }

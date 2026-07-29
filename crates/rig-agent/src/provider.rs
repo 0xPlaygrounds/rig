@@ -18,6 +18,7 @@
 //! directly instead.
 
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
+use rig_core::embeddings::EmbeddingError;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::descriptor::ProviderDescriptor;
 use rig_core::streaming::StreamingCompletionResponse;
@@ -192,6 +193,222 @@ macro_rules! define_provider_config {
 }
 
 for_each_builtin_provider!(define_provider_config);
+
+/// One row per bundled in-core embedding provider:
+/// `(Variant, module)` where the module's `functions` face carries an
+/// `EmbeddingConfig` plus free `embed`/`embed_batches` functions.
+macro_rules! for_each_builtin_embedder {
+    ($apply:ident) => {
+        $apply! {
+            (Azure, azure),
+            (Cohere, cohere),
+            (Copilot, copilot),
+            (Doubleword, doubleword),
+            (Gemini, gemini),
+            (Ollama, ollama),
+            (OpenAi, openai),
+            (VoyageAi, voyageai),
+        }
+    };
+}
+
+macro_rules! define_embedder_config {
+    ($(($variant:ident, $module:ident),)*) => {
+        /// A bundled embedding-provider selection as plain serde
+        /// configuration — the embeddings sibling of [`ProviderConfig`],
+        /// with the same exhaustive-match contract (deliberately not
+        /// `#[non_exhaustive]`).
+        ///
+        /// FastEmbed (`rig-fastembed`) deliberately has no arm: it runs
+        /// local model weights whose loaded handle cannot honestly be
+        /// serde configuration, and giving it an arm would require a new
+        /// weights cache in [`Runtime`]. Drive
+        /// `rig_fastembed::functions::embed` directly instead.
+        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+        pub enum EmbedderConfig {
+            $(
+                #[doc = concat!("The `", stringify!($module), "` embedding provider.")]
+                $variant(rig_core::providers::$module::functions::EmbeddingConfig),
+            )*
+            /// AWS Bedrock (InvokeModel over the AWS SDK).
+            #[cfg(feature = "bedrock")]
+            Bedrock(rig_bedrock::functions::EmbeddingConfig),
+            /// Gemini over gRPC (tonic).
+            #[cfg(feature = "gemini-grpc")]
+            GeminiGrpc(rig_gemini_grpc::functions::EmbeddingConfig),
+            /// Scripted embeddings for tests. Clone SHARES the call
+            /// cursor; deserialize resets it.
+            #[cfg(any(test, feature = "test-utils"))]
+            Mock(MockEmbedder),
+        }
+
+        impl EmbedderConfig {
+            /// The provider's capability sheet.
+            pub fn descriptor(&self) -> &'static ProviderDescriptor {
+                match self {
+                    $(Self::$variant(_) => &rig_core::providers::$module::functions::DESCRIPTOR,)*
+                    #[cfg(feature = "bedrock")]
+                    Self::Bedrock(_) => &rig_bedrock::functions::DESCRIPTOR,
+                    #[cfg(feature = "gemini-grpc")]
+                    Self::GeminiGrpc(_) => &rig_gemini_grpc::functions::DESCRIPTOR,
+                    #[cfg(any(test, feature = "test-utils"))]
+                    Self::Mock(_) => &MOCK_DESCRIPTOR,
+                }
+            }
+
+            /// The embedding model identifier this configuration targets.
+            pub fn model(&self) -> &str {
+                match self {
+                    $(Self::$variant(cfg) => &cfg.model,)*
+                    #[cfg(feature = "bedrock")]
+                    Self::Bedrock(cfg) => &cfg.model,
+                    #[cfg(feature = "gemini-grpc")]
+                    Self::GeminiGrpc(cfg) => &cfg.model,
+                    #[cfg(any(test, feature = "test-utils"))]
+                    Self::Mock(_) => "mock",
+                }
+            }
+        }
+
+        /// Embed `texts` with any bundled embedding provider.
+        ///
+        /// Chunking to each provider's `max_embedding_documents` happens
+        /// inside the provider's free function; embeddings come back in
+        /// input order with summed usage.
+        pub async fn embed(
+            provider: &EmbedderConfig,
+            rt: &Runtime,
+            texts: Vec<String>,
+        ) -> Result<rig_core::embeddings::EmbeddingResponse, EmbeddingError> {
+            match provider {
+                $(
+                    EmbedderConfig::$variant(cfg) => {
+                        rig_core::providers::$module::functions::embed(cfg, &rt.http, texts).await
+                    }
+                )*
+                #[cfg(feature = "bedrock")]
+                EmbedderConfig::Bedrock(cfg) => {
+                    let client = rt.bedrock_client(&cfg.client_config()).await;
+                    rig_bedrock::functions::embed(&client, &cfg.model, cfg.ndims, texts).await
+                }
+                #[cfg(feature = "gemini-grpc")]
+                EmbedderConfig::GeminiGrpc(cfg) => {
+                    let client = rt
+                        .gemini_grpc_client(&cfg.client_config())
+                        .await
+                        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
+                    rig_gemini_grpc::functions::embed(&client, &cfg.model, cfg.ndims, texts).await
+                }
+                #[cfg(any(test, feature = "test-utils"))]
+                EmbedderConfig::Mock(script) => script.next_response(&texts),
+            }
+        }
+
+        /// Embed caller-defined batches with any bundled embedding
+        /// provider, returning one order-aligned
+        /// [`rig_core::OneOrMany`] group per input batch plus summed usage.
+        pub async fn embed_batches(
+            provider: &EmbedderConfig,
+            rt: &Runtime,
+            texts: Vec<Vec<String>>,
+        ) -> Result<
+            (
+                Vec<rig_core::OneOrMany<rig_core::embeddings::Embedding>>,
+                rig_core::completion::Usage,
+            ),
+            EmbeddingError,
+        > {
+            let counts: Vec<usize> = texts.iter().map(Vec::len).collect();
+            let flat: Vec<String> = texts.into_iter().flatten().collect();
+            let response = embed(provider, rt, flat).await?;
+            let groups =
+                rig_core::embeddings::batching::group_batches(&counts, response.embeddings)?;
+            Ok((groups, response.usage))
+        }
+    };
+}
+
+for_each_builtin_embedder!(define_embedder_config);
+
+/// Scripted embedding responses for tests — the embeddings sibling of
+/// [`MockScript`].
+///
+/// Plain data plus an interior-mutable call cursor: `clone` SHARES the
+/// cursor (so a session and a test observing it stay in step), and
+/// deserialize RESETS it (`#[serde(skip)]`).
+#[cfg(any(test, feature = "test-utils"))]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct MockEmbedder {
+    /// One response per expected embed call, in order: the vectors for that
+    /// call's texts (index-aligned with the texts).
+    pub responses: Vec<Vec<Vec<f64>>>,
+    #[serde(skip)]
+    cursor: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// Text batches observed so far. Like the cursor, `clone` SHARES the
+    /// record so a test probe stays in step with the script under test.
+    #[serde(skip)]
+    requests: std::sync::Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl MockEmbedder {
+    /// A script answering each embed call with the next vector set.
+    pub fn from_responses(responses: Vec<Vec<Vec<f64>>>) -> Self {
+        Self {
+            responses,
+            cursor: std::sync::Arc::default(),
+            requests: std::sync::Arc::default(),
+        }
+    }
+
+    /// Calls served so far.
+    pub fn calls(&self) -> usize {
+        self.cursor.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Text batches served so far, in call order. Clones share this record.
+    pub fn requests(&self) -> Vec<Vec<String>> {
+        self.requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn next_response(
+        &self,
+        texts: &[String],
+    ) -> Result<rig_core::embeddings::EmbeddingResponse, EmbeddingError> {
+        self.requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(texts.to_vec());
+        let index = self
+            .cursor
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let vectors = self.responses.get(index).cloned().ok_or_else(|| {
+            EmbeddingError::ProviderError(format!(
+                "mock embedder exhausted: call {index} has no scripted response"
+            ))
+        })?;
+        if vectors.len() != texts.len() {
+            return Err(EmbeddingError::ResponseError(format!(
+                "mock embedder call {index} scripted {} vectors for {} texts",
+                vectors.len(),
+                texts.len()
+            )));
+        }
+        let embeddings = texts
+            .iter()
+            .cloned()
+            .zip(vectors)
+            .map(|(document, vec)| rig_core::embeddings::Embedding { document, vec })
+            .collect();
+        Ok(rig_core::embeddings::EmbeddingResponse {
+            embeddings,
+            usage: rig_core::completion::Usage::new(),
+        })
+    }
+}
 
 /// The mock provider's capability sheet: everything on, so scripted tests
 /// exercise every request shape.
@@ -539,5 +756,86 @@ impl MockScript {
         Ok(StreamingCompletionResponse::stream(Box::pin(
             futures::stream::iter(items.into_iter().map(Ok)),
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn mock_embedder_scripts_responses_in_order() {
+        let script = MockEmbedder::from_responses(vec![
+            vec![vec![0.1], vec![0.2]],
+            vec![vec![0.3]],
+        ]);
+        let cfg = EmbedderConfig::Mock(script.clone());
+        let rt = Runtime::new();
+
+        let response = embed(&cfg, &rt, vec!["a".to_string(), "b".to_string()])
+            .await
+            .expect("first call");
+        let documents: Vec<_> = response
+            .embeddings
+            .iter()
+            .map(|e| e.document.clone())
+            .collect();
+        assert_eq!(documents, ["a", "b"]);
+
+        // Clone shares the cursor: the second call advances the script.
+        let response = embed(&cfg, &rt, vec!["c".to_string()])
+            .await
+            .expect("second call");
+        assert_eq!(
+            response.embeddings.first().map(|e| e.vec.clone()),
+            Some(vec![0.3])
+        );
+        assert_eq!(script.calls(), 2);
+        assert!(embed(&cfg, &rt, vec!["d".to_string()]).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn embed_batches_regroups_order_aligned() {
+        let script = MockEmbedder::from_responses(vec![vec![vec![0.1], vec![0.2], vec![0.3]]]);
+        let cfg = EmbedderConfig::Mock(script.clone());
+        let rt = Runtime::new();
+
+        let (groups, _usage) = embed_batches(
+            &cfg,
+            &rt,
+            vec![
+                vec!["a".to_string(), "b".to_string()],
+                vec!["c".to_string()],
+            ],
+        )
+        .await
+        .expect("embed batches");
+
+        // The mock saw one flattened call, regrouped 2 + 1 in input order.
+        assert_eq!(script.requests(), vec![vec!["a", "b", "c"]]);
+        assert_eq!(groups.len(), 2);
+        let first: Vec<_> = groups
+            .first()
+            .expect("first group")
+            .iter()
+            .map(|e| e.document.clone())
+            .collect();
+        assert_eq!(first, ["a", "b"]);
+        let second: Vec<_> = groups
+            .get(1)
+            .expect("second group")
+            .iter()
+            .map(|e| e.document.clone())
+            .collect();
+        assert_eq!(second, ["c"]);
+    }
+
+    #[test]
+    fn mock_embedder_deserialize_resets_cursor() {
+        let script = MockEmbedder::from_responses(vec![vec![vec![0.5]]]);
+        let json = serde_json::to_string(&script).expect("serialize");
+        let back: MockEmbedder = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.calls(), 0);
+        assert_eq!(back.responses, vec![vec![vec![0.5]]]);
     }
 }

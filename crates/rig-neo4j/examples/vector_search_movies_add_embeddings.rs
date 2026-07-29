@@ -8,11 +8,9 @@
 use std::env;
 
 use rig_core::{
+    embeddings::EmbeddingModel,
     providers::openai::{self, Client},
-    vector_store::{
-        VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
-    },
+    vector_store::request::{SearchFilter, VectorSearchRequest},
 };
 
 use neo4rs::*;
@@ -105,22 +103,22 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client
-        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, &model)
+        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, model.ndims())
         .await?;
 
-    // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.get_index(model, INDEX_NAME).await?;
+    let index = neo4j_client.get_index(INDEX_NAME).await?;
 
     let query = "a historical movie on quebec";
+    // ❗IMPORTANT: Embed the query with the same model that was used to generate the embeddings
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(model.embed_text(query).await?)
         .samples(5)
         .filter(SearchFilter::gt("node.year", 1990.into()))
         .build();
 
     // Query the index
     let results = index
-        .top_n::<Movie>(req)
+        .top_n_as::<Movie>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| display::SearchResult {
@@ -135,7 +133,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "What is a linglingdong?";
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(model.embed_text(query).await?)
         .samples(1)
         .build();
 

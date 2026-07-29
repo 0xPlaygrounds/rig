@@ -15,10 +15,9 @@ use testcontainers::{
 
 use futures::{StreamExt, TryStreamExt};
 use rig::neo4j::{Neo4jClient, ToBoltType};
-use rig::vector_store::VectorStoreIndex;
 use rig::{
     Embed, OneOrMany,
-    embeddings::{Embedding, EmbeddingsBuilder},
+    embeddings::{Embedding, EmbeddingModel, EmbeddingsBuilder},
     providers::openai,
 };
 use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
@@ -211,23 +210,21 @@ async fn vector_search_test() {
 
     println!("Index exists: {index_exists:?}");
 
-    // Create a vector index on our vector store
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client
-        .get_index(model, "vector_index")
-        .await
-        .expect("");
+    let index = neo4j_client.get_index("vector_index").await.expect("");
 
+    // Queries arrive pre-embedded: embed the query with the same model that
+    // was used to generate the document embeddings.
     let query = "What is a glarb?";
+    let query_embedding = model.embed_text(query).await.expect("");
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
     // Query the index
-    let results = index.top_n::<serde_json::Value>(req).await.expect("");
+    let results = index.top_n(req).await.expect("");
 
-    let (_, _, value) = &results.first().expect("");
+    let value = &results.first().expect("").payload;
 
     assert_eq!(
         value,

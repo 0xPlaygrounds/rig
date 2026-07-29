@@ -3,10 +3,10 @@ use aws_sdk_s3vectors::Client;
 use aws_sdk_s3vectors::config::Credentials;
 use rig_core::Embed;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
-use rig_core::embeddings::EmbeddingsBuilder;
+use rig_core::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 use rig_core::providers::openai::{self, Client as OpenAIClient};
+use rig_core::vector_store::StoreRecord;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
 use std::env;
 
 const BUCKET_NAME: &str = "foo_bucket";
@@ -61,20 +61,35 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let store =
-        rig_s3vectors::S3VectorsVectorStore::new(model, s3vectors_client, BUCKET_NAME, INDEX_NAME);
+    // The store holds no embedding model: embedding happens outside the store,
+    // and both records and queries arrive pre-embedded.
+    let store = rig_s3vectors::S3VectorsVectorStore::new(s3vectors_client, BUCKET_NAME, INDEX_NAME);
 
-    store.insert_documents(documents).await?;
+    let records = documents
+        .into_iter()
+        .map(|(doc, embeddings)| StoreRecord::new(doc.id.clone(), &doc, embeddings))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    store.insert(records).await?;
     let query = "What is a linglingdong?";
+    let query_embedding = model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(2)
         .build();
 
-    let results = store.top_n::<Word>(req).await?;
+    let results = store.top_n(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
-    for (distance, _id, doc) in results.iter() {
+    for hit in results.iter() {
+        // The stored metadata wraps the original payload under `document`.
+        let doc: Word = serde_json::from_value(
+            hit.payload
+                .get("document")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+        )?;
+        let distance = hit.score;
         println!("Result distance {distance} for word: {doc:?}");
 
         // expected output

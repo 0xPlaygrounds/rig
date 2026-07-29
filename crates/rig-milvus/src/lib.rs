@@ -1,7 +1,8 @@
 //! Milvus vector store integration for Rig.
 //!
-//! This crate provides [`MilvusVectorStore`], a Rig vector store implementation
-//! that talks to Milvus over its HTTP API.
+//! This crate provides [`MilvusVectorStore`], a Rig vector store backend
+//! that talks to Milvus over its HTTP API. Queries arrive pre-embedded via
+//! [`VectorSearchRequest`]; the store never embeds text itself.
 //!
 //! The root `rig` facade re-exports this crate as `rig::milvus` when the
 //! `milvus` feature is enabled.
@@ -10,22 +11,22 @@ mod filter;
 
 use reqwest::StatusCode;
 use rig_core::{
-    Embed, OneOrMany,
-    embeddings::{Embedding, EmbeddingModel},
+    OneOrMany,
+    embeddings::Embedding,
     vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter as CoreFilter, SearchFilter, VectorSearchRequest},
+        SearchHit, StoreRecord, VectorStoreError,
+        request::{SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::filter::Filter;
 
 /// Represents a vector store implementation using Milvus - <https://milvus.io/> as the backend.
-pub struct MilvusVectorStore<M> {
-    /// Model used to generate embeddings for the vector store
-    model: M,
+///
+/// Queries and records arrive pre-embedded, so the store holds no embedding
+/// model.
+pub struct MilvusVectorStore {
     base_url: String,
     client: reqwest::Client,
     database_name: String,
@@ -63,17 +64,17 @@ struct SearchRequest<'a> {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SearchResult<T> {
+struct SearchResult {
     code: i64,
-    data: Vec<SearchResultData<T>>,
+    data: Vec<SearchResultData>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SearchResultData<T> {
+struct SearchResultData {
     id: i64,
     distance: f64,
-    document: T,
+    document: serde_json::Value,
     embedded_text: String,
 }
 
@@ -91,20 +92,15 @@ struct SearchResultDataOnlyId {
     distance: f64,
 }
 
-impl<M> MilvusVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl MilvusVectorStore {
     /// Creates a new instance of `MilvusVectorStore`.
     ///
     /// # Arguments
-    /// * `model` - Embedding model instance
     /// * `base_url` - The URL of where your Milvus instance is located. Alternatively if you're using the Milvus offering provided by Zilliz, your cluster endpoint.
     /// * `database_name` - The name of your database
     /// * `collection_name` - The name of your collection
-    pub fn new(model: M, base_url: String, database_name: String, collection_name: String) -> Self {
+    pub fn new(base_url: String, database_name: String, collection_name: String) -> Self {
         Self {
-            model,
             base_url,
             client: reqwest::Client::new(),
             database_name,
@@ -167,146 +163,121 @@ where
             output_fields,
         }
     }
-}
 
-impl<Model> InsertDocuments for MilvusVectorStore<Model>
-where
-    Model: EmbeddingModel + Send + Sync,
-{
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
-        &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> Result<(), VectorStoreError> {
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/insert",
-            base_url = self.base_url
-        );
+    /// Sends a POST request to a Milvus endpoint, attaching auth when configured.
+    async fn post(&self, path: &str, body: String) -> Result<reqwest::Response, VectorStoreError> {
+        let url = format!("{base_url}{path}", base_url = self.base_url);
 
-        let data = documents
+        let mut client = self.client.post(url);
+        if let Some(ref token) = self.token {
+            client = client.header("Authentication", format!("Bearer {token}"));
+        }
+
+        let res = client.body(body).send().await?;
+
+        if res.status() != StatusCode::OK {
+            let status = res.status();
+            let text = res.text().await?;
+
+            return Err(VectorStoreError::ExternalAPIError(status, text));
+        }
+
+        Ok(res)
+    }
+
+    /// Insert precomputed records into the Milvus collection.
+    ///
+    /// Each embedding of a record becomes one Milvus row carrying the record's
+    /// serialized payload as its `document` field. Milvus assigns row ids
+    /// itself (`autoId`), so [`StoreRecord::id`] is not persisted.
+    pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
+        let data = records
             .into_iter()
-            .map(|(document, embeddings)| {
-                let json_document: serde_json::Value = serde_json::to_value(&document)?;
-                let json_document_as_string = serde_json::to_string(&json_document)?;
+            .map(|record| {
+                let json_document_as_string = serde_json::to_string(&record.payload)?;
 
-                let embeddings = embeddings
+                let rows = record
+                    .embeddings
                     .into_iter()
-                    .map(|embedding| {
-                        let embedded_text = embedding.document;
-                        let embedding: Vec<f64> = embedding.vec;
-
-                        CreateRecord {
-                            document: json_document_as_string.clone(),
-                            embedded_text,
-                            embedding,
-                        }
+                    .map(|embedding| CreateRecord {
+                        document: json_document_as_string.clone(),
+                        embedded_text: embedding.document,
+                        embedding: embedding.vec,
                     })
                     .collect::<Vec<CreateRecord>>();
-                Ok(embeddings)
+                Ok(rows)
             })
             .collect::<Result<Vec<Vec<CreateRecord>>, VectorStoreError>>()?
             .into_iter()
             .flatten()
             .collect::<Vec<CreateRecord>>();
 
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
-        }
-
         let insert_request = self.create_insert_request(data);
-
         let body = serde_json::to_string(&insert_request)?;
 
-        let res = client.body(body).send().await?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
+        self.post("/v2/vectordb/entities/insert", body).await?;
 
         Ok(())
     }
-}
 
-impl<M> VectorStoreIndex for MilvusVectorStore<M>
-where
-    M: EmbeddingModel,
-{
-    type Filter = Filter;
+    /// Serializes each document and inserts it. Sugar over [`Self::insert`].
+    pub async fn insert_as<T: Serialize>(
+        &self,
+        docs: Vec<(String, T, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let records = docs
+            .into_iter()
+            .map(|(id, doc, embeddings)| StoreRecord::new(id, &doc, embeddings))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.insert(records).await
+    }
 
-    /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.
-    /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    /// Search for the top `n` nearest neighbors to the pre-embedded query within the Milvus vector store.
+    ///
+    /// Results are returned as [`SearchHit`]s whose payload is the stored JSON
+    /// document.
+    pub async fn top_n(
         &self,
         req: VectorSearchRequest<Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let embedding = self.model.embed_text(req.query()).await?;
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/search",
-            base_url = self.base_url
-        );
-
+    ) -> Result<Vec<SearchHit>, VectorStoreError> {
+        let embedding = req.query().first();
         let body = self.create_search_request(embedding.vec, &req, false);
-
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
-        }
-
         let body = serde_json::to_string(&body)?;
 
-        let res = client.body(body).send().await?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
-
-        let json: SearchResult<T> = res.json().await?;
+        let res = self.post("/v2/vectordb/entities/search", body).await?;
+        let json: SearchResult = res.json().await?;
 
         let res = json
             .data
             .into_iter()
-            .map(|x| (x.distance, x.id.to_string(), x.document))
+            .map(|x| SearchHit {
+                id: x.id.to_string(),
+                score: x.distance,
+                // The document is stored as a JSON string in a VARCHAR field;
+                // decode it back into structured JSON when possible.
+                payload: match x.document {
+                    serde_json::Value::String(s) => {
+                        serde_json::from_str(&s).unwrap_or(serde_json::Value::String(s))
+                    }
+                    other => other,
+                },
+            })
             .collect();
 
         Ok(res)
     }
 
-    /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.
+    /// Search for the top `n` nearest neighbors to the pre-embedded query within the Milvus vector store.
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
-    async fn top_n_ids(
+    pub async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let embedding = self.model.embed_text(req.query()).await?;
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/search",
-            base_url = self.base_url
-        );
-
+        let embedding = req.query().first();
         let body = self.create_search_request(embedding.vec, &req, true);
-
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
-        }
-
         let body = serde_json::to_string(&body)?;
 
-        let res = client.body(body).send().await?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
-
+        let res = self.post("/v2/vectordb/entities/search", body).await?;
         let json: SearchResultOnlyId = res.json().await?;
 
         let res = json
@@ -317,34 +288,20 @@ where
 
         Ok(res)
     }
-}
 
-impl<M> VectorStoreIndexDyn for MilvusVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        Box::pin(async move {
-            let req = req.try_map_filter(Filter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-
-            Ok(results)
-        })
-    }
-
-    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let req = req.try_map_filter(Filter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-
-            Ok(results)
-        })
+    /// Returns the top `n` nearest neighbors deserialized into `T` as
+    /// `(score, id, document)` tuples. Sugar over [`Self::top_n`].
+    pub async fn top_n_as<T: DeserializeOwned>(
+        &self,
+        req: VectorSearchRequest<Filter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        self.top_n(req)
+            .await?
+            .into_iter()
+            .map(|hit| {
+                let doc = serde_json::from_value(hit.payload)?;
+                Ok((hit.score, hit.id, doc))
+            })
+            .collect()
     }
 }

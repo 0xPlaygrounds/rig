@@ -3,6 +3,7 @@ use lancedb::index::vector::IvfPqIndexBuilder;
 use rig_agent::{client::AgentClientExt, completion::Prompt};
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
+use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::Client,
@@ -68,19 +69,31 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
-    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
+    let vector_store_index = LanceDbVectorIndex::new(table, "id", search_params).await?;
 
-    // Build RAG agent with dynamic context.
+    let query = "My boss says I zindle too much, what does that mean?";
+
+    // Queries are pre-embedded: embed the query text with the embedding model,
+    // retrieve the most relevant documents, and pass them to the agent as
+    // context.
+    let query_embedding = model.embed_text(query).await?;
+    let req = VectorSearchRequest::builder()
+        .query(query_embedding)
+        .samples(top_k as u64)
+        .build();
+    let hits = vector_store_index.top_n(req).await?;
+
+    // Build RAG agent with the retrieved context.
     // Use the OpenAI chat-completions API interface to build the agent.
-    let agent = openai_client
+    let mut agent_builder = openai_client
         .completions_api()
         .agent(openai::GPT_4O)
         .temperature(0.5)
-        .preamble("You are a helpful AI assistant.")
-        .dynamic_context(top_k, vector_store_index)
-        .build();
-
-    let query = "My boss says I zindle too much, what does that mean?";
+        .preamble("You are a helpful AI assistant.");
+    for hit in &hits {
+        agent_builder = agent_builder.context(&hit.payload.to_string());
+    }
+    let agent = agent_builder.build();
 
     let response = agent.prompt(query).await?;
 

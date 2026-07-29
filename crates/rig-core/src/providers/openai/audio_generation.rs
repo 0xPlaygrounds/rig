@@ -4,7 +4,6 @@ use crate::audio_generation::{
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::Client;
 use bytes::Bytes;
-use serde_json::json;
 
 pub const TTS_1: &str = "tts-1";
 pub const TTS_1_HD: &str = "tts-1-hd";
@@ -40,12 +39,7 @@ where
         &self,
         request: AudioGenerationRequest,
     ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let body = serde_json::to_vec(&json!({
-            "model": self.model,
-            "input": request.text,
-            "voice": request.voice,
-            "speed": request.speed,
-        }))?;
+        let body = super::functions::build_audio_generation_body(&self.model, &request)?;
 
         let req = self
             .client
@@ -55,22 +49,9 @@ where
 
         let response = self.client.send(req).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let bytes: Bytes = response.into_body().await?;
-
-            return Err(AudioGenerationError::from_http_response(
-                status,
-                String::from_utf8_lossy(&bytes),
-            ));
-        }
-
+        let status = response.status();
         let bytes: Bytes = response.into_body().await?;
-
-        Ok(AudioGenerationResponse {
-            audio: bytes.to_vec(),
-            response: bytes,
-        })
+        super::functions::parse_audio_generation_response(status, bytes.to_vec())
     }
 }
 

@@ -21,8 +21,7 @@ use crate::client::{
     ProviderClient,
 };
 use crate::completion::CompletionError;
-use crate::http_client::multipart::Part;
-use crate::http_client::{self, HttpClientExt, MultipartForm};
+use crate::http_client::{self, HttpClientExt};
 use crate::transcription::{self, TranscriptionError};
 
 // ================================================================
@@ -135,18 +134,6 @@ impl ProviderClient for Client {
     fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
         Self::new(&input).map_err(Into::into)
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
 }
 
 fn apply_native_tools_to_additional_params(
@@ -295,36 +282,10 @@ where
         transcription::TranscriptionResponse<Self::Response>,
         transcription::TranscriptionError,
     > {
-        let data = request.data;
-
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(prompt) = request.prompt {
-            body = body.text("prompt", prompt.clone());
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-
-            for (key, value) in params {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
+        // Groq's transcription endpoint is OpenAI-compatible: same multipart
+        // form and same response envelope.
+        let body =
+            crate::providers::openai::functions::build_transcription_form(&self.model, request)?;
 
         let req = self
             .client
@@ -336,24 +297,7 @@ where
 
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();
-
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => {
-                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body).to_string(),
-            ))
-        }
+        crate::providers::openai::functions::parse_transcription_response(status, &response_body)
     }
 }
 
@@ -714,6 +658,43 @@ pub mod functions {
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
         openai_functions::compatible_open_stream(Ext, rt, req).await
+    }
+
+    /// Transcribe `request` with Groq's OpenAI-compatible
+    /// `/audio/transcriptions` endpoint.
+    pub async fn transcribe(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: crate::transcription::TranscriptionRequest,
+    ) -> Result<
+        crate::transcription::TranscriptionResponse<
+            crate::providers::openai::TranscriptionResponse,
+        >,
+        crate::transcription::TranscriptionError,
+    > {
+        use crate::transcription::TranscriptionError;
+
+        let form = openai_functions::build_transcription_form(&cfg.model, request)?;
+        let url = format!(
+            "{}/audio/transcriptions",
+            cfg.base_url.trim_end_matches('/')
+        );
+        let mut builder = http::Request::post(url);
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| TranscriptionError::RequestError(Box::new(e)))?
+        {
+            builder = builder.header(http::header::AUTHORIZATION, format!("Bearer {key}"));
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        let req = builder
+            .body(form)
+            .map_err(|e| TranscriptionError::RequestError(Box::new(e)))?;
+        let (status, body) = rt.send_multipart(req).await?;
+        openai_functions::parse_transcription_response(status, &body)
     }
 
     /// Send `request` to Groq and return the normalized response.

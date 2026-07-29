@@ -62,20 +62,12 @@ where
         request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
-        let request = json!({
-            "inputs": request.prompt,
-            "parameters": {
-                "width": request.width,
-                "height": request.height
-            }
-        });
+        let body = build_image_generation_body(&request)?;
 
         let route = self
             .client
             .subprovider()
             .image_generation_endpoint(&self.model)?;
-
-        let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
@@ -86,20 +78,41 @@ where
 
         let response = self.client.send(req).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text: Vec<u8> = response.into_body().await?;
-
-            return Err(ImageGenerationError::from_http_response(
-                status,
-                String::from_utf8_lossy(&text),
-            ));
-        }
-
+        let status = response.status();
         let data: Vec<u8> = response.into_body().await?;
-
-        ImageGenerationResponse { data }.try_into()
+        parse_image_generation_response(status, data)
     }
+}
+
+/// Build the serialized image-generation request body. Pure.
+pub(crate) fn build_image_generation_body(
+    request: &ImageGenerationRequest,
+) -> Result<Vec<u8>, ImageGenerationError> {
+    Ok(serde_json::to_vec(&json!({
+        "inputs": request.prompt,
+        "parameters": {
+            "width": request.width,
+            "height": request.height
+        }
+    }))?)
+}
+
+/// Parse an image-generation response: success bodies are raw image bytes.
+/// Pure.
+pub(crate) fn parse_image_generation_response(
+    status: http::StatusCode,
+    body: Vec<u8>,
+) -> Result<
+    image_generation::ImageGenerationResponse<ImageGenerationResponse>,
+    ImageGenerationError,
+> {
+    if !status.is_success() {
+        return Err(ImageGenerationError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body),
+        ));
+    }
+    ImageGenerationResponse { data: body }.try_into()
 }
 
 #[cfg(test)]

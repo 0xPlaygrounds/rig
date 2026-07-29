@@ -42,14 +42,19 @@
 //! ```ignore
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;
-//! use rig_core::{providers::openai::*, vector_store::VectorStoreIndex};
+//! use rig_core::{
+//!     client::EmbeddingsClient,
+//!     embeddings::EmbeddingModel,
+//!     providers::openai::*,
+//!     vector_store::request::VectorSearchRequest,
+//! };
 //! use serde::Deserialize;
 //! use std::env;
 //!
 //! #[tokio::main]
 //! async fn main() {
 //!     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-//!     let openai_client = Client::new(&openai_api_key);
+//!     let openai_client = Client::new(&openai_api_key).unwrap();
 //!     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 //!
 //!
@@ -70,17 +75,21 @@
 //!    .await
 //!    .unwrap();
 //!
-//!     let index = client.get_index(
-//!         model,
-//!         "moviePlotsEmbedding"
-//!     ).await.unwrap();
+//!     let index = client.get_index("moviePlotsEmbedding").await.unwrap();
 //!
 //!     #[derive(Debug, Deserialize)]
 //!     struct Movie {
 //!         title: String,
 //!         plot: String,
 //!     }
-//!     let results = index.top_n::<Movie>("Batman", 3).await.unwrap();
+//!
+//!     // Queries arrive pre-embedded: embed with the same model the index was built with.
+//!     let query = model.embed_text("Batman").await.unwrap();
+//!     let req = VectorSearchRequest::builder()
+//!         .query(query)
+//!         .samples(3)
+//!         .build();
+//!     let results = index.top_n_as::<Movie>(req).await.unwrap();
 //!     println!("{:#?}", results);
 //! }
 //! ```
@@ -89,10 +98,7 @@ use std::str::FromStr;
 
 use futures::TryStreamExt;
 use neo4rs::*;
-use rig_core::{
-    embeddings::EmbeddingModel,
-    vector_store::{VectorStoreError, request::SearchFilter},
-};
+use rig_core::vector_store::{VectorStoreError, request::SearchFilter};
 use serde::{Deserialize, Serialize};
 use vector_index::{IndexConfig, Neo4jVectorIndex, VectorSimilarityFunction};
 
@@ -326,11 +332,7 @@ impl Neo4jClient {
     /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
     ///
     /// ❗IMPORTANT: The index must be created with the same embedding model that will be used to query the index.
-    pub async fn get_index<M: EmbeddingModel>(
-        &self,
-        model: M,
-        index_name: &str,
-    ) -> Result<Neo4jVectorIndex<M>, VectorStoreError> {
+    pub async fn get_index(&self, index_name: &str) -> Result<Neo4jVectorIndex, VectorStoreError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexInfo {
@@ -363,13 +365,11 @@ impl Neo4jClient {
         .await?;
 
         let index_config = if let Some(index) = index_info.first() {
-            if index.options.index_config.vector_dimensions != model.ndims() as i64 {
-                tracing::warn!(
-                    "The embedding vector dimensions of the existing Neo4j DB index ({}) do not match the provided model dimensions ({}). This may affect search performance.",
-                    index.options.index_config.vector_dimensions,
-                    model.ndims()
-                );
-            }
+            tracing::debug!(
+                "Neo4j index `{}` has {} embedding vector dimensions. Queries must be embedded with a model of the same dimensions.",
+                index.name,
+                index.options.index_config.vector_dimensions,
+            );
             let embedding_property = index.properties.first().ok_or_else(|| {
                 VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
                     "Neo4j index is missing an embedding property",
@@ -380,7 +380,7 @@ impl Neo4jClient {
                 .similarity_function(VectorSimilarityFunction::from_str(
                     &index.options.index_config.vector_similarity_function,
                 )?);
-            // Preserve the node label the index is attached to so `insert_documents`
+            // Preserve the node label the index is attached to so `insert`
             // writes to the same label.
             if let Some(label) = index.labels_or_types.first() {
                 config = config.node_label(label);
@@ -401,11 +401,7 @@ impl Neo4jClient {
                 ),
             )));
         };
-        Ok(Neo4jVectorIndex::new(
-            self.graph.clone(),
-            model,
-            index_config,
-        ))
+        Ok(Neo4jVectorIndex::new(self.graph.clone(), index_config))
     }
 
     /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
@@ -418,12 +414,13 @@ impl Neo4jClient {
     /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
     ///   the label `:Movie`, pass "Movie" as the `node_label` parameter.
     /// * `embedding_prop_name` (optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
+    /// * `dimensions` - The number of dimensions of the embedding vectors (must match the embedding model used).
     ///
     pub async fn create_vector_index(
         &self,
         index_config: IndexConfig,
         node_label: &str,
-        model: &impl EmbeddingModel,
+        dimensions: usize,
     ) -> Result<(), VectorStoreError> {
         // Create a vector index on our vector store
         tracing::info!("Creating vector index {} ...", index_config.index_name);
@@ -450,7 +447,7 @@ impl Neo4jClient {
                         "similarity_function",
                         index_config.similarity_function.clone().to_bolt_type(),
                     )
-                    .param("dimensions", model.ndims() as i64),
+                    .param("dimensions", dimensions as i64),
             )
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;

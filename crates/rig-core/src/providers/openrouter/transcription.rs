@@ -133,53 +133,7 @@ where
         &self,
         request: transcription::TranscriptionRequest,
     ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
-        if let Some(_prompt) = request.prompt {
-            return Err(TranscriptionError::RequestError(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "OpenRouter STT does not support a top-level prompt field. \
-                     Provider-specific prompt options can be passed via `additional_params`. \
-                     Example: {\"provider\": {\"options\": {\"<provider>\": {\"prompt\": \"<text>\"}}}}",
-                ),
-            )));
-        }
-
-        let audio_b64 = STANDARD.encode(&request.data);
-        let format = infer_format_from_filename(&request.filename);
-
-        let mut body_map: serde_json::Map<String, serde_json::Value> = [
-            ("model".to_string(), serde_json::json!(self.model)),
-            (
-                "input_audio".to_string(),
-                serde_json::json!({
-                    "data": audio_b64,
-                    "format": format,
-                }),
-            ),
-        ]
-        .into_iter()
-        .collect();
-
-        if let Some(language) = request.language {
-            body_map.insert("language".to_string(), serde_json::json!(language));
-        }
-        if let Some(temperature) = request.temperature {
-            body_map.insert("temperature".to_string(), serde_json::json!(temperature));
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-            for (k, v) in params {
-                body_map.insert(k.clone(), v.clone());
-            }
-        }
-
-        let body = serde_json::to_vec(&serde_json::Value::Object(body_map))?;
+        let body = build_transcription_body(&self.model, request)?;
 
         let req = self
             .client
@@ -191,16 +145,78 @@ where
         let response = self.client.send::<_, Bytes>(req).await?;
         let status = response.status();
         let body_bytes = response.into_body().await?;
+        parse_transcription_response(status, &body_bytes)
+    }
+}
 
-        if status.is_success() {
-            let resp: TranscriptionResponse = serde_json::from_slice(&body_bytes)?;
-            resp.try_into()
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body_bytes),
-            ))
+/// Build the serialized transcription request body (base64 audio in a JSON
+/// envelope). Pure.
+pub(crate) fn build_transcription_body(
+    model: &str,
+    request: transcription::TranscriptionRequest,
+) -> Result<Vec<u8>, TranscriptionError> {
+    if let Some(_prompt) = request.prompt {
+        return Err(TranscriptionError::RequestError(Box::new(
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "OpenRouter STT does not support a top-level prompt field. \
+                 Provider-specific prompt options can be passed via `additional_params`. \
+                 Example: {\"provider\": {\"options\": {\"<provider>\": {\"prompt\": \"<text>\"}}}}",
+            ),
+        )));
+    }
+
+    let audio_b64 = STANDARD.encode(&request.data);
+    let format = infer_format_from_filename(&request.filename);
+
+    let mut body_map: serde_json::Map<String, serde_json::Value> = [
+        ("model".to_string(), serde_json::json!(model)),
+        (
+            "input_audio".to_string(),
+            serde_json::json!({
+                "data": audio_b64,
+                "format": format,
+            }),
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    if let Some(language) = request.language {
+        body_map.insert("language".to_string(), serde_json::json!(language));
+    }
+    if let Some(temperature) = request.temperature {
+        body_map.insert("temperature".to_string(), serde_json::json!(temperature));
+    }
+
+    if let Some(ref additional_params) = request.additional_params {
+        let params = additional_params.as_object().ok_or_else(|| {
+            TranscriptionError::RequestError(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "additional transcription parameters must be a JSON object",
+            )))
+        })?;
+        for (k, v) in params {
+            body_map.insert(k.clone(), v.clone());
         }
+    }
+
+    Ok(serde_json::to_vec(&serde_json::Value::Object(body_map))?)
+}
+
+/// Parse a transcription response body. Pure.
+pub(crate) fn parse_transcription_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<transcription::TranscriptionResponse<TranscriptionResponse>, TranscriptionError> {
+    if status.is_success() {
+        let resp: TranscriptionResponse = serde_json::from_slice(body)?;
+        resp.try_into()
+    } else {
+        Err(TranscriptionError::from_http_response(
+            status,
+            String::from_utf8_lossy(body),
+        ))
     }
 }
 
@@ -258,6 +274,38 @@ mod tests {
         let resp: TranscriptionResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.text, "Hello world");
         assert!(resp.usage.is_none());
+    }
+
+    #[test]
+    fn transcription_body_carries_model_audio_and_optional_fields() {
+        let request = transcription::TranscriptionRequest {
+            data: b"test audio data".to_vec(),
+            filename: "audio.mp3".to_string(),
+            language: Some("en".to_string()),
+            prompt: None,
+            temperature: Some(0.1),
+            additional_params: None,
+        };
+        let body = build_transcription_body(WHISPER_1, request).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["model"], WHISPER_1);
+        assert_eq!(value["input_audio"]["format"], "mp3");
+        assert_eq!(value["input_audio"]["data"], STANDARD.encode(b"test audio data"));
+        assert_eq!(value["language"], "en");
+        assert_eq!(value["temperature"], 0.1);
+    }
+
+    #[test]
+    fn transcription_body_rejects_top_level_prompt() {
+        let request = transcription::TranscriptionRequest {
+            data: Vec::new(),
+            filename: "audio.wav".to_string(),
+            language: None,
+            prompt: Some("not supported".to_string()),
+            temperature: None,
+            additional_params: None,
+        };
+        assert!(build_transcription_body(WHISPER_1, request).is_err());
     }
 
     #[tokio::test]

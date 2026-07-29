@@ -194,8 +194,35 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let Some(embedder) = &self.embedder else {
-            let message = self
+        let documents: Vec<String> = documents.into_iter().collect();
+        let response = functions::embed(self, documents)?;
+        Ok(response.embeddings)
+    }
+}
+
+/// FastEmbed as free functions (data-oriented face).
+///
+/// FastEmbed runs local model weights (an in-process ONNX session), so
+/// unlike the HTTP providers there is no serde config that can honestly
+/// describe a connection: the "handle" is the loaded [`EmbeddingModel`]
+/// itself. The functions face therefore takes that handle directly; hosts
+/// that want config-driven construction keep using
+/// [`EmbeddingModel::new`] / [`EmbeddingModel::new_from_user_defined`].
+pub mod functions {
+    use super::{EmbeddingModel, embeddings};
+    use rig_core::embeddings::EmbeddingError;
+
+    /// Embed `texts` through the loaded FastEmbed model, in input order.
+    ///
+    /// Extracted from the `EmbeddingModel::embed_texts` trait impl, which
+    /// is rewired through this function. Local inference reports no token
+    /// usage. Synchronous: FastEmbed computes on the calling thread.
+    pub fn embed(
+        model: &EmbeddingModel,
+        texts: Vec<String>,
+    ) -> Result<rig_core::embeddings::EmbeddingResponse, EmbeddingError> {
+        let Some(embedder) = &model.embedder else {
+            let message = model
                 .init_error
                 .as_ref()
                 .map(ToString::to_string)
@@ -203,13 +230,11 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             return Err(EmbeddingError::ProviderError(message));
         };
 
-        let documents_as_strings: Vec<String> = documents.into_iter().collect();
-
         let documents_as_vec = embedder
-            .embed(documents_as_strings.clone(), None)
+            .embed(texts.clone(), None)
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
-        let docs = documents_as_strings
+        let embeddings = texts
             .into_iter()
             .zip(documents_as_vec)
             .map(|(document, embedding)| embeddings::Embedding {
@@ -218,6 +243,28 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             })
             .collect::<Vec<embeddings::Embedding>>();
 
-        Ok(docs)
+        Ok(rig_core::embeddings::EmbeddingResponse {
+            embeddings,
+            usage: rig_core::completion::Usage::new(),
+        })
+    }
+
+    /// Embed caller-defined batches, returning one order-aligned
+    /// [`rig_core::OneOrMany`] group per input batch plus (zero) usage.
+    pub fn embed_batches(
+        model: &EmbeddingModel,
+        texts: Vec<Vec<String>>,
+    ) -> Result<
+        (
+            Vec<rig_core::OneOrMany<embeddings::Embedding>>,
+            rig_core::completion::Usage,
+        ),
+        EmbeddingError,
+    > {
+        let counts: Vec<usize> = texts.iter().map(Vec::len).collect();
+        let flat: Vec<String> = texts.into_iter().flatten().collect();
+        let response = embed(model, flat)?;
+        let groups = rig_core::embeddings::batching::group_batches(&counts, response.embeddings)?;
+        Ok((groups, response.usage))
     }
 }

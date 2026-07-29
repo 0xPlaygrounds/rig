@@ -14,10 +14,10 @@
 use rig_core::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{self, Client},
+    vector_store::StoreRecord,
     vector_store::request::VectorSearchRequest,
-    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_vectorize::VectorizeVectorStore;
 
@@ -33,14 +33,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::from_env()?;
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 
+    // The store holds no embedding model: embedding happens outside the store,
+    // and both records and queries arrive pre-embedded.
     let vector_store = VectorizeVectorStore::new(
-        model.clone(),
         std::env::var("CLOUDFLARE_ACCOUNT_ID")?,
         "rig-example",
         std::env::var("CLOUDFLARE_API_TOKEN")?,
     );
 
-    let documents = EmbeddingsBuilder::new(model)
+    let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {
             id: "doc-1".to_string(),
             definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
@@ -56,7 +57,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    vector_store.insert_documents(documents).await?;
+    let records = documents
+        .into_iter()
+        .map(|(doc, embeddings)| StoreRecord::new(doc.id.clone(), &doc, embeddings))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    vector_store.insert(records).await?;
     println!("Documents inserted successfully!");
 
     // Note: Vectorize has eventual consistency, so newly inserted documents
@@ -66,12 +72,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "What is a linglingdong?";
     println!("\nSearching for: {}", query);
 
+    let query_embedding = model.embed_text(query).await?;
     let request = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(3)
         .build();
 
-    let results = vector_store.top_n::<Word>(request).await?;
+    let results = vector_store.top_n_as::<Word>(request).await?;
 
     println!("\nResults:");
     for (score, id, word) in results {

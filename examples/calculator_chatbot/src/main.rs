@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -6,11 +7,56 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::Client,
     tool::{Tool, ToolEmbedding, ToolSet},
+    vector_store::VectorSearchRequest,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+/// Selects which registered tools the model sees on each turn by similarity
+/// between the turn's query and the tools' embedded documentation
+/// (`RequestPatch::active_tools` is the successor of index-backed dynamic
+/// tool retrieval).
+struct ToolRetrievalHook {
+    embedding_model: openai::EmbeddingModel,
+    store: InMemoryVectorStore,
+    samples: u64,
+}
+
+impl AgentHook for ToolRetrievalHook {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let query = event.prompt.rag_text().or_else(|| {
+            event
+                .history
+                .iter()
+                .rev()
+                .find_map(|message| message.rag_text())
+        });
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let embedded = match self.embedding_model.embed_text(&query).await {
+            Ok(embedding) => embedding,
+            Err(error) => return CompletionCallAction::stop(error.to_string()),
+        };
+        let request = VectorSearchRequest::builder()
+            .query(embedded)
+            .samples(self.samples)
+            .build();
+        match self.store.top_n_ids(request).await {
+            Ok(hits) => CompletionCallAction::patch(
+                RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
+            ),
+            Err(error) => CompletionCallAction::stop(error.to_string()),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct OperationArgs {
@@ -262,10 +308,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone());
-    let index = vector_store.index(embedding_model);
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone())?;
 
-    // Create RAG agent with a single context prompt and a dynamic tool source
+    // Create a RAG agent that carries every calculator tool and re-selects
+    // which ones to advertise on each turn through the retrieval hook.
     let calculator_rag = openai_client
         .agent(openai::GPT_4)
         .preamble(
@@ -280,9 +326,16 @@ async fn main() -> Result<(), anyhow::Error> {
             Inputs: <list of inputs>
             "
         )
-        // Add a dynamic tool source with a sample rate of 1 (i.e.: only
-        // 1 additional tool will be added to prompts)
-        .retrieved_tools(4, index, toolset)
+        .tool(Add)
+        .tool(Subtract)
+        .tool(Multiply)
+        .tool(Divide)
+        // Advertise up to 4 retrieved tools per turn.
+        .add_hook(ToolRetrievalHook {
+            embedding_model,
+            store: vector_store,
+            samples: 4,
+        })
         .build();
 
     // Create a CLI chatbot from the agent

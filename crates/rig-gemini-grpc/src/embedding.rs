@@ -45,49 +45,56 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents_vec: Vec<String> = documents.into_iter().collect();
-        let mut embeddings = Vec::new();
+        let response =
+            crate::functions::embed(&self.client, &self.model, Some(self.ndims), documents_vec)
+                .await?;
+        Ok(response.embeddings)
+    }
+}
 
-        let mut grpc_client = self
-            .client
-            .grpc_client()
-            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
+/// Embed one document over the `EmbedContent` RPC.
+///
+/// Extracted from the `EmbeddingModel::embed_texts` trait impl, which is
+/// rewired through [`crate::functions::embed`] (single source of truth).
+pub(crate) async fn embed_one(
+    client: &Client,
+    model: &str,
+    output_dimensionality: Option<usize>,
+    doc: String,
+) -> Result<embeddings::Embedding, EmbeddingError> {
+    let mut grpc_client = client
+        .grpc_client()
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
+    let request = EmbedContentRequest {
+        model: format!("models/{model}"),
+        content: Some(proto::Content {
+            parts: vec![proto::Part {
+                data: Some(proto::part::Data::Text(doc.clone())),
+                thought: false,
+                thought_signature: Vec::new(),
+                part_metadata: None,
+            }],
+            role: String::new(),
+        }),
+        task_type: None,
+        title: None,
+        output_dimensionality: output_dimensionality.map(|n| n as i32),
+    };
 
-        for doc in documents_vec {
-            let request = EmbedContentRequest {
-                model: format!("models/{}", self.model),
-                content: Some(proto::Content {
-                    parts: vec![proto::Part {
-                        data: Some(proto::part::Data::Text(doc.clone())),
-                        thought: false,
-                        thought_signature: Vec::new(),
-                        part_metadata: None,
-                    }],
-                    role: String::new(),
-                }),
-                task_type: None,
-                title: None,
-                output_dimensionality: Some(self.ndims as i32),
-            };
+    let response = grpc_client
+        .embed_content(request)
+        .await
+        .map_err(rpc_error)?
+        .into_inner();
 
-            let response = grpc_client
-                .embed_content(request)
-                .await
-                .map_err(rpc_error)?
-                .into_inner();
-
-            if let Some(embedding) = response.embedding {
-                embeddings.push(embeddings::Embedding {
-                    document: doc,
-                    vec: embedding.values.into_iter().map(|v| v as f64).collect(),
-                });
-            } else {
-                return Err(EmbeddingError::ResponseError(
-                    "No embedding in response".to_string(),
-                ));
-            }
-        }
-
-        Ok(embeddings)
+    match response.embedding {
+        Some(embedding) => Ok(embeddings::Embedding {
+            document: doc,
+            vec: embedding.values.into_iter().map(|v| v as f64).collect(),
+        }),
+        None => Err(EmbeddingError::ResponseError(
+            "No embedding in response".to_string(),
+        )),
     }
 }
 

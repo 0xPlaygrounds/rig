@@ -43,23 +43,7 @@ where
         &self,
         request: AudioGenerationRequest,
     ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let voice = if request.voice.is_empty() {
-            "eve".to_string()
-        } else {
-            request.voice
-        };
-
-        let mut body = json!({
-            "text": request.text,
-            "voice_id": voice,
-            "language": "en",
-        });
-
-        if let Some(additional_params) = request.additional_params {
-            merge_inplace(&mut body, additional_params);
-        }
-
-        let body = serde_json::to_vec(&body)?;
+        let body = build_audio_generation_body(&request)?;
 
         let req = self
             .client
@@ -69,20 +53,52 @@ where
 
         let response = self.client.send(req).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = http_client::text(response).await?;
-
-            return Err(AudioGenerationError::from_http_response(status, text));
-        }
-
-        let bytes: Bytes = response.into_body().await?.into();
-
-        Ok(AudioGenerationResponse {
-            audio: bytes.to_vec(),
-            response: bytes,
-        })
+        let status = response.status();
+        let bytes: Bytes = response.into_body().await?;
+        parse_audio_generation_response(status, bytes.to_vec())
     }
+}
+
+/// Build the serialized TTS request body. Pure.
+///
+/// xAI's TTS route has no model field; an empty voice falls back to `eve`.
+pub(crate) fn build_audio_generation_body(
+    request: &AudioGenerationRequest,
+) -> Result<Vec<u8>, AudioGenerationError> {
+    let voice = if request.voice.is_empty() {
+        "eve"
+    } else {
+        request.voice.as_str()
+    };
+
+    let mut body = json!({
+        "text": request.text,
+        "voice_id": voice,
+        "language": "en",
+    });
+
+    if let Some(additional_params) = request.additional_params.clone() {
+        merge_inplace(&mut body, additional_params);
+    }
+
+    Ok(serde_json::to_vec(&body)?)
+}
+
+/// Parse a TTS response: success bodies are raw audio bytes. Pure.
+pub(crate) fn parse_audio_generation_response(
+    status: http::StatusCode,
+    body: Vec<u8>,
+) -> Result<AudioGenerationResponse<Bytes>, AudioGenerationError> {
+    if !status.is_success() {
+        return Err(AudioGenerationError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body).into_owned(),
+        ));
+    }
+    Ok(AudioGenerationResponse {
+        audio: body.clone(),
+        response: Bytes::from(body),
+    })
 }
 
 #[cfg(test)]

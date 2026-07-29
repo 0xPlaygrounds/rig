@@ -12,12 +12,11 @@ use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
-    client::{AgentModelExt, EmbeddingsClient},
+    client::{AgentClientExt, EmbeddingsClient},
     completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    prelude::*,
     providers::openai,
-    vector_store::VectorStoreIndex,
+    vector_store::request::VectorSearchRequest,
 };
 
 #[path = "./fixtures/lib.rs"]
@@ -175,38 +174,39 @@ async fn vector_search_test() {
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
-    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params)
+    let vector_store_index = LanceDbVectorIndex::new(table, "id", search_params)
         .await
         .unwrap();
 
+    // Queries are pre-embedded: embed the query text with the embedding model
+    // and pass the embedding to the search request.
     let query = "My boss says I zindle too much, what does that mean?";
+    let query_embedding = model.embed_text(query).await.unwrap();
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
     // Query the index
-    let results = vector_store_index
-        .top_n::<serde_json::Value>(req)
-        .await
-        .unwrap();
+    let results = vector_store_index.top_n(req).await.unwrap();
 
-    let (distance, _, value) = &results.first().unwrap();
+    let hit = results.first().unwrap();
 
     assert_eq!(
-        *value,
+        hit.payload,
         json!({
-            "_distance": distance,
+            "_distance": hit.score,
             "definition": "Definition of *zindle (verb)*: to pretend to be working on something important while actually doing something completely unrelated or unproductive.",
             "id": "doc1"
         })
     );
+    assert_eq!(hit.id, "doc1");
 
     db.drop_table(table_name, &[]).await.unwrap();
 }
 
 #[tokio::test]
-async fn agent_with_dynamic_context_test() {
+async fn agent_with_retrieved_context_test() {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 
@@ -389,19 +389,29 @@ async fn agent_with_dynamic_context_test() {
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
-    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params)
+    let vector_store_index = LanceDbVectorIndex::new(table, "id", search_params)
         .await
         .unwrap();
 
-    // Build RAG agent with dynamic context.
-    let agent = openai_client
-        .completion_model(openai::GPT_4O)
-        .completions_api()
-        .into_agent_builder()
-        .dynamic_context(top_k, vector_store_index)
-        .build();
-
     let query = "My boss says I zindle too much, what does that mean?";
+
+    // The vector-store trait surface is gone: embed the query, retrieve the
+    // most relevant documents ourselves, and hand them to the agent as
+    // context (previously done implicitly by `dynamic_context`).
+    let query_embedding = model.embed_text(query).await.unwrap();
+    let req = VectorSearchRequest::builder()
+        .query(query_embedding)
+        .samples(top_k as u64)
+        .build();
+    let hits = vector_store_index.top_n(req).await.unwrap();
+    assert!(!hits.is_empty());
+
+    // Build RAG agent with the retrieved context.
+    let mut agent_builder = openai_client.completions_api().agent(openai::GPT_4O);
+    for hit in &hits {
+        agent_builder = agent_builder.context(&hit.payload.to_string());
+    }
+    let agent = agent_builder.build();
 
     let response = agent.prompt(query).await.unwrap();
 

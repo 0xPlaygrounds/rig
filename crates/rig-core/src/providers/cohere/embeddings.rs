@@ -65,6 +65,84 @@ pub struct EmbeddingModel<T = reqwest::Client> {
     ndims: usize,
 }
 
+/// Build the serialized `/v1/embed` request body. Pure; shared by the trait
+/// path and [`super::functions::embed`].
+pub(crate) fn build_embedding_body(
+    model: &str,
+    input_type: &str,
+    texts: &[String],
+) -> Result<Vec<u8>, EmbeddingError> {
+    let body = json!({
+        "model": model,
+        "texts": texts,
+        "input_type": input_type
+    });
+    Ok(serde_json::to_vec(&body)?)
+}
+
+/// Parse a `/v1/embed` response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure; shared by the trait path and
+/// [`super::functions::embed`]. Usage is taken from `meta.billed_units`
+/// (input tokens; Cohere reports no total).
+pub(crate) fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
+    }
+    let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_str(body)?;
+    match parsed {
+        ApiResponse::Ok(response) => {
+            let mut usage = crate::completion::Usage::new();
+            match &response.meta {
+                Some(meta) => {
+                    tracing::info!(target: "rig",
+                        "Cohere embeddings billed units: {}",
+                        meta.billed_units,
+                    );
+                    usage.input_tokens = meta.billed_units.input_tokens as u64;
+                    usage.total_tokens = meta.billed_units.input_tokens as u64;
+                }
+                None => tracing::info!(target: "rig",
+                    "Cohere embeddings billed units: n/a",
+                ),
+            };
+
+            if response.embeddings.len() != documents.len() {
+                return Err(EmbeddingError::DocumentError(
+                    format!(
+                        "Expected {} embeddings, got {}",
+                        documents.len(),
+                        response.embeddings.len()
+                    )
+                    .into(),
+                ));
+            }
+
+            let embeddings = response
+                .embeddings
+                .into_iter()
+                .zip(documents)
+                .map(|(embedding, document)| embeddings::Embedding {
+                    document,
+                    vec: embedding.into_iter().filter_map(|n| n.as_f64()).collect(),
+                })
+                .collect();
+            Ok(embeddings::EmbeddingResponse { embeddings, usage })
+        }
+        ApiResponse::Err(error) => {
+            tracing::warn!(
+                message = %error.message,
+                "Cohere returned an error response"
+            );
+            Err(EmbeddingError::from_http_response(status, body.to_string()))
+        }
+    }
+}
+
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -91,13 +169,7 @@ where
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let body = json!({
-            "model": self.model.to_string(),
-            "texts": documents,
-            "input_type": self.input_type
-        });
-
-        let body = serde_json::to_vec(&body)?;
+        let body = build_embedding_body(&self.model, &self.input_type, &documents)?;
 
         let req = self
             .client
@@ -113,60 +185,9 @@ where
 
         let status = response.status();
         let raw_body = response.into_body().await?;
+        let body = String::from_utf8_lossy(&raw_body).into_owned();
 
-        if status.is_success() {
-            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(raw_body.as_slice())?;
-
-            match body {
-                ApiResponse::Ok(response) => {
-                    match response.meta {
-                        Some(meta) => tracing::info!(target: "rig",
-                            "Cohere embeddings billed units: {}",
-                            meta.billed_units,
-                        ),
-                        None => tracing::info!(target: "rig",
-                            "Cohere embeddings billed units: n/a",
-                        ),
-                    };
-
-                    if response.embeddings.len() != documents.len() {
-                        return Err(EmbeddingError::DocumentError(
-                            format!(
-                                "Expected {} embeddings, got {}",
-                                documents.len(),
-                                response.embeddings.len()
-                            )
-                            .into(),
-                        ));
-                    }
-
-                    Ok(response
-                        .embeddings
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding.into_iter().filter_map(|n| n.as_f64()).collect(),
-                        })
-                        .collect())
-                }
-                ApiResponse::Err(error) => {
-                    tracing::warn!(
-                        message = %error.message,
-                        "Cohere returned an error response"
-                    );
-                    Err(EmbeddingError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&raw_body),
-                    ))
-                }
-            }
-        } else {
-            Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&raw_body),
-            ))
-        }
+        parse_embedding_response(status, &body, documents).map(|response| response.embeddings)
     }
 }
 

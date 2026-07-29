@@ -5,8 +5,54 @@ use rig::{
     Embed, completion::Prompt, embeddings::EmbeddingsBuilder, message::Message,
     tool::builtin::ThinkTool, vector_store::in_memory_store::InMemoryVectorStore,
 };
+use rig::vector_store::{SearchHit, VectorSearchRequest, VectorStoreError};
 use serde::{Deserialize, Serialize};
 use std::env;
+
+/// A custom tool exposing the knowledge base to the agent. It embeds the
+/// model's query, then runs a pre-embedded search against the store.
+struct KnowledgeBaseTool {
+    store: InMemoryVectorStore,
+    embedding_model: rig::providers::openai::EmbeddingModel,
+}
+
+#[derive(Deserialize, Serialize)]
+struct KnowledgeBaseArgs {
+    query: String,
+}
+
+impl rig::tool::PortableTool for KnowledgeBaseTool {
+    const NAME: &'static str = "search_knowledge_base";
+    type Args = KnowledgeBaseArgs;
+    type Output = Vec<SearchHit>;
+    type Error = VectorStoreError;
+
+    fn description(&self) -> String {
+        "Retrieves the most relevant documents from the sustainability knowledge base.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The query string to search for relevant documents."
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let query_embedding = self.embedding_model.embed_text(&args.query).await?;
+        let req = VectorSearchRequest::builder()
+            .query(query_embedding)
+            .samples(3)
+            .build();
+        self.store.top_n(req).await
+    }
+}
 
 // Define a knowledge base entry for our vector store
 #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
@@ -75,10 +121,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store with the embeddings
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |entry| entry.id.clone());
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |entry| entry.id.clone())?;
 
-    // Create vector store index
-    let vector_index = vector_store.index(embedding_model);
+    // Expose the knowledge base as a custom tool
+    let knowledge_base = KnowledgeBaseTool {
+        store: vector_store,
+        embedding_model,
+    };
 
     // Create specialized research agent that will be used as a tool
     let research_agent = anthropic_client
@@ -141,7 +190,7 @@ async fn main() -> Result<(), anyhow::Error> {
             environmental sustainability issues."
         )
         .tool(ThinkTool)
-        .tool(vector_index)
+        .tool(knowledge_base)
         .dynamic_tool(research_agent.into_tool())
         .dynamic_tool(analysis_agent.into_tool())
         .dynamic_tool(recommendation_agent.into_tool())

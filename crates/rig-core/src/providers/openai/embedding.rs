@@ -111,6 +111,107 @@ pub struct EmbeddingData {
     pub index: usize,
 }
 
+/// Build the serialized OpenAI-compatible embeddings request body. Pure.
+///
+/// Shared by the [`GenericEmbeddingModel`] trait path and the
+/// [`super::functions`] free functions (single source of truth).
+pub(crate) fn build_embedding_body(
+    model: &str,
+    texts: &[String],
+    dimensions: Option<EmbeddingDimensions>,
+    encoding_format: Option<EncodingFormat>,
+    user: Option<&str>,
+) -> Result<Vec<u8>, EmbeddingError> {
+    let (dimensions, output_dimension) = match dimensions {
+        Some(EmbeddingDimensions::Dimensions(value)) => (Some(value), None),
+        Some(EmbeddingDimensions::OutputDimension(value)) => (None, Some(value)),
+        None => (None, None),
+    };
+    Ok(serde_json::to_vec(&CompatibleEmbeddingRequest {
+        model,
+        input: texts,
+        dimensions,
+        output_dimension,
+        encoding_format,
+        user,
+    })?)
+}
+
+/// Parse an OpenAI-compatible embeddings response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure.
+///
+/// Shared by the [`GenericEmbeddingModel`] trait path and the
+/// [`super::functions`] free functions (single source of truth).
+pub(crate) fn parse_embedding_response<Ext>(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError>
+where
+    Ext: OpenAIEmbeddingsCompatible,
+{
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
+    }
+    let parsed: ApiResponse<CompatibleEmbeddingResponse> = serde_json::from_str(body)?;
+    match parsed {
+        ApiResponse::Ok(response) => {
+            tracing::info!(target: "rig",
+                "embedding token usage: {:?}",
+                response.usage
+            );
+
+            if response.data.len() != documents.len() {
+                return Err(EmbeddingError::ResponseError(
+                    "Response data length does not match input length".into(),
+                ));
+            }
+
+            let usage = match response.usage {
+                Some(usage) => crate::completion::Usage {
+                    input_tokens: usage.prompt_tokens as u64,
+                    output_tokens: 0,
+                    total_tokens: usage.total_tokens as u64,
+                    cached_input_tokens: usage
+                        .prompt_tokens_details
+                        .as_ref()
+                        .map_or(0, |details| details.cached_tokens as u64),
+                    cache_creation_input_tokens: 0,
+                    tool_use_prompt_tokens: 0,
+                    reasoning_tokens: 0,
+                },
+                None if Ext::REQUIRES_USAGE => {
+                    return Err(EmbeddingError::MissingUsage {
+                        provider: Ext::PROVIDER_NAME,
+                    });
+                }
+                None => crate::completion::Usage::new(),
+            };
+
+            let embeddings = response
+                .data
+                .into_iter()
+                .zip(documents)
+                .map(|(embedding, document)| embeddings::Embedding {
+                    document,
+                    vec: embedding
+                        .embedding
+                        .into_iter()
+                        .filter_map(|n| n.as_f64())
+                        .collect(),
+                })
+                .collect();
+
+            Ok(embeddings::EmbeddingResponse { embeddings, usage })
+        }
+        ApiResponse::Err(err) => {
+            tracing::warn!(message = %err.message, "provider returned an error response");
+            Err(EmbeddingError::from_http_response(status, body.to_string()))
+        }
+    }
+}
+
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
@@ -200,20 +301,13 @@ where
             .client
             .ext()
             .embedding_dimensions(&self.model, requested_dimensions)?;
-        let (dimensions, output_dimension) = match dimensions {
-            Some(EmbeddingDimensions::Dimensions(value)) => (Some(value), None),
-            Some(EmbeddingDimensions::OutputDimension(value)) => (None, Some(value)),
-            None => (None, None),
-        };
-
-        let body = serde_json::to_vec(&CompatibleEmbeddingRequest {
-            model: &self.model,
-            input: &documents,
+        let body = build_embedding_body(
+            &self.model,
+            &documents,
             dimensions,
-            output_dimension,
-            encoding_format: self.encoding_format,
-            user: self.user.as_deref(),
-        })?;
+            self.encoding_format,
+            self.user.as_deref(),
+        )?;
 
         let req = self
             .client
@@ -224,73 +318,13 @@ where
         let response = self.client.send(req).await?;
 
         let status = response.status();
-        if status.is_success() {
+        let body = if status.is_success() {
             let response_body: Vec<u8> = response.into_body().await?;
-            let parsed: ApiResponse<CompatibleEmbeddingResponse> =
-                serde_json::from_slice(&response_body)?;
-
-            match parsed {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "embedding token usage: {:?}",
-                        response.usage
-                    );
-
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
-
-                    let usage = match response.usage {
-                        Some(usage) => crate::completion::Usage {
-                            input_tokens: usage.prompt_tokens as u64,
-                            output_tokens: 0,
-                            total_tokens: usage.total_tokens as u64,
-                            cached_input_tokens: usage
-                                .prompt_tokens_details
-                                .as_ref()
-                                .map_or(0, |details| details.cached_tokens as u64),
-                            cache_creation_input_tokens: 0,
-                            tool_use_prompt_tokens: 0,
-                            reasoning_tokens: 0,
-                        },
-                        None if Ext::REQUIRES_USAGE => {
-                            return Err(EmbeddingError::MissingUsage {
-                                provider: Ext::PROVIDER_NAME,
-                            });
-                        }
-                        None => crate::completion::Usage::new(),
-                    };
-
-                    let embeddings = response
-                        .data
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding
-                                .embedding
-                                .into_iter()
-                                .filter_map(|n| n.as_f64())
-                                .collect(),
-                        })
-                        .collect();
-
-                    Ok(embeddings::EmbeddingResponse { embeddings, usage })
-                }
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(EmbeddingError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
+            String::from_utf8_lossy(&response_body).into_owned()
         } else {
-            let text = http_client::text(response).await?;
-            Err(EmbeddingError::from_http_response(status, text))
-        }
+            http_client::text(response).await?
+        };
+        parse_embedding_response::<Ext>(status, &body, documents)
     }
 }
 

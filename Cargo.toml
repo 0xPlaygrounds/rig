@@ -241,6 +241,7 @@ sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "jso
 testcontainers = { workspace = true }
 thiserror = { workspace = true }
 tokio-rusqlite = { workspace = true, features = ["bundled"] }
+uuid = { workspace = true, features = ["v4"] }
 hyper-util = { workspace = true, features = ["service", "server"] }
 rmcp = { workspace = true, features = [
   "client",

@@ -5,6 +5,7 @@
 //! Rust value should be embedded, and [`EmbeddingsBuilder`] to batch embedding
 //! requests for vector stores or retrieval workflows.
 
+pub mod batching;
 pub mod builder;
 pub mod embed;
 pub mod embedding;

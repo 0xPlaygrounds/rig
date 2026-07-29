@@ -125,6 +125,114 @@ pub async fn open_stream(
     crate::streaming::stream(client.clone(), model.to_string(), request).await
 }
 
+// ================================================================
+// Embeddings
+// ================================================================
+
+/// Plain-data Gemini gRPC embeddings configuration.
+///
+/// A sibling of [`Config`]: the same channel-construction fields plus the
+/// embedding model identifier and its optional `output_dimensionality`.
+/// [`Self::client_config`] projects the connection half so the host runtime
+/// can share its cached channel machinery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct EmbeddingConfig {
+    /// gRPC endpoint URL (`None` uses [`DEFAULT_ENDPOINT`]).
+    pub endpoint: Option<String>,
+    /// Credential location.
+    pub api_key: ApiKeyLocation,
+    /// Embedding model identifier requests are built for.
+    pub model: String,
+    /// Requested `output_dimensionality` (`None` sends none; the classic
+    /// model defaults to 768).
+    pub ndims: Option<usize>,
+}
+
+impl EmbeddingConfig {
+    /// Config for `model` reading `GEMINI_API_KEY` from the environment.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            endpoint: None,
+            api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
+            model: model.into(),
+            ndims: None,
+        }
+    }
+
+    /// Config for `model` with an explicit API key.
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = ApiKeyLocation::Inline(key.into());
+        self
+    }
+
+    /// Override the gRPC endpoint URL.
+    pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.endpoint = Some(endpoint.into());
+        self
+    }
+
+    /// Request `ndims`-sized embeddings.
+    pub fn with_ndims(mut self, ndims: usize) -> Self {
+        self.ndims = Some(ndims);
+        self
+    }
+
+    /// The channel-construction half of this config as a [`Config`], for
+    /// sharing a host runtime's cached [`client_from_config`] machinery.
+    pub fn client_config(&self) -> Config {
+        Config {
+            endpoint: self.endpoint.clone(),
+            api_key: self.api_key.clone(),
+            model: self.model.clone(),
+        }
+    }
+}
+
+/// Embed `texts` with `model`, one `EmbedContent` RPC per document (the
+/// gRPC embedding API is single-document). Gemini gRPC reports no
+/// embedding usage.
+///
+/// Extracted from the `EmbeddingModel::embed_texts` trait impl, which is
+/// rewired through this function; behavior is unchanged (the first RPC
+/// failure aborts the batch).
+pub async fn embed(
+    client: &Client,
+    model: &str,
+    ndims: Option<usize>,
+    texts: Vec<String>,
+) -> Result<rig_core::embeddings::EmbeddingResponse, rig_core::embeddings::EmbeddingError> {
+    let mut embeddings = Vec::with_capacity(texts.len());
+    for doc in texts {
+        embeddings.push(crate::embedding::embed_one(client, model, ndims, doc).await?);
+    }
+    Ok(rig_core::embeddings::EmbeddingResponse {
+        embeddings,
+        usage: rig_core::completion::Usage::new(),
+    })
+}
+
+/// Embed caller-defined batches, returning one order-aligned
+/// [`rig_core::OneOrMany`] group per input batch plus summed usage.
+pub async fn embed_batches(
+    client: &Client,
+    model: &str,
+    ndims: Option<usize>,
+    texts: Vec<Vec<String>>,
+) -> Result<
+    (
+        Vec<rig_core::OneOrMany<rig_core::embeddings::Embedding>>,
+        rig_core::completion::Usage,
+    ),
+    rig_core::embeddings::EmbeddingError,
+> {
+    let counts: Vec<usize> = texts.iter().map(Vec::len).collect();
+    let flat: Vec<String> = texts.into_iter().flatten().collect();
+    let response = embed(client, model, ndims, flat).await?;
+    let groups = rig_core::embeddings::batching::group_batches(&counts, response.embeddings)?;
+    Ok((groups, response.usage))
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {

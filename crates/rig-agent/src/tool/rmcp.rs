@@ -1485,7 +1485,7 @@ mod migrated_tests {
         ]);
         let handle = ToolServer::new().run();
         let (client, task) = connect(server, handle.clone()).await;
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(
             defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
             vec!["tool_a", "tool_b"]
@@ -1499,11 +1499,11 @@ mod migrated_tests {
         let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
         let handle = ToolServer::new().run();
         let (client, task) = connect(server, handle.clone()).await;
-        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+        assert_eq!(handle.get_tool_defs().await.len(), 1);
 
         client.cancel().await.unwrap();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert!(
             defs.is_empty(),
             "a disconnected sole owner must not remain provider-visible"
@@ -1516,7 +1516,7 @@ mod migrated_tests {
         let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
         let handle = ToolServer::new().run();
         let (client, task) = connect(server, handle.clone()).await;
-        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+        assert_eq!(handle.get_tool_defs().await.len(), 1);
 
         client.cancel().await.unwrap();
 
@@ -1586,7 +1586,7 @@ mod migrated_tests {
             .connect((cfs, c2s))
             .await
             .unwrap();
-        assert_eq!(handle.get_tool_defs(None).await.unwrap()[0].name, "alpha");
+        assert_eq!(handle.get_tool_defs().await[0].name, "alpha");
         server
             .set_tools(vec![make_tool("beta", "Beta"), make_tool("gamma", "Gamma")])
             .await;
@@ -1594,7 +1594,7 @@ mod migrated_tests {
         running.peer().notify_tool_list_changed().await.unwrap();
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                let defs = handle.get_tool_defs(None).await.unwrap();
+                let defs = handle.get_tool_defs().await;
                 if defs.len() == 2 {
                     break;
                 }
@@ -1604,9 +1604,8 @@ mod migrated_tests {
         .await
         .expect("refresh");
         let names = handle
-            .get_tool_defs(None)
+            .get_tool_defs()
             .await
-            .unwrap()
             .into_iter()
             .map(|d| d.name)
             .collect::<Vec<_>>();
@@ -1650,7 +1649,7 @@ mod migrated_tests {
 
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                let defs = handle.get_tool_defs(None).await.unwrap();
+                let defs = handle.get_tool_defs().await;
                 if defs.len() == 1 && defs[0].name == "newest" {
                     break;
                 }
@@ -1672,7 +1671,7 @@ mod migrated_tests {
         for _ in 0..10 {
             tokio::task::yield_now().await;
         }
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, "newest");
 
@@ -1703,7 +1702,7 @@ mod migrated_tests {
 
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                let defs = handle.get_tool_defs(None).await.unwrap();
+                let defs = handle.get_tool_defs().await;
                 let names = defs
                     .iter()
                     .map(|definition| definition.name.as_str())
@@ -1732,7 +1731,7 @@ mod migrated_tests {
         let (second_client, second_server_task) = connect(second_server, handle.clone()).await;
         let second_running_server = second_server_task.await.unwrap();
         assert_eq!(
-            handle.get_tool_defs(None).await.unwrap()[0].description,
+            handle.get_tool_defs().await[0].description,
             "Second owner"
         );
 
@@ -1744,7 +1743,7 @@ mod migrated_tests {
             .unwrap();
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                if handle.get_tool_defs(None).await.unwrap().is_empty() {
+                if handle.get_tool_defs().await.is_empty() {
                     break;
                 }
                 tokio::task::yield_now().await;
@@ -1766,7 +1765,7 @@ mod migrated_tests {
             .unwrap();
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                let defs = handle.get_tool_defs(None).await.unwrap();
+                let defs = handle.get_tool_defs().await;
                 if defs.len() == 1 && defs[0].description == "First owner refreshed" {
                     break;
                 }
@@ -1802,7 +1801,7 @@ mod migrated_tests {
 
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                let defs = handle.get_tool_defs(None).await.unwrap();
+                let defs = handle.get_tool_defs().await;
                 if defs
                     .iter()
                     .any(|definition| definition.name == "refresh_complete")
@@ -1815,7 +1814,7 @@ mod migrated_tests {
         .await
         .expect("MCP refresh completed");
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         let alpha = defs
             .iter()
             .find(|definition| definition.name == "alpha")
@@ -1855,7 +1854,7 @@ mod migrated_tests {
 
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                let defs = handle.get_tool_defs(None).await.unwrap();
+                let defs = handle.get_tool_defs().await;
                 if defs
                     .iter()
                     .any(|definition| definition.name == "a_refresh_complete")
@@ -1868,7 +1867,7 @@ mod migrated_tests {
         .await
         .expect("handler A refresh completed");
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         let alpha = defs
             .iter()
             .find(|definition| definition.name == "alpha")
@@ -1890,7 +1889,7 @@ mod migrated_tests {
 
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                let defs = handle.get_tool_defs(None).await.unwrap();
+                let defs = handle.get_tool_defs().await;
                 if defs
                     .iter()
                     .any(|definition| definition.description == "Reclaimed handler A")
@@ -1940,13 +1939,13 @@ mod migrated_tests {
         let handle = ToolServer::new()
             .rmcp_tool(tool, client.peer().clone())
             .run();
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, "search_docs");
         assert_eq!(defs[0].description, "Search the docs");
         client.cancel().await.unwrap();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.get_tool_defs().await;
         assert!(
             defs.is_empty(),
             "a disconnected directly registered MCP tool must not remain provider-visible"

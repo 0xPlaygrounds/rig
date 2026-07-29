@@ -3,8 +3,7 @@ use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
 };
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
@@ -57,21 +56,30 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // init vector store
-    let vector_store = SurrealVectorStore::with_defaults(model, surreal);
+    // init vector store; embedding happens *outside* the store
+    let vector_store = SurrealVectorStore::with_defaults(surreal);
 
-    vector_store.insert_documents(documents).await?;
+    vector_store
+        .insert_as(
+            documents
+                .into_iter()
+                .enumerate()
+                .map(|(i, (doc, embeddings))| (format!("doc{i}"), doc, embeddings))
+                .collect(),
+        )
+        .await?;
 
-    // query vector
+    // query vector: embed the query, then send the pre-embedded request
     let query = "What does \"glarb-glarb\" mean?";
     println!("Attempting vector search with query: {query}");
 
+    let query_embedding = model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding.clone())
         .samples(2)
         .build();
 
-    let results = vector_store.top_n::<WordDefinition>(req).await?;
+    let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
@@ -91,12 +99,12 @@ async fn main() -> Result<(), anyhow::Error> {
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
     );
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .threshold(midpoint)
         .build();
 
-    let results = vector_store.top_n::<WordDefinition>(req).await?;
+    let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
     anyhow::ensure!(

@@ -7,9 +7,8 @@ use rig::{
     client::ProviderClient,
     embeddings::EmbeddingsBuilder,
     providers::cohere::{self, Client},
-    vector_store::{
-        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
-    },
+    embeddings::EmbeddingModel,
+    vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
 use serde::{Deserialize, Serialize};
 
@@ -72,17 +71,18 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;
 
     let query = "Which instrument is found in the Nebulon Mountain Ranges?";
+    // Embed the query with the search model; the store receives it pre-embedded.
+    let query_embedding = search_model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
-    let index = vector_store.index(search_model);
-    let results = index
-        .top_n::<WordDefinition>(req)
+    let results = vector_store
+        .top_n_as::<WordDefinition>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))

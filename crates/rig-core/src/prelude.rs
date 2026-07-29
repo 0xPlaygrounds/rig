@@ -35,9 +35,9 @@ pub use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 pub use crate::tool::PortableTool;
 
 // Vector stores.
-pub use crate::vector_store::VectorStoreIndex;
 pub use crate::vector_store::in_memory_store::InMemoryVectorStore;
 pub use crate::vector_store::request::VectorSearchRequest;
+pub use crate::vector_store::{SearchHit, StoreRecord};
 
 // Common container type.
 pub use crate::OneOrMany;

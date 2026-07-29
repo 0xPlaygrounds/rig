@@ -1,12 +1,13 @@
 use rig_core::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{self, Client},
-    vector_store::{InsertDocuments, VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::request::VectorSearchRequest,
 };
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 struct Word {
@@ -28,9 +29,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = Client::from_env()?;
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    // Create ScyllaDB vector store
+    // Create ScyllaDB vector store. Queries arrive pre-embedded, so the store
+    // itself holds no embedding model.
     let vector_store = ScyllaDbVectorStore::new(
-        model.clone(),
         session,
         "word_definitions", // keyspace
         "words",            // table
@@ -64,7 +65,8 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    // Generate embeddings for the documents
+    // Generate embeddings for the documents. Embedding happens *outside* the
+    // store: it only ever sees precomputed vectors.
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .documents(words.clone())?
         .build()
@@ -75,27 +77,29 @@ async fn main() -> Result<(), anyhow::Error> {
         words.len()
     );
 
-    // Insert documents with their embeddings
-    let documents_with_embeddings = embeddings
-        .iter()
-        .map(|(document, embedding)| (document.clone(), embedding.clone()))
-        .collect::<Vec<_>>();
-
+    // Insert documents with their embeddings. The store's id column is a UUID,
+    // so give each stored record a fresh UUID id.
     vector_store
-        .insert_documents(documents_with_embeddings)
+        .insert_as(
+            embeddings
+                .into_iter()
+                .map(|(document, embedding)| (Uuid::new_v4().to_string(), document, embedding))
+                .collect(),
+        )
         .await?;
 
     tracing::info!("Documents inserted successfully!");
 
-    // Test similarity search
+    // Test similarity search: embed the query, then send the pre-embedded request
     let query = "What is Rust programming language?";
+    let query_embedding = model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(3)
         .build();
     tracing::info!("Searching for: '{}'", query);
 
-    let results = vector_store.top_n::<Word>(req.clone()).await?;
+    let results = vector_store.top_n_as::<Word>(req.clone()).await?;
 
     tracing::info!("Top 3 similar definitions:");
     for (i, (score, id, word)) in results.iter().enumerate() {
@@ -120,12 +124,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // Test with different query
     let database_query = "distributed database system";
     tracing::info!("Searching for: '{}'", database_query);
+    let query_embedding = model.embed_text(database_query).await?;
     let req = VectorSearchRequest::builder()
-        .query(database_query)
+        .query(query_embedding)
         .samples(2)
         .build();
 
-    let db_results = vector_store.top_n::<Word>(req).await?;
+    let db_results = vector_store.top_n_as::<Word>(req).await?;
 
     tracing::info!("Top 2 similar definitions:");
     for (i, (score, id, word)) in db_results.iter().enumerate() {

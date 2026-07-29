@@ -12,8 +12,7 @@ use rig::scylladb::{ScyllaDbVectorStore, create_session};
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -113,9 +112,8 @@ async fn vector_search_test() {
         .await
         .expect("Failed to create embeddings");
 
-    // Create ScyllaDB vector store
+    // Create ScyllaDB vector store; queries arrive pre-embedded
     let vector_store = ScyllaDbVectorStore::new(
-        model.clone(),
         session,
         "test_keyspace",
         "test_words",
@@ -124,22 +122,31 @@ async fn vector_search_test() {
     .await
     .expect("Failed to create ScyllaDB vector store");
 
-    // Insert documents into vector store
+    // Insert documents into vector store; the store's id column is a UUID
     vector_store
-        .insert_documents(documents)
+        .insert_as(
+            documents
+                .into_iter()
+                .map(|(doc, embeddings)| (uuid::Uuid::new_v4().to_string(), doc, embeddings))
+                .collect(),
+        )
         .await
         .expect("Failed to insert documents");
 
     println!("Documents inserted successfully");
     let query = "What is a glarb?";
+    let query_embedding = model
+        .embed_text(query)
+        .await
+        .expect("Failed to embed query");
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
     // Test vector search
     let results = vector_store
-        .top_n::<Word>(req.clone())
+        .top_n_as::<Word>(req.clone())
         .await
         .expect("Failed to search for document");
 
@@ -175,14 +182,18 @@ async fn vector_search_test() {
     assert_eq!(result_id, id);
 
     let query = "What is a linglingdong?";
+    let query_embedding = model
+        .embed_text(query)
+        .await
+        .expect("Failed to embed query");
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
     // Test with different query
     let results2 = vector_store
-        .top_n::<Word>(req)
+        .top_n_as::<Word>(req)
         .await
         .expect("Failed to search for linglingdong");
 

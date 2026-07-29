@@ -3,8 +3,8 @@
 use rig::Embed;
 use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::embeddings::EmbeddingsBuilder;
+use rig::embeddings::EmbeddingModel;
 use rig::providers::mistral;
-use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::request::VectorSearchRequest;
 use serde::{Deserialize, Serialize};
@@ -33,14 +33,18 @@ async fn derive_embeddings_and_vector_search() {
         .await
         .expect("embedding request should succeed");
 
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
-    let index = vector_store.index(embedding_model);
+    let vector_store =
+        InMemoryVectorStore::from_documents(embeddings).expect("documents should serialize");
+    let query = embedding_model
+        .embed_text("Hello world")
+        .await
+        .expect("query embedding should succeed");
     let request = VectorSearchRequest::builder()
-        .query("Hello world")
+        .query(query)
         .samples(1)
         .build();
-    let results = index
-        .top_n::<Greetings>(request)
+    let results = vector_store
+        .top_n_as::<Greetings>(request)
         .await
         .expect("vector search should succeed");
 

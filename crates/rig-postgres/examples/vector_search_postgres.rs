@@ -4,12 +4,12 @@ use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
     client::ProviderClient,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
 };
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
+use uuid::Uuid;
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
 // and tag that field with `#[embed]`.
@@ -76,6 +76,7 @@ async fn main() -> Result<(), anyhow::Error> {
             ]
         }];
 
+    // Embedding happens *outside* the store: it only ever sees precomputed vectors.
     let documents = EmbeddingsBuilder::new(model.clone())
         .documents(words)?
         .build()
@@ -85,17 +86,27 @@ async fn main() -> Result<(), anyhow::Error> {
     sqlx::query("TRUNCATE documents").execute(&pool).await?;
 
     // init vector store
-    let vector_store = PostgresVectorStore::with_defaults(model, pool);
-    vector_store.insert_documents(documents).await?;
+    let vector_store = PostgresVectorStore::with_defaults(pool);
 
-    // query vector
+    // The table id column is a UUID, so give each stored record a fresh UUID id.
+    vector_store
+        .insert_as(
+            documents
+                .into_iter()
+                .map(|(doc, embeddings)| (Uuid::new_v4().to_string(), doc, embeddings))
+                .collect(),
+        )
+        .await?;
+
+    // query vector: embed the query, then send the pre-embedded request
     let query = "What does \"glarb-glarb\" mean?";
+    let query_embedding = model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(2)
         .build();
 
-    let results = vector_store.top_n::<WordDefinition>(req).await?;
+    let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {

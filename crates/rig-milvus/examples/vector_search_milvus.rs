@@ -1,8 +1,10 @@
 use rig_core::client::ProviderClient;
-use rig_core::vector_store::InsertDocuments;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
-    Embed, client::EmbeddingsClient, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex,
+    Embed,
+    client::EmbeddingsClient,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    vector_store::StoreRecord,
 };
 use serde::{Deserialize, Serialize};
 
@@ -35,9 +37,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let milvus_user = std::env::var("MILVUS_USERNAME")?;
     let milvus_password = std::env::var("MILVUS_PASSWORD")?;
 
-    let vector_store =
-        rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)
-            .auth(milvus_user, milvus_password);
+    // The store holds no embedding model: embedding happens outside the store,
+    // and both records and queries arrive pre-embedded.
+    let vector_store = rig_milvus::MilvusVectorStore::new(base_url, database_name, collection_name)
+        .auth(milvus_user, milvus_password);
 
     // create test documents with mocked embeddings
     let words = vec![
@@ -59,17 +62,24 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    vector_store.insert_documents(documents).await?;
+    let records = documents
+        .into_iter()
+        .enumerate()
+        .map(|(i, (doc, embeddings))| StoreRecord::new(format!("doc{i}"), &doc, embeddings))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    vector_store.insert(records).await?;
 
     // query vector
     let query = "What does \"glarb-glarb\" mean?";
+    let query_embedding = model.embed_text(query).await?;
 
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(2)
         .build();
 
-    let results = vector_store.top_n::<WordDefinition>(req).await?;
+    let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {

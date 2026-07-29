@@ -3,9 +3,8 @@ use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::Client,
-    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_sqlite::{
     Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
@@ -96,33 +95,46 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Initialize SQLite vector store
-    let vector_store: SqliteVectorStore<_, Document> =
-        SqliteVectorStore::with_distance_metric(conn, &model, SqliteDistanceMetric::Cosine).await?;
+    // Initialize SQLite vector store. Queries arrive pre-embedded, so the
+    // store only needs the embedding dimensionality.
+    let vector_store: SqliteVectorStore<Document> =
+        SqliteVectorStore::with_distance_metric(conn, model.ndims(), SqliteDistanceMetric::Cosine)
+            .await?;
 
-    // Add embeddings to vector store
-    vector_store.insert_documents(embeddings).await?;
+    // Add precomputed embeddings to the vector store. The row's own `id`
+    // column identifies each stored document.
+    vector_store
+        .insert_as(
+            embeddings
+                .into_iter()
+                .map(|(doc, embeddings)| (doc.id.clone(), doc, embeddings))
+                .collect(),
+        )
+        .await?;
 
-    // Create a vector index on our vector store
-    let index = vector_store.index(model);
-
+    // Embed the query, then send the pre-embedded request
     let query = "What is a linglingdong?";
+    let query_embedding = model.embed_text(query).await?;
     let samples = 1;
     let req = VectorSearchRequest::builder()
         .samples(samples)
-        .query(query)
+        .query(query_embedding)
         .build();
 
-    // Query the index
-    let results = index
-        .top_n::<Document>(req.clone())
+    // Query the store
+    let results = vector_store
+        .top_n_as::<Document>(req.clone())
         .await?
         .into_iter()
         .collect::<Vec<_>>();
 
     println!("Results: {results:?}");
 
-    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
+    let id_results = vector_store
+        .top_n_ids(req)
+        .await?
+        .into_iter()
+        .collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 

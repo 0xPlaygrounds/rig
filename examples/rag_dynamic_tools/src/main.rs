@@ -1,4 +1,13 @@
+//! Dynamic tool selection as a hook recipe.
+//!
+//! Index-backed dynamic tool retrieval was removed from the agent builder.
+//! The replacement: register every candidate tool on the agent, embed the
+//! tools' documentation into a vector store up front, and use a
+//! completion-call hook that embeds each prompt, retrieves the best-matching
+//! tool names, and narrows the advertised set for that turn via
+//! `RequestPatch::active_tools`.
 use anyhow::Result;
+use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
@@ -6,6 +15,7 @@ use rig::{
     embeddings::EmbeddingsBuilder,
     providers::openai::Client,
     tool::{Tool, ToolEmbedding, ToolSet},
+    vector_store::VectorSearchRequest,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
@@ -126,6 +136,51 @@ impl ToolEmbedding for Subtract {
         vec!["Subtract y from x (i.e.: x - y)".into()]
     }
 }
+
+/// Selects which registered tools the model sees on each turn by similarity
+/// between the prompt and the tools' embedded documentation.
+struct ToolRetrievalHook {
+    embedding_model: openai::EmbeddingModel,
+    store: InMemoryVectorStore,
+    samples: u64,
+}
+
+impl AgentHook for ToolRetrievalHook {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let query = event.prompt.rag_text().or_else(|| {
+            event
+                .history
+                .iter()
+                .rev()
+                .find_map(|message| message.rag_text())
+        });
+        let Some(query) = query else {
+            return CompletionCallAction::continue_run();
+        };
+
+        let embedded = match self.embedding_model.embed_text(&query).await {
+            Ok(embedding) => embedding,
+            Err(error) => return CompletionCallAction::stop(error.to_string()),
+        };
+        let request = VectorSearchRequest::builder()
+            .query(embedded)
+            .samples(self.samples)
+            .build();
+        match self.store.top_n_ids(request).await {
+            // The store is keyed by tool name; narrow this turn's advertised
+            // tools to the retrieved names.
+            Ok(hits) => CompletionCallAction::patch(
+                RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
+            ),
+            Err(error) => CompletionCallAction::stop(error.to_string()),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // required to enable CloudWatch error logging by the runtime
@@ -138,6 +193,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = Client::from_env()?;
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+
+    // Embed the tools' documentation and index it by tool name.
     let toolset = ToolSet::builder()
         .retrieved_tool(Add)
         .retrieved_tool(Subtract)
@@ -147,20 +204,22 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Create vector store with the embeddings
+    // Create vector store with the embeddings, keyed by tool name
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone());
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone())?;
 
-    // Create vector store index
-    let index = vector_store.index(embedding_model);
-
-    // Create RAG agent with a single context prompt and a dynamic tool source
+    // Create an agent that carries every candidate tool but advertises only
+    // the retrieved one per prompt (sample rate 1).
     let calculator_rag = openai_client
         .agent(openai::GPT_4)
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
-        // Add a dynamic tool source with a sample rate of 1 (i.e.: only
-        // 1 additional tool will be added to prompts)
-        .retrieved_tools(1, index, toolset)
+        .tool(Add)
+        .tool(Subtract)
+        .add_hook(ToolRetrievalHook {
+            embedding_model,
+            store: vector_store,
+            samples: 1,
+        })
         .default_max_turns(2)
         .build();
 

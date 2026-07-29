@@ -12,12 +12,11 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
-use rig::mongodb::{MongoDbVectorIndex, SearchParams};
+use rig::mongodb::{MongoDbSearchFilter, MongoDbVectorIndex, SearchParams};
 use rig::{
     Embed,
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai,
-    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use serde_json::json;
@@ -174,18 +173,14 @@ async fn vector_search_test() {
 
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = MongoDbVectorIndex::new(
-        collection,
-        model,
-        VECTOR_SEARCH_INDEX_NAME,
-        SearchParams::new(),
-    )
-    .await
-    .unwrap();
+    let index = MongoDbVectorIndex::new(collection, VECTOR_SEARCH_INDEX_NAME, SearchParams::new())
+        .await
+        .unwrap();
 
-    let query = "What is a linglingdong?";
-    let req = VectorSearchRequest::builder()
+    // Embed the query outside the store (reuse the same model that was used to
+    // generate the document embeddings), then search with the pre-embedded query.
+    let query = model.embed_text("What is a linglingdong?").await.unwrap();
+    let req = VectorSearchRequest::<MongoDbSearchFilter>::builder()
         .query(query)
         .samples(1)
         .build();
@@ -193,7 +188,7 @@ async fn vector_search_test() {
     let mut observed_results = Vec::new();
     let mut results = Vec::new();
     for attempt in 1..=VECTOR_SEARCH_MAX_ATTEMPTS {
-        match index.top_n::<serde_json::Value>(req.clone()).await {
+        match index.top_n_as::<serde_json::Value>(req.clone()).await {
             Ok(search_results) => {
                 observed_results = search_results
                     .iter()
@@ -304,7 +299,7 @@ async fn insert_documents_test() {
     let host = container.get_host().await.unwrap().to_string();
     let collection = bootstrap_collection(host, port).await;
 
-    // Create test documents in the format expected by InsertDocuments trait
+    // Create test documents to insert via MongoDbVectorIndex::insert_as
     let test_words = vec![
         Word {
             id: "insert_test_1".to_string(),
@@ -327,24 +322,24 @@ async fn insert_documents_test() {
     // Clear collection before test
     collection.delete_many(doc! {}).await.unwrap();
 
-    // Create MongoDbVectorIndex (we don't need the vector search functionality, just access to insert_documents)
+    // Create MongoDbVectorIndex (we don't need the vector search functionality, just access to insert)
     let temp_collection = collection.clone_with_type::<Word>();
 
     // We expect this to fail because we don't have a proper vector index, but that's OK
-    // We just need the MongoDbVectorIndex struct to call insert_documents
+    // We just need the MongoDbVectorIndex struct to call insert_as
     match MongoDbVectorIndex::new(
         temp_collection.clone(),
-        model.clone(),
         "test_index_that_doesnt_exist", // This will fail, but we handle it
         SearchParams::new(),
     )
     .await
     {
         Ok(vector_index) => {
-            match vector_index
-                .insert_documents(documents_with_embeddings)
-                .await
-            {
+            let docs = documents_with_embeddings
+                .into_iter()
+                .map(|(word, embeddings)| (word.id.clone(), word, embeddings))
+                .collect::<Vec<_>>();
+            match vector_index.insert_as(docs).await {
                 Ok(_) => {
                     // Verify documents were inserted
                     let count = collection.count_documents(doc! {}).await.unwrap();
@@ -375,7 +370,7 @@ async fn insert_documents_test() {
                     }
                 }
                 Err(e) => {
-                    panic!("InsertDocuments::insert_documents() failed: {e}");
+                    panic!("MongoDbVectorIndex::insert_as() failed: {e}");
                 }
             }
         }

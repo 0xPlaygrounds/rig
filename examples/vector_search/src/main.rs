@@ -71,24 +71,29 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
+    // Queries are embedded up front; the store only sees pre-embedded requests.
+    let query_embedding = embedding_model.embed_text(query).await?;
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
-    let index = vector_store.index(embedding_model);
-    let results = index
-        .top_n::<WordDefinition>(req.clone())
+    let results = vector_store
+        .top_n_as::<WordDefinition>(req.clone())
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
         .collect::<Vec<SearchMatch>>();
 
-    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
+    let id_results = vector_store
+        .top_n_ids(req)
+        .await?
+        .into_iter()
+        .collect::<Vec<_>>();
 
     print_matches("Top document matches", &results);
     print_id_matches("Top document ids", &id_results);

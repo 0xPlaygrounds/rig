@@ -5,7 +5,6 @@
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     embeddings::EmbeddingsBuilder, providers::openai::Client,
@@ -56,19 +55,19 @@ async fn main() -> Result<(), anyhow::Error> {
     for definition in sample_definitions() {
         builder = builder.document(definition)?;
     }
-    let vector_store = InMemoryVectorStore::from_documents(builder.build().await?);
-    let index = vector_store.index(embedding_model);
+    let vector_store = InMemoryVectorStore::from_documents(builder.build().await?)?;
     let agent = build_dictionary_agent(&client);
 
     // Retrieve the most relevant definition, fold it into the prompt, then
     // prompt the agent. (The old pipeline ran the lookup "in parallel" with a
     // passthrough of the query; since the passthrough is instant, a plain
     // sequential lookup is equivalent and clearer.)
+    let query_embedding = embedding_model.embed_text(QUERY).await?;
     let req = VectorSearchRequest::builder()
-        .query(QUERY)
+        .query(query_embedding)
         .samples(1)
         .build();
-    let prompt = match index.top_n::<String>(req).await {
+    let prompt = match vector_store.top_n_as::<String>(req).await {
         Ok(docs) => lookup_context(docs, QUERY),
         Err(err) => {
             println!("Lookup failed: {err}. Prompting without retrieved context.");

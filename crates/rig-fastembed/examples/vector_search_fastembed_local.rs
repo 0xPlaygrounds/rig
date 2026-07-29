@@ -5,10 +5,8 @@ use fastembed::{
 };
 use rig_core::{
     Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{
-        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
-    },
+    embeddings::{EmbeddingModel as _, EmbeddingsBuilder},
+    vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
 use rig_fastembed::EmbeddingModel;
 use serde::{Deserialize, Serialize};
@@ -89,21 +87,22 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Create vector store
+    // Create vector store. The store never embeds text itself: queries arrive
+    // pre-embedded.
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
-    let index = vector_store.index(embedding_model);
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
+    let query_embedding = embedding_model.embed_text(query).await?;
 
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .build();
 
-    let results = index
-        .top_n::<WordDefinition>(req)
+    let results = vector_store
+        .top_n_as::<WordDefinition>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))

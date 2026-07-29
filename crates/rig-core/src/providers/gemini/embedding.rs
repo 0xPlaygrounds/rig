@@ -53,6 +53,87 @@ impl<T> EmbeddingModel<T> {
     }
 }
 
+/// Build the serialized `batchEmbedContents` request body. Pure; shared by
+/// the trait path and [`super::functions::embed`].
+///
+/// `output_dimensionality` is included per entry when `Some`, mirroring the
+/// classic model's always-sent `ndims`.
+pub(crate) fn build_embedding_body(
+    model: &str,
+    texts: &[String],
+    output_dimensionality: Option<usize>,
+) -> Result<Vec<u8>, EmbeddingError> {
+    let requests: Vec<_> = texts
+        .iter()
+        .map(|doc| {
+            let mut entry = json!({
+                "model": format!("models/{model}"),
+                "content": json!({
+                    "parts": [json!({
+                        "text": doc.to_string()
+                    })]
+                }),
+            });
+            if let (Some(ndims), Some(object)) = (output_dimensionality, entry.as_object_mut()) {
+                object.insert("output_dimensionality".to_string(), json!(ndims));
+            }
+            entry
+        })
+        .collect();
+
+    let request_body = json!({ "requests": requests });
+
+    if let Ok(pretty_body) = serde_json::to_string_pretty(&request_body) {
+        tracing::trace!(
+            target: "rig::embedding",
+            "Sending embedding request to Gemini API {pretty_body}"
+        );
+    }
+
+    Ok(serde_json::to_vec(&request_body)?)
+}
+
+/// Parse a `batchEmbedContents` response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure; shared by the trait path and
+/// [`super::functions::embed`]. Gemini reports no embedding usage.
+pub(crate) fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    // Preserve non-success bodies before deserialization because providers
+    // may return empty, non-JSON, or otherwise unexpected error payloads.
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
+    }
+
+    match serde_json::from_str::<ApiResponse<gemini_api_types::EmbeddingResponse>>(body)? {
+        ApiResponse::Ok(response) => {
+            let embeddings = documents
+                .into_iter()
+                .zip(response.embeddings)
+                .map(|(document, embedding)| embeddings::Embedding {
+                    document,
+                    vec: embedding
+                        .values
+                        .into_iter()
+                        .filter_map(|n| n.as_f64())
+                        .collect(),
+                })
+                .collect();
+            Ok(embeddings::EmbeddingResponse {
+                embeddings,
+                usage: crate::completion::Usage::new(),
+            })
+        }
+        ApiResponse::Err(err) => {
+            tracing::warn!(message = %err.error.message, "provider returned an error response");
+            Err(EmbeddingError::from_http_response(status, body.to_string()))
+        }
+    }
+}
+
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: Clone + HttpClientExt + 'static,
@@ -79,31 +160,7 @@ where
         let documents: Vec<String> = documents.into_iter().collect();
 
         // Google batch embed requests. See docstrings for API ref link.
-        let requests: Vec<_> = documents
-            .iter()
-            .map(|doc| {
-                json!({
-                    "model": format!("models/{}", self.model),
-                    "content": json!({
-                        "parts": [json!({
-                            "text": doc.to_string()
-                        })]
-                    }),
-                    "output_dimensionality": self.ndims,
-                })
-            })
-            .collect();
-
-        let request_body = json!({ "requests": requests  });
-
-        if let Ok(pretty_body) = serde_json::to_string_pretty(&request_body) {
-            tracing::trace!(
-                target: "rig::embedding",
-                "Sending embedding request to Gemini API {pretty_body}"
-            );
-        }
-
-        let request_body = serde_json::to_vec(&request_body)?;
+        let request_body = build_embedding_body(&self.model, &documents, Some(self.ndims))?;
         let path = format!("/v1beta/models/{}:batchEmbedContents", self.model);
         let req = self
             .client
@@ -114,41 +171,9 @@ where
 
         let status = response.status();
         let body = response.into_body().await?;
+        let body = String::from_utf8_lossy(&body).into_owned();
 
-        // Preserve non-success bodies before deserialization because providers
-        // may return empty, non-JSON, or otherwise unexpected error payloads.
-        if !status.is_success() {
-            return Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
-        }
-
-        match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {
-            ApiResponse::Ok(response) => {
-                let docs = documents
-                    .into_iter()
-                    .zip(response.embeddings)
-                    .map(|(document, embedding)| embeddings::Embedding {
-                        document,
-                        vec: embedding
-                            .values
-                            .into_iter()
-                            .filter_map(|n| n.as_f64())
-                            .collect(),
-                    })
-                    .collect();
-
-                Ok(docs)
-            }
-            ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.error.message, "provider returned an error response");
-                Err(EmbeddingError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
+        parse_embedding_response(status, &body, documents).map(|response| response.embeddings)
     }
 }
 

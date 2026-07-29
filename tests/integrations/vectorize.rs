@@ -23,11 +23,11 @@
 //! cargo test --package rig-vectorize --test integration_tests
 //! ```
 
-use rig::embeddings::{EmbedError, Embedding, EmbeddingModel, TextEmbedder};
+use rig::embeddings::{Embedding, EmbeddingModel};
+use rig::vector_store::StoreRecord;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
-use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
-use rig::{Embed, OneOrMany};
+use rig::OneOrMany;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -63,14 +63,15 @@ async fn test_insert_documents() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let records: Vec<StoreRecord> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
-        .collect();
+        .map(|(doc, emb)| StoreRecord::new(doc.id.clone(), &doc, OneOrMany::one(emb)))
+        .collect::<Result<_, _>>()
+        .expect("Failed to build records");
 
     vector_store
-        .insert_documents(documents_with_embeddings)
+        .insert(records)
         .await
         .expect("Insert should succeed");
 }
@@ -97,13 +98,17 @@ async fn test_insert_and_query() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings = vec![(
-        doc.clone(),
-        OneOrMany::one(embeddings.into_iter().next().unwrap()),
-    )];
+    let records = vec![
+        StoreRecord::new(
+            doc.id.clone(),
+            &doc,
+            OneOrMany::one(embeddings.into_iter().next().unwrap()),
+        )
+        .expect("Failed to build record"),
+    ];
 
     vector_store
-        .insert_documents(documents_with_embeddings)
+        .insert(records)
         .await
         .expect("Failed to insert document");
 
@@ -111,7 +116,7 @@ async fn test_insert_and_query() {
     tokio::time::sleep(EVENTUAL_CONSISTENCY_DELAY).await;
 
     let request = VectorSearchRequest::builder()
-        .query(&doc.content)
+        .query(embed_query(&model, doc.content.clone()).await)
         .samples(5)
         .build();
 
@@ -145,10 +150,14 @@ async fn test_top_n_returns_full_documents() {
         .expect("Failed to generate embeddings");
 
     vector_store
-        .insert_documents(vec![(
-            doc.clone(),
-            OneOrMany::one(embeddings.into_iter().next().unwrap()),
-        )])
+        .insert(vec![
+            StoreRecord::new(
+                doc.id.clone(),
+                &doc,
+                OneOrMany::one(embeddings.into_iter().next().unwrap()),
+            )
+            .expect("Failed to build record"),
+        ])
         .await
         .expect("Failed to insert document");
 
@@ -156,12 +165,12 @@ async fn test_top_n_returns_full_documents() {
     tokio::time::sleep(EVENTUAL_CONSISTENCY_DELAY).await;
 
     let request = VectorSearchRequest::builder()
-        .query("Rust programming language systems")
+        .query(embed_query(&model, "Rust programming language systems").await)
         .samples(5)
         .build();
 
     let results = vector_store
-        .top_n::<TestDocument>(request)
+        .top_n_as::<TestDocument>(request)
         .await
         .expect("top_n should succeed");
 
@@ -205,14 +214,15 @@ async fn test_top_n_with_multiple_documents() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let records: Vec<StoreRecord> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
-        .collect();
+        .map(|(doc, emb)| StoreRecord::new(doc.id.clone(), &doc, OneOrMany::one(emb)))
+        .collect::<Result<_, _>>()
+        .expect("Failed to build records");
 
     vector_store
-        .insert_documents(documents_with_embeddings)
+        .insert(records)
         .await
         .expect("Failed to insert documents");
 
@@ -220,12 +230,12 @@ async fn test_top_n_with_multiple_documents() {
     tokio::time::sleep(EVENTUAL_CONSISTENCY_DELAY).await;
 
     let request = VectorSearchRequest::builder()
-        .query("programming language")
+        .query(embed_query(&model, "programming language").await)
         .samples(10)
         .build();
 
     let results = vector_store
-        .top_n::<TestDocument>(request)
+        .top_n_as::<TestDocument>(request)
         .await
         .expect("top_n should succeed");
 
@@ -264,14 +274,15 @@ async fn test_query_with_eq_filter() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let records: Vec<StoreRecord> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
-        .collect();
+        .map(|(doc, emb)| StoreRecord::new(doc.id.clone(), &doc, OneOrMany::one(emb)))
+        .collect::<Result<_, _>>()
+        .expect("Failed to build records");
 
     vector_store
-        .insert_documents(documents_with_embeddings)
+        .insert(records)
         .await
         .expect("Failed to insert documents");
 
@@ -281,12 +292,12 @@ async fn test_query_with_eq_filter() {
     let filter = VectorizeFilter::eq("category", serde_json::json!("programming"));
 
     let request = VectorSearchRequest::builder()
-        .query("language")
+        .query(embed_query(&model, "language").await)
         .samples(10)
         .filter(filter)
         .build();
 
-    match vector_store.top_n::<TestDocument>(request).await {
+    match vector_store.top_n_as::<TestDocument>(request).await {
         Ok(results) => {
             if results.is_empty() {
                 eprintln!(
@@ -340,14 +351,15 @@ async fn test_query_with_combined_filters() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let records: Vec<StoreRecord> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
-        .collect();
+        .map(|(doc, emb)| StoreRecord::new(doc.id.clone(), &doc, OneOrMany::one(emb)))
+        .collect::<Result<_, _>>()
+        .expect("Failed to build records");
 
     vector_store
-        .insert_documents(documents_with_embeddings)
+        .insert(records)
         .await
         .expect("Failed to insert documents");
 
@@ -359,12 +371,12 @@ async fn test_query_with_combined_filters() {
         .and(VectorizeFilter::ne("id", serde_json::json!("doc-rust")));
 
     let request = VectorSearchRequest::builder()
-        .query("programming")
+        .query(embed_query(&model, "programming").await)
         .samples(10)
         .filter(filter)
         .build();
 
-    match vector_store.top_n::<TestDocument>(request).await {
+    match vector_store.top_n_as::<TestDocument>(request).await {
         Ok(results) => {
             if results.is_empty() {
                 eprintln!(
@@ -419,14 +431,15 @@ async fn test_query_with_in_filter() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let records: Vec<StoreRecord> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
-        .collect();
+        .map(|(doc, emb)| StoreRecord::new(doc.id.clone(), &doc, OneOrMany::one(emb)))
+        .collect::<Result<_, _>>()
+        .expect("Failed to build records");
 
     vector_store
-        .insert_documents(documents_with_embeddings)
+        .insert(records)
         .await
         .expect("Failed to insert documents");
 
@@ -442,12 +455,12 @@ async fn test_query_with_in_filter() {
     );
 
     let request = VectorSearchRequest::builder()
-        .query("Rust Vectorize")
+        .query(embed_query(&model, "Rust Vectorize").await)
         .samples(10)
         .filter(filter)
         .build();
 
-    match vector_store.top_n::<TestDocument>(request).await {
+    match vector_store.top_n_as::<TestDocument>(request).await {
         Ok(results) => {
             if results.is_empty() {
                 eprintln!(
@@ -476,11 +489,15 @@ struct TestDocument {
     category: String,
 }
 
-impl Embed for TestDocument {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.content.clone());
-        Ok(())
-    }
+/// Embeds a query string with the mock model.
+async fn embed_query(model: &MockEmbeddingModel, text: impl Into<String>) -> Embedding {
+    model
+        .embed_texts(vec![text.into()])
+        .await
+        .expect("Failed to embed query")
+        .into_iter()
+        .next()
+        .expect("Embedding missing")
 }
 
 /// A mock embedding model that returns deterministic embeddings for testing.
@@ -549,16 +566,12 @@ fn get_env_or_skip(var: &str) -> Option<String> {
     std::env::var(var).ok()
 }
 
-fn create_vector_store() -> Option<VectorizeVectorStore<MockEmbeddingModel>> {
+fn create_vector_store() -> Option<VectorizeVectorStore> {
     let account_id = get_env_or_skip("CLOUDFLARE_ACCOUNT_ID")?;
     let api_token = get_env_or_skip("CLOUDFLARE_API_TOKEN")?;
     let index_name = get_env_or_skip("VECTORIZE_INDEX_NAME")?;
 
-    let model = MockEmbeddingModel::new(1536);
-
-    Some(VectorizeVectorStore::new(
-        model, account_id, index_name, api_token,
-    ))
+    Some(VectorizeVectorStore::new(account_id, index_name, api_token))
 }
 
 async fn clear_test_index() {

@@ -1,12 +1,10 @@
-use super::{Client, client::ApiResponse};
+use super::Client;
 use crate::http_client::HttpClientExt;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-use crate::json_utils::merge_inplace;
 use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
-use serde_json::json;
 
 // ================================================================
 // OpenAI Image Generation API
@@ -85,25 +83,8 @@ where
         generation_request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
-        let mut request = json!({
-            "model": self.model,
-            "prompt": generation_request.prompt,
-            "size": format!("{}x{}", generation_request.width, generation_request.height),
-        });
-
-        if !matches!(
-            self.model.as_str(),
-            GPT_IMAGE_1 | GPT_IMAGE_1_5 | GPT_IMAGE_2
-        ) {
-            merge_inplace(
-                &mut request,
-                json!({
-                    "response_format": "b64_json"
-                }),
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
+        let body =
+            super::functions::build_image_generation_body(&self.model, &generation_request)?;
 
         let request = self
             .client
@@ -114,21 +95,8 @@ where
         let response = self.client.send(request).await?;
 
         let status = response.status();
-        if !status.is_success() {
-            let text = http_client::text(response).await?;
-
-            return Err(ImageGenerationError::from_http_response(status, text));
-        }
-
         let text = http_client::text(response).await?;
-
-        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.message, "provider returned an error response");
-                Err(ImageGenerationError::from_http_response(status, text))
-            }
-        }
+        super::functions::parse_image_generation_response(status, text.as_bytes())
     }
 }
 

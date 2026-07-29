@@ -304,6 +304,154 @@ pub async fn complete(
     }
 }
 
+// ================================================================
+// Embeddings
+// ================================================================
+
+/// Plain-data Copilot embeddings configuration.
+///
+/// A sibling of [`Config`]: embeddings target their own model identifier
+/// and an optional requested dimension count. Credentials follow the same
+/// contract as [`Config::api_key`] — an already-resolved Copilot chat token
+/// or API key (see the module docs).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct EmbeddingConfig {
+    /// API base URL (defaults to [`DEFAULT_BASE_URL`]). When left at the
+    /// default, a `proxy-ep=` segment inside the resolved token overrides
+    /// it, exactly like the classic client.
+    pub base_url: String,
+    /// Credential location; must resolve to a Copilot chat token or API key.
+    pub api_key: ApiKeyLocation,
+    /// Embedding model identifier requests are built for.
+    pub model: String,
+    /// Requested embedding dimensions, sent verbatim as `dimensions` when
+    /// set (models that reject the field, like `text-embedding-ada-002`,
+    /// should leave it unset).
+    pub dimensions: Option<usize>,
+    /// Extra headers attached to every request.
+    pub extra_headers: Vec<(String, String)>,
+}
+
+impl EmbeddingConfig {
+    /// Config for `model` reading `GITHUB_COPILOT_API_KEY` from the
+    /// environment.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+            api_key: ApiKeyLocation::Env("GITHUB_COPILOT_API_KEY".to_string()),
+            model: model.into(),
+            dimensions: None,
+            extra_headers: Vec::new(),
+        }
+    }
+
+    /// Config for `model` with an explicit Copilot token.
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = ApiKeyLocation::Inline(key.into());
+        self
+    }
+
+    /// Override the API base URL.
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    /// Request `dimensions`-sized embeddings.
+    pub fn with_dimensions(mut self, dimensions: usize) -> Self {
+        self.dimensions = Some(dimensions);
+        self
+    }
+}
+
+/// Build the complete HTTP `/embeddings` request for one chunk of `texts`.
+///
+/// Pure up to credential resolution and the generated `x-request-id`
+/// inside Copilot's default headers (matching [`build_request`]).
+pub fn build_embedding_request(
+    cfg: &EmbeddingConfig,
+    texts: &[String],
+) -> Result<http::Request<Vec<u8>>, crate::embeddings::EmbeddingError> {
+    use crate::embeddings::EmbeddingError;
+
+    let key = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
+        .ok_or_else(|| {
+            EmbeddingError::ProviderError(
+                "Copilot requires an API key or chat token".to_string(),
+            )
+        })?;
+
+    let base_url = if cfg.base_url == DEFAULT_BASE_URL {
+        base_url_from_token(&key).unwrap_or_else(|| cfg.base_url.clone())
+    } else {
+        cfg.base_url.clone()
+    };
+    let url = format!("{}/embeddings", base_url.trim_end_matches('/'));
+    let body = super::build_embedding_body(&cfg.model, texts, cfg.dimensions, None, None)?;
+
+    let headers = default_headers(&key, "user", false, CopilotIntent::Panel);
+    let mut builder = apply_headers(
+        http::Request::post(url).header(CONTENT_TYPE, "application/json"),
+        &headers,
+    );
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(body)
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+}
+
+/// Parse an `/embeddings` response into the normalized
+/// [`crate::embeddings::EmbeddingResponse`]. Pure.
+pub fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    super::parse_embedding_response(status, body, documents)
+}
+
+/// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
+/// `max_embedding_documents`; embeddings are returned in input order.
+pub async fn embed(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    crate::embeddings::batching::embed_chunked(
+        rt,
+        texts,
+        DESCRIPTOR.max_embedding_documents,
+        |chunk| build_embedding_request(cfg, chunk),
+        parse_embedding_response,
+    )
+    .await
+}
+
+/// Embed caller-defined batches, returning one order-aligned
+/// [`OneOrMany`](crate::OneOrMany) group per input batch plus summed usage.
+pub async fn embed_batches(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<Vec<String>>,
+) -> Result<
+    (
+        Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+        crate::completion::Usage,
+    ),
+    crate::embeddings::EmbeddingError,
+> {
+    let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+    let response = embed(cfg, rt, flat).await?;
+    let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+    Ok((groups, response.usage))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

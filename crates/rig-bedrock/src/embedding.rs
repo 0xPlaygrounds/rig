@@ -50,32 +50,42 @@ impl EmbeddingModel {
         &self,
         request: EmbeddingRequest,
     ) -> Result<EmbeddingResponse, EmbeddingError> {
-        let input_document = serde_json::to_string(&request).map_err(EmbeddingError::JsonError)?;
-
-        let model_response = self
-            .client
-            .get_inner()
-            .await
-            .invoke_model()
-            .model_id(self.model.as_str())
-            .content_type("application/json")
-            .accept("application/json")
-            .body(Blob::new(input_document))
-            .send()
-            .await;
-
-        let response = model_response
-            .map_err(|sdk_error| AwsSdkInvokeModelError(sdk_error).into())
-            .map_err(|e: EmbeddingError| e)?;
-
-        let response_str = String::from_utf8(response.body.into_inner())
-            .map_err(|e| EmbeddingError::ResponseError(e.to_string()))?;
-
-        let result: EmbeddingResponse =
-            serde_json::from_str(&response_str).map_err(EmbeddingError::JsonError)?;
-
-        Ok(result)
+        invoke_embedding(self.client.get_inner().await, self.model.as_str(), request).await
     }
+}
+
+/// Invoke `model` for one embedding document over the AWS SDK.
+///
+/// Extracted from [`EmbeddingModel::document_to_embeddings`], which is
+/// rewired through it (single source of truth); also drives
+/// [`crate::functions::embed`].
+pub(crate) async fn invoke_embedding(
+    client: &aws_sdk_bedrockruntime::Client,
+    model: &str,
+    request: EmbeddingRequest,
+) -> Result<EmbeddingResponse, EmbeddingError> {
+    let input_document = serde_json::to_string(&request).map_err(EmbeddingError::JsonError)?;
+
+    let model_response = client
+        .invoke_model()
+        .model_id(model)
+        .content_type("application/json")
+        .accept("application/json")
+        .body(Blob::new(input_document))
+        .send()
+        .await;
+
+    let response = model_response
+        .map_err(|sdk_error| AwsSdkInvokeModelError(sdk_error).into())
+        .map_err(|e: EmbeddingError| e)?;
+
+    let response_str = String::from_utf8(response.body.into_inner())
+        .map_err(|e| EmbeddingError::ResponseError(e.to_string()))?;
+
+    let result: EmbeddingResponse =
+        serde_json::from_str(&response_str).map_err(EmbeddingError::JsonError)?;
+
+    Ok(result)
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
@@ -96,33 +106,8 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         documents: impl IntoIterator<Item = String> + Send,
     ) -> Result<Vec<Embedding>, EmbeddingError> {
         let documents: Vec<_> = documents.into_iter().collect();
-
-        let mut results = Vec::new();
-        let mut errors = Vec::new();
-
-        let mut iterator = documents.into_iter();
-        while let Some(embedding) = iterator.next().map(|doc| async move {
-            let request = EmbeddingRequest {
-                input_text: doc.to_owned(),
-                dimensions: self.ndims(),
-                normalize: true,
-            };
-            self.document_to_embeddings(request)
-                .await
-                .map(|embeddings| Embedding {
-                    document: doc.to_owned(),
-                    vec: embeddings.embedding,
-                })
-        }) {
-            match embedding.await {
-                Ok(embedding) => results.push(embedding),
-                Err(err) => errors.push(err),
-            }
-        }
-
-        match errors.as_slice() {
-            [] => Ok(results),
-            [err, ..] => Err(EmbeddingError::ResponseError(err.to_string())),
-        }
+        let client = self.client.get_inner().await;
+        let response = crate::functions::embed(client, &self.model, self.ndims, documents).await?;
+        Ok(response.embeddings)
     }
 }

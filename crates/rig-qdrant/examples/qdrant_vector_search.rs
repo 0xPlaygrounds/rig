@@ -14,9 +14,9 @@ use qdrant_client::{
 use rig_core::{
     Embed,
     client::ProviderClient,
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::{self, Client},
-    vector_store::{InsertDocuments, VectorStoreIndex, request::SearchFilter},
+    vector_store::{StoreRecord, request::SearchFilter},
 };
 use rig_core::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_qdrant::{QdrantFilter, QdrantVectorStore};
@@ -52,6 +52,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
+    // Embedding happens *outside* the store: the store only ever sees
+    // precomputed vectors.
     let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
@@ -69,25 +71,33 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     let query_params = QueryPointsBuilder::new(COLLECTION_NAME).with_payload(true);
-    let vector_store = QdrantVectorStore::new(client, model, query_params.build());
+    let vector_store = QdrantVectorStore::new(client, query_params.build());
+
+    let records = documents
+        .into_iter()
+        .map(|(word, embeddings)| StoreRecord::new(word.id.clone(), &word, embeddings))
+        .collect::<Result<Vec<_>, _>>()?;
 
     vector_store
-        .insert_documents(documents)
+        .insert(records)
         .await
         .map_err(|err| anyhow!("Couldn't insert documents: {err}"))?;
 
+    // Embed the query, then create a pre-embedded request.
     let query = "What is a linglingdong?";
+    let query_embedding = model.embed_text(query).await?;
+
     let req = VectorSearchRequest::builder()
-        .query(query)
+        .query(query_embedding.clone())
         .samples(1)
         .build();
 
-    let results = vector_store.top_n::<Word>(req).await?;
+    let results = vector_store.top_n_as::<Word>(req).await?;
 
     println!("Results: {results:?}");
 
     let filtered_req = VectorSearchRequest::<QdrantFilter>::builder()
-        .query(query)
+        .query(query_embedding)
         .samples(1)
         .filter(QdrantFilter::eq(
             "id",
@@ -95,7 +105,7 @@ async fn main() -> Result<(), anyhow::Error> {
         ))
         .build();
 
-    let filtered_results = vector_store.top_n::<Word>(filtered_req).await?;
+    let filtered_results = vector_store.top_n_as::<Word>(filtered_req).await?;
 
     println!("Filtered results: {filtered_results:?}");
 

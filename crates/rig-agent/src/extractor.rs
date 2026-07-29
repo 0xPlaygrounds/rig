@@ -37,7 +37,6 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::{
     message::{Message, ToolChoice},
-    vector_store::VectorStoreIndexDyn,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -292,18 +291,6 @@ where
         self
     }
 
-    /// Add dynamic context retrieved from a vector store on every extraction attempt.
-    ///
-    /// This delegates to [`AgentBuilder::dynamic_context`] and therefore uses the
-    /// same completion-call hook lifecycle as an agent.
-    pub fn dynamic_context<I>(mut self, samples: usize, index: I) -> Self
-    where
-        I: VectorStoreIndexDyn + 'static,
-    {
-        self.agent_builder = self.agent_builder.dynamic_context(samples, index);
-        self
-    }
-
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.agent_builder = self.agent_builder.additional_params(params);
         self
@@ -370,9 +357,10 @@ mod tests {
     use crate::provider::MockScript;
     use rig_core::OneOrMany;
     use rig_core::completion::CompletionResponse as ModelResponse;
+    use rig_core::embeddings::Embedding;
     use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
     use rig_core::vector_store::{
-        VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
+        StoreRecord, VectorSearchRequest, in_memory_store::InMemoryVectorStore,
     };
 
     #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
@@ -507,30 +495,60 @@ mod tests {
         }
     }
 
-    struct ExtractorContextIndex {
+    /// The passive-RAG hook recipe applied to an extractor: embed the prompt,
+    /// query a concrete store, and inject the hits as per-turn context.
+    struct ExtractorRagHook {
+        embedder: crate::provider::EmbedderConfig,
+        rt: Arc<crate::provider::Runtime>,
+        store: InMemoryVectorStore,
+        samples: u64,
         queries: Arc<Mutex<Vec<(String, u64)>>>,
     }
 
-    impl VectorStoreIndex for ExtractorContextIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    impl AgentHook for ExtractorRagHook {
+        async fn on_completion_call(
             &self,
-            req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            _ctx: &HookContext,
+            event: crate::agent::CompletionCallEvent<'_>,
+        ) -> crate::agent::CompletionCallAction {
+            use crate::agent::{CompletionCallAction, RequestPatch};
+
+            let Some(query) = event.prompt.rag_text() else {
+                return CompletionCallAction::continue_run();
+            };
             self.queries
                 .lock()
                 .expect("extractor query recorder")
-                .push((req.query().to_string(), req.samples()));
-            let value = serde_json::from_value(json!({ "question": "retrieved" }))?;
-            Ok(vec![(1.0, "extractor-context".to_string(), value)])
-        }
+                .push((query.clone(), self.samples));
 
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            Ok(vec![(1.0, "extractor-context".to_string())])
+            let embedded = match crate::provider::embed(&self.embedder, &self.rt, vec![query]).await
+            {
+                Ok(response) => response.embeddings.into_iter().next(),
+                Err(error) => {
+                    return CompletionCallAction::stop(format!("query embedding failed: {error}"));
+                }
+            };
+            let Some(embedded) = embedded else {
+                return CompletionCallAction::stop("query embedding was empty");
+            };
+
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(self.samples)
+                .build();
+            match self.store.top_n(request).await {
+                Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
+                    hits.into_iter().map(|hit| crate::completion::Document {
+                        id: hit.id,
+                        text: serde_json::to_string_pretty(&hit.payload)
+                            .unwrap_or_else(|_| hit.payload.to_string()),
+                        additional_props: Default::default(),
+                    }),
+                )),
+                Err(error) => {
+                    CompletionCallAction::stop(format!("context retrieval failed: {error}"))
+                }
+            }
         }
     }
 
@@ -671,17 +689,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
+    async fn extractor_rag_hook_uses_the_agent_hook_lifecycle() {
         let script = MockScript::from_responses(vec![submit_response("John")]);
         let probe = script.clone();
         let queries = Arc::new(Mutex::new(Vec::new()));
+
+        let store = InMemoryVectorStore::new();
+        store
+            .insert(vec![StoreRecord {
+                id: "extractor-context".to_string(),
+                payload: json!({ "question": "retrieved" }),
+                embeddings: OneOrMany::one(Embedding {
+                    document: "retrieved".to_string(),
+                    vec: vec![1.0, 0.0],
+                }),
+            }])
+            .await
+            .expect("store insert should succeed");
+
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .dynamic_context(
-                2,
-                ExtractorContextIndex {
-                    queries: queries.clone(),
-                },
-            )
+            .add_hook(ExtractorRagHook {
+                embedder: crate::provider::EmbedderConfig::Mock(
+                    crate::provider::MockEmbedder::from_responses(vec![vec![vec![1.0, 0.0]]]),
+                ),
+                rt: Arc::new(crate::provider::Runtime::new()),
+                store,
+                samples: 2,
+                queries: queries.clone(),
+            })
             .build()
             .extract("John")
             .await
